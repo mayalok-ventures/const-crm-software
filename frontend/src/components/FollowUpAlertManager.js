@@ -1,0 +1,402 @@
+'use client';
+import { useState, useEffect, useRef } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
+import api from '@/lib/api';
+import { waLink } from '@/lib/auth';
+import toast from 'react-hot-toast';
+import {
+  BellRing, Clock, AlertTriangle, MessageSquare,
+  CheckCircle2, X, ChevronRight, Calendar, ArrowRight
+} from 'lucide-react';
+
+export default function FollowUpAlertManager() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [dueLeads, setDueLeads] = useState([]);
+  const [isOpen, setIsOpen] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const lastAlarmTimeRef = useRef(0);
+  const timerRef = useRef(null);
+
+  // Synthesized crisp alarm chime (Dual frequency alert)
+  const playAlarmSound = () => {
+    if (isMuted) return;
+
+    // First try standard HTML5 Audio if asset exists
+    try {
+      const audio = new Audio('/alert-sound.mp3');
+      audio.volume = 0.7;
+      const promise = audio.play();
+      if (promise !== undefined) {
+        promise.catch(() => {
+          playWebAudioBeep();
+        });
+      }
+    } catch {
+      playWebAudioBeep();
+    }
+  };
+
+  // High-reliability Web Audio API oscillator beep
+  const playWebAudioBeep = () => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+
+      // Note 1: E5 (659.25 Hz)
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'triangle';
+      osc1.frequency.setValueAtTime(659.25, ctx.currentTime);
+      gain1.gain.setValueAtTime(0.4, ctx.currentTime);
+      gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start();
+      osc1.stop(ctx.currentTime + 0.35);
+
+      // Note 2: G#5 (830.61 Hz)
+      setTimeout(() => {
+        try {
+          const osc2 = ctx.createOscillator();
+          const gain2 = ctx.createGain();
+          osc2.type = 'sine';
+          osc2.frequency.setValueAtTime(830.61, ctx.currentTime);
+          gain2.gain.setValueAtTime(0.4, ctx.currentTime);
+          gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.45);
+          osc2.connect(gain2);
+          gain2.connect(ctx.destination);
+          osc2.start();
+          osc2.stop(ctx.currentTime + 0.45);
+        } catch {}
+      }, 180);
+
+      // Note 3: B5 (987.77 Hz)
+      setTimeout(() => {
+        try {
+          const osc3 = ctx.createOscillator();
+          const gain3 = ctx.createGain();
+          osc3.type = 'sine';
+          osc3.frequency.setValueAtTime(987.77, ctx.currentTime);
+          gain3.gain.setValueAtTime(0.4, ctx.currentTime);
+          gain3.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.55);
+          osc3.connect(gain3);
+          gain3.connect(ctx.destination);
+          osc3.start();
+          osc3.stop(ctx.currentTime + 0.55);
+        } catch {}
+      }, 360);
+    } catch (err) {
+      console.warn('[FollowUpAlert] WebAudio beep error:', err);
+    }
+  };
+
+  const checkDueFollowUps = async () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const isAuthPage = pathname === '/login' || pathname === '/signup';
+    if (!token || isAuthPage) return;
+
+    try {
+      const { data } = await api.get('/leads/follow-ups/due');
+      const leads = Array.isArray(data) ? data : [];
+      setDueLeads(leads);
+
+      if (leads.length > 0) {
+        const now = Date.now();
+        // 5-minute persistent alarm interval (300,000 ms)
+        const fiveMinutes = 5 * 60 * 1000;
+        if (now - lastAlarmTimeRef.current >= fiveMinutes) {
+          lastAlarmTimeRef.current = now;
+          playAlarmSound();
+          setIsOpen(true);
+        }
+      } else {
+        setIsOpen(false);
+      }
+    } catch {
+      // Ignore network errors during polling
+    }
+  };
+
+  useEffect(() => {
+    checkDueFollowUps();
+    timerRef.current = setInterval(checkDueFollowUps, 45000); // Poll every 45s
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [pathname]);
+
+  // Quick Reschedule Action
+  const handleReschedule = async (leadId, hoursToAdd) => {
+    try {
+      const newDate = new Date(Date.now() + hoursToAdd * 60 * 60 * 1000);
+      await api.put(`/leads/${leadId}`, {
+        followUpDate: newDate.toISOString(),
+      });
+      toast.success(`Follow-up postponed by ${hoursToAdd >= 24 ? hoursToAdd / 24 + ' day(s)' : hoursToAdd + ' hour(s)'} ⏰`);
+      // Update local state
+      setDueLeads(prev => prev.filter(l => l._id !== leadId));
+      if (dueLeads.length <= 1) {
+        setIsOpen(false);
+      }
+    } catch {
+      toast.error('Failed to reschedule follow-up');
+    }
+  };
+
+  // Quick Mark Status Action
+  const handleUpdateStatus = async (leadId, status) => {
+    let closedDealAmount = null;
+    if (status === 'closed' || status === 'Closed') {
+      const inputAmt = window.prompt("🏆 Enter Final Closed Deal Amount (₹):");
+      if (!inputAmt) return;
+      closedDealAmount = Number(inputAmt);
+      if (!closedDealAmount || isNaN(closedDealAmount) || closedDealAmount <= 0) {
+        return toast.error("Deal amount is required to close a lead.");
+      }
+    }
+
+    try {
+      const payload = { status };
+      if (closedDealAmount) payload.closedDealAmount = closedDealAmount;
+      await api.put(`/leads/${leadId}`, payload);
+      toast.success(`Lead marked as ${status} ✅`);
+      setDueLeads(prev => prev.filter(l => l._id !== leadId));
+      if (dueLeads.length <= 1) {
+        setIsOpen(false);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update status');
+    }
+  };
+
+  if (!isOpen || dueLeads.length === 0) return null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      bottom: 24,
+      right: 24,
+      zIndex: 9999,
+      maxWidth: 420,
+      width: 'calc(100vw - 32px)',
+      background: '#0f172a',
+      borderRadius: 16,
+      border: '2px solid #ef4444',
+      boxShadow: '0 20px 40px -10px rgba(239, 68, 68, 0.4), 0 0 0 1px rgba(239, 68, 68, 0.2)',
+      color: '#f8fafc',
+      overflow: 'hidden',
+      animation: 'slideUp 0.3s ease-out'
+    }}>
+      {/* Header */}
+      <div style={{
+        background: 'linear-gradient(90deg, #dc2626 0%, #b91c1c 100%)',
+        padding: '12px 16px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            background: '#ffffff',
+            borderRadius: '50%',
+            width: 24,
+            height: 24,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#dc2626'
+          }}>
+            <BellRing size={14} className="animate-pulse" />
+          </div>
+          <span style={{ fontWeight: 800, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            Follow-Up Due Alert ({dueLeads.length})
+          </span>
+        </div>
+
+        <button
+          onClick={() => setIsOpen(false)}
+          title="Snooze for 5 minutes"
+          style={{
+            background: 'rgba(0,0,0,0.2)',
+            border: 'none',
+            color: 'white',
+            borderRadius: 6,
+            width: 26,
+            height: 26,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer'
+          }}
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      {/* Leads List */}
+      <div style={{ maxHeight: 320, overflowY: 'auto', padding: '12px 16px' }}>
+        <p style={{ margin: '0 0 12px', fontSize: 12, color: '#94a3b8' }}>
+          These prospect follow-ups are overdue. This reminder will re-alarm every 5 minutes until rescheduled.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {dueLeads.slice(0, 3).map(lead => (
+            <div
+              key={lead._id}
+              style={{
+                background: '#1e293b',
+                border: '1px solid #334155',
+                borderRadius: 12,
+                padding: '12px 14px'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#f8fafc' }}>
+                    {lead.name}
+                  </h4>
+                  <div style={{ fontSize: 11, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                    <span>+{lead.phone}</span>
+                    {lead.company && <span>• {lead.company}</span>}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setIsOpen(false);
+                    router.push(`/leads/${lead._id}`);
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#6366f1',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2
+                  }}
+                >
+                  Open <ArrowRight size={11} />
+                </button>
+              </div>
+
+              {/* Quick Action Buttons */}
+              <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                {lead.phone && lead.phone !== '0000000000' && (
+                  <a
+                    href={waLink(lead.phone, `Hi ${lead.name}! Reaching out regarding your inquiry. Are you available for a quick update?`)}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '4px 8px',
+                      borderRadius: 6,
+                      background: 'rgba(34, 197, 94, 0.15)',
+                      border: '1px solid rgba(34, 197, 94, 0.3)',
+                      color: '#22c55e',
+                      textDecoration: 'none',
+                      fontSize: 11,
+                      fontWeight: 700
+                    }}
+                  >
+                    <MessageSquare size={11} /> WA Chat
+                  </a>
+                )}
+
+                <button
+                  onClick={() => handleReschedule(lead._id, 1)}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: 6,
+                    background: '#334155',
+                    border: '1px solid #475569',
+                    color: '#f8fafc',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  +1 Hour
+                </button>
+
+                <button
+                  onClick={() => handleReschedule(lead._id, 24)}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: 6,
+                    background: '#334155',
+                    border: '1px solid #475569',
+                    color: '#f8fafc',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Tomorrow
+                </button>
+
+                <button
+                  onClick={() => handleUpdateStatus(lead._id, 'closed')}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: 6,
+                    background: 'rgba(99, 102, 241, 0.15)',
+                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                    color: '#818cf8',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  ✓ Closed Won
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {dueLeads.length > 3 && (
+            <div style={{ textAlign: 'center', padding: '4px 0', fontSize: 11, color: '#94a3b8' }}>
+              +{dueLeads.length - 3} more overdue follow-ups waiting
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Footer / Snooze Notice */}
+      <div style={{
+        background: '#090d16',
+        padding: '10px 16px',
+        borderTop: '1px solid #1e293b',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <span style={{ fontSize: 11, color: '#64748b' }}>
+          Auto-repeats in 5 mins
+        </span>
+
+        <button
+          onClick={() => setIsOpen(false)}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: '#ef4444',
+            fontSize: 11,
+            fontWeight: 700,
+            cursor: 'pointer',
+            textDecoration: 'underline'
+          }}
+        >
+          Snooze All (5 mins)
+        </button>
+      </div>
+    </div>
+  );
+}

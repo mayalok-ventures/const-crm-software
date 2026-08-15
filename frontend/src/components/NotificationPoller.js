@@ -9,6 +9,7 @@ export default function NotificationPoller() {
   const lastSeenIdRef = useRef(null);
   const isFetchingRef = useRef(false);
   const timerRef = useRef(null);
+  const eventSourceRef = useRef(null);
 
   // Play synthesized crisp notification tone (D5 then A5 notes) using Web Audio API oscillators
   const playAlertSound = () => {
@@ -50,84 +51,94 @@ export default function NotificationPoller() {
     }
   };
 
+  const handleNewNotification = (notification) => {
+    if (!notification || !notification._id) return;
+    if (lastSeenIdRef.current === notification._id) return;
+
+    lastSeenIdRef.current = notification._id;
+    playAlertSound();
+
+    // Native Browser Notification
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification(notification.title || 'SalesCRM Alert', {
+          body: notification.message,
+          icon: '/android-chrome-192x192.png'
+        });
+      } catch {}
+    }
+
+    // Interactive Toast
+    const isWAReply = notification.type === 'wa_reply';
+    toast((t) => (
+      <div 
+        onClick={() => {
+          toast.dismiss(t.id);
+          if (notification.leadId) {
+            const leadIdStr = typeof notification.leadId === 'object' ? notification.leadId._id : notification.leadId;
+            router.push(`/leads/${leadIdStr}`);
+          }
+        }}
+        style={{ cursor: 'pointer' }}
+      >
+        <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: isWAReply ? '#22c55e' : '#6366f1' }}>
+          {isWAReply ? '💬 WhatsApp Reply' : (notification.title || '⏰ Reminder')}
+        </p>
+        <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>{notification.message}</p>
+      </div>
+    ), { duration: 7000 });
+  };
+
   useEffect(() => {
-    // Only check if logged in
-    let backoffMs = 0; // extra delay added after 429/network errors
+    let backoffMs = 0;
 
     const checkNotifications = async () => {
-      const token = localStorage.getItem('token');
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       if (!token || isFetchingRef.current) return;
 
       isFetchingRef.current = true;
       try {
         const { data } = await api.get('/notifications');
-        backoffMs = 0; // reset backoff on success
+        backoffMs = 0;
         const notifications = data.notifications || [];
         
         if (notifications.length > 0) {
           const latest = notifications[0];
           
-          // If we have a new notification that we haven't seen in this session
           if (lastSeenIdRef.current && latest._id !== lastSeenIdRef.current) {
-            // Sound alarm!
-            playAlertSound();
-
-            // Native Browser Notification
-            if (Notification.permission === 'granted') {
-              new Notification('SalesCRM Reminder', {
-                body: latest.message,
-                icon: '/android-chrome-192x192.png'
-              });
-            }
-
-            // Interactive hot toast
-            toast((t) => (
-              <div 
-                onClick={() => {
-                  toast.dismiss(t.id);
-                  if (latest.leadId) router.push(`/leads/${latest.leadId}`);
-                }}
-                style={{ cursor: 'pointer' }}
-              >
-                <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>⏰ Follow-up Reminder</p>
-                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>{latest.message}</p>
-              </div>
-            ), { duration: 6000 });
+            handleNewNotification(latest);
+          } else if (!lastSeenIdRef.current) {
+            lastSeenIdRef.current = latest._id;
           }
-
-          // Update ref
-          lastSeenIdRef.current = latest._id;
         }
       } catch (err) {
         if (err.response?.status === 429) {
-          // Rate limited — back off exponentially, max 2 minutes
           backoffMs = Math.min((backoffMs || 15000) * 2, 120000);
-        } else if (!err.response) {
-          // Network error (server restarting, offline) — don't log, just wait
-        } else if (err.response?.status === 401) {
-          // Not logged in — stop polling silently
-        } else {
-          console.error('Notification poller check failed:', err);
         }
       } finally {
         isFetchingRef.current = false;
       }
     };
 
-    // Initialize first seen ID on mount/login
     checkNotifications();
 
-    // Base interval 15s + any active backoff
+    // Polling backup timer
     const poll = () => {
       const delay = 15000 + backoffMs;
       return setTimeout(async () => {
         await checkNotifications();
-        timerRef.current = poll(); // reschedule after completion
+        timerRef.current = poll();
       }, delay);
     };
 
     timerRef.current = poll();
-    return () => clearTimeout(timerRef.current);
+
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    };
   }, [router]);
 
   return null;

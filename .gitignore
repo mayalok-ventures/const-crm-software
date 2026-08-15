@@ -22,3 +22,4 @@ backend/uploads/wa-sessions/*
 .DS_Store
 .vscode/
 .idea/
+backend/data/

@@ -259,11 +259,11 @@ export default function TemplatesPage() {
 
   return (
     <div className="app-shell">
-      <div className="page-container">
+      <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
         <div className="page-header">
-          <h1 className="page-title">Templates</h1>
+          <h1 className="page-title">Message Templates</h1>
           <button className="btn btn-primary btn-sm" onClick={() => { setEditTemplate(null); setShowModal(true); }}>
-            <Plus size={16} /> New
+            <Plus size={16} /> New Template
           </button>
         </div>
 
@@ -274,7 +274,7 @@ export default function TemplatesPage() {
                 <Zap size={18} color="var(--accent)" />
                 <p style={{ margin: 0, fontWeight: 700, fontSize: 15 }}>Quick Start</p>
               </div>
-              <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--text-muted)' }}>Add professional templates instantly</p>
+              <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--text-muted)' }}>Add professional outreach templates instantly</p>
               <button className="btn btn-primary btn-sm" onClick={addPresets}>Add Preset Templates</button>
             </div>
           )}
@@ -282,13 +282,13 @@ export default function TemplatesPage() {
           {loading ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}><div className="spinner" /></div>
           ) : templates.length === 0 ? (
-            <div className="empty-state">
-              <FileText size={48} />
-              <h3>No templates yet</h3>
-              <p>Create templates for quick WhatsApp follow-ups</p>
+            <div className="empty-state card" style={{ padding: '48px 20px', textAlign: 'center' }}>
+              <FileText size={44} color="var(--border)" style={{ marginBottom: 10 }} />
+              <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>No templates yet</h3>
+              <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Create templates for quick WhatsApp client follow-ups</p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
               {templates.map(t => {
                 const hasImage = !!t.imageFile;
                 const hasVideo = !!t.videoFile;

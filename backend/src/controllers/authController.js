@@ -1,14 +1,28 @@
+const jwt = require('jsonwebtoken');
+const speakeasy = require('speakeasy');
+const qrcode = require('qrcode');
 const User = require('../models/User');
+const Lead = require('../models/Lead');
+const Notification = require('../models/Notification');
 const AbuseLog = require('../models/AbuseLog');
-const { generateToken } = require('../middleware/auth');
+const Coupon = require('../models/Coupon');
+const { generateToken, generateTemp2FAToken } = require('../middleware/auth');
 const { generateUniqueUsername } = require('../utils/generateUsername');
+const { generateUniqueUsercode } = require('../utils/generateUsercode');
+const { getIndustryDefaults } = require('../utils/industryTemplates');
 
-// @desc  Register new user
+// Helper to construct dynamic default form schema based on industry vertical
+const getDefaultLeadFormSchema = (industryType = 'Agency') => {
+  return getIndustryDefaults(industryType).leadFormSchema;
+};
+exports.getDefaultLeadFormSchema = getDefaultLeadFormSchema;
+
+// @desc  Register new user (WorkStatus strictly locked at signup + Industry Vertical)
 // @route POST /api/auth/register
 // @access Public
 exports.register = async (req, res) => {
   try {
-    const { name, email, phone, password } = req.body;
+    const { name, email, phone, password, workStatus, companyName, industryType } = req.body;
 
     if (!name || !password) {
       return res.status(400).json({ message: 'Name and password are required' });
@@ -17,12 +31,9 @@ exports.register = async (req, res) => {
       return res.status(400).json({ message: 'At least one of email or phone is required' });
     }
 
-    // IMPORTANT: PHONE NORMALIZATION
-    // All phone numbers must be stored in digits-only format.
-    // Prevents duplicate leads and mismatched queries.
     const cleanPhone = phone ? phone.replace(/\D/g, '') : undefined;
 
-    // Anti-duplicate check
+    // Duplicate checks
     if (email) {
       const emailExists = await User.findOne({ email: email.toLowerCase() }).lean();
       if (emailExists) {
@@ -36,16 +47,102 @@ exports.register = async (req, res) => {
       }
     }
 
-    // Generate unique 7-character username
+    // Role determined strictly at registration
+    const selectedWorkStatus = workStatus === 'company_owner' ? 'company_owner' : 'independent_agent';
+    const selectedCompanyRole = selectedWorkStatus === 'company_owner' ? 'owner' : 'solo';
+    const selectedIndustry = industryType || 'Agency';
+
+    // Industry defaults (Form Schema + Pipeline Stages)
+    const { leadFormSchema: defaultSchema, pipelineStages: defaultStages } = getIndustryDefaults(selectedIndustry);
+
+    // Generate unique username & usercode
     const username = await generateUniqueUsername(User);
+    const prefix = selectedWorkStatus === 'company_owner' ? 'CMP' : 'REA';
+    const usercode = await generateUniqueUsercode(User, prefix);
 
     const user = await User.create({
-      name,
-      email: email ? email.toLowerCase() : undefined,
+      name: name.trim(),
+      email: email ? email.toLowerCase().trim() : undefined,
       phone: cleanPhone || undefined,
       password,
       username,
+      usercode,
+      industryType: selectedIndustry,
+      workStatus: selectedWorkStatus,
+      companyRole: selectedCompanyRole,
+      companyInfo: {
+        companyName: companyName ? companyName.trim() : (selectedWorkStatus === 'company_owner' ? `${name.trim()}'s Organization` : ''),
+      },
+      pipelineStages: defaultStages,
+      customPipelineStages: defaultStages,
+      leadFormSchema: defaultSchema,
+      plan: 'free',
+      isCustomPlan: false,
+      billingCycle: 'monthly',
+      planStartDate: null,
+      planEndDate: null,
+      billing: {
+        originalPrice: 0,
+        discountedPrice: 0,
+        couponCodeUsed: null,
+      },
     });
+
+    // ─────────────────────────────────────────────────────────────
+    // SUPER ADMIN LEAD CAPTURE ENGINE (Automatic Lead Tracking)
+    // ─────────────────────────────────────────────────────────────
+    try {
+      const superAdmin = await User.findOne({
+        $or: [{ role: 'superadmin' }, { isAdmin: true }, { email: 'admin@crm.com' }]
+      });
+
+      if (superAdmin && String(superAdmin._id) !== String(user._id)) {
+        const leadPhone = user.phone || `000${user.usercode?.replace(/\D/g, '') || user._id.toString().slice(-6)}`;
+        const leadOrg = user.companyInfo?.companyName || (user.workStatus === 'company_owner' ? `${user.name}'s Organization` : 'Individual Solo');
+        
+        await Lead.findOneAndUpdate(
+          { userId: superAdmin._id, email: user.email },
+          {
+            $set: {
+              userId: superAdmin._id,
+              name: user.name,
+              email: user.email,
+              phone: leadPhone,
+              company: leadOrg,
+              tags: ['platform_signup', user.workStatus, user.industryType, 'new_user'],
+              status: 'Platform Signup (Auto-generated when a user registers)',
+              propertyType: `${user.industryType} • ${user.workStatus === 'company_owner' ? 'Organization Account' : 'Individual Sales Rep'}`,
+              budget: 'Not Decided',
+              followUpDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24-hr follow-up
+              source: 'Auto-Signup',
+              'customData.interestedPlan': 'Not Decided',
+              'customData.leadSource': 'Auto-Signup',
+              'customData.industryType': user.industryType,
+              'customData.workStatus': user.workStatus,
+            },
+            $push: {
+              leadActivities: {
+                action: 'lead_created',
+                performedBy: superAdmin._id,
+                performerName: 'SuperAdmin Capture Engine',
+                details: `New platform signup: ${user.name} (${user.usercode}) • Industry: ${user.industryType} • Mode: ${user.workStatus}`,
+                timestamp: new Date(),
+              }
+            }
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+
+        await Notification.create({
+          userId: superAdmin._id,
+          title: '🎉 New Platform Signup',
+          message: `${user.name} (${user.usercode}) signed up in ${user.industryType} industry as a ${user.workStatus === 'company_owner' ? 'Company Owner' : 'Solo Agent'}.`,
+          type: 'platform_signup',
+        });
+      }
+    } catch (captureErr) {
+      console.warn('[SuperAdmin Engine] Lead capture hook notice:', captureErr.message);
+    }
 
     const token = generateToken(user._id);
 
@@ -55,6 +152,14 @@ exports.register = async (req, res) => {
       email: user.email,
       phone: user.phone,
       username: user.username,
+      usercode: user.usercode,
+      role: user.role || 'user',
+      industryType: user.industryType,
+      workStatus: user.workStatus,
+      companyRole: user.companyRole,
+      twoFactorEnabled: user.twoFactorEnabled,
+      customPipelineStages: user.customPipelineStages || [],
+      leadFormSchema: user.leadFormSchema || [],
       plan: user.plan,
       isAdmin: user.isAdmin,
       token,
@@ -71,20 +176,34 @@ exports.register = async (req, res) => {
   }
 };
 
-// @desc  Login (email OR phone)
+// @desc  Login (email OR phone OR username) + TOTP Authenticator check
 // @route POST /api/auth/login
 // @access Public
 exports.login = async (req, res) => {
   try {
     const { identifier, password } = req.body;
     if (!identifier || !password) {
-      return res.status(400).json({ message: 'Identifier (email/phone) and password are required' });
+      return res.status(400).json({ message: 'Identifier (email/phone/username) and password are required' });
     }
 
-    const isEmail = identifier.includes('@');
-    const query = isEmail
-      ? { email: identifier.toLowerCase() }
-      : { phone: identifier.replace(/\D/g, '') };
+    const cleanInput = identifier.trim();
+    const isEmail = cleanInput.includes('@');
+    const isDigitsOnly = /^\d+$/.test(cleanInput.replace(/\D/g, '')) && cleanInput.length >= 7;
+
+    let query;
+    if (isEmail) {
+      query = { email: cleanInput.toLowerCase() };
+    } else if (isDigitsOnly) {
+      query = { phone: cleanInput.replace(/\D/g, '') };
+    } else {
+      query = {
+        $or: [
+          { username: cleanInput.toUpperCase() },
+          { usercode: cleanInput.toUpperCase() },
+          { email: cleanInput.toLowerCase() }
+        ]
+      };
+    }
 
     const user = await User.findOne(query);
     if (!user) {
@@ -93,48 +212,41 @@ exports.login = async (req, res) => {
 
     const match = await user.comparePassword(password);
     if (!match) {
-      // Track failed login attempts for abuse detection
       await User.findByIdAndUpdate(user._id, {
         $inc: { loginAttempts: 1 },
-        lastFailedLogin: new Date(),
-      });
-      await AbuseLog.create({
-        userId: user._id,
-        ip: req.ip,
-        type: 'invalid_login',
-        detail: `Failed login attempt for ${identifier}`,
+        $set: { lastFailedLogin: new Date() }
       });
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    if (!user.isActive) {
-      return res.status(403).json({ message: 'Account deactivated. Contact admin.' });
+    // Reset login attempts
+    await User.findByIdAndUpdate(user._id, {
+      $set: { loginAttempts: 0, lastLogin: new Date() }
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // TOTP AUTHENTICATOR APP 2FA CHECK
+    // ─────────────────────────────────────────────────────────────
+    if (user.twoFactorEnabled && user.twoFactorSecret) {
+      const tempToken = generateTemp2FAToken(user._id);
+
+      return res.json({
+        requires2FA: true,
+        tempToken,
+        method: 'totp',
+        message: 'Please enter the 6-digit code from your Google Authenticator or Authy app.',
+      });
     }
 
-    // Check suspension — auto-lift if suspendedUntil has passed
-    if (user.suspension?.isSuspended) {
-      const until = user.suspension.suspendedUntil;
-      if (until && new Date() > new Date(until)) {
-        // Auto-lift expired suspension
-        user.suspension.isSuspended = false;
-        user.suspension.level = 0;
-        user.suspension.reason = null;
-        user.suspension.suspendedUntil = null;
-        await user.save({ validateBeforeSave: false });
-      } else {
-        const msg = until
-          ? `Account suspended until ${new Date(until).toLocaleDateString()}. Reason: ${user.suspension.reason || 'Violation'}.`
-          : `Account permanently banned. Reason: ${user.suspension.reason || 'Violation'}. Contact admin.`;
-        return res.status(403).json({ code: 'SUSPENDED', message: msg, suspendedUntil: until });
-      }
+    // Auto-generate usercode if missing
+    if (!user.usercode) {
+      const prefix = user.workStatus === 'company_owner' ? 'CMP' : 'REA';
+      user.usercode = await generateUniqueUsercode(User, prefix);
+      await user.save();
     }
-
-    // Reset login attempts on successful login
-    user.loginAttempts = 0;
-    user.lastLogin = new Date();
-    await user.save({ validateBeforeSave: false });
 
     const token = generateToken(user._id);
+    const resolvedRole = user.role || (user.isAdmin ? 'superadmin' : 'user');
 
     res.json({
       _id: user._id,
@@ -142,8 +254,20 @@ exports.login = async (req, res) => {
       email: user.email,
       phone: user.phone,
       username: user.username,
+      usercode: user.usercode,
+      role: resolvedRole,
+      isAdmin: user.isAdmin || resolvedRole === 'superadmin',
+      industryType: user.industryType || 'Agency',
+      workStatus: user.workStatus,
+      companyRole: user.companyRole,
+      companyId: user.companyId,
+      companyJoinMethod: user.companyJoinMethod,
+      companyLeaveRequest: user.companyLeaveRequest,
+      twoFactorEnabled: user.twoFactorEnabled || false,
+      pipelineStages: user.pipelineStages || user.customPipelineStages || [],
+      customPipelineStages: user.customPipelineStages || user.pipelineStages || [],
+      leadFormSchema: user.leadFormSchema || [],
       plan: user.plan,
-      isAdmin: user.isAdmin,
       token,
     });
   } catch (error) {
@@ -152,69 +276,328 @@ exports.login = async (req, res) => {
   }
 };
 
-// @desc  Get current user
+// @desc  Verify 2FA TOTP code and complete login
+// @route POST /api/auth/verify-2fa
+// @access Public (with tempToken)
+exports.verify2FA = async (req, res) => {
+  try {
+    const { tempToken, otp } = req.body;
+    if (!tempToken || !otp) {
+      return res.status(400).json({ message: 'Temporary token and 6-digit code are required' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+    } catch {
+      return res.status(401).json({ message: 'Verification session expired. Please log in again.' });
+    }
+
+    if (!decoded.pending2FA) {
+      return res.status(400).json({ message: 'Invalid 2FA token' });
+    }
+
+    const user = await User.findById(decoded.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (!user.twoFactorSecret) {
+      return res.status(400).json({ message: '2FA Authenticator secret not configured.' });
+    }
+
+    // Verify TOTP token using speakeasy
+    const verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token: String(otp).trim(),
+      window: 1, // Allow +/- 30s clock drift
+    });
+
+    if (!verified) {
+      return res.status(400).json({ message: 'Invalid 6-digit Authenticator code. Please check your app and try again.' });
+    }
+
+    const token = generateToken(user._id);
+    const resolvedRole = user.role || (user.isAdmin ? 'superadmin' : 'user');
+
+    res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      username: user.username,
+      usercode: user.usercode,
+      role: resolvedRole,
+      isAdmin: user.isAdmin || resolvedRole === 'superadmin',
+      industryType: user.industryType || 'Agency',
+      workStatus: user.workStatus,
+      companyRole: user.companyRole,
+      companyId: user.companyId,
+      companyJoinMethod: user.companyJoinMethod,
+      companyLeaveRequest: user.companyLeaveRequest,
+      twoFactorEnabled: user.twoFactorEnabled || true,
+      pipelineStages: user.pipelineStages || user.customPipelineStages || [],
+      customPipelineStages: user.customPipelineStages || user.pipelineStages || [],
+      leadFormSchema: user.leadFormSchema || [],
+      plan: user.plan,
+      token,
+    });
+  } catch (error) {
+    console.error('verify2FA error:', error);
+    res.status(500).json({ message: '2FA verification failed' });
+  }
+};
+
+// @desc  Setup 2FA - Generates TOTP secret and QR code for Google Authenticator
+// @route POST /api/auth/2fa/setup
+// @access Private
+exports.setup2FA = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    // Generate speakeasy secret
+    const secret = speakeasy.generateSecret({
+      name: `CRM Mobile (${user.email || user.username || user.phone})`,
+      issuer: 'Universal Agency CRM',
+      length: 20,
+    });
+
+    user.twoFactorSecret = secret.base32;
+    await user.save();
+
+    // Generate QR Code data URL
+    const qrCodeUrl = await qrcode.toDataURL(secret.otpauth_url);
+
+    res.json({
+      secret: secret.base32,
+      qrCodeUrl,
+    });
+  } catch (error) {
+    console.error('setup2FA error:', error);
+    res.status(500).json({ message: 'Failed to generate 2FA setup details' });
+  }
+};
+
+// @desc  Enable 2FA - Verify initial code and lock 2FA to account
+// @route POST /api/auth/2fa/enable
+// @access Private
+exports.enable2FA = async (req, res) => {
+  try {
+    const { otp } = req.body;
+    if (!otp) return res.status(400).json({ message: '6-digit code required' });
+
+    const user = await User.findById(req.user._id);
+    if (!user.twoFactorSecret) {
+      return res.status(400).json({ message: 'Please initialize 2FA setup first.' });
+    }
+
+    const verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token: String(otp).trim(),
+      window: 1,
+    });
+
+    if (!verified) {
+      return res.status(400).json({ message: 'Invalid 6-digit code. Please verify the code on your app.' });
+    }
+
+    user.twoFactorEnabled = true;
+    await user.save();
+
+    res.json({
+      message: 'Two-Factor Authentication (TOTP) successfully activated & locked 🔒',
+      twoFactorEnabled: true,
+    });
+  } catch (error) {
+    console.error('enable2FA error:', error);
+    res.status(500).json({ message: 'Failed to activate 2FA' });
+  }
+};
+
+// @desc  Update Dynamic Pipeline Stages
+// @route PUT /api/auth/pipeline-stages
+// @access Private
+exports.updatePipelineStages = async (req, res) => {
+  try {
+    const { stages } = req.body;
+    if (!Array.isArray(stages)) {
+      return res.status(400).json({ message: 'Stages must be an array of strings' });
+    }
+
+    const cleanStages = stages.map(s => String(s).trim()).filter(Boolean);
+    if (cleanStages.length === 0) {
+      return res.status(400).json({ message: 'At least one pipeline stage is required.' });
+    }
+
+    const user = await User.findById(req.user._id);
+    user.pipelineStages = cleanStages;
+    user.customPipelineStages = cleanStages;
+    await user.save();
+
+    res.json({
+      message: 'Pipeline stages saved successfully ✅',
+      pipelineStages: user.pipelineStages,
+      customPipelineStages: user.customPipelineStages,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to save pipeline stages' });
+  }
+};
+
+// @desc  Update Fully Customizable Form Engine Schema (with Conditional Visibility dependsOn)
+// @route PUT /api/auth/form-schema (also aliases PUT /api/auth/custom-fields)
+// @access Private
+exports.updateFormSchema = async (req, res) => {
+  try {
+    const rawList = Array.isArray(req.body) ? req.body : (req.body.schema || req.body.fields || []);
+    if (!Array.isArray(rawList)) {
+      return res.status(400).json({ message: 'Form schema must be an array' });
+    }
+
+    const sanitized = rawList.map((f, idx) => {
+      const fieldId = (f.fieldId || f.label || '').toLowerCase().replace(/[^a-z0-9_]/g, '_').trim();
+      const isSystem = Boolean(f.isSystem);
+      const isMandatorySystem = ['name', 'phone'].includes(fieldId);
+      const isMandatoryDate = fieldId === 'followUpDate';
+
+      const dependsOn = (f.dependsOn && f.dependsOn.field)
+        ? { field: String(f.dependsOn.field).trim(), value: String(f.dependsOn.value || '').trim() }
+        : { field: null, value: null };
+
+      return {
+        fieldId,
+        label: (f.label || fieldId).trim(),
+        fieldType: ['text', 'email', 'phone', 'dropdown', 'date', 'number'].includes(f.fieldType) ? f.fieldType : 'text',
+        options: Array.isArray(f.options) ? f.options.map(o => String(o).trim()).filter(Boolean) : [],
+        isRequired: isMandatorySystem || isMandatoryDate ? true : Boolean(f.isRequired),
+        isSystem,
+        isHidden: isMandatorySystem ? false : Boolean(f.isHidden),
+        order: typeof f.order === 'number' ? f.order : (idx + 1),
+        dependsOn,
+      };
+    }).filter(f => f.fieldId && f.label);
+
+    // Ensure mandatory name & phone are present
+    const hasName = sanitized.some(f => f.fieldId === 'name');
+    const hasPhone = sanitized.some(f => f.fieldId === 'phone');
+    if (!hasName || !hasPhone) {
+      return res.status(400).json({ message: 'System fields "Name" and "Phone" cannot be removed.' });
+    }
+
+    // Sort by order
+    sanitized.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    const user = await User.findById(req.user._id);
+    user.leadFormSchema = sanitized;
+    await user.save();
+
+    res.json({
+      message: 'Lead form layout saved successfully ✅',
+      leadFormSchema: user.leadFormSchema,
+    });
+  } catch (err) {
+    console.error('updateFormSchema error:', err);
+    res.status(500).json({ message: 'Failed to save form layout' });
+  }
+};
+exports.updateCustomFields = exports.updateFormSchema;
+
+// @desc  Get current logged in user details
 // @route GET /api/auth/me
 // @access Private
 exports.getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password').lean();
+    const user = await User.findById(req.user._id)
+      .select('-password -twoFactorOtp -twoFactorOtpExpires -twoFactorSecret')
+      .populate('companyId', 'name usercode companyInfo companySettings')
+      .lean();
+
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const isExpired = user.plan !== 'free' && user.planEndDate && new Date() > new Date(user.planEndDate);
-    const planActive = user.plan !== 'free' && !isExpired;
-    const daysRemaining = user.planEndDate ? Math.max(0, Math.ceil((new Date(user.planEndDate) - new Date()) / (1000 * 60 * 60 * 24))) : null;
+    // Auto-generate usercode if missing (Skip for SuperAdmin)
+    const isSuperAdmin = user.role === 'superadmin' || user.isAdmin;
+    if (!user.usercode && !isSuperAdmin) {
+      const code = await generateUniqueUsercode(User, user.workStatus === 'company_owner' ? 'CMP' : 'REA');
+      await User.findByIdAndUpdate(user._id, { usercode: code });
+      user.usercode = code;
+    }
 
-    res.json({
-      ...user,
-      planActive,
-      isExpired,
-      daysRemaining,
-      planStatus: {
-        active: planActive,
-        isExpired,
-        daysRemaining
+    const industryDefaults = getIndustryDefaults(user.industryType);
+
+    // Auto-initialize pipelineStages if missing or empty
+    if (!user.pipelineStages || user.pipelineStages.length === 0) {
+      const stages = (user.customPipelineStages && user.customPipelineStages.length > 0)
+        ? user.customPipelineStages
+        : industryDefaults.pipelineStages;
+      await User.findByIdAndUpdate(user._id, { pipelineStages: stages, customPipelineStages: stages });
+      user.pipelineStages = stages;
+      user.customPipelineStages = stages;
+    }
+
+    // Auto-initialize leadFormSchema if missing or empty
+    if (!user.leadFormSchema || user.leadFormSchema.length === 0) {
+      const defaultSchema = industryDefaults.leadFormSchema;
+      if (Array.isArray(user.customLeadFields) && user.customLeadFields.length > 0) {
+        let currentMaxOrder = defaultSchema.length;
+        user.customLeadFields.forEach(cf => {
+          currentMaxOrder++;
+          defaultSchema.push({
+            fieldId: cf.fieldId || cf.label.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+            label: cf.label,
+            fieldType: cf.fieldType || 'text',
+            options: cf.options || [],
+            isRequired: Boolean(cf.isRequired),
+            isSystem: false,
+            isHidden: false,
+            order: currentMaxOrder,
+            dependsOn: { field: null, value: null },
+          });
+        });
       }
-    });
+      await User.findByIdAndUpdate(user._id, { leadFormSchema: defaultSchema });
+      user.leadFormSchema = defaultSchema;
+    }
+
+    const { calculateSubscriptionLifecycle } = require('../middleware/auth');
+    user.subscriptionLifecycle = await calculateSubscriptionLifecycle(user);
+
+    res.json(user);
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-// @desc  Update profile (add missing email/phone — cannot change existing)
+// @desc  Update Profile Info (WorkStatus, CompanyRole, and IndustryType CANNOT be changed)
 // @route PUT /api/auth/profile
 // @access Private
 exports.updateProfile = async (req, res) => {
   try {
+    const { name, phone, profilePicture, companyInfo, localization } = req.body;
     const user = await User.findById(req.user._id);
-    const { email, phone, name } = req.body;
 
-    // Allow name update
-    if (name) user.name = name;
+    if (name) user.name = name.trim();
+    if (phone) user.phone = phone.replace(/\D/g, '');
+    if (profilePicture !== undefined) user.profilePicture = profilePicture;
 
-    // Allow adding missing fields ONLY — cannot change once set
-    if (email && !user.email) {
-      const exists = await User.findOne({ email: email.toLowerCase(), _id: { $ne: user._id } });
-      if (exists) return res.status(400).json({ message: 'Email already in use' });
-      user.email = email.toLowerCase();
-    } else if (email && user.email && email.toLowerCase() !== user.email) {
-      return res.status(400).json({ message: 'Email cannot be changed once set' });
+    if (companyInfo) {
+      user.companyInfo = {
+        ...user.companyInfo,
+        ...companyInfo,
+      };
     }
 
-    if (phone && !user.phone) {
-      const cleanPhone = phone.replace(/\D/g, '');
-      const exists = await User.findOne({ phone: cleanPhone, _id: { $ne: user._id } });
-      if (exists) return res.status(400).json({ message: 'Phone already in use' });
-      user.phone = cleanPhone;
-    } else if (phone && user.phone && phone.replace(/\D/g, '') !== user.phone) {
-      return res.status(400).json({ message: 'Phone cannot be changed once set' });
+    if (localization) {
+      user.localization = {
+        currencySymbol: localization.currencySymbol || user.localization?.currencySymbol || '₹',
+        currencyCode: localization.currencyCode || user.localization?.currencyCode || 'INR',
+        countryPhoneCode: localization.countryPhoneCode ? String(localization.countryPhoneCode).replace(/\D/g, '') : (user.localization?.countryPhoneCode || '91'),
+      };
     }
 
     await user.save();
-    const updated = user.toObject();
-    delete updated.password;
-    res.json(updated);
+    res.json({ message: 'Profile updated successfully ✅', user });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Server error' });
+    res.status(500).json({ message: error.message || 'Failed to update profile' });
   }
 };
 
@@ -224,145 +607,159 @@ exports.updateProfile = async (req, res) => {
 exports.changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
-    const user = await User.findById(req.user._id).select('+password');
-    const match = await user.comparePassword(currentPassword);
-    if (!match) return res.status(401).json({ message: 'Current password incorrect' });
-    user.password = newPassword;
-    await user.save();
-    res.json({ message: 'Password updated successfully' });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// @desc  Generate/toggle share token
-// @route POST /api/auth/share-token
-// @access Private
-exports.toggleShareToken = async (req, res) => {
-  try {
-    const crypto = require('crypto');
-    const user = await User.findById(req.user._id);
-
-    if (user.shareTokenEnabled && user.shareToken) {
-      // Disable
-      user.shareTokenEnabled = false;
-      await user.save({ validateBeforeSave: false });
-      return res.json({ enabled: false, shareToken: null });
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current and new password are required' });
     }
 
-    // Generate new token
-    const token = crypto.randomBytes(32).toString('hex');
-    user.shareToken = token;
-    user.shareTokenEnabled = true;
-    await user.save({ validateBeforeSave: false });
+    const user = await User.findById(req.user._id);
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Current password is incorrect' });
+    }
 
-    res.json({ enabled: true, shareToken: token });
+    user.password = newPassword;
+    await user.save();
+
+    res.json({ message: 'Password changed successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-// @desc  Apply coupon code to upgrade user plan
+// @desc  Apply coupon code
 // @route POST /api/auth/apply-coupon
 // @access Private
-//
-// CRITICAL — BILLING LOGIC:
-// planStartDate AND planEndDate MUST always be set together when applying a coupon.
-// Missing planEndDate = no expiry check = unlimited free access forever.
-//
-// CRITICAL — RACE CONDITION FIXED:
-// Atomic findOneAndUpdate with $inc prevents two concurrent users from both
-// claiming the last use of a coupon. Non-atomic check-then-increment is gone.
 exports.applyCoupon = async (req, res) => {
   try {
-    const Coupon = require('../models/Coupon');
     const { code } = req.body;
     if (!code) return res.status(400).json({ message: 'Coupon code is required' });
 
-    const user = await User.findById(req.user._id);
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    const coupon = await Coupon.findOne({ code: code.toUpperCase().trim() });
+    if (!coupon) return res.status(404).json({ message: 'Invalid coupon code' });
 
-    // Atomically claim one use — only succeeds if coupon is valid, active, not expired, and has uses left
-    const coupon = await Coupon.findOneAndUpdate(
+    if (!coupon.isActive) return res.status(400).json({ message: 'This coupon is no longer active' });
+    if (coupon.validUntil && new Date() > new Date(coupon.validUntil)) {
+      return res.status(400).json({ message: 'This coupon has expired' });
+    }
+    if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) {
+      return res.status(400).json({ message: 'This coupon has reached its usage limit' });
+    }
+
+    const { updateUserPlan } = require('../utils/subscriptionManager');
+    const { user, subscriptionLifecycle } = await updateUserPlan(
+      req.user._id,
+      coupon.planGranted,
+      'monthly',
+      false,
       {
-        code: code.toUpperCase(),
-        isActive: true,
-        $expr: { $lt: ['$usedCount', '$maxUses'] },
-        $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
-      },
-      { $inc: { usedCount: 1 } },
+        durationDays: coupon.durationDays,
+        couponCode: coupon.code,
+        paymentMethod: 'coupon',
+        originalPrice: 0,
+        discountedPrice: 0,
+      }
+    );
+
+    coupon.usedCount = (coupon.usedCount || 0) + 1;
+    await coupon.save();
+
+    res.json({
+      message: `Coupon applied! You are now on the ${coupon.planGranted.toUpperCase()} plan for ${coupon.durationDays} days.`,
+      plan: user.plan,
+      planEndDate: user.planEndDate,
+      subscriptionLifecycle,
+    });
+  } catch (error) {
+    console.error('applyCoupon error:', error);
+    res.status(500).json({ message: error.message || 'Failed to apply coupon' });
+  }
+};
+
+// @desc  Update CRM pipeline stages
+// @route PUT /api/auth/pipeline-stages
+// @access Private
+exports.updatePipelineStages = async (req, res) => {
+  try {
+    const { pipelineStages, customPipelineStages } = req.body;
+    const stages = pipelineStages || customPipelineStages;
+    if (!Array.isArray(stages) || stages.length === 0) {
+      return res.status(400).json({ message: 'pipelineStages must be a non-empty array of strings' });
+    }
+
+    const cleanStages = stages.map(s => String(s).trim()).filter(Boolean);
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { pipelineStages: cleanStages, customPipelineStages: cleanStages },
       { new: true }
     );
 
-    if (!coupon) {
-      return res.status(400).json({ message: 'Invalid, expired, or fully used coupon code' });
-    }
-
-    // Deactivate coupon if now fully used
-    if (coupon.usedCount >= coupon.maxUses) {
-      await Coupon.findByIdAndUpdate(coupon._id, { isActive: false });
-    }
-
-    const { PLAN_PRICES } = require('../utils/planLimits');
-    const originalPrice = PLAN_PRICES[coupon.plan] || 0;
-    const discount = coupon.discountPercent || 0;
-    const discountedPrice = Math.round(originalPrice * (1 - discount / 100));
-
-    // CRITICAL: COUPON APPLICATION
-    // Must update billing.originalPrice, discountedPrice, couponCodeUsed
-    // If not saved, revenue tracking and analytics break.
-    user.plan = coupon.plan;
-    user.planStartDate = new Date();
-    user.planEndDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
-    user.billing = {
-      originalPrice,
-      discountedPrice,
-      couponCodeUsed: coupon.code,
-    };
-    await user.save({ validateBeforeSave: false });
-
     res.json({
-      message: `Coupon applied successfully! Plan upgraded to ${coupon.plan}.`,
-      plan: coupon.plan,
+      message: 'Pipeline stages updated successfully',
+      pipelineStages: user.pipelineStages,
+      customPipelineStages: user.customPipelineStages,
+      user,
     });
   } catch (error) {
-    console.error('Apply coupon error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Failed to update pipeline stages' });
   }
 };
 
-
-
-// @desc  Validate coupon code
-// @route POST /api/auth/validate-coupon
+// @desc  Update Dynamic Form Schema
+// @route PUT /api/auth/form-schema
 // @access Private
-exports.validateCoupon = async (req, res) => {
+exports.updateFormSchema = async (req, res) => {
   try {
-    const Coupon = require('../models/Coupon');
-    const { code } = req.body;
-    if (!code) return res.status(400).json({ message: 'Coupon code is required' });
-
-    const coupon = await Coupon.findOne({ code: code.toUpperCase(), isActive: true });
-    if (!coupon) return res.status(400).json({ message: 'Invalid or inactive coupon code' });
-
-    if (coupon.expiresAt && new Date() > new Date(coupon.expiresAt)) {
-      coupon.isActive = false;
-      await coupon.save();
-      return res.status(400).json({ message: 'Coupon code has expired' });
+    const { leadFormSchema } = req.body;
+    if (!Array.isArray(leadFormSchema) || leadFormSchema.length === 0) {
+      return res.status(400).json({ message: 'leadFormSchema must be a non-empty array' });
     }
 
-    if (coupon.usedCount >= coupon.maxUses) {
-      return res.status(400).json({ message: 'Coupon usage limit reached' });
+    // Ensure system fields are not completely removed
+    const hasName = leadFormSchema.some(f => f.fieldId === 'name');
+    const hasPhone = leadFormSchema.some(f => f.fieldId === 'phone');
+    if (!hasName || !hasPhone) {
+      return res.status(400).json({ message: 'Name and Phone are mandatory system fields and cannot be removed' });
     }
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { leadFormSchema },
+      { new: true }
+    );
 
     res.json({
-      message: 'Coupon code is valid!',
-      code: coupon.code,
-      plan: coupon.plan,
-      discountPercent: coupon.discountPercent || 0,
+      message: 'Form schema updated successfully',
+      leadFormSchema: user.leadFormSchema,
+      user,
     });
   } catch (error) {
-    console.error('Validate coupon error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Failed to update form schema' });
   }
 };
+
+// @desc  Update Custom Lead Fields (Legacy backward compatibility)
+// @route PUT /api/auth/custom-fields
+// @access Private
+exports.updateCustomFields = async (req, res) => {
+  try {
+    const { customLeadFields, leadFormSchema } = req.body;
+    if (leadFormSchema) {
+      return exports.updateFormSchema(req, res);
+    }
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { customLeadFields: customLeadFields || [] },
+      { new: true }
+    );
+
+    res.json({
+      message: 'Custom fields updated',
+      customLeadFields: user.customLeadFields,
+      leadFormSchema: user.leadFormSchema,
+      user,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to update custom fields' });
+  }
+};
+

@@ -1,13 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const { 
-  getUsers, assignPlan, toggleUserStatus, deleteUser,
+  getGlobalMetrics, getCapturedLeads, getUsers, assignPlan, toggleUserStatus, deleteUser,
   getCoupons, createCoupon, deleteCoupon, sendCustomAlert,
   suspendUser, getAbuseLogs
 } = require('../controllers/adminController');
 const { protect, adminOnly } = require('../middleware/auth');
 
 router.use(protect, adminOnly);
+
+// Global Metrics & Captured Leads
+router.get('/metrics', getGlobalMetrics);
+router.get('/captured-leads', getCapturedLeads);
+
+// Users Management
 router.get('/users', getUsers);
 router.put('/users/:id/plan', assignPlan);
 router.put('/users/:id/status', toggleUserStatus);

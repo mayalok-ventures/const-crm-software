@@ -288,73 +288,76 @@ export default function GroupsPage() {
 
   return (
     <div className="app-shell">
-      <div className="page-header">
-        <h1 className="page-title">Groups</h1>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)}>
-          <Plus size={16} /> New Group
-        </button>
-      </div>
-
-      <div className="page-content">
-        <div style={{ padding:'12px 14px', background:'rgba(37,211,102,0.08)', border:'1px solid rgba(37,211,102,0.15)', borderRadius:12, marginBottom:20, fontSize:13, color:'var(--text-muted)', display:'flex', gap:10, alignItems:'flex-start' }}>
-          <MessageCircle size={16} color="#25D366" style={{ flexShrink:0, marginTop:1 }} />
-          <span>Bulk send opens WhatsApp for each lead with a random <strong style={{color:'var(--text)'}}>2–5 second delay</strong> to avoid bans. Max <strong style={{color:'var(--text)'}}>50 per batch</strong>.</span>
+      <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+        <div className="page-header">
+          <h1 className="page-title">Audience Groups</h1>
+          <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)}>
+            <Plus size={16} /> New Group
+          </button>
         </div>
 
-        {loading ? (
-          <div style={{ display:'flex', justifyContent:'center', padding:'40px 0' }}><div className="spinner" /></div>
-        ) : groups.length === 0 ? (
-          <div className="empty-state">
-            <Users size={48} />
-            <h3>No groups yet</h3>
-            <p>Create groups to bulk send WhatsApp messages</p>
+        <div className="page-content">
+          <div style={{ padding:'12px 14px', background:'rgba(37,211,102,0.08)', border:'1px solid rgba(37,211,102,0.15)', borderRadius:12, marginBottom:20, fontSize:13, color:'var(--text-muted)', display:'flex', gap:10, alignItems:'flex-start' }}>
+            <MessageCircle size={16} color="#25D366" style={{ flexShrink:0, marginTop:1 }} />
+            <span>Target custom client segments and audience lists for automated bulk broadcast outreach.</span>
           </div>
-        ) : (
-          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            {groups.map(g => (
-              <div key={g._id} className="card">
-                <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                  <div style={{ width:44, height:44, borderRadius:12, background:'rgba(99,102,241,0.15)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                    <Users size={20} color="var(--accent)" />
-                  </div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      <p style={{ margin:0, fontWeight:600, fontSize:15 }}>{g.name}</p>
-                      {g.campaignStatus && g.campaignStatus !== 'idle' && (
-                        <span style={{
-                          fontSize: 11,
-                          fontWeight: 700,
-                          marginLeft: 8,
-                          padding: '2px 6px',
-                          borderRadius: 6,
-                          background: g.campaignStatus === 'sending' ? 'rgba(99,102,241,0.15)' : g.campaignStatus === 'paused' ? 'rgba(245,158,11,0.15)' : 'rgba(34,197,94,0.15)',
-                          color: g.campaignStatus === 'sending' ? '#818cf8' : g.campaignStatus === 'paused' ? '#eab308' : '#22c55e',
-                          textTransform: 'uppercase'
-                        }}>
-                          {g.campaignStatus}
-                        </span>
-                      )}
+
+          {loading ? (
+            <div style={{ display:'flex', justifyContent:'center', padding:'40px 0' }}><div className="spinner" /></div>
+          ) : groups.length === 0 ? (
+            <div className="empty-state card" style={{ padding: '48px 20px', textAlign: 'center' }}>
+              <Users size={44} color="var(--border)" style={{ marginBottom: 10 }} />
+              <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>No audience groups yet</h3>
+              <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Create audience segments to bulk send WhatsApp campaigns</p>
+            </div>
+          ) : (
+            <div className="responsive-card-grid">
+              {groups.map(g => (
+                <div key={g._id} className="card card-hover" style={{ padding: 16, borderRadius: 14 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                    <div style={{ width:44, height:44, borderRadius:12, background:'rgba(79,70,229,0.1)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                      <Users size={20} color="var(--accent)" />
                     </div>
-                    <p style={{ margin:0, fontSize:12, color:'var(--text-muted)' }}>
-                      {g.type === 'tag_based' ? `Tags: ${g.tags.join(', ')}` : `${g.leadIds.length} leads`}
-                    </p>
-                  </div>
-                  <div style={{ display:'flex', gap:8 }}>
-                    <button
-                      onClick={() => setBulkGroup(g)}
-                      style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', background:'rgba(37,211,102,0.12)', border:'1px solid rgba(37,211,102,0.25)', borderRadius:10, cursor:'pointer', color:'#22c55e', fontSize:13, fontWeight:600 }}
-                    >
-                      <MessageCircle size={14} /> Send
-                    </button>
-                    <button onClick={() => deleteGroup(g._id)} style={{ background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:10, padding:8, cursor:'pointer', color:'var(--red)' }}>
-                      <Trash2 size={14} />
-                    </button>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <p style={{ margin:0, fontWeight:700, fontSize:14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</p>
+                        {g.campaignStatus && g.campaignStatus !== 'idle' && (
+                          <span style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            marginLeft: 8,
+                            padding: '2px 6px',
+                            borderRadius: 6,
+                            background: g.campaignStatus === 'sending' ? 'rgba(79,70,229,0.15)' : g.campaignStatus === 'paused' ? 'rgba(245,158,11,0.15)' : 'rgba(34,197,94,0.15)',
+                            color: g.campaignStatus === 'sending' ? 'var(--accent)' : g.campaignStatus === 'paused' ? '#eab308' : '#22c55e',
+                            textTransform: 'uppercase'
+                          }}>
+                            {g.campaignStatus}
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ margin:'2px 0 0', fontSize:12, color:'var(--text-muted)' }}>
+                        {g.type === 'tag_based' ? `Tags: ${g.tags.join(', ')}` : `${g.leadIds.length} members`}
+                      </p>
+                    </div>
+                    <div style={{ display:'flex', gap:6 }}>
+                      <button
+                        onClick={() => setBulkGroup(g)}
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: '6px 10px', fontSize: 12, gap: 4, borderRadius: 8 }}
+                      >
+                        <MessageCircle size={13} color="#22c55e" /> Send
+                      </button>
+                      <button onClick={() => deleteGroup(g._id)} style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:8, padding: 6, cursor:'pointer', color:'var(--red)' }}>
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {showCreate && <CreateGroupModal onClose={() => setShowCreate(false)} onCreated={g => setGroups(prev => [g, ...prev])} />}

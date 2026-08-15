@@ -3,14 +3,26 @@ const router = express.Router();
 const { protect, adminOnly } = require('../middleware/auth');
 const { paymentUpload, processPaymentUpload } = require('../middleware/paymentUpload');
 const {
+  createRazorpayOrder,
+  verifyRazorpayPayment,
+  handleRazorpayWebhook,
   createPaymentRequest,
   getUserPaymentRequest,
   getAdminPaymentRequests,
   approvePaymentRequest,
-  rejectPaymentRequest
+  rejectPaymentRequest,
 } = require('../controllers/paymentController');
 
-// User payments endpoints
+// ─────────────────────────────────────────────────────────────
+// RAZORPAY AUTOMATED ORDER, VERIFICATION & WEBHOOK ENDPOINTS
+// ─────────────────────────────────────────────────────────────
+router.post('/create-order', protect, createRazorpayOrder);
+router.post('/verify', protect, verifyRazorpayPayment);
+router.post('/webhook', handleRazorpayWebhook);
+
+// ─────────────────────────────────────────────────────────────
+// MANUAL HYBRID UPI PROOF-OF-PAYMENT ENDPOINTS (LEGACY)
+// ─────────────────────────────────────────────────────────────
 router.post('/', protect, paymentUpload, processPaymentUpload, createPaymentRequest);
 router.get('/my-request', protect, getUserPaymentRequest);
 

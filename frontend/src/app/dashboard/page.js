@@ -7,12 +7,40 @@ import api from '@/lib/api';
 import { waLink } from '@/lib/auth';
 import BottomNav from '@/components/BottomNav';
 import {
-  Plus, Search, Bell, MessageCircle, Calendar,
-  User, ChevronRight, Filter, X, ShieldAlert, CheckCircle, Volume2, Mic, AlertTriangle, ArrowRight
+  Plus, Search, Bell, MessageCircle, Calendar, Package,
+  User, ChevronRight, Filter, X, ShieldAlert, CheckCircle, Volume2, Mic, AlertTriangle, ArrowRight, MapPin, Briefcase,
+  Download, Upload, FileSpreadsheet, FileText, ChevronDown, Check, TrendingUp, DollarSign, Award, BarChart2
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { getIndustryDefaults } from '@/lib/industryTemplates';
+import LostReasonModal, { isLostStage, LOST_REASON_OPTIONS } from '@/components/LostReasonModal';
+import PlanStatusWidget from '@/components/PlanStatusWidget';
 
-const STATUS_LABELS = { new: 'New', contacted: 'Contacted', follow_up: 'Follow-up', closed: 'Closed' };
+const STAGE_LABELS = {
+  new: '🆕 New Lead',
+  cold: '❄️ Cold',
+  warm: '🌤️ Warm',
+  hot: '🔥 Hot Lead',
+  contacted: '📞 Contacted',
+  site_visit_scheduled: '📅 Meeting / Demo Scheduled',
+  negotiation: '🤝 In Negotiation',
+  payment_done: '💳 Payment Done',
+  closed: '🏆 Closed / Won',
+  lost: '❌ Lost / Dropped',
+};
+
+const STATUS_COLORS = {
+  new: 'badge-new',
+  cold: 'badge-tag',
+  warm: 'badge-follow_up',
+  hot: 'badge-danger',
+  contacted: 'badge-tag',
+  site_visit_scheduled: 'badge-follow_up',
+  negotiation: 'badge-follow_up',
+  payment_done: 'badge-closed',
+  closed: 'badge-closed',
+  lost: 'badge-tag',
+};
 
 function UpgradeModal({ onClose }) {
   return (
@@ -23,7 +51,7 @@ function UpgradeModal({ onClose }) {
         </div>
         <h3 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 8px' }}>Lead Limit Reached</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5, margin: '0 0 20px' }}>
-          You have saved 10 leads on your free account. Upgrade to a paid plan now to save unlimited leads, send bulk WhatsApp broadcasts, and access full analytics.
+          You have saved 10 leads on your free plan. Upgrade to a paid tier now for unlimited leads, product catalogs, bulk broadcasts, and full agency analytics.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Link href="/plans" className="btn btn-primary btn-full" style={{ justifyContent: 'center', textDecoration: 'none', gap: 8 }} onClick={onClose}>
@@ -36,111 +64,126 @@ function UpgradeModal({ onClose }) {
   );
 }
 
-function AddLeadModal({ onClose, onCreated, onLimitReached }) {
-  const [form, setForm] = useState({ 
-    name: '', phone: '', company: '', tags: '', status: 'new', followUpDate: '',
-    location: '', profession: '', budget: '', areasOfInterest: '', project: ''
-  });
-  const [loading, setLoading] = useState(false);
-  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+function ImportLeadsModal({ onClose, onImported }) {
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
-  const handleCreate = async (e) => {
+  const handleFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+    }
+  };
+
+  const handleDownloadSample = () => {
+    const headers = [
+      'Name', 'Phone', 'Email', 'Company', 'Stage', 'Deal Value', 'Market',
+      'Follow-up Date', 'Offering', 'Tier', 'Tags'
+    ];
+    const sampleRow = [
+      'Alex Johnson', '15550199283', 'alex@company.com', 'Acme Corp', 'New Lead', '$7500', 'New York',
+      '2026-08-25', 'Premium Suite', 'Standard Tier', 'vip, inbound'
+    ];
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), sampleRow.join(',')].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', 'sample_lead_import_template.csv');
+    document.body.appendChild(link);
+    link.click();
+    link.parentNode.removeChild(link);
+    toast.success('Sample import template downloaded 📥');
+  };
+
+  const handleUpload = async (e) => {
     e.preventDefault();
-    if (!form.name || !form.phone) return toast.error('Name and phone are required');
-    if (!form.followUpDate) return toast.error('Next follow-up date is mandatory to schedule');
-    
-    setLoading(true);
+    if (!file) return toast.error('Please select an Excel or CSV file');
+
+    setUploading(true);
     try {
-      const { data } = await api.post('/leads', {
-        ...form,
-        tags: form.tags ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
-        areasOfInterest: form.areasOfInterest ? form.areasOfInterest.split(',').map(t => t.trim()).filter(Boolean) : [],
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const { data } = await api.post('/leads/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
-      toast.success('Lead added ✅');
-      onCreated(data);
+
+      toast.success(data.message || 'Leads imported successfully! 🎉', { duration: 5000 });
+      onImported();
       onClose();
     } catch (err) {
-      if (err.response?.status === 403 && err.response?.data?.code === 'LIMIT_REACHED') {
-        onClose();
-        onLimitReached();
-      } else {
-        toast.error(err.response?.data?.message || 'Failed to add lead');
-      }
+      toast.error(err.response?.data?.message || 'Failed to import leads from file');
     } finally {
-      setLoading(false);
+      setUploading(false);
     }
   };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxHeight: '85dvh', overflowY: 'auto' }}>
+      <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
         <div className="modal-handle" />
-        <h2 style={{ fontSize:18, fontWeight:700, marginBottom:16 }}>Add New Lead</h2>
-        <form onSubmit={handleCreate} style={{ display:'flex', flexDirection:'column', gap:12 }}>
-          <div>
-            <label className="label">Name *</label>
-            <input className="input" placeholder="Lead name" value={form.name} onChange={set('name')} required />
-          </div>
-          <div>
-            <label className="label">Phone *</label>
-            <input className="input" type="tel" placeholder="+91 9999999999" value={form.phone} onChange={set('phone')} inputMode="tel" required />
-          </div>
-          <div>
-            <label className="label">Next Follow-up Date *</label>
-            <input className="input" type="datetime-local" value={form.followUpDate} onChange={set('followUpDate')} required style={{ borderColor: form.followUpDate ? 'var(--border)' : 'var(--red)' }} />
-            {!form.followUpDate && <span style={{ fontSize: 11, color: 'var(--red)' }}>⚠️ Next follow-up is mandatory</span>}
-          </div>
-          
-          <div style={{ borderTop: '1px solid var(--border)', paddingPoint: '8px 0', marginTop: 4 }}>
-            <p style={{ margin: '8px 0', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Additional Details (Optional)</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <FileSpreadsheet size={20} color="var(--accent)" /> Smart Bulk Lead Import
+          </h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={20} /></button>
+        </div>
+
+        <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Upload your client spreadsheet. Auto-detects names, phone numbers, deal stages, and custom dynamic fields.
+        </p>
+
+        <form onSubmit={handleUpload} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{
+            border: '2px dashed var(--border)',
+            borderRadius: 12,
+            padding: '24px 16px',
+            textAlign: 'center',
+            background: 'var(--surface)',
+            cursor: 'pointer',
+            position: 'relative'
+          }}>
+            <input
+              type="file"
+              accept=".xlsx, .xls, .csv"
+              onChange={handleFileChange}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                opacity: 0,
+                cursor: 'pointer'
+              }}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+              <Upload size={32} color="var(--accent)" />
+              <div>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>
+                  {file ? file.name : 'Click to select or drag and drop spreadsheet'}
+                </p>
+                <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                  {file ? `${(file.size / 1024).toFixed(1)} KB • Ready for auto-mapping` : 'Supports Excel (.xlsx, .xls) and CSV (.csv) up to 15MB'}
+                </p>
+              </div>
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <label className="label">Location</label>
-              <input className="input" placeholder="e.g. Mumbai" value={form.location} onChange={set('location')} />
-            </div>
-            <div>
-              <label className="label">Profession</label>
-              <input className="input" placeholder="e.g. Doctor" value={form.profession} onChange={set('profession')} />
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <label className="label">Budget</label>
-              <input className="input" placeholder="e.g. 50L - 75L" value={form.budget} onChange={set('budget')} />
-            </div>
-            <div>
-              <label className="label">Project of Interest</label>
-              <input className="input" placeholder="e.g. Sunrise Apts" value={form.project} onChange={set('project')} />
-            </div>
-          </div>
-          <div>
-            <label className="label">Areas of Interest (comma separated)</label>
-            <input className="input" placeholder="3BHK, Balcony, Sea view" value={form.areasOfInterest} onChange={set('areasOfInterest')} />
-          </div>
-          <div>
-            <label className="label">Company</label>
-            <input className="input" placeholder="Company name" value={form.company} onChange={set('company')} />
-          </div>
-          <div>
-            <label className="label">Tags (comma separated)</label>
-            <input className="input" placeholder="vip, hot, referral" value={form.tags} onChange={set('tags')} />
-          </div>
-          <div>
-            <label className="label">Status</label>
-            <select className="input" value={form.status} onChange={set('status')}>
-              <option value="new">New</option>
-              <option value="contacted">Contacted</option>
-              <option value="follow_up">Follow-up</option>
-              <option value="closed">Closed</option>
-            </select>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <button
+              type="button"
+              onClick={handleDownloadSample}
+              className="btn btn-ghost btn-sm"
+              style={{ fontSize: 12, gap: 5, color: 'var(--accent)', padding: '4px 8px' }}
+            >
+              <Download size={13} /> Download Sample Template
+            </button>
           </div>
 
-          <div style={{ display:'flex', gap:10, marginTop:10 }}>
-            <button type="button" className="btn btn-ghost btn-full" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
-              {loading ? <div className="spinner" style={{ width:18, height:18 }} /> : 'Add Lead'}
+          <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+            <button type="button" className="btn btn-ghost btn-full" onClick={onClose} disabled={uploading}>Cancel</button>
+            <button type="submit" className="btn btn-primary btn-full" disabled={uploading || !file}>
+              {uploading ? <div className="spinner" style={{ width: 18, height: 18 }} /> : 'Start Smart Import 🚀'}
             </button>
           </div>
         </form>
@@ -149,84 +192,616 @@ function AddLeadModal({ onClose, onCreated, onLimitReached }) {
   );
 }
 
-function PermissionPromptBar({ onGranted }) {
-  const [micState, setMicState] = useState('prompt');
-  const [notifState, setNotifState] = useState('prompt');
-  const [visible, setVisible] = useState(false);
+function ExportLeadsModal({ onClose, user, statusFilter, projectFilter, search }) {
+  const allDefaultStatuses = [
+    'new', 'cold', 'warm', 'hot', 'contacted',
+    'site_visit_scheduled', 'negotiation', 'payment_done', 'closed', 'lost'
+  ];
+  const availableStatuses = (user?.customPipelineStages && user.customPipelineStages.length > 0)
+    ? Array.from(new Set([...user.customPipelineStages, ...allDefaultStatuses]))
+    : allDefaultStatuses;
 
-  useEffect(() => {
-    // Check Notification permission
-    if (typeof window !== 'undefined') {
-      setNotifState(Notification.permission);
-      
-      // Check Mic permission
-      navigator.permissions?.query({ name: 'microphone' }).then(res => {
-        setMicState(res.state);
-        if (Notification.permission !== 'granted' || res.state !== 'granted') {
-          setVisible(true);
-        }
-      }).catch(() => {
-        setVisible(Notification.permission !== 'granted');
-      });
+  const [selectedStatuses, setSelectedStatuses] = useState(
+    statusFilter ? [statusFilter] : availableStatuses
+  );
+  const [format, setFormat] = useState('xlsx');
+  const [downloading, setDownloading] = useState(false);
+
+  const toggleStatus = (st) => {
+    setSelectedStatuses(prev =>
+      prev.includes(st) ? prev.filter(s => s !== st) : [...prev, st]
+    );
+  };
+
+  const selectAll = () => setSelectedStatuses(availableStatuses);
+  const selectNone = () => setSelectedStatuses([]);
+
+  const handleDownload = async (e) => {
+    e.preventDefault();
+    if (selectedStatuses.length === 0) {
+      return toast.error('Please select at least one pipeline stage to export.');
     }
-  }, []);
 
-  const requestAll = async () => {
+    setDownloading(true);
     try {
-      // 1. Notification permission
-      const notifPerm = await Notification.requestPermission();
-      setNotifState(notifPerm);
+      toast.loading(`Generating ${format.toUpperCase()} export...`, { id: 'export-leads-toast' });
+      const params = {
+        format,
+        statuses: selectedStatuses.join(','),
+      };
+      if (projectFilter) params.projectId = projectFilter;
+      if (search) params.search = search;
 
-      // 2. Mic permission
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach(t => t.stop());
-        setMicState('granted');
-      } catch (e) {
-        setMicState('denied');
-        console.warn('Microphone permission denied:', e);
-      }
+      const response = await api.get('/leads/export', {
+        params,
+        responseType: 'blob',
+      });
 
-      // 3. Autoplay unlock
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0.01, ctx.currentTime);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.1);
+      const mimeType = format === 'pdf'
+        ? 'application/pdf'
+        : (format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 
-      toast.success('Permissions updated successfully! 🚀');
-      setVisible(false);
-      if (onGranted) onGranted();
+      const blob = new Blob([response.data], { type: mimeType });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `leads_export_${new Date().toISOString().slice(0, 10)}.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success(`${format.toUpperCase()} export complete! 📁`, { id: 'export-leads-toast' });
+      onClose();
     } catch (err) {
-      toast.error('Failed to configure permissions');
+      toast.error('Failed to export leads', { id: 'export-leads-toast' });
+    } finally {
+      setDownloading(false);
     }
   };
 
-  if (!visible) return null;
-
   return (
-    <div style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.15))', border: '1px solid rgba(99,102,241,0.25)', borderRadius: 16, padding: '14px 16px', marginBottom: 20 }}>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-        <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0 }}>
-          <Volume2 size={18} />
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 9999 }}>
+      <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+        <div className="modal-handle" />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(79,70,229,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}>
+              <Download size={20} />
+            </div>
+            <div>
+              <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Selective Lead Export</h2>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>Choose specific pipeline stages & export format</p>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={20} /></button>
         </div>
-        <div style={{ flex: 1 }}>
-          <h4 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>Enable Voice & Follow-up Alerts</h4>
-          <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-            We need <strong>Notification</strong> and <strong>Microphone</strong> permissions so we can sound alerts when follow-ups are due and allow you to record voice notes/call recordings directly.
-          </p>
-          <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-            <button onClick={requestAll} className="btn btn-sm btn-primary" style={{ padding: '6px 14px', fontSize: 12 }}>
-              Grant Permissions
-            </button>
-            <button onClick={() => setVisible(false)} className="btn btn-sm btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }}>
-              Dismiss
+
+        <form onSubmit={handleDownload}>
+          {/* Format Selection */}
+          <div style={{ marginBottom: 16 }}>
+            <label className="label" style={{ fontWeight: 700, marginBottom: 8 }}>Choose Export File Format</label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {[
+                { id: 'xlsx', label: 'Excel (.xlsx)', icon: FileSpreadsheet, color: '#10b981' },
+                { id: 'pdf', label: 'PDF Report', icon: FileText, color: '#ef4444' },
+                { id: 'csv', label: 'CSV (.csv)', icon: FileText, color: '#3b82f6' },
+              ].map(fmt => {
+                const Icon = fmt.icon;
+                const isSelected = format === fmt.id;
+                return (
+                  <button
+                    key={fmt.id}
+                    type="button"
+                    onClick={() => setFormat(fmt.id)}
+                    style={{
+                      padding: '10px 8px',
+                      borderRadius: 10,
+                      border: `1.5px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+                      background: isSelected ? 'rgba(79,70,229,0.08)' : 'var(--surface)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 4,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Icon size={18} color={fmt.color} />
+                    <span style={{ fontSize: 11, fontWeight: isSelected ? 700 : 500, color: isSelected ? 'var(--accent)' : 'var(--text)' }}>
+                      {fmt.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Status Selection Checklist */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <label className="label" style={{ fontWeight: 700, margin: 0 }}>
+                Filter by Pipeline Stages ({selectedStatuses.length}/{availableStatuses.length})
+              </label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button type="button" onClick={selectAll} className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', fontSize: 11, color: 'var(--accent)' }}>Select All</button>
+                <button type="button" onClick={selectNone} className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', fontSize: 11, color: 'var(--text-muted)' }}>Clear</button>
+              </div>
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+              gap: 6,
+              maxHeight: 180,
+              overflowY: 'auto',
+              padding: 8,
+              background: 'var(--surface)',
+              borderRadius: 10,
+              border: '1px solid var(--border)'
+            }}>
+              {availableStatuses.map(st => {
+                const isChecked = selectedStatuses.includes(st);
+                return (
+                  <div
+                    key={st}
+                    onClick={() => toggleStatus(st)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '6px 8px',
+                      borderRadius: 8,
+                      background: isChecked ? 'var(--card)' : 'transparent',
+                      border: `1px solid ${isChecked ? 'var(--accent)' : 'transparent'}`,
+                      cursor: 'pointer',
+                      fontSize: 12,
+                      userSelect: 'none',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => {}}
+                      style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontWeight: isChecked ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {STAGE_LABELS[st] || st}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button type="button" onClick={onClose} className="btn btn-ghost btn-full" disabled={downloading}>Cancel</button>
+            <button type="submit" className="btn btn-primary btn-full" disabled={downloading || selectedStatuses.length === 0}>
+              {downloading ? <div className="spinner" style={{ width: 16, height: 16 }} /> : 'Download Filtered Leads 🚀'}
             </button>
           </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function ExportAnalyticsModal({ onClose, isCompanyOwner }) {
+  const [format, setFormat] = useState('xlsx');
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async (e) => {
+    e.preventDefault();
+    setDownloading(true);
+    try {
+      toast.loading(`Generating Analytics ${format.toUpperCase()} report...`, { id: 'analytics-toast' });
+      const endpoint = isCompanyOwner ? '/company/analytics/export' : '/analytics/export';
+      const response = await api.get(endpoint, {
+        params: { format },
+        responseType: 'blob',
+      });
+
+      const mimeType = format === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+      const blob = new Blob([response.data], { type: mimeType });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `analytics_performance_report_${new Date().toISOString().slice(0, 10)}.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success(`Analytics ${format.toUpperCase()} downloaded! 📊`, { id: 'analytics-toast' });
+      onClose();
+    } catch {
+      toast.error('Failed to export analytics report', { id: 'analytics-toast' });
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 9999 }}>
+      <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
+        <div className="modal-handle" />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(34,197,94,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}>
+              📊
+            </div>
+            <div>
+              <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Export Analytics Report</h2>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+                {isCompanyOwner ? 'Organization KPIs, Agent Leaderboard & Total Revenue' : 'Pipeline Breakdown, Stage Conversion & Revenue'}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={20} /></button>
         </div>
+
+        <form onSubmit={handleDownload}>
+          <div style={{ marginBottom: 18 }}>
+            <label className="label" style={{ fontWeight: 700, marginBottom: 8 }}>Choose Report Format</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setFormat('xlsx')}
+                style={{
+                  padding: '12px 10px',
+                  borderRadius: 10,
+                  border: `1.5px solid ${format === 'xlsx' ? 'var(--accent)' : 'var(--border)'}`,
+                  background: format === 'xlsx' ? 'rgba(79,70,229,0.08)' : 'var(--surface)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                <FileSpreadsheet size={22} color="#10b981" />
+                <span style={{ fontSize: 13, fontWeight: format === 'xlsx' ? 700 : 500 }}>Excel (.xlsx)</span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Multi-sheet dataset</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFormat('pdf')}
+                style={{
+                  padding: '12px 10px',
+                  borderRadius: 10,
+                  border: `1.5px solid ${format === 'pdf' ? 'var(--accent)' : 'var(--border)'}`,
+                  background: format === 'pdf' ? 'rgba(79,70,229,0.08)' : 'var(--surface)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                <FileText size={22} color="#ef4444" />
+                <span style={{ fontSize: 13, fontWeight: format === 'pdf' ? 700 : 500 }}>PDF Document</span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Executive report</span>
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button type="button" onClick={onClose} className="btn btn-ghost btn-full" disabled={downloading}>Cancel</button>
+            <button type="submit" className="btn btn-primary btn-full" disabled={downloading} style={{ background: '#16a34a', borderColor: '#16a34a' }}>
+              {downloading ? <div className="spinner" style={{ width: 16, height: 16 }} /> : 'Download Analytics 📊'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
+  const defaults = getIndustryDefaults(user?.industryType);
+  const initialStages = (user?.pipelineStages && user.pipelineStages.length > 0)
+    ? user.pipelineStages
+    : (user?.customPipelineStages && user.customPipelineStages.length > 0)
+      ? user.customPipelineStages
+      : defaults.pipelineStages;
+
+  const [values, setValues] = useState({
+    name: '',
+    phone: '',
+    company: '',
+    email: '',
+    location: '',
+    projectId: '',
+    project: '',
+    propertyType: '',
+    budget: '',
+    status: initialStages[0] || 'new',
+    followUpDate: '',
+    siteVisitDate: '',
+    tags: '',
+    source: '',
+    utmCampaign: '',
+    utmMedium: '',
+    utmSource: '',
+    lostReason: '',
+    lostReasonDetail: '',
+  });
+
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    api.get('/projects').then(r => setProjects(r.data)).catch(() => {});
+  }, []);
+
+  const rawSchema = (user?.leadFormSchema && Array.isArray(user.leadFormSchema) && user.leadFormSchema.length > 0)
+    ? user.leadFormSchema
+    : defaults.leadFormSchema;
+
+  // Real-time Conditional Logic Evaluator (dependsOn)
+  const isFieldVisible = (field) => {
+    if (field.isHidden) return false;
+    if (!field.dependsOn || !field.dependsOn.field) return true;
+    const parentVal = values[field.dependsOn.field] || '';
+    return String(parentVal || '').trim().toLowerCase() === String(field.dependsOn.value || '').trim().toLowerCase();
+  };
+
+  const activeFields = [...rawSchema]
+    .sort((a, b) => (a.order || 0) - (b.order || 0))
+    .filter(isFieldVisible);
+
+  const setVal = (fieldId) => (e) => {
+    setValues(v => ({ ...v, [fieldId]: e.target.value }));
+  };
+
+  const handleProjectSelect = (e) => {
+    const pId = e.target.value;
+    if (!pId) {
+      setValues(v => ({ ...v, projectId: '', project: '' }));
+      return;
+    }
+    const selected = projects.find(p => p._id === pId);
+    setValues(v => ({
+      ...v,
+      projectId: pId,
+      project: selected?.name || '',
+      location: v.location || selected?.location || '',
+      budget: v.budget || selected?.basePrice || '',
+    }));
+  };
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    if (!values.name?.trim() || !values.phone?.trim()) {
+      return toast.error('Name and Phone are required');
+    }
+    if (!values.followUpDate) {
+      return toast.error('Next follow-up date is mandatory');
+    }
+
+    // Check lost reason requirement if moving straight to lost
+    if (isLostStage(values.status) && !values.lostReason) {
+      return toast.error('Please select a Lost Reason for this lost stage');
+    }
+
+    // Check active mandatory fields
+    for (const f of activeFields) {
+      if (f.isRequired && !values[f.fieldId]?.toString().trim()) {
+        return toast.error(`${f.label} is required`);
+      }
+    }
+
+    setLoading(true);
+    try {
+      const knownSystem = new Set([
+        'name', 'phone', 'email', 'company', 'tags', 'status', 'followUpDate',
+        'location', 'profession', 'budget', 'areasOfInterest', 'project',
+        'projectId', 'propertyType', 'siteVisitDate', 'assignedTo',
+        'source', 'utmCampaign', 'utmMedium', 'utmSource', 'lostReason', 'lostReasonDetail'
+      ]);
+
+      const payload = {
+        name: (values.name || '').trim(),
+        phone: (values.phone || '').replace(/\D/g, ''),
+        company: values.company || undefined,
+        email: values.email ? values.email.toLowerCase().trim() : undefined,
+        tags: values.tags ? (Array.isArray(values.tags) ? values.tags : values.tags.split(',').map(t => t.trim()).filter(Boolean)) : [],
+        status: values.status || 'new',
+        followUpDate: values.followUpDate,
+        location: values.location || '',
+        budget: values.budget || '',
+        propertyType: values.propertyType || '',
+        siteVisitDate: values.siteVisitDate || undefined,
+        projectId: values.projectId || undefined,
+        project: values.project || undefined,
+        source: values.source || undefined,
+        utmCampaign: values.utmCampaign || undefined,
+        utmMedium: values.utmMedium || undefined,
+        utmSource: values.utmSource || undefined,
+        lostReason: values.lostReason || undefined,
+        lostReasonDetail: values.lostReasonDetail || undefined,
+        customData: {},
+      };
+
+      // Populate extra dynamic fields into customData
+      for (const [k, v] of Object.entries(values)) {
+        if (!knownSystem.has(k) && v !== undefined && v !== '') {
+          payload.customData[k] = v;
+        }
+      }
+
+      const { data } = await api.post('/leads', payload);
+      toast.success('Prospect lead created successfully ✅');
+      onCreated(data);
+      onClose();
+    } catch (err) {
+      if (err.response?.data?.code === 'LIMIT_REACHED') {
+        onClose();
+        onLimitReached();
+      } else {
+        toast.error(err.response?.data?.message || 'Failed to create lead');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isCurrentLostStage = isLostStage(values.status);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 540 }}>
+        <div className="modal-handle" />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Add New Prospect Lead</h2>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+              Dynamically formatted for {user?.industryType || 'Universal'} CRM
+            </p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={20} /></button>
+        </div>
+
+        <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '68dvh', overflowY: 'auto', paddingRight: 4 }}>
+          {activeFields.map((field) => {
+            const isMandatory = ['name', 'phone', 'followUpDate'].includes(field.fieldId) || field.isRequired;
+            const currentVal = values[field.fieldId] || '';
+
+            if (field.fieldId === 'projectId') {
+              return (
+                <div key={field.fieldId}>
+                  <label className="label">{field.label} {isMandatory && '*'}</label>
+                  <select className="input" value={values.projectId || ''} onChange={handleProjectSelect} required={isMandatory}>
+                    <option value="">-- Select Offering / Project (Optional) --</option>
+                    {projects.map(p => (
+                      <option key={p._id} value={p._id}>📦 {p.name} ({p.location})</option>
+                    ))}
+                  </select>
+                </div>
+              );
+            }
+
+            if (field.fieldId === 'status') {
+              return (
+                <div key={field.fieldId}>
+                  <label className="label">{field.label} {isMandatory && '*'}</label>
+                  <select className="input" value={values.status || ''} onChange={setVal('status')} required={isMandatory}>
+                    {initialStages.map(s => (
+                      <option key={s} value={s}>{STAGE_LABELS[s] || s}</option>
+                    ))}
+                  </select>
+                </div>
+              );
+            }
+
+            if (field.fieldType === 'dropdown') {
+              const options = field.options || [];
+              return (
+                <div key={field.fieldId}>
+                  <label className="label">{field.label} {isMandatory && '*'}</label>
+                  <select className="input" value={currentVal} onChange={setVal(field.fieldId)} required={isMandatory}>
+                    <option value="">Select {field.label}...</option>
+                    {options.map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </div>
+              );
+            }
+
+            if (field.fieldType === 'date') {
+              const isDateTime = field.fieldId === 'followUpDate';
+              return (
+                <div key={field.fieldId}>
+                  <label className="label">{field.label} {isMandatory && '*'}</label>
+                  <input
+                    className="input"
+                    type={isDateTime ? 'datetime-local' : 'date'}
+                    value={currentVal}
+                    onChange={setVal(field.fieldId)}
+                    required={isMandatory}
+                  />
+                </div>
+              );
+            }
+
+            if (field.fieldType === 'number') {
+              return (
+                <div key={field.fieldId}>
+                  <label className="label">{field.label} {isMandatory && '*'}</label>
+                  <input
+                    className="input"
+                    type="number"
+                    placeholder={`Enter ${field.label}...`}
+                    value={currentVal}
+                    onChange={setVal(field.fieldId)}
+                    required={isMandatory}
+                  />
+                </div>
+              );
+            }
+
+            // Standard text / tel / email
+            const inputType = field.fieldId === 'phone' ? 'tel' : (field.fieldId === 'email' ? 'email' : 'text');
+            return (
+              <div key={field.fieldId}>
+                <label className="label">{field.label} {isMandatory && '*'}</label>
+                <input
+                  className="input"
+                  type={inputType}
+                  placeholder={`Enter ${field.label}...`}
+                  value={currentVal}
+                  onChange={setVal(field.fieldId)}
+                  required={isMandatory}
+                />
+              </div>
+            );
+          })}
+
+          {/* Conditional Lost Reason Inputs in Add Lead */}
+          {isCurrentLostStage && (
+            <div style={{ padding: '12px 14px', background: 'rgba(239,68,68,0.06)', borderRadius: 10, border: '1px solid rgba(239,68,68,0.2)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--red)' }}>
+                ⚠️ Mandatory Lost Reason Details
+              </span>
+              <div>
+                <label className="label" style={{ fontSize: 11 }}>Lost Reason *</label>
+                <select
+                  className="input"
+                  value={values.lostReason || ''}
+                  onChange={setVal('lostReason')}
+                  required
+                  style={{ height: 38, fontSize: 13 }}
+                >
+                  <option value="">-- Select Reason --</option>
+                  {LOST_REASON_OPTIONS.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label" style={{ fontSize: 11 }}>Lost Notes / Context (Optional)</label>
+                <input
+                  className="input"
+                  placeholder="e.g. Higher pricing than competitor"
+                  value={values.lostReasonDetail || ''}
+                  onChange={setVal('lostReasonDetail')}
+                  style={{ height: 38, fontSize: 13 }}
+                />
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+            <button type="button" className="btn btn-ghost btn-full" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
+              {loading ? <div className="spinner" style={{ width: 18, height: 18 }} /> : 'Create Prospect Lead'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -235,30 +810,60 @@ function PermissionPromptBar({ onGranted }) {
 export default function DashboardPage() {
   const router = useRouter();
   const [leads, setLeads] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [followUps, setFollowUps] = useState([]);
+  const [analyticsData, setAnalyticsData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [projectFilter, setProjectFilter] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({});
   const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [showExportLeadsModal, setShowExportLeadsModal] = useState(false);
+  const [showExportAnalyticsModal, setShowExportAnalyticsModal] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [unread, setUnread] = useState(0);
   const [user, setUser] = useState(null);
+  const [loadingUser, setLoadingUser] = useState(true);
+
+  const isCompanyOwner = user?.workStatus === 'company_owner' || user?.companyRole === 'owner';
 
   useEffect(() => {
     try {
       const u = localStorage.getItem('user');
-      if (u) setUser(JSON.parse(u));
+      if (u) {
+        const parsed = JSON.parse(u);
+        if (parsed?.role === 'superadmin' || parsed?.isAdmin) {
+          router.replace('/superadmin-dashboard');
+          return;
+        }
+        setUser(parsed);
+      } else {
+        router.replace('/login');
+        return;
+      }
+    } catch {} finally {
+      setLoadingUser(false);
+    }
+    api.get('/projects').then(r => setProjects(r.data)).catch(() => {});
+  }, [router]);
+
+  const fetchMetrics = useCallback(async () => {
+    try {
+      const { data } = await api.get('/analytics');
+      setAnalyticsData(data);
     } catch {}
   }, []);
 
   const fetchLeads = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const params = { page, limit: 20 };
+      const params = { page, limit: 30 };
       if (search) params.search = search;
       if (statusFilter) params.status = statusFilter;
+      if (projectFilter) params.projectId = projectFilter;
       const { data } = await api.get('/leads', { params });
       setLeads(data.leads);
       setPagination(data.pagination);
@@ -267,181 +872,389 @@ export default function DashboardPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [search, statusFilter, page]);
+  }, [search, statusFilter, projectFilter, page]);
 
-  useEffect(() => { fetchLeads(false); }, [fetchLeads]);
+  useEffect(() => {
+    fetchLeads(false);
+    fetchMetrics();
+  }, [fetchLeads, fetchMetrics]);
 
   useEffect(() => {
     api.get('/leads/follow-ups/today').then(r => setFollowUps(r.data)).catch(() => {});
     api.get('/notifications').then(r => setUnread(r.data.unreadCount || 0)).catch(() => {});
   }, []);
 
-  const statusFilters = ['', 'new', 'contacted', 'follow_up', 'closed'];
-
   const isFreePlan = user?.plan === 'free';
   const leadLimitReached = isFreePlan && (pagination.total >= 10);
 
+  if (loadingUser || user?.role === 'superadmin' || user?.isAdmin) {
+    return (
+      <div className="app-shell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh' }}>
+        <div className="spinner" />
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
-      {/* Header */}
-      <div className="page-header">
-        <h1 className="page-title">My Leads</h1>
-        <div style={{ display:'flex', gap:8 }}>
-          <Link href="/notifications" style={{ position:'relative', display:'flex', alignItems:'center', justifyContent:'center', width:40, height:40, borderRadius:10, background:'var(--surface)', border:'1px solid var(--border)', color:'var(--text-muted)', textDecoration:'none' }}>
-            <Bell size={18} />
-            {unread > 0 && <div className="notif-badge" />}
-          </Link>
+      <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Sales Pipeline & Leads</h1>
+            <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+              Active opportunities & client accounts ({pagination.total || leads.length})
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* Dynamic Plan & Upgrade Widget */}
+            <PlanStatusWidget />
+
+            {/* Import Button */}
+            <button
+              onClick={() => setShowImport(true)}
+              className="btn btn-secondary btn-sm"
+              style={{ gap: 5, borderRadius: 10, fontSize: 12 }}
+              title="Bulk Import Leads via Excel or CSV"
+            >
+              <Upload size={14} /> Import
+            </button>
+
+            {/* Selective Export Button */}
+            <button
+              onClick={() => setShowExportLeadsModal(true)}
+              className="btn btn-secondary btn-sm"
+              style={{ gap: 5, borderRadius: 10, fontSize: 12 }}
+              title="Selective Lead Export by Status"
+            >
+              <Download size={14} /> Export Leads
+            </button>
+
+            {/* Analytics Export Button */}
+            <button
+              onClick={() => setShowExportAnalyticsModal(true)}
+              className="btn btn-secondary btn-sm"
+              style={{ gap: 5, borderRadius: 10, fontSize: 12, color: 'var(--accent)', borderColor: 'var(--accent)' }}
+              title="Export Full Dashboard Analytics Report"
+            >
+              <BarChart2 size={14} /> Analytics Report
+            </button>
+
+            <Link href="/projects" className="btn btn-secondary btn-sm" style={{ gap: 5, borderRadius: 10, fontSize: 12 }}>
+              <Package size={15} /> Catalog
+            </Link>
+            <Link href="/notifications" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38, borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-muted)', textDecoration: 'none' }}>
+              <Bell size={18} />
+              {unread > 0 && <div className="notif-badge" />}
+            </Link>
+          </div>
         </div>
-      </div>
 
-      <div className="page-content">
-        {/* Permission setup prompt */}
-        <PermissionPromptBar />
+        <div className="page-content">
+          {/* Master Revenue & Performance KPI Banner */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(79,70,229,0.12) 0%, rgba(34,197,94,0.12) 100%)',
+            border: '1px solid rgba(79,70,229,0.25)',
+            borderRadius: 16,
+            padding: '16px 20px',
+            marginBottom: 20,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: 16,
+            alignItems: 'center'
+          }}>
+            {/* Total Revenue Generated Card */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 4px 12px rgba(16,185,129,0.35)'
+              }}>
+                <Award size={22} />
+              </div>
+              <div>
+                <p style={{ margin: 0, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: '#10b981', letterSpacing: 0.5 }}>
+                  Total Revenue Generated
+                </p>
+                <h3 style={{ margin: '2px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>
+                  {user?.localization?.currencySymbol || '₹'}{Number(analyticsData?.totalRevenue || 0).toLocaleString()}
+                </h3>
+              </div>
+            </div>
 
-        {/* Lead Usage Limit Bar for Free Users */}
-        {isFreePlan && (
-          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', marginBottom: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
-              <span>Free Plan Limit</span>
-              <span style={{ color: leadLimitReached ? 'var(--red)' : 'var(--text-muted)' }}>{pagination.total || 0} / 5 Leads Used</span>
+            {/* Conversion Rate */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 4px 12px rgba(79,70,229,0.35)'
+              }}>
+                <TrendingUp size={22} />
+              </div>
+              <div>
+                <p style={{ margin: 0, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--accent)', letterSpacing: 0.5 }}>
+                  Win Conversion Rate
+                </p>
+                <h3 style={{ margin: '2px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>
+                  {analyticsData?.conversionRate || 0}%
+                </h3>
+              </div>
             </div>
-            <div style={{ width: '100%', height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 3, overflow: 'hidden' }}>
-              <div style={{ width: `${Math.min(((pagination.total || 0) / 5) * 100, 100)}%`, height: '100%', background: leadLimitReached ? 'var(--red)' : 'var(--accent)', borderRadius: 3 }} />
+
+            {/* Quick Actions in KPI strip */}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => setShowExportLeadsModal(true)}
+                className="btn btn-secondary btn-sm"
+                style={{ fontSize: 12, gap: 5, borderRadius: 8, background: 'var(--card)' }}
+              >
+                <Download size={13} /> Selective Export
+              </button>
+              <button
+                onClick={() => setShowExportAnalyticsModal(true)}
+                className="btn btn-primary btn-sm"
+                style={{ fontSize: 12, gap: 5, borderRadius: 8 }}
+              >
+                <BarChart2 size={13} /> Export Report
+              </button>
             </div>
-            {leadLimitReached && (
-              <p style={{ margin: '8px 0 0', fontSize: 11, color: 'var(--red)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <AlertTriangle size={12} /> Limit reached! Please upgrade to add more leads.
-              </p>
+          </div>
+
+          {/* Today's Follow-ups / Scheduled Meetings */}
+          {followUps.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <p className="section-title" style={{ margin: '0 0 8px' }}>📅 Today's Actions & Scheduled Demos ({followUps.length})</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
+                {followUps.map(lead => (
+                  <Link key={lead._id} href={`/leads/${lead._id}`} style={{ textDecoration: 'none' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.25)', borderRadius: 12 }}>
+                      <Calendar size={18} color="#f97316" />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, fontWeight: 600, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {lead.name} {lead.project ? `• ${lead.project}` : ''}
+                        </p>
+                        <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>+{lead.phone}</p>
+                      </div>
+                      <span className={`badge ${STATUS_COLORS[lead.status] || 'badge-tag'}`} style={{ fontSize: 10 }}>
+                        {STAGE_LABELS[lead.status] || lead.status}
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Search & Filter Bar */}
+          <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+            <div className="search-bar" style={{ flex: 1, position: 'relative' }}>
+              <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: 12, top: 13 }} />
+              <input
+                className="input"
+                type="search"
+                placeholder="Search leads by name, phone, package, budget..."
+                value={search}
+                onChange={e => { setSearch(e.target.value); setPage(1); }}
+                style={{ paddingLeft: 36, height: 42, fontSize: 13, borderRadius: 10 }}
+              />
+              {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}><X size={16} /></button>}
+            </div>
+
+            {projects.length > 0 && (
+              <select
+                value={projectFilter}
+                onChange={e => { setProjectFilter(e.target.value); setPage(1); }}
+                className="input"
+                style={{ width: 170, height: 42, fontSize: 12, borderRadius: 10 }}
+              >
+                <option value="">All Packages</option>
+                {projects.map(p => (
+                  <option key={p._id} value={p._id}>{p.name}</option>
+                ))}
+              </select>
             )}
           </div>
-        )}
 
-        {/* Today's Follow-ups */}
-        {followUps.length > 0 && (
-          <div style={{ marginBottom:20 }}>
-            <p className="section-title">📅 Today's Follow-ups ({followUps.length})</p>
-            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              {followUps.slice(0,3).map(lead => (
-                <Link key={lead._id} href={`/leads/${lead._id}`} style={{ textDecoration:'none' }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', background:'rgba(249,115,22,0.1)', border:'1px solid rgba(249,115,22,0.3)', borderRadius:12 }}>
-                    <Calendar size={16} color="#f97316" />
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <p style={{ margin:0, fontWeight:600, fontSize:14, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{lead.name}</p>
-                      <p style={{ margin:0, fontSize:12, color:'var(--text-muted)' }}>{lead.phone}</p>
+          {/* Pipeline Stage Filter Chips */}
+          <div className="filter-chips" style={{ marginBottom: 20 }}>
+            <button className={`chip ${statusFilter === '' ? 'active' : ''}`} onClick={() => { setStatusFilter(''); setPage(1); }}>
+              All Stages ({pagination.total || leads.length})
+            </button>
+            {user?.customPipelineStages && user.customPipelineStages.length > 0 ? (
+              user.customPipelineStages.map(stage => (
+                <button
+                  key={stage}
+                  className={`chip ${statusFilter === stage ? 'active' : ''}`}
+                  onClick={() => { setStatusFilter(stage); setPage(1); }}
+                >
+                  {stage}
+                </button>
+              ))
+            ) : (
+              Object.entries(STAGE_LABELS).map(([k, label]) => (
+                <button
+                  key={k}
+                  className={`chip ${statusFilter === k ? 'active' : ''}`}
+                  onClick={() => { setStatusFilter(k); setPage(1); }}
+                >
+                  {label}
+                </button>
+              ))
+            )}
+          </div>
+
+          {/* Leads Listing */}
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}><div className="spinner" /></div>
+          ) : leads.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-state-icon">📋</div>
+              <h3>No client leads found</h3>
+              <p>Add your first prospect, import a spreadsheet, or adjust filters.</p>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 10 }}>
+                <button onClick={() => setShowAdd(true)} className="btn btn-primary">Add Lead</button>
+                <button onClick={() => setShowImport(true)} className="btn btn-secondary">Import Spreadsheet</button>
+              </div>
+            </div>
+          ) : (
+            <div className="leads-list">
+              {leads.map(lead => (
+                <Link key={lead._id} href={`/leads/${lead._id}`} style={{ textDecoration: 'none' }}>
+                  <div className="lead-card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                      <div>
+                        <h3 className="lead-name">{lead.name}</h3>
+                        <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                          +{lead.phone} {lead.company ? `• ${lead.company}` : ''}
+                        </p>
+                      </div>
+                      <span className={`badge ${STATUS_COLORS[lead.status] || 'badge-tag'}`}>
+                        {STAGE_LABELS[lead.status] || lead.status}
+                      </span>
                     </div>
-                    <a
-                      href={waLink(lead.phone)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={e => e.stopPropagation()}
-                      style={{ display:'flex', alignItems:'center', justifyContent:'center', width:36, height:36, background:'rgba(37,211,102,0.15)', borderRadius:8, border:'none', cursor:'pointer', textDecoration:'none' }}
-                    >
-                      <MessageCircle size={16} color="#25D366" />
-                    </a>
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '8px 0' }}>
+                      {lead.project && (
+                        <span style={{ fontSize: 11, padding: '2px 6px', background: 'var(--surface)', borderRadius: 4, color: 'var(--text-muted)' }}>
+                          📦 {lead.project}
+                        </span>
+                      )}
+                      {lead.budget && (
+                        <span style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(34,197,94,0.1)', borderRadius: 4, color: 'var(--green)', fontWeight: 600 }}>
+                          💰 {lead.budget}
+                        </span>
+                      )}
+                      {lead.closedDealAmount && (
+                        <span style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(16,185,129,0.15)', borderRadius: 4, color: '#10b981', fontWeight: 700 }}>
+                          🏆 Won: ₹{Number(lead.closedDealAmount).toLocaleString('en-IN')}
+                        </span>
+                      )}
+                      {lead.location && (
+                        <span style={{ fontSize: 11, padding: '2px 6px', background: 'var(--surface)', borderRadius: 4, color: 'var(--text-muted)' }}>
+                          📍 {lead.location}
+                        </span>
+                      )}
+                      {lead.assignedToName && (
+                        <span style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(99,102,241,0.1)', borderRadius: 4, color: 'var(--accent)', fontWeight: 500 }}>
+                          👤 {lead.assignedToName}
+                        </span>
+                      )}
+                    </div>
+
+                    {lead.followUpDate && (
+                      <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <Calendar size={12} />
+                        Next Follow-up: {format(new Date(lead.followUpDate), 'dd MMM yyyy, h:mm a')}
+                      </p>
+                    )}
                   </div>
                 </Link>
               ))}
-              {followUps.length > 3 && (
-                <p style={{ textAlign:'center', fontSize:13, color:'var(--text-muted)', margin:0 }}>+{followUps.length - 3} more</p>
-              )}
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Search */}
-        <div className="search-bar" style={{ marginBottom:12 }}>
-          <Search size={18} />
-          <input
-            className="input"
-            type="search"
-            placeholder="Search leads..."
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-          />
-          {search && <button onClick={() => setSearch('')} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--text-muted)', padding:4 }}><X size={16} /></button>}
+          {/* Pagination */}
+          {pagination.pages > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 20 }}>
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage(p => p - 1)}
+                className="btn btn-secondary btn-sm"
+              >
+                Previous
+              </button>
+              <span style={{ fontSize: 13, display: 'flex', alignItems: 'center', padding: '0 8px', color: 'var(--text-muted)' }}>
+                Page {page} of {pagination.pages}
+              </span>
+              <button
+                disabled={page >= pagination.pages}
+                onClick={() => setPage(p => p + 1)}
+                className="btn btn-secondary btn-sm"
+              >
+                Next
+              </button>
+            </div>
+          )}
         </div>
-
-        {/* Status filters */}
-        <div className="filter-chips" style={{ marginBottom:16 }}>
-          {statusFilters.map(s => (
-            <button key={s} className={`chip ${statusFilter === s ? 'active' : ''}`} onClick={() => { setStatusFilter(s); setPage(1); }}>
-              {s ? STATUS_LABELS[s] : 'All'}
-            </button>
-          ))}
-        </div>
-
-        {/* Lead list */}
-        {loading ? (
-          <div style={{ display:'flex', justifyContent:'center', padding:'40px 0' }}>
-            <div className="spinner" />
-          </div>
-        ) : leads.length === 0 ? (
-          <div className="empty-state">
-            <User size={48} />
-            <h3>{search ? 'No results found' : 'No leads yet'}</h3>
-            <p>{search ? 'Try a different search' : 'Tap + to add your first lead'}</p>
-          </div>
-        ) : (
-          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {leads.map(lead => (
-              <Link key={lead._id} href={`/leads/${lead._id}`} className="lead-card" style={{ textDecoration:'none', color:'inherit' }}>
-                <div className={`avatar`} style={{ background: lead.status === 'closed' ? 'linear-gradient(135deg, #22c55e, #16a34a)' : lead.status === 'follow_up' ? 'linear-gradient(135deg, #f97316, #ea580c)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
-                  {lead.name.charAt(0).toUpperCase()}
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:2 }}>
-                    <p style={{ margin:0, fontWeight:600, fontSize:15, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{lead.name}</p>
-                    <span className={`badge badge-${lead.status}`}>{STATUS_LABELS[lead.status]}</span>
-                  </div>
-                  <p style={{ margin:0, fontSize:13, color:'var(--text-muted)' }}>{lead.phone}</p>
-                  {lead.project && <p style={{ margin:0, fontSize:12, color:'var(--accent)', fontWeight: 500 }}>🎯 {lead.project}</p>}
-                  {lead.followUpDate && (
-                    <p style={{ margin:'4px 0 0', fontSize:11, color:'#f97316' }}>
-                      📅 Follow-up: {format(new Date(lead.followUpDate), 'dd MMM, h:mm a')}
-                    </p>
-                  )}
-                  {lead.tags?.length > 0 && (
-                    <div className="tag-list" style={{ marginTop:4 }}>
-                      {lead.tags.slice(0,3).map(t => <span key={t} className="badge badge-tag">{t}</span>)}
-                    </div>
-                  )}
-                </div>
-                <ChevronRight size={16} color="var(--text-muted)" style={{ flexShrink:0, marginTop:4 }} />
-              </Link>
-            ))}
-          </div>
-        )}
-
-        {/* Pagination */}
-        {pagination.pages > 1 && (
-          <div style={{ display:'flex', justifyContent:'center', gap:8, marginTop:16 }}>
-            <button className="btn btn-ghost btn-sm" disabled={page === 1} onClick={() => setPage(p => p-1)}>Prev</button>
-            <span style={{ display:'flex', alignItems:'center', fontSize:13, color:'var(--text-muted)' }}>{page}/{pagination.pages}</span>
-            <button className="btn btn-ghost btn-sm" disabled={page >= pagination.pages} onClick={() => setPage(p => p+1)}>Next</button>
-          </div>
-        )}
       </div>
 
-      {/* FAB */}
-      <button 
-        className="fab fab-right" 
+      {/* Floating Add Lead Button */}
+      <button
+        className="fab fab-right"
         onClick={() => {
           if (leadLimitReached) {
             setShowUpgrade(true);
           } else {
             setShowAdd(true);
           }
-        }} 
+        }}
         aria-label="Add lead"
       >
         <Plus size={24} />
       </button>
 
       {showAdd && (
-        <AddLeadModal 
-          onClose={() => setShowAdd(false)} 
-          onCreated={l => { setLeads(prev => [l, ...prev]); fetchLeads(true); }} 
+        <AddLeadModal
+          user={user}
+          onClose={() => setShowAdd(false)}
+          onCreated={l => { setLeads(prev => [l, ...prev]); fetchLeads(true); fetchMetrics(); }}
           onLimitReached={() => setShowUpgrade(true)}
+        />
+      )}
+
+      {showImport && (
+        <ImportLeadsModal
+          onClose={() => setShowImport(false)}
+          onImported={() => { fetchLeads(false); fetchMetrics(); }}
+        />
+      )}
+
+      {showExportLeadsModal && (
+        <ExportLeadsModal
+          user={user}
+          statusFilter={statusFilter}
+          projectFilter={projectFilter}
+          search={search}
+          onClose={() => setShowExportLeadsModal(false)}
+        />
+      )}
+
+      {showExportAnalyticsModal && (
+        <ExportAnalyticsModal
+          isCompanyOwner={isCompanyOwner}
+          onClose={() => setShowExportAnalyticsModal(false)}
         />
       )}
 

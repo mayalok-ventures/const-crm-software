@@ -85,15 +85,16 @@ export default function CampaignsPage() {
 
   return (
     <div className="app-shell">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Campaigns</h1>
-          <p className="page-subtitle">Track and manage your bulk WhatsApp broadcasts</p>
+      <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Broadcast Campaigns</h1>
+            <p className="page-subtitle" style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>Track and manage your bulk WhatsApp broadcasts</p>
+          </div>
         </div>
-      </div>
 
-      <div className="page-content" style={{ paddingBottom: 80 }}>
-        {/* Statistics Panel */}
+        <div className="page-content">
+          {/* Statistics Panel */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
           <div className="stat-card" style={{ flex: 1, minWidth: 90 }}>
             <div className="stat-value">{stats.total}</div>
@@ -242,6 +243,7 @@ export default function CampaignsPage() {
             })}
           </div>
         )}
+        </div>
       </div>
 
       <BottomNav active="campaigns" />

@@ -4,10 +4,14 @@ const fs = require('fs');
 const sharp = require('sharp');
 const cloudinary = require('cloudinary').v2;
 
-// Configure Cloudinary using process.env
+const hasCloudinary = Boolean(
+  process.env.CLOUDINARY_URL ||
+  (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET)
+);
+
 if (process.env.CLOUDINARY_URL) {
-  // Configured automatically via environment variable URL
-} else {
+  // Cloudinary URL auto-configured
+} else if (hasCloudinary) {
   cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
@@ -19,12 +23,8 @@ const tempDir = path.join(__dirname, '../../uploads/templates/temp');
 const finalDir = path.join(__dirname, '../../uploads/templates');
 
 // Ensure directories exist
-if (!fs.existsSync(tempDir)) {
-  fs.mkdirSync(tempDir, { recursive: true });
-}
-if (!fs.existsSync(finalDir)) {
-  fs.mkdirSync(finalDir, { recursive: true });
-}
+if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+if (!fs.existsSync(finalDir)) fs.mkdirSync(finalDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -32,42 +32,62 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `temp-${unique}-${file.originalname}`);
+    cb(null, `temp-${unique}-${file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`);
   },
 });
 
+// File filter with strict file type checks
+const fileFilter = (req, file, cb) => {
+  if (file.fieldname === 'image') {
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new Error('Only image files (JPEG, PNG, WEBP, GIF) are allowed for the image field.'), false);
+    }
+  } else if (file.fieldname === 'video') {
+    if (!file.mimetype.startsWith('video/')) {
+      return cb(new Error('Only video files (MP4, WEBM, MOV) are allowed for the video field.'), false);
+    }
+  } else if (file.fieldname === 'doc') {
+    const allowedDocs = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+    if (!allowedDocs.includes(file.mimetype) && !file.originalname.match(/\.(pdf|doc|docx|txt|xls|xlsx)$/i)) {
+      return cb(new Error('Only document files (PDF, DOC, DOCX, XLS, TXT) are allowed for the doc field.'), false);
+    }
+  }
+  cb(null, true);
+};
+
+// Hard limit 15MB at multer level
 const upload = multer({
   storage,
+  fileFilter,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB max overall
+    fileSize: 15 * 1024 * 1024, // 15MB max
   },
 });
 
-// Helper function to upload to Cloudinary with retry
-const uploadToCloudinaryWithRetry = async (filePath, options, retries = 2) => {
-  let attempt = 0;
-  while (attempt <= retries) {
-    try {
-      const result = await cloudinary.uploader.upload(filePath, options);
-      return result;
-    } catch (err) {
-      attempt++;
-      if (attempt > retries) {
-        throw err;
-      }
-      console.warn(`[Cloudinary] Upload failed, retrying (${attempt}/${retries}). Error: ${err.message}`);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
+// Helper for Cloudinary upload with fallback
+const uploadToCloudinarySafe = async (filePath, options) => {
+  if (!hasCloudinary) return null;
+  try {
+    const result = await cloudinary.uploader.upload(filePath, options);
+    return result;
+  } catch (err) {
+    console.warn(`[Cloudinary] Upload failed (${err.message}). Falling back to local storage.`);
+    return null;
   }
 };
 
+/**
+ * Middleware to process, validate strict limits, auto-compress images,
+ * and clean up temporary files immediately to prevent storage leaks.
+ */
 const processTemplateUploads = async (req, res, next) => {
   if (!req.files) return next();
 
-  const cleanupTemp = () => {
+  // Helper to ensure all temp files in req.files are cleaned up
+  const cleanupAllTemp = () => {
     Object.values(req.files).forEach(fileArray => {
       fileArray.forEach(file => {
-        if (fs.existsSync(file.path)) {
+        if (file.path && fs.existsSync(file.path) && file.path.includes('temp')) {
           try { fs.unlinkSync(file.path); } catch (e) {}
         }
       });
@@ -75,85 +95,137 @@ const processTemplateUploads = async (req, res, next) => {
   };
 
   try {
-    // Process image file (compress & convert to WebP)
+    // 1. Process Image Upload (Strict max 5MB, Auto-compressed with sharp)
     if (req.files.image && req.files.image[0]) {
       const imgFile = req.files.image[0];
-      if (imgFile.size > 10 * 1024 * 1024) {
-        throw new Error('Image file exceeds the 10MB limit.');
+      const maxImageSize = 5 * 1024 * 1024; // 5MB
+
+      if (imgFile.size > maxImageSize) {
+        cleanupAllTemp();
+        return res.status(400).json({ message: 'Image exceeds maximum 5MB size limit. Please upload a smaller image.' });
       }
 
       const uniqueName = `image-${Date.now()}-${Math.round(Math.random() * 1e9)}.webp`;
       const outPath = path.join(finalDir, uniqueName);
 
-      // Convert using sharp
-      await sharp(imgFile.path)
-        .webp({ quality: 80 })
-        .toFile(outPath);
+      try {
+        // Auto-compress and convert to high-efficiency WebP
+        await sharp(imgFile.path)
+          .resize({ width: 1920, withoutEnlargement: true }) // Max 1080p/1440p resolution
+          .webp({ quality: 80, effort: 4 })
+          .toFile(outPath);
+      } finally {
+        // Guarantee immediate cleanup of original uncompressed temp file
+        if (fs.existsSync(imgFile.path)) {
+          try { fs.unlinkSync(imgFile.path); } catch (e) {}
+        }
+      }
 
-      // Delete temp original image
-      try { fs.unlinkSync(imgFile.path); } catch (e) {}
-
-      // Upload to Cloudinary with retry
-      const result = await uploadToCloudinaryWithRetry(outPath, {
+      // Upload compressed asset to Cloudinary or serve locally
+      const cloudResult = await uploadToCloudinarySafe(outPath, {
         folder: 'crm_templates',
         resource_type: 'image'
       });
 
-      // Delete final local WebP
-      try { fs.unlinkSync(outPath); } catch (e) {}
-
-      // Update file metadata for controller
-      imgFile.filename = result.public_id;
-      imgFile.url = result.secure_url;
-      imgFile.mimetype = 'image/webp';
-      imgFile.size = result.bytes || imgFile.size;
+      if (cloudResult) {
+        if (fs.existsSync(outPath)) {
+          try { fs.unlinkSync(outPath); } catch (e) {}
+        }
+        imgFile.filename = cloudResult.public_id;
+        imgFile.url = cloudResult.secure_url;
+        imgFile.mimetype = 'image/webp';
+        imgFile.size = cloudResult.bytes || imgFile.size;
+      } else {
+        imgFile.filename = uniqueName;
+        imgFile.url = `/uploads/templates/${uniqueName}`;
+        imgFile.mimetype = 'image/webp';
+        imgFile.size = fs.statSync(outPath).size;
+      }
     }
 
-    // Process video file
+    // 2. Process Video Upload (Strict max 15MB)
     if (req.files.video && req.files.video[0]) {
       const vidFile = req.files.video[0];
-      if (vidFile.size > 50 * 1024 * 1024) {
-        throw new Error('Video file exceeds the 50MB limit.');
+      const maxVideoSize = 15 * 1024 * 1024; // 15MB
+
+      if (vidFile.size > maxVideoSize) {
+        cleanupAllTemp();
+        return res.status(400).json({ message: 'Video exceeds maximum 15MB size limit. Please upload a shorter or compressed clip.' });
       }
 
-      // Upload to Cloudinary with retry
-      const result = await uploadToCloudinaryWithRetry(vidFile.path, {
+      const uniqueName = `video-${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(vidFile.originalname) || '.mp4'}`;
+      const outPath = path.join(finalDir, uniqueName);
+
+      try {
+        fs.copyFileSync(vidFile.path, outPath);
+      } finally {
+        if (fs.existsSync(vidFile.path)) {
+          try { fs.unlinkSync(vidFile.path); } catch (e) {}
+        }
+      }
+
+      const cloudResult = await uploadToCloudinarySafe(outPath, {
         folder: 'crm_templates',
         resource_type: 'video'
       });
 
-      // Delete temp video
-      try { fs.unlinkSync(vidFile.path); } catch (e) {}
-
-      vidFile.filename = result.public_id;
-      vidFile.url = result.secure_url;
-      vidFile.size = result.bytes || vidFile.size;
+      if (cloudResult) {
+        if (fs.existsSync(outPath)) {
+          try { fs.unlinkSync(outPath); } catch (e) {}
+        }
+        vidFile.filename = cloudResult.public_id;
+        vidFile.url = cloudResult.secure_url;
+        vidFile.size = cloudResult.bytes || vidFile.size;
+      } else {
+        vidFile.filename = uniqueName;
+        vidFile.url = `/uploads/templates/${uniqueName}`;
+        vidFile.size = fs.statSync(outPath).size;
+      }
     }
 
-    // Process document file
+    // 3. Process Document Upload (Strict max 15MB)
     if (req.files.doc && req.files.doc[0]) {
       const docFile = req.files.doc[0];
-      if (docFile.size > 20 * 1024 * 1024) {
-        throw new Error('Document file exceeds the 20MB limit.');
+      const maxDocSize = 15 * 1024 * 1024; // 15MB
+
+      if (docFile.size > maxDocSize) {
+        cleanupAllTemp();
+        return res.status(400).json({ message: 'Document exceeds maximum 15MB size limit.' });
       }
 
-      // Upload to Cloudinary with retry
-      const result = await uploadToCloudinaryWithRetry(docFile.path, {
+      const uniqueName = `doc-${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(docFile.originalname) || '.pdf'}`;
+      const outPath = path.join(finalDir, uniqueName);
+
+      try {
+        fs.copyFileSync(docFile.path, outPath);
+      } finally {
+        if (fs.existsSync(docFile.path)) {
+          try { fs.unlinkSync(docFile.path); } catch (e) {}
+        }
+      }
+
+      const cloudResult = await uploadToCloudinarySafe(outPath, {
         folder: 'crm_templates',
         resource_type: 'raw'
       });
 
-      // Delete temp doc
-      try { fs.unlinkSync(docFile.path); } catch (e) {}
-
-      docFile.filename = result.public_id;
-      docFile.url = result.secure_url;
-      docFile.size = result.bytes || docFile.size;
+      if (cloudResult) {
+        if (fs.existsSync(outPath)) {
+          try { fs.unlinkSync(outPath); } catch (e) {}
+        }
+        docFile.filename = cloudResult.public_id;
+        docFile.url = cloudResult.secure_url;
+        docFile.size = cloudResult.bytes || docFile.size;
+      } else {
+        docFile.filename = uniqueName;
+        docFile.url = `/uploads/templates/${uniqueName}`;
+        docFile.size = fs.statSync(outPath).size;
+      }
     }
 
     next();
   } catch (err) {
-    cleanupTemp();
+    cleanupAllTemp();
     return res.status(400).json({ message: 'Error processing media uploads: ' + err.message });
   }
 };

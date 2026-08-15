@@ -1,23 +1,110 @@
 const User = require('../models/User');
 const Lead = require('../models/Lead');
+const Coupon = require('../models/Coupon');
+const Notification = require('../models/Notification');
+const AbuseLog = require('../models/AbuseLog');
+const waSession = require('../services/waSession');
+
+// @desc  Get Global Platform Metrics & SaaS Overview
+// @route GET /api/admin/metrics
+// @access SuperAdmin / Admin
+exports.getGlobalMetrics = async (req, res) => {
+  try {
+    const totalUsers = await User.countDocuments();
+    const totalCompanyOwners = await User.countDocuments({ workStatus: 'company_owner' });
+    const totalSoloAgents = await User.countDocuments({ workStatus: 'independent_agent' });
+    const totalLeads = await Lead.countDocuments();
+    const activeUsers = await User.countDocuments({ isActive: true });
+    const suspendedUsers = await User.countDocuments({ 'suspension.isSuspended': true });
+
+    // Plan breakdown
+    const plansAgg = await User.aggregate([
+      { $group: { _id: '$plan', count: { $sum: 1 } } }
+    ]);
+    const planBreakdown = { free: 0, starter: 0, growth: 0, pro: 0 };
+    plansAgg.forEach(p => { if (p._id) planBreakdown[p._id] = p.count; });
+
+    // Recent platform signups (last 30 days)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const recentSignups = await User.countDocuments({ createdAt: { $gte: thirtyDaysAgo } });
+
+    res.json({
+      totalUsers,
+      totalCompanyOwners,
+      totalSoloAgents,
+      totalLeads,
+      activeUsers,
+      suspendedUsers,
+      recentSignups,
+      planBreakdown,
+    });
+  } catch (error) {
+    console.error('getGlobalMetrics error:', error);
+    res.status(500).json({ message: 'Failed to load global metrics' });
+  }
+};
+
+// @desc  Get Captured Signups as Leads (SuperAdmin CRM)
+// @route GET /api/admin/captured-leads
+// @access SuperAdmin / Admin
+exports.getCapturedLeads = async (req, res) => {
+  try {
+    const { search, status, page = 1, limit = 100 } = req.query;
+    const query = {
+      $or: [
+        { userId: req.user._id },
+        { source: 'platform_registration' },
+        { source: 'Auto-Signup' },
+        { tags: 'platform_signup' },
+        { tags: 'saas_lead' }
+      ]
+    };
+
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+
+    if (search) {
+      const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      query.$and = [{ $or: [{ name: rx }, { email: rx }, { phone: rx }, { company: rx }] }];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const [leads, total] = await Promise.all([
+      Lead.find(query).sort({ updatedAt: -1, createdAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
+      Lead.countDocuments(query),
+    ]);
+
+    res.json({
+      leads,
+      total,
+      page: parseInt(page),
+      pages: Math.ceil(total / parseInt(limit)),
+    });
+  } catch (error) {
+    console.error('getCapturedLeads error:', error);
+    res.status(500).json({ message: 'Failed to fetch captured leads' });
+  }
+};
 
 // @desc  List all users (admin)
 // @route GET /api/admin/users
 // @access Admin
 exports.getUsers = async (req, res) => {
   try {
-    const { search, plan, page = 1, limit = 20 } = req.query;
+    const { search, plan, workStatus, page = 1, limit = 50 } = req.query;
     const query = {};
     if (plan) query.plan = plan;
+    if (workStatus) query.workStatus = workStatus;
     if (search) {
-      // SECURITY: Escape all special regex characters before compiling.
-      // Prevents ReDoS attacks via crafted search inputs.
       const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const rx = new RegExp(escaped, 'i');
       query.$or = [
         { email: rx },
         { phone: rx },
         { name: rx },
+        { usercode: rx },
+        { username: rx },
       ];
     }
 
@@ -52,144 +139,117 @@ exports.getUsers = async (req, res) => {
 // @access Admin
 exports.assignPlan = async (req, res) => {
   try {
-    const { plan, expiryDate, durationDays } = req.body;
-    const validPlans = ['free', 'starter', 'growth', 'pro'];
-    if (!validPlans.includes(plan)) return res.status(400).json({ message: 'Invalid plan' });
+    const { plan, cycle, expiryDate, durationDays } = req.body;
+    if (!plan) return res.status(400).json({ message: 'Plan identifier is required' });
 
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    const { updateUserPlan } = require('../utils/subscriptionManager');
+    const result = await updateUserPlan(req.params.id, plan, cycle || 'monthly', true, {
+      expiryDate,
+      durationDays,
+      adminId: req.user._id,
+      adminName: req.user.name,
+      paymentMethod: 'admin_override',
+    });
 
-    const { PLAN_PRICES } = require('../utils/planLimits');
-    const price = PLAN_PRICES[plan] || 0;
-
-    // ADMIN OVERRIDE
-    // Admin can assign plans manually.
-    // Ensure billing is still recorded to avoid inconsistencies.
-    user.plan = plan;
-    if (plan === 'free') {
-      user.planStartDate = null;
-      user.planEndDate = null;
-      user.billing = {
-        originalPrice: 0,
-        discountedPrice: 0,
-        couponCodeUsed: null,
-      };
-    } else {
-      user.planStartDate = new Date();
-      if (expiryDate) {
-        user.planEndDate = new Date(expiryDate);
-      } else if (durationDays) {
-        user.planEndDate = new Date(Date.now() + parseInt(durationDays) * 24 * 60 * 60 * 1000);
-      } else {
-        user.planEndDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-      }
-      user.billing = {
-        originalPrice: price,
-        discountedPrice: price,
-        couponCodeUsed: 'MANUAL',
-      };
-    }
-
-    await user.save({ validateBeforeSave: false });
-
-    const returnedUser = user.toObject();
+    const returnedUser = result.user.toObject ? result.user.toObject() : { ...result.user };
     delete returnedUser.password;
+    delete returnedUser.twoFactorSecret;
+    delete returnedUser.twoFactorOtp;
+    returnedUser.subscriptionLifecycle = result.subscriptionLifecycle;
 
-    res.json({ message: `Plan updated to ${plan}`, user: returnedUser });
+    res.json({
+      message: `Plan updated to ${plan.toUpperCase()} successfully`,
+      user: returnedUser,
+      subscriptionLifecycle: result.subscriptionLifecycle,
+    });
   } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    console.error('assignPlan error:', error);
+    res.status(400).json({ message: error.message || 'Failed to update plan' });
   }
 };
 
-// @desc  Activate / deactivate user
+// @desc  Toggle user active/inactive status
 // @route PUT /api/admin/users/:id/status
 // @access Admin
-//
-// NOTE — SUSPENSION LEVELS (when V2 suspension system is implemented):
-// Level 1 → 24 hours (warning)
-// Level 2 → 7 days (repeated abuse)
-// Level 3 → 30 days (serious violation)
-// Level 4 → permanent ban (no recovery)
-//
-// This function currently toggles isActive (blunt instrument).
-// V2 will add granular suspension: user.suspension.isSuspended + suspendedUntil + level.
-// See implementation_plan.md → Admin Control System
 exports.toggleUserStatus = async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
+
     user.isActive = !user.isActive;
     await user.save({ validateBeforeSave: false });
-    res.json({ message: `User ${user.isActive ? 'activated' : 'deactivated'}`, isActive: user.isActive });
+
+    res.json({ message: `User account ${user.isActive ? 'activated' : 'deactivated'}`, isActive: user.isActive });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-// @desc  Delete user
+// @desc  Delete user account
 // @route DELETE /api/admin/users/:id
 // @access Admin
 exports.deleteUser = async (req, res) => {
   try {
-    if (req.params.id === req.user._id.toString()) {
-      return res.status(400).json({ message: 'Cannot delete yourself' });
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (user.role === 'superadmin' || user.isAdmin || user.email === 'admin@crm.com') {
+      return res.status(403).json({ message: 'Super Admin accounts are protected and cannot be deleted.' });
     }
+
     await User.findByIdAndDelete(req.params.id);
-    res.json({ message: 'User deleted' });
+    await Lead.deleteMany({ userId: req.params.id });
+
+    res.json({ message: 'User and associated data permanently deleted' });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-// @desc  Get all coupons
+// @desc  Get coupons
 // @route GET /api/admin/coupons
 // @access Admin
 exports.getCoupons = async (req, res) => {
   try {
-    const Coupon = require('../models/Coupon');
-    const coupons = await Coupon.find({}).sort({ createdAt: -1 }).lean();
+    const coupons = await Coupon.find().sort({ createdAt: -1 }).lean();
     res.json(coupons);
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-// @desc  Create coupon code
+// @desc  Create coupon
 // @route POST /api/admin/coupons
 // @access Admin
 exports.createCoupon = async (req, res) => {
   try {
-    const Coupon = require('../models/Coupon');
-    const { code, plan, maxUses, expiresAt, discountPercent } = req.body;
-    if (!code || !plan) {
-      return res.status(400).json({ message: 'Code and plan are required' });
-    }
+    const { code, discountPercent, planGranted, durationDays, maxUses, validUntil } = req.body;
+    if (!code) return res.status(400).json({ message: 'Coupon code is required' });
 
-    const exists = await Coupon.findOne({ code: code.toUpperCase() });
-    if (exists) {
-      return res.status(400).json({ message: 'Coupon code already exists' });
-    }
+    const exists = await Coupon.findOne({ code: code.toUpperCase().trim() });
+    if (exists) return res.status(400).json({ message: 'Coupon code already exists' });
 
     const coupon = await Coupon.create({
-      code: code.toUpperCase(),
-      plan,
-      maxUses: maxUses || 1,
-      expiresAt: expiresAt ? new Date(expiresAt) : null,
-      discountPercent: parseInt(discountPercent) || 0,
+      code: code.toUpperCase().trim(),
+      discountPercent: Number(discountPercent) || 0,
+      planGranted: planGranted || 'pro',
+      durationDays: Number(durationDays) || 30,
+      maxUses: maxUses ? Number(maxUses) : null,
+      validUntil: validUntil ? new Date(validUntil) : null,
+      isActive: true,
     });
 
     res.status(201).json(coupon);
   } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: error.message || 'Server error' });
   }
 };
 
-// @desc  Delete coupon code
+// @desc  Delete coupon
 // @route DELETE /api/admin/coupons/:id
 // @access Admin
 exports.deleteCoupon = async (req, res) => {
   try {
-    const Coupon = require('../models/Coupon');
     await Coupon.findByIdAndDelete(req.params.id);
     res.json({ message: 'Coupon deleted' });
   } catch (error) {
@@ -197,62 +257,38 @@ exports.deleteCoupon = async (req, res) => {
   }
 };
 
-// @desc  Send custom message alert to one or all users
+// @desc  Send custom notification/alert to all users or specific user
 // @route POST /api/admin/alerts
 // @access Admin
 exports.sendCustomAlert = async (req, res) => {
   try {
-    const Notification = require('../models/Notification');
-    const { targetUserId, message } = req.body; // if targetUserId is null or "all", send to all
+    const { userId, title, message, type = 'system_alert' } = req.body;
+    if (!title || !message) return res.status(400).json({ message: 'Title and message are required' });
 
-    if (!message) {
-      return res.status(400).json({ message: 'Alert message is required' });
-    }
-
-    let userIds = [];
-    if (!targetUserId || targetUserId === 'all') {
-      const allUsers = await User.find({ isActive: true }).select('_id').lean();
-      userIds = allUsers.map(u => u._id);
+    if (userId && userId !== 'all') {
+      await Notification.create({ userId, title, message, type });
     } else {
-      userIds = [targetUserId];
+      const users = await User.find({ isActive: true }).select('_id');
+      const docs = users.map(u => ({ userId: u._id, title, message, type }));
+      await Notification.insertMany(docs);
     }
 
-    const notifications = userIds.map(uid => ({
-      userId: uid,
-      message: `📢 Admin Alert: ${message}`,
-      type: 'admin_alert',
-      isRead: false
-    }));
-
-    // IMPORTANT: Batch insertMany in chunks of 500 to avoid MongoDB document limit
-    // and prevent a single call from blocking the DB for large user bases.
-    const CHUNK = 500;
-    for (let i = 0; i < notifications.length; i += CHUNK) {
-      await Notification.insertMany(notifications.slice(i, i + CHUNK), { ordered: false });
-    }
-
-    res.json({ message: `Alert sent to ${userIds.length} users successfully.` });
+    res.json({ message: 'Alert dispatched successfully' });
   } catch (error) {
-    console.error('Custom alert error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-// @desc  Suspend user with granular levels
+// @desc  Suspend or unsuspend user with violation levels
 // @route POST /api/admin/users/:id/suspend
 // @access Admin
 exports.suspendUser = async (req, res) => {
   try {
-    const { isSuspended, level, reason } = req.body;
+    const { level, reason, unsuspend } = req.body;
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    if (user.isAdmin) {
-      return res.status(400).json({ message: 'Cannot suspend an administrator account' });
-    }
-
-    if (!isSuspended) {
-      // Lift suspension
+    if (unsuspend) {
       user.suspension = {
         isSuspended: false,
         level: 0,
@@ -261,15 +297,14 @@ exports.suspendUser = async (req, res) => {
         suspendedUntil: null,
       };
       await user.save({ validateBeforeSave: false });
-      return res.json({ message: 'User suspension lifted', user });
+      return res.json({ message: 'Suspension lifted successfully', user });
     }
 
     const lvl = parseInt(level) || 1;
     let durationMs = 0;
-    if (lvl === 1) durationMs = 24 * 60 * 60 * 1000; // 24 hours
-    else if (lvl === 2) durationMs = 7 * 24 * 60 * 60 * 1000; // 7 days
-    else if (lvl === 3) durationMs = 30 * 24 * 60 * 60 * 1000; // 30 days
-    // level 4 is permanent, duration remains 0 (suspendedUntil = null)
+    if (lvl === 1) durationMs = 24 * 60 * 60 * 1000;
+    else if (lvl === 2) durationMs = 7 * 24 * 60 * 60 * 1000;
+    else if (lvl === 3) durationMs = 30 * 24 * 60 * 60 * 1000;
 
     const now = new Date();
     const suspendedUntil = lvl === 4 ? null : new Date(now.getTime() + durationMs);
@@ -277,14 +312,12 @@ exports.suspendUser = async (req, res) => {
     user.suspension = {
       isSuspended: true,
       level: lvl,
-      reason: reason || 'Violation of terms',
+      reason: reason || 'Terms violation',
       suspendedAt: now,
       suspendedUntil,
     };
 
-    // If level 4 or active toggle, deactivate WhatsApp sessions too
     if (lvl === 4) {
-      const waSession = require('../services/waSession');
       await waSession.disconnect(user._id).catch(() => {});
     }
 
@@ -301,7 +334,6 @@ exports.suspendUser = async (req, res) => {
 // @access Admin
 exports.getAbuseLogs = async (req, res) => {
   try {
-    const AbuseLog = require('../models/AbuseLog');
     const { type, page = 1, limit = 50 } = req.query;
     const query = {};
     if (type) query.type = type;
@@ -328,4 +360,3 @@ exports.getAbuseLogs = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
-

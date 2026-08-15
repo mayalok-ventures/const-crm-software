@@ -1,13 +1,28 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const {
   getLeads, getLead, createLead, updateLead,
-  addNote, deleteLead, getTodayFollowUps, getTags, trackMessage
+  addNote, deleteLead, getTodayFollowUps, getDueFollowUps, getTags, trackMessage,
+  exportLeads, importLeads
 } = require('../controllers/leadsController');
 const { protect, checkPlanExpiry } = require('../middleware/auth');
 
+// Multer in-memory storage for Excel/CSV parsing
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB file size limit
+});
+
 router.use(protect);
+
+// Export & Import Routes
+router.get('/export', exportLeads);
+router.post('/import', checkPlanExpiry, upload.single('file'), importLeads);
+
+// Lead Standard Routes
 router.get('/follow-ups/today', getTodayFollowUps);
+router.get('/follow-ups/due', getDueFollowUps);
 router.get('/tags', getTags);
 router.post('/:id/track-message', checkPlanExpiry, trackMessage);
 router.route('/').get(getLeads).post(checkPlanExpiry, createLead);

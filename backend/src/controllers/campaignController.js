@@ -15,7 +15,7 @@ exports.createCampaign = async (req, res) => {
       return res.status(400).json({ message: 'groupId, name, and template are required' });
     }
 
-    const plan = req.user.plan || 'free';
+    const plan = req.user.subscriptionLifecycle?.effectivePlan || req.user.plan || 'free';
     const limits = PLAN_LIMITS[plan];
 
     if (!limits?.canStartCampaign) {

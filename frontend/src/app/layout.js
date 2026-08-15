@@ -2,13 +2,29 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { Toaster } from 'react-hot-toast';
 import NotificationPoller from '@/components/NotificationPoller';
+import SecurityWarningBanner from '@/components/SecurityWarningBanner';
+import SubscriptionLifecycleBanner from '@/components/SubscriptionLifecycleBanner';
+import FollowUpAlertManager from '@/components/FollowUpAlertManager';
+import UserSyncManager from '@/components/UserSyncManager';
 
 const inter = Inter({ subsets: ['latin'], display: 'swap' });
 
 export const metadata = {
-  title: 'SalesCRM — Mobile Sales Tool',
-  description: 'Fast, lightweight CRM for individual sales professionals. Manage leads, send WhatsApp follow-ups, and close deals on the go.',
+  title: 'SalesCRM — Enterprise Sales & CRM Platform',
+  description: 'Fast, lightweight CRM for sales professionals and agencies. Manage leads, send WhatsApp follow-ups, and close deals on the go.',
   manifest: '/manifest.json',
+  icons: {
+    icon: [
+      { url: '/favicon.ico' },
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/android-chrome-192x192.png', sizes: '192x192', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+    shortcut: '/favicon.ico',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
@@ -31,6 +47,7 @@ export default function RootLayout({ children }) {
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <script src="https://checkout.razorpay.com/v1/checkout.js" async />
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -46,8 +63,12 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body className={inter.className}>
+        <SecurityWarningBanner />
+        <SubscriptionLifecycleBanner />
+        <UserSyncManager />
         {children}
         <NotificationPoller />
+        <FollowUpAlertManager />
         <Toaster
           position="top-center"
           toastOptions={{

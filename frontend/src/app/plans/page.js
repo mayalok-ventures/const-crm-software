@@ -1,97 +1,206 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { MessageCircle, Zap, Shield, Star, Check, AlertCircle, FileText, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
+import {
+  Zap,
+  Shield,
+  Star,
+  Check,
+  Building2,
+  User,
+  Users,
+  Sparkles,
+  ArrowRight,
+  MessageCircle,
+  QrCode,
+  CheckCircle2,
+  ChevronRight,
+  ShieldCheck,
+  Layers,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
+import BottomNav from '@/components/BottomNav';
 
 const WA_NUMBER = process.env.NEXT_PUBLIC_WA_NUMBER || '918796475107';
 const UPI_ID = process.env.NEXT_PUBLIC_UPI_ID || '8193948870-2@ybl';
-const CRM_NAME = 'SalesCRM';
 
-const PLANS = [
+// ─────────────────────────────────────────────────────────────────────────────
+// ENTERPRISE PLAN DEFINITIONS (DUAL-TIER)
+// ─────────────────────────────────────────────────────────────────────────────
+const SOLO_PLANS = [
   {
-    id: 'starter',
-    name: 'Starter',
-    price: '₹199',
-    period: '/month',
+    id: 'basic_solo',
+    name: 'Basic Solo',
+    subtitle: 'For individual sales reps closing up to 2k deals',
+    monthlyPrice: 399,
+    yearlyPrice: 3999,
     icon: Zap,
-    color: '#6366f1',
-    glow: 'rgba(99,102,241,0.2)',
-    features: [
-      'Up to 200 leads',
-      '5 groups',
-      'Bulk campaigns',
-      'Message templates',
-      'Reminder system ON',
-      'Voice recordings',
-    ],
+    color: '#3b82f6',
     popular: false,
+    features: [
+      'Up to 2,000 active leads',
+      '5 custom contact groups',
+      '500 broadcast recipients / job',
+      '2 concurrent campaign jobs',
+      'WhatsApp messaging & voice notes',
+      'Dynamic lead form builder',
+      'Full pipeline stages customization',
+    ],
   },
   {
-    id: 'growth',
-    name: 'Growth',
-    price: '₹499',
-    period: '/month',
+    id: 'smart_solo',
+    name: 'Smart Solo',
+    subtitle: 'Top choice for high-volume sales agents',
+    monthlyPrice: 799,
+    yearlyPrice: 7999,
     icon: Star,
     color: '#f59e0b',
-    glow: 'rgba(245,158,11,0.2)',
-    features: [
-      'Up to 1,000 leads',
-      '15 groups',
-      'Faster bulk campaigns',
-      'Priority notifications',
-      'Basic analytics',
-      'Voice recordings',
-    ],
     popular: true,
+    features: [
+      'Up to 10,000 active leads',
+      '20 custom contact groups',
+      '2,000 broadcast recipients / job',
+      '5 concurrent campaign jobs',
+      'Automated follow-up scheduler',
+      'Win rate & conversion KPI reports',
+      'Priority alert notifications',
+    ],
   },
   {
-    id: 'pro',
-    name: 'Pro',
-    price: '₹999',
-    period: '/month',
+    id: 'power_solo',
+    name: 'Power Solo',
+    subtitle: 'Maximum sales velocity for top solo producers',
+    monthlyPrice: 1299,
+    yearlyPrice: 12999,
     icon: Shield,
-    color: '#22c55e',
-    glow: 'rgba(34,197,94,0.2)',
-    features: [
-      'Unlimited leads',
-      'Unlimited groups',
-      'Full bulk messaging',
-      'Full analytics dashboard',
-      'Voice recordings',
-      'Priority support',
-    ],
+    color: '#8b5cf6',
     popular: false,
+    features: [
+      'Up to 25,000 active leads',
+      '50 custom contact groups',
+      '5,000 broadcast recipients / job',
+      '10 concurrent campaign jobs',
+      'Export permissions & data backup',
+      'Multi-channel tags & filters',
+      'Priority VIP WhatsApp support',
+    ],
+  },
+];
+
+const INDIVIDUAL_PLANS = SOLO_PLANS;
+
+const ORG_PLANS = [
+  {
+    id: 'team_starter',
+    name: 'Team Starter',
+    subtitle: 'Boutique agencies with up to 3 agents',
+    seats: 3,
+    monthlyPrice: 1499,
+    yearlyPrice: 14999,
+    icon: Users,
+    color: '#06b6d4',
+    popular: false,
+    features: [
+      'Includes 3 Team Agent Seats',
+      'Up to 15,000 shared leads',
+      'Agency common pool & lead assignment',
+      'Agent performance & commission tracking',
+      '25 contact groups & 2,500 recipients',
+      'Centralized agency WhatsApp routing',
+    ],
+  },
+  {
+    id: 'business',
+    name: 'Business Agency',
+    subtitle: 'Growing organizations with up to 10 agents',
+    seats: 10,
+    monthlyPrice: 2499,
+    yearlyPrice: 24999,
+    icon: Building2,
+    color: '#6366f1',
+    popular: true,
+    features: [
+      'Includes 10 Team Agent Seats',
+      'Up to 50,000 organization leads',
+      'Advanced hierarchy & smart exit rules',
+      'Selective export permissions & audit logs',
+      '100 contact groups & 10k recipients',
+      'Master agency revenue analytics',
+    ],
+  },
+  {
+    id: 'enterprise',
+    name: 'Enterprise Command',
+    subtitle: 'Large multi-branch organizations',
+    seats: 25,
+    monthlyPrice: 4999,
+    yearlyPrice: 49999,
+    icon: ShieldCheck,
+    color: '#10b981',
+    popular: false,
+    features: [
+      'Includes 25 Team Agent Seats',
+      'Unlimited Organization Leads',
+      'Unlimited contact groups',
+      '25,000 recipients per broadcast job',
+      'Dedicated account manager & SLA',
+      'Custom form workflows & webhooks',
+    ],
   },
 ];
 
 export default function PlansPage() {
   const [user, setUser] = useState(null);
-  const [couponCode, setCouponCode] = useState('');
-  const [applying, setApplying] = useState(false);
-  const [validating, setValidating] = useState(false);
-  const [validatedCoupon, setValidatedCoupon] = useState(null);
-  const [validationError, setValidationError] = useState('');
+  const [loadingUser, setLoadingUser] = useState(true);
+  const [billingCycle, setBillingCycle] = useState('monthly'); // 'monthly' | 'yearly'
+  const [planCategory, setPlanCategory] = useState('solo'); // 'solo' | 'org'
+  const [loadingOrder, setLoadingOrder] = useState(null);
 
-  // Payment system state
-  const [pendingPayment, setPendingPayment] = useState(null);
-  const [selectedPlan, setSelectedPlan] = useState(null);
-  const [paymentStep, setPaymentStep] = useState(0); // 0: none, 1: UPI instructions, 2: Proof form
+  // Coupon state
+  const [couponCode, setCouponCode] = useState('');
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
+  const [validatedCoupon, setValidatedCoupon] = useState(null);
+
+  // Manual payment state
+  const [showManualUpi, setShowManualUpi] = useState(false);
+  const [selectedManualPlan, setSelectedManualPlan] = useState(null);
   const [utrNumber, setUtrNumber] = useState('');
   const [screenshotFile, setScreenshotFile] = useState(null);
-  const [submittingPayment, setSubmittingPayment] = useState(false);
+  const [submittingManual, setSubmittingManual] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState(null);
 
   const fetchStatus = () => {
     api.get('/auth/me')
       .then(res => {
-        setUser(res.data);
-        localStorage.setItem('user', JSON.stringify(res.data));
+        const u = res.data;
+        setUser(u);
+        localStorage.setItem('user', JSON.stringify(u));
+        if (u.workStatus === 'company_owner' || u.companyRole === 'owner') {
+          setPlanCategory('org');
+        } else {
+          setPlanCategory('solo');
+        }
+        if (u.billingCycle) {
+          setBillingCycle(u.billingCycle);
+        }
       })
       .catch(() => {
         try {
-          const u = localStorage.getItem('user');
-          if (u) setUser(JSON.parse(u));
+          const local = localStorage.getItem('user');
+          if (local) {
+            const parsed = JSON.parse(local);
+            setUser(parsed);
+            if (parsed.workStatus === 'company_owner' || parsed.companyRole === 'owner') {
+              setPlanCategory('org');
+            } else {
+              setPlanCategory('solo');
+            }
+          }
         } catch {}
+      })
+      .finally(() => {
+        setLoadingUser(false);
       });
 
     api.get('/payments/my-request')
@@ -102,454 +211,860 @@ export default function PlansPage() {
           setPendingPayment(null);
         }
       })
-      .catch(err => {
-        console.error('Failed to fetch payment request:', err);
-      });
+      .catch(() => {});
   };
 
   useEffect(() => {
     fetchStatus();
   }, []);
 
-  const getPriceDetails = (plan) => {
-    const isCouponApplied = validatedCoupon && validatedCoupon.plan === plan.id;
-    const discount = isCouponApplied ? validatedCoupon.discountPercent : 0;
-    const originalPrice = parseFloat(plan.price.replace(/[^\d]/g, '')) || 0;
-    const finalPrice = Math.round(originalPrice * (1 - (discount / 100)));
-    return { originalPrice, finalPrice, discount };
+  const calculatePrice = (plan) => {
+    const rawPrice = billingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
+    let finalPrice = rawPrice;
+    let discount = 0;
+
+    if (validatedCoupon) {
+      discount = validatedCoupon.discountPercent || 0;
+      finalPrice = Math.max(0, Math.round(rawPrice * (1 - discount / 100)));
+    }
+
+    return {
+      rawPrice,
+      finalPrice,
+      discount,
+      monthlyEquivalent: billingCycle === 'yearly' ? Math.round(finalPrice / 12) : finalPrice,
+    };
   };
 
-  const handleChoosePlan = (plan) => {
+  // ─────────────────────────────────────────────────────────────────────────
+  // RAZORPAY AUTOMATED CHECKOUT
+  // ─────────────────────────────────────────────────────────────────────────
+  const handleRazorpayCheckout = async (plan) => {
     if (!user) {
-      toast.error('Please sign in to choose a plan.');
+      toast.error('Please sign in to subscribe to a plan.');
       return;
     }
-    setSelectedPlan(plan);
-    setPaymentStep(1);
 
-    // Deep link invocation on mobile devices
-    const { finalPrice } = getPriceDetails(plan);
-    const upiLink = `upi://pay?pa=${encodeURIComponent(UPI_ID)}&pn=${encodeURIComponent(CRM_NAME)}&am=${finalPrice}&cu=INR`;
-    
-    // Automatically trigger app switch for deep links
-    try {
-      window.location.href = upiLink;
-    } catch (e) {
-      console.warn('Deep link redirection failed: ', e);
-    }
-  };
-
-  const handlePaidClick = () => {
-    setPaymentStep(2);
-  };
-
-  const handleSubmitProof = async (e) => {
-    e.preventDefault();
-    if (!utrNumber.trim()) {
-      return toast.error('UTR number is required');
-    }
-    if (utrNumber.trim().length < 10) {
-      return toast.error('UTR number must be at least 10 characters long');
-    }
-    if (!screenshotFile) {
-      return toast.error('Screenshot image file is required');
-    }
-
-    setSubmittingPayment(true);
-    const { originalPrice, finalPrice } = getPriceDetails(selectedPlan);
-
-    const formData = new FormData();
-    formData.append('planSelected', selectedPlan.id);
-    formData.append('originalPrice', originalPrice);
-    formData.append('finalPrice', finalPrice);
-    formData.append('utrNumber', utrNumber.trim());
-    formData.append('screenshot', screenshotFile);
-    if (validatedCoupon && validatedCoupon.plan === selectedPlan.id) {
-      formData.append('couponCodeUsed', validatedCoupon.code);
-    }
+    setLoadingOrder(plan.id);
 
     try {
-      const { data } = await api.post('/payments', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      // 1. Create Razorpay order on backend
+      const { data: orderData } = await api.post('/payments/create-order', {
+        planId: plan.id,
+        cycle: billingCycle,
+        couponCode: validatedCoupon?.code || '',
       });
-      toast.success(data.message || 'Payment details submitted successfully!');
-      
-      // Reset payment steps
-      setPaymentStep(0);
-      setSelectedPlan(null);
-      setUtrNumber('');
-      setScreenshotFile(null);
 
-      // Refresh status
+      if (!orderData || !orderData.orderId) {
+        throw new Error('Failed to generate Razorpay order');
+      }
+
+      // 2. Open Razorpay Modal
+      if (typeof window !== 'undefined' && window.Razorpay) {
+        const options = {
+          key: orderData.keyId,
+          amount: orderData.amount,
+          currency: orderData.currency || 'INR',
+          name: 'SalesCRM Subscription',
+          description: `${orderData.planName} (${billingCycle.toUpperCase()})`,
+          order_id: orderData.orderId,
+          prefill: {
+            name: user.name || '',
+            email: user.email || '',
+            contact: user.phone || '',
+          },
+          theme: {
+            color: '#6366f1',
+          },
+          handler: async function (response) {
+            // 3. Cryptographic Signature Verification
+            const verifyToast = toast.loading('Verifying secure payment signature...');
+            try {
+              const verifyRes = await api.post('/payments/verify', {
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                planId: orderData.planId,
+                cycle: orderData.cycle,
+                couponCode: validatedCoupon?.code || '',
+              });
+
+              toast.dismiss(verifyToast);
+              toast.success(verifyRes.data.message || 'Payment verified! Plan activated.', { duration: 5000 });
+              fetchStatus();
+            } catch (vErr) {
+              toast.dismiss(verifyToast);
+              toast.error(vErr.response?.data?.message || 'Payment signature verification failed.');
+            } finally {
+              setLoadingOrder(null);
+            }
+          },
+          modal: {
+            ondismiss: function () {
+              setLoadingOrder(null);
+            },
+          },
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.on('payment.failed', function (resp) {
+          toast.error(`Payment Failed: ${resp.error?.description || 'Transaction declined'}`);
+          setLoadingOrder(null);
+        });
+        rzp.open();
+      } else {
+        toast.error('Razorpay SDK loading. Please retry in a few seconds.');
+        setLoadingOrder(null);
+      }
+    } catch (err) {
+      console.error('Checkout error:', err);
+      toast.error(err.response?.data?.message || err.message || 'Failed to initiate checkout.');
+      setLoadingOrder(null);
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // COUPON VALIDATION
+  // ─────────────────────────────────────────────────────────────────────────
+  const handleValidateCoupon = async (e) => {
+    e.preventDefault();
+    if (!couponCode.trim()) return;
+
+    setValidatingCoupon(true);
+    try {
+      const res = await api.post('/auth/apply-coupon', { code: couponCode.trim() });
+      toast.success(res.data.message || 'Coupon validated successfully!');
       fetchStatus();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to submit payment details');
+      toast.error(err.response?.data?.message || 'Invalid or expired coupon code.');
     } finally {
-      setSubmittingPayment(false);
+      setValidatingCoupon(false);
     }
   };
 
-  const handleValidateCoupon = async () => {
-    if (!couponCode.trim()) return toast.error('Please enter a coupon code');
-    setValidating(true);
-    setValidationError('');
-    setValidatedCoupon(null);
+  // ─────────────────────────────────────────────────────────────────────────
+  // MANUAL UPI PROOF SUBMISSION (LEGACY FALLBACK)
+  // ─────────────────────────────────────────────────────────────────────────
+  const handleSubmitManualProof = async (e) => {
+    e.preventDefault();
+    if (!utrNumber.trim() || utrNumber.trim().length < 10) {
+      return toast.error('Please enter a valid 12-digit UPI UTR transaction reference number.');
+    }
+    if (!screenshotFile) {
+      return toast.error('Please attach your payment screenshot receipt.');
+    }
+
+    setSubmittingManual(true);
+    const formData = new FormData();
+    formData.append('planSelected', selectedManualPlan.id);
+    formData.append('originalPrice', calculatePrice(selectedManualPlan).rawPrice);
+    formData.append('finalPrice', calculatePrice(selectedManualPlan).finalPrice);
+    formData.append('utrNumber', utrNumber.trim());
+    formData.append('screenshot', screenshotFile);
+    if (validatedCoupon) formData.append('couponCodeUsed', validatedCoupon.code);
+
     try {
-      const { data } = await api.post('/auth/validate-coupon', { code: couponCode });
-      setValidatedCoupon(data);
-      toast.success(data.message || 'Coupon is valid!');
+      const res = await api.post('/payments', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      toast.success(res.data.message || 'Payment submitted! Admin will verify within 5–15 mins.');
+      setShowManualUpi(false);
+      fetchStatus();
     } catch (err) {
-      setValidationError(err.response?.data?.message || 'Invalid coupon code');
-      toast.error(err.response?.data?.message || 'Invalid coupon code');
+      toast.error(err.response?.data?.message || 'Failed to submit payment proof.');
     } finally {
-      setValidating(false);
+      setSubmittingManual(false);
     }
   };
+
+  const lifecycle = user?.subscriptionLifecycle;
+  const isSubAgent = lifecycle?.isSubAgent || (user?.companyRole === 'agent' && user?.companyId);
+  const isSoloUser = user?.workStatus === 'independent_agent';
+  const isOrgUser = user?.workStatus === 'company_owner' || user?.companyRole === 'owner';
+
+  // Strict Split Pricing Selection
+  const activePlans = isSoloUser 
+    ? INDIVIDUAL_PLANS 
+    : isOrgUser 
+      ? ORG_PLANS 
+      : (planCategory === 'org' ? ORG_PLANS : INDIVIDUAL_PLANS);
+
+  if (loadingUser) {
+    return (
+      <div className="app-shell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh' }}>
+        <div className="spinner" />
+      </div>
+    );
+  }
 
   return (
-    <div className="app-shell" style={{ minHeight: '100dvh', padding: '24px 20px', paddingBottom: 40 }}>
-      {/* Header */}
-      <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 56, height: 56, borderRadius: 18, background: 'var(--surface)', border: '1px solid var(--border)', marginBottom: 16 }}>
-          <Star size={28} color="var(--yellow)" fill="var(--yellow)" />
+    <div className="app-shell" style={{ paddingBottom: 90 }}>
+      <div className="page-container max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+        
+        {/* Page Header */}
+        <div style={{ textAlign: 'center', margin: '32px 0 28px' }}>
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            background: 'var(--accent-glow)',
+            color: 'var(--accent)',
+            padding: '6px 14px',
+            borderRadius: 20,
+            fontSize: 12,
+            fontWeight: 700,
+            marginBottom: 12,
+            border: '1px solid var(--accent)'
+          }}>
+            <Sparkles size={14} /> Enterprise Sales CRM Pricing
+          </div>
+          <h1 style={{ fontSize: 'clamp(24px, 4vw, 36px)', fontWeight: 800, margin: '0 0 10px', color: 'var(--text)' }}>
+            Power Your Sales Pipeline
+          </h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: 14, maxWidth: 580, margin: '0 auto' }}>
+            {isSoloUser
+              ? 'Choose a high-impact plan tailored for solo sales professionals. Upgrade or cancel anytime.'
+              : isOrgUser
+                ? 'Choose a scalable multi-agent plan tailored for organizations & agencies. Upgrade or cancel anytime.'
+                : 'Choose a plan tailored for solo sales professionals or multi-agent organizations. Upgrade or cancel anytime.'}
+          </p>
         </div>
-        <h1 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 8px', color: 'var(--text)' }}>
-          Choose Your Plan
-        </h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: 0 }}>
-          Manual Hybrid UPI payment mode — secure direct activation
-        </p>
-      </div>
 
-      {/* Current plan display */}
-      {user && (
-        <div className="card" style={{ marginBottom: 20, textAlign: 'center', background: 'rgba(99,102,241,0.06)' }}>
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Current active plan</p>
-          <p style={{ margin: '4px 0 0', fontSize: 16, fontWeight: 700, textTransform: 'capitalize', color: 'var(--accent)' }}>
-            ✨ {user.plan} Plan {user.planStatus?.isExpired && <span style={{ color: 'var(--red)', fontSize: 12 }}>(Expired)</span>}
-          </p>
-          {user.planStatus?.daysRemaining !== null && user.planStatus?.daysRemaining !== undefined && (
-            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
-              {user.planStatus.daysRemaining} days remaining
-            </p>
-          )}
-        </div>
-      )}
+        {/* Current Active Plan Card */}
+        {user && (
+          <div style={{
+            background: 'var(--card)',
+            border: '1px solid var(--border)',
+            borderRadius: 16,
+            padding: '18px 24px',
+            marginBottom: 32,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 16,
+            boxShadow: 'var(--shadow-sm)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                background: 'var(--accent-glow)',
+                color: 'var(--accent)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                {user.workStatus === 'company_owner' ? <Building2 size={22} /> : <User size={22} />}
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Active Tier:</span>
+                  <span style={{
+                    fontSize: 13,
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    color: 'var(--accent)',
+                    background: 'var(--accent-glow)',
+                    padding: '2px 8px',
+                    borderRadius: 6
+                  }}>
+                    {user.plan || 'Free'} Plan
+                  </span>
+                  {lifecycle?.state === 'EXPIRING_SOON' && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.15)', padding: '2px 8px', borderRadius: 6 }}>
+                      ⚠️ Expires in {lifecycle.daysLeft}d
+                    </span>
+                  )}
+                  {lifecycle?.state === 'GRACE_PERIOD' && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.15)', padding: '2px 8px', borderRadius: 6 }}>
+                      🚨 Grace Period ({lifecycle.graceDaysLeft}d left)
+                    </span>
+                  )}
+                  {lifecycle?.state === 'LOCKED' && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#b91c1c', background: 'rgba(185,28,28,0.2)', padding: '2px 8px', borderRadius: 6 }}>
+                      🔒 Account Locked
+                    </span>
+                  )}
+                </div>
 
-      {/* Pending Payment Card */}
-      {pendingPayment ? (
-        <div className="card" style={{ padding: '24px 20px', textAlign: 'center', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 16, marginBottom: 20 }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 48, height: 48, borderRadius: '50%', background: 'rgba(245,158,11,0.15)', marginBottom: 12 }}>
-            <AlertCircle size={24} color="var(--yellow)" />
+                <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
+                  {isSubAgent ? (
+                    <>Organization Roster Member (Managed by <strong>{lifecycle?.companyName || 'Organization Owner'}</strong>)</>
+                  ) : (
+                    user.planEndDate ? (
+                      <>Renewal Date: <strong>{new Date(user.planEndDate).toLocaleDateString()}</strong> ({lifecycle?.daysLeft ?? 0} days remaining)</>
+                    ) : (
+                      <>Trial mode. 10 leads limit. Upgrade to unlock full pipeline scale.</>
+                    )
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {pendingPayment && (
+              <div style={{
+                background: 'rgba(245,158,11,0.1)',
+                border: '1px solid #f59e0b',
+                padding: '8px 14px',
+                borderRadius: 10,
+                fontSize: 12,
+                color: '#d97706',
+                fontWeight: 600
+              }}>
+                ⏳ Verification Pending for <strong>{pendingPayment.planSelected}</strong> (UTR: {pendingPayment.utrNumber})
+              </div>
+            )}
           </div>
-          <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700, color: 'var(--yellow)' }}>Verification In Progress</h3>
-          <p style={{ margin: '8px 0 16px', fontSize: 13, color: 'var(--text-muted)', lineHeight: '1.4' }}>
-            We have received your payment details for the <strong style={{ textTransform: 'capitalize', color: 'var(--text)' }}>{pendingPayment.planSelected}</strong> plan.<br />
-            Our admin team is verifying the UTR <strong style={{ color: 'var(--text)' }}>{pendingPayment.utrNumber}</strong>. Your plan will activate within 5–15 mins.
-          </p>
-          <div style={{ display: 'inline-flex', padding: '6px 12px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 10, fontSize: 12, fontWeight: 600, color: 'var(--yellow)' }}>
-            Status: PENDING ADMIN APPROVAL
+        )}
+
+        {/* Sub-Agent Banner */}
+        {isSubAgent && (
+          <div style={{
+            background: 'rgba(99,102,241,0.08)',
+            border: '1px solid rgba(99,102,241,0.3)',
+            borderRadius: 12,
+            padding: '14px 18px',
+            marginBottom: 24,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12
+          }}>
+            <Building2 size={20} color="var(--accent)" />
+            <div style={{ fontSize: 13, color: 'var(--text)' }}>
+              <strong>Organization Managed Account:</strong> Your subscription and limits are centrally managed and billed through your Organization Owner (<strong>{lifecycle?.companyName || 'Agency'}</strong>).
+            </div>
           </div>
-        </div>
-      ) : user && user.plan !== 'free' && !user.planStatus?.isExpired ? (
-        /* Plan is active and not expired: Hide plans and show activation card */
-        <div className="card" style={{ padding: '24px 20px', textAlign: 'center', background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)', borderRadius: 16 }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 48, height: 48, borderRadius: '50%', background: 'rgba(34,197,94,0.15)', marginBottom: 12 }}>
-            <Check size={24} color="var(--green)" />
-          </div>
-          <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700, color: 'var(--green)' }}>Your plan is active</h3>
-          <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--text-muted)' }}>
-            Your account is currently subscribed to the <strong style={{ textTransform: 'capitalize', color: 'var(--text)' }}>{user.plan}</strong> plan.
-          </p>
-          {user.planStatus?.daysRemaining !== null && user.planStatus?.daysRemaining !== undefined && (
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>
-              ⏳ {user.planStatus.daysRemaining} days remaining in billing cycle.
-            </p>
+        )}
+
+        {/* Audience Indicator & Billing Cycle Toggle */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 16,
+          marginBottom: 32
+        }}>
+          
+          {/* Strict Split Pricing Badge or Fallback Switcher */}
+          {isSoloUser ? (
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              background: 'rgba(59,130,246,0.12)',
+              border: '1px solid rgba(59,130,246,0.3)',
+              borderRadius: 12,
+              padding: '8px 20px',
+              color: '#3b82f6',
+              fontSize: 13,
+              fontWeight: 700
+            }}>
+              <User size={16} /> Solo Agent Plans (Tailored for Individual Professionals)
+            </div>
+          ) : isOrgUser ? (
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              background: 'rgba(99,102,241,0.12)',
+              border: '1px solid rgba(99,102,241,0.3)',
+              borderRadius: 12,
+              padding: '8px 20px',
+              color: '#818cf8',
+              fontSize: 13,
+              fontWeight: 700
+            }}>
+              <Building2 size={16} /> Organization & Agency Plans (Multi-Agent Team Command)
+            </div>
+          ) : (
+            <div style={{
+              display: 'inline-flex',
+              background: 'var(--card)',
+              border: '1px solid var(--border)',
+              borderRadius: 12,
+              padding: 4,
+              gap: 4
+            }}>
+              <button
+                onClick={() => setPlanCategory('solo')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '8px 20px',
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: planCategory === 'solo' ? 'var(--accent)' : 'transparent',
+                  color: planCategory === 'solo' ? '#ffffff' : 'var(--text-muted)',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <User size={15} /> Solo Agent Plans
+              </button>
+              <button
+                onClick={() => setPlanCategory('org')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '8px 20px',
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: planCategory === 'org' ? 'var(--accent)' : 'transparent',
+                  color: planCategory === 'org' ? '#ffffff' : 'var(--text-muted)',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <Building2 size={15} /> Organization & Agency Plans
+              </button>
+            </div>
           )}
+
+          {/* Monthly / Yearly Billing Toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 13, fontWeight: billingCycle === 'monthly' ? 700 : 500, color: billingCycle === 'monthly' ? 'var(--text)' : 'var(--text-muted)' }}>
+              Monthly Billing
+            </span>
+            <button
+              onClick={() => setBillingCycle(prev => prev === 'monthly' ? 'yearly' : 'monthly')}
+              style={{
+                width: 52,
+                height: 28,
+                borderRadius: 14,
+                background: billingCycle === 'yearly' ? 'var(--accent)' : 'var(--border)',
+                border: 'none',
+                cursor: 'pointer',
+                position: 'relative',
+                transition: 'background 0.2s ease',
+                padding: 3
+              }}
+            >
+              <div style={{
+                width: 22,
+                height: 22,
+                borderRadius: '50%',
+                background: '#ffffff',
+                transform: billingCycle === 'yearly' ? 'translateX(24px)' : 'translateX(0)',
+                transition: 'transform 0.2s ease',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+              }} />
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 13, fontWeight: billingCycle === 'yearly' ? 700 : 500, color: billingCycle === 'yearly' ? 'var(--text)' : 'var(--text-muted)' }}>
+                Annual Billing
+              </span>
+              <span style={{
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                color: '#ffffff',
+                fontSize: 11,
+                fontWeight: 800,
+                padding: '2px 8px',
+                borderRadius: 12,
+                boxShadow: '0 2px 6px rgba(16,185,129,0.3)'
+              }}>
+                Save ~16%
+              </span>
+            </div>
+          </div>
         </div>
-      ) : (
-        /* Show Plans selection */
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {PLANS.map(plan => {
+
+        {/* Plan Cards Grid */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))',
+          gap: 24,
+          marginBottom: 36
+        }}>
+          {activePlans.map(plan => {
             const Icon = plan.icon;
-            const { originalPrice, finalPrice, discount } = getPriceDetails(plan);
-            const currency = plan.price.startsWith('₹') ? '₹' : '$';
+            const { rawPrice, finalPrice, discount, monthlyEquivalent } = calculatePrice(plan);
+            const isCurrent = user?.plan === plan.id;
+            const isLoading = loadingOrder === plan.id;
 
             return (
               <div
                 key={plan.id}
-                className="plan-card"
                 style={{
-                  background: 'var(--surface)',
-                  border: plan.popular ? `2px solid var(--accent)` : '1px solid var(--border)',
+                  background: 'var(--card)',
                   borderRadius: 20,
-                  padding: 24,
-                  position: 'relative',
+                  border: plan.popular ? '2px solid var(--accent)' : '1px solid var(--border)',
+                  padding: '28px 24px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 16
+                  position: 'relative',
+                  boxShadow: plan.popular ? '0 12px 32px rgba(99,102,241,0.18)' : 'var(--shadow-sm)',
+                  transform: plan.popular ? 'scale(1.02)' : 'none',
+                  transition: 'all 0.2s ease'
                 }}
               >
                 {plan.popular && (
                   <div style={{
                     position: 'absolute',
                     top: -12,
-                    right: 20,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
                     background: 'var(--accent)',
-                    color: 'white',
-                    padding: '4px 12px',
-                    borderRadius: 20,
+                    color: '#ffffff',
                     fontSize: 11,
-                    fontWeight: 700
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                    padding: '4px 14px',
+                    borderRadius: 20,
+                    boxShadow: '0 4px 10px rgba(99,102,241,0.4)'
                   }}>
-                    POPULAR
+                    ★ Most Popular
                   </div>
                 )}
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                {/* Plan Header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
                   <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
                     width: 44,
                     height: 44,
-                    borderRadius: 14,
-                    background: plan.popular ? 'var(--accent-glow)' : 'var(--bg)',
-                    border: '1px solid var(--border)'
+                    borderRadius: 12,
+                    background: `${plan.color}18`,
+                    color: plan.color,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
                   }}>
-                    <Icon size={20} color={plan.popular ? 'var(--accent)' : 'var(--text)'} />
+                    <Icon size={22} />
                   </div>
                   <div>
-                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{plan.name}</h3>
-                    <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>Best value package</p>
+                    <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>
+                      {plan.name}
+                    </h3>
+                    {plan.seats && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)' }}>
+                        👥 {plan.seats} Team Seats
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                  {discount > 0 ? (
-                    <>
-                      <span style={{ fontSize: 24, fontWeight: 800 }}>{currency}{finalPrice}</span>
-                      <span style={{ fontSize: 14, color: 'var(--text-muted)', textDecoration: 'line-through' }}>{plan.price}</span>
-                      <span style={{ fontSize: 12, color: 'var(--green)', fontWeight: 600 }}>({discount}% Off)</span>
-                    </>
-                  ) : (
-                    <>
-                      <span style={{ fontSize: 24, fontWeight: 800 }}>{plan.price}</span>
-                      <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{plan.period}</span>
-                    </>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 16px', minHeight: 34 }}>
+                  {plan.subtitle}
+                </p>
+
+                {/* Pricing Box */}
+                <div style={{ marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                    <span style={{ fontSize: 32, fontWeight: 800, color: 'var(--text)' }}>
+                      ₹{finalPrice.toLocaleString()}
+                    </span>
+                    <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>
+                      /{billingCycle === 'yearly' ? 'year' : 'month'}
+                    </span>
+                  </div>
+
+                  {billingCycle === 'yearly' && (
+                    <div style={{ fontSize: 12, color: 'var(--green)', fontWeight: 600, marginTop: 4 }}>
+                      ≈ ₹{monthlyEquivalent}/mo (billed annually)
+                    </div>
+                  )}
+                  {discount > 0 && (
+                    <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 700, marginTop: 2 }}>
+                      🎉 {discount}% Coupon discount applied
+                    </div>
                   )}
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {plan.features.map((feat, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                      <Check size={14} color="var(--green)" />
-                      <span>{feat}</span>
-                    </div>
-                  ))}
+                {/* Features List */}
+                <div style={{ flex: 1, marginBottom: 24 }}>
+                  <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: 0.5 }}>
+                    What&apos;s Included:
+                  </p>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {plan.features.map((feat, i) => (
+                      <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: 'var(--text)' }}>
+                        <Check size={16} color="var(--green)" style={{ flexShrink: 0, marginTop: 2 }} />
+                        <span>{feat}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
 
-                {user && user.plan === plan.id ? (
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    padding: '12px',
-                    borderRadius: 12,
-                    background: 'rgba(34,197,94,0.1)',
-                    border: '1px dashed var(--green)',
-                    color: 'var(--green)',
-                    fontWeight: 700,
-                    fontSize: 14
-                  }}>
-                    <Check size={18} /> Active Plan
+                {/* Action CTA */}
+                {isCurrent ? (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      padding: '10px 14px',
+                      borderRadius: 12,
+                      background: (plan.id === 'power_solo' || plan.id === 'enterprise' || plan.id === 'custom_enterprise')
+                        ? 'rgba(16, 185, 129, 0.15)'
+                        : 'rgba(99, 102, 241, 0.15)',
+                      color: (plan.id === 'power_solo' || plan.id === 'enterprise' || plan.id === 'custom_enterprise')
+                        ? '#10b981'
+                        : 'var(--accent)',
+                      border: `1px solid ${(plan.id === 'power_solo' || plan.id === 'enterprise' || plan.id === 'custom_enterprise') ? 'rgba(16, 185, 129, 0.35)' : 'rgba(99, 102, 241, 0.3)'}`,
+                      fontWeight: 700,
+                      fontSize: 13,
+                      textAlign: 'center'
+                    }}
+                  >
+                    {(plan.id === 'power_solo' || plan.id === 'enterprise' || plan.id === 'custom_enterprise') ? (
+                      <>👑 Top Tier Active ({lifecycle?.daysLeft ?? 0}d left)</>
+                    ) : (
+                      <><CheckCircle2 size={16} color="var(--green)" /> Current Active ({lifecycle?.daysLeft ?? 0}d left)</>
+                    )}
                   </div>
                 ) : (
                   <button
-                    onClick={() => handleChoosePlan(plan)}
-                    className="btn btn-full"
+                    onClick={() => handleRazorpayCheckout(plan)}
+                    disabled={isLoading || isSubAgent}
+                    className="btn btn-primary btn-full"
                     style={{
-                      background: plan.popular ? 'var(--accent)' : 'transparent',
-                      border: `2px solid var(--accent)`,
-                      color: plan.popular ? 'white' : 'var(--accent)',
                       justifyContent: 'center',
-                      display: 'flex',
-                      alignItems: 'center',
                       gap: 8,
-                      cursor: 'pointer'
+                      background: plan.popular ? 'var(--accent)' : 'transparent',
+                      color: plan.popular ? '#ffffff' : 'var(--accent)',
+                      border: `1.5px solid var(--accent)`
                     }}
                   >
-                    Choose {plan.name}
+                    {isLoading ? (
+                      <div className="spinner" style={{ width: 18, height: 18 }} />
+                    ) : (
+                      <>
+                        {user && user.plan !== 'free' ? 'Upgrade to ' + plan.name : 'Choose ' + plan.name} <ArrowRight size={15} />
+                      </>
+                    )}
                   </button>
                 )}
               </div>
             );
           })}
         </div>
-      )}
 
-      {/* Coupon Application Card (Only shown if user plan is free) */}
-      {(!user || user.plan === 'free' || user.planStatus?.isExpired) && !pendingPayment && (
-        <div className="card" style={{ marginTop: 24, padding: 16 }}>
-          <p className="section-title" style={{ margin: '0 0 8px' }}>🎫 Got a Coupon Code?</p>
-          <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--text-muted)' }}>
-            Enter a promo code to instantly check discount percentages or apply it to activate your plan.
-          </p>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        {/* Custom Enterprise Plan Card */}
+        <div style={{
+          background: 'linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%)',
+          color: '#ffffff',
+          borderRadius: 20,
+          padding: '28px 32px',
+          marginBottom: 40,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 24,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+          border: '1px solid rgba(255,255,255,0.15)'
+        }}>
+          <div style={{ maxWidth: 620 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(99,102,241,0.3)', padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, color: '#a5b4fc', marginBottom: 10 }}>
+              <Layers size={14} /> High-Volume Custom Enterprise
+            </div>
+            <h2 style={{ margin: '0 0 8px', fontSize: 22, fontWeight: 800 }}>
+              Need 100+ Team Seats or Custom WhatsApp Gateways?
+            </h2>
+            <p style={{ margin: 0, fontSize: 13, color: '#94a3b8', lineHeight: 1.5 }}>
+              We build custom enterprise solutions with dedicated multi-number WhatsApp routers, SLA support, tailored data connectors, and private cloud deployment.
+            </p>
+          </div>
+
+          <a
+            href={`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent('Hi SalesCRM Team, I want to inquire about the Custom Enterprise High-Volume Plan for my organization.')}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              background: '#22c55e',
+              color: '#ffffff',
+              padding: '12px 24px',
+              borderRadius: 12,
+              fontSize: 14,
+              fontWeight: 700,
+              textDecoration: 'none',
+              boxShadow: '0 4px 12px rgba(34,197,94,0.35)'
+            }}
+          >
+            <MessageCircle size={18} /> Contact Sales on WhatsApp
+          </a>
+        </div>
+
+        {/* Promo Coupon Card */}
+        <div style={{
+          background: 'var(--card)',
+          border: '1px solid var(--border)',
+          borderRadius: 16,
+          padding: '20px 24px',
+          marginBottom: 36,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 16
+        }}>
+          <div>
+            <h4 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+              Have a Promo Code or Organization Voucher?
+            </h4>
+            <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+              Enter an active coupon code to redeem instant trial extensions or plan discounts.
+            </p>
+          </div>
+
+          <form onSubmit={handleValidateCoupon} style={{ display: 'flex', gap: 8, minWidth: 280 }}>
             <input
-              className="input"
-              placeholder="COUPON_CODE"
+              type="text"
+              placeholder="ENTER COUPON CODE"
               value={couponCode}
               onChange={e => setCouponCode(e.target.value.toUpperCase())}
-              style={{ textTransform: 'uppercase' }}
+              className="input"
+              style={{ textTransform: 'uppercase', fontWeight: 700, letterSpacing: 0.5, height: 40, fontSize: 13 }}
             />
-            <button 
-              className="btn btn-ghost" 
-              onClick={handleValidateCoupon}
-              disabled={validating}
-              style={{ flexShrink: 0 }}
+            <button
+              type="submit"
+              disabled={validatingCoupon || !couponCode.trim()}
+              className="btn btn-primary"
+              style={{ height: 40, padding: '0 16px', fontSize: 13 }}
             >
-              {validating ? <div className="spinner" style={{ width: 14, height: 14 }} /> : 'Verify'}
+              {validatingCoupon ? 'Validating...' : 'Apply'}
             </button>
-          </div>
-          {validatedCoupon && (
-            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--green)', fontWeight: 600 }}>
-              ✓ Coupon "{validatedCoupon.code}" offers {validatedCoupon.discountPercent}% off on the {validatedCoupon.plan} plan!
-            </p>
-          )}
-          {validationError && (
-            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--red)', fontWeight: 600 }}>
-              ✗ {validationError}
-            </p>
-          )}
+          </form>
         </div>
-      )}
 
-      {/* Dynamic Payment Process Modals */}
-      {paymentStep === 1 && selectedPlan && (
-        <div className="modal-overlay">
-          <div className="modal-sheet">
-            <h3 style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 800 }}>Complete UPI Payment</h3>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 16px', lineHeight: '1.4' }}>
-              We have generated a dynamic UPI deep-link request for you.
-            </p>
-            
-            <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 12, padding: 14, marginBottom: 20 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Selected Plan:</span>
-                <span style={{ fontSize: 13, fontWeight: 700 }}>{selectedPlan.name}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Pay To UPI:</span>
-                <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600 }}>{UPI_ID}</span>
-              </div>
-              <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '8px 0' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>Amount Due:</span>
-                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--accent)' }}>₹{getPriceDetails(selectedPlan).finalPrice}</span>
+        {/* Secondary Manual UPI Transfer Drawer (Legacy fallback) */}
+        <div style={{
+          background: 'var(--card)',
+          border: '1px solid var(--border)',
+          borderRadius: 16,
+          padding: '20px 24px'
+        }}>
+          <div
+            onClick={() => setShowManualUpi(!showManualUpi)}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <QrCode size={20} color="var(--accent)" />
+              <div>
+                <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+                  Alternative Payment Option: Manual UPI Transfer & Proof Upload
+                </h4>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                  Click to transfer directly to UPI ID <strong>{UPI_ID}</strong> and submit 12-digit UTR receipt.
+                </p>
               </div>
             </div>
-
-            <div style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)', borderRadius: 12, padding: 12, marginBottom: 20 }}>
-              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)', lineHeight: '1.4' }}>
-                👉 <strong>How to Pay:</strong> Click the pay button to invoke your UPI applications (Google Pay, PhonePe, Paytm, etc.). Complete the transaction, <strong>copy the UTR / Ref Number</strong>, take a screenshot of success, and return here.
-              </p>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button 
-                className="btn btn-primary"
-                onClick={() => {
-                  const { finalPrice } = getPriceDetails(selectedPlan);
-                  const upiLink = `upi://pay?pa=${encodeURIComponent(UPI_ID)}&pn=${encodeURIComponent(CRM_NAME)}&am=${finalPrice}&cu=INR`;
-                  window.open(upiLink, '_self');
-                }}
-              >
-                📲 Pay via UPI App
-              </button>
-              <button className="btn btn-secondary" onClick={handlePaidClick}>
-                I Have Paid
-              </button>
-              <button className="btn btn-ghost" onClick={() => { setPaymentStep(0); setSelectedPlan(null); }}>
-                Cancel
-              </button>
-            </div>
+            <ChevronRight size={18} style={{ transform: showManualUpi ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
           </div>
-        </div>
-      )}
 
-      {paymentStep === 2 && selectedPlan && (
-        <div className="modal-overlay">
-          <div className="modal-sheet">
-            <h3 style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 800 }}>Confirm UPI Payment</h3>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 16px', lineHeight: '1.4' }}>
-              Please enter your payment reference code and upload the screenshot.
-            </p>
+          {showManualUpi && (
+            <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
+              <form onSubmit={handleSubmitManualProof} style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 480 }}>
+                <div>
+                  <label className="label">1. Select Desired Plan</label>
+                  <select
+                    className="input"
+                    value={selectedManualPlan?.id || ''}
+                    onChange={e => {
+                      const all = isSoloUser ? INDIVIDUAL_PLANS : isOrgUser ? ORG_PLANS : [...INDIVIDUAL_PLANS, ...ORG_PLANS];
+                      setSelectedManualPlan(all.find(p => p.id === e.target.value) || null);
+                    }}
+                    required
+                  >
+                    <option value="">Choose plan...</option>
+                    {isSoloUser ? (
+                      <optgroup label="Solo Agent Plans">
+                        {INDIVIDUAL_PLANS.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} — ₹{calculatePrice(p).finalPrice}/{billingCycle}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : isOrgUser ? (
+                      <optgroup label="Organization & Agency Plans">
+                        {ORG_PLANS.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} — ₹{calculatePrice(p).finalPrice}/{billingCycle}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : (
+                      <>
+                        <optgroup label="Solo Agent Plans">
+                          {INDIVIDUAL_PLANS.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} — ₹{calculatePrice(p).finalPrice}/{billingCycle}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Organization Plans">
+                          {ORG_PLANS.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} — ₹{calculatePrice(p).finalPrice}/{billingCycle}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </>
+                    )}
+                  </select>
+                </div>
 
-            <form onSubmit={handleSubmitProof} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text)' }}>
-                  UTR / Transaction ID (required, min 10 chars)
-                </label>
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="Enter 12-digit UTR or Reference Number"
-                  value={utrNumber}
-                  onChange={(e) => setUtrNumber(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
-                  required
-                />
-              </div>
+                {selectedManualPlan && (
+                  <div style={{ background: 'var(--bg)', padding: 14, borderRadius: 10, fontSize: 13, border: '1px solid var(--border)' }}>
+                    <p style={{ margin: '0 0 6px', fontWeight: 600 }}>Pay via UPI App (GPay / PhonePe / Paytm):</p>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--accent)' }}>{UPI_ID}</span>
+                      <span style={{ fontWeight: 800, fontSize: 16 }}>₹{calculatePrice(selectedManualPlan).finalPrice}</span>
+                    </div>
+                  </div>
+                )}
 
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text)' }}>
-                  Proof Screenshot (required, image format)
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setScreenshotFile(e.target.files[0])}
-                  required
-                  style={{
-                    fontSize: 12,
-                    color: 'var(--text-muted)',
-                    background: 'var(--bg)',
-                    border: '1px dashed var(--border)',
-                    borderRadius: 10,
-                    padding: 8,
-                    width: '100%'
-                  }}
-                />
-              </div>
+                <div>
+                  <label className="label">2. Enter 12-Digit UPI UTR Reference Number</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 423819827364"
+                    value={utrNumber}
+                    onChange={e => setUtrNumber(e.target.value)}
+                    className="input"
+                    required
+                  />
+                </div>
 
-              <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  style={{ flex: 1 }}
-                  onClick={() => setPaymentStep(1)}
-                  disabled={submittingPayment}
-                >
-                  Back
-                </button>
+                <div>
+                  <label className="label">3. Upload Payment Screenshot Receipt</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={e => setScreenshotFile(e.target.files[0] || null)}
+                    className="input"
+                    required
+                  />
+                </div>
+
                 <button
                   type="submit"
+                  disabled={submittingManual || !selectedManualPlan}
                   className="btn btn-primary"
-                  style={{ flex: 2 }}
-                  disabled={submittingPayment}
+                  style={{ justifyContent: 'center' }}
                 >
-                  {submittingPayment ? (
-                    <div className="spinner" style={{ width: 18, height: 18 }} />
-                  ) : (
-                    'Submit Details'
-                  )}
+                  {submittingManual ? 'Submitting Receipt...' : 'Submit UTR Receipt for Verification'}
                 </button>
-              </div>
-            </form>
-          </div>
+              </form>
+            </div>
+          )}
         </div>
-      )}
+
+      </div>
+
+      <BottomNav active="plans" />
     </div>
   );
 }

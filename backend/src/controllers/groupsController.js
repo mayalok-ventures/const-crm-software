@@ -22,7 +22,7 @@ exports.createGroup = async (req, res) => {
     const { name, type, tags, leadIds, description } = req.body;
     if (!name) return res.status(400).json({ message: 'Group name is required' });
 
-    const plan = req.user.plan || 'free';
+    const plan = req.user.subscriptionLifecycle?.effectivePlan || req.user.plan || 'free';
     const limits = PLAN_LIMITS[plan];
 
     if (!limits || !limits.canCreateGroup) {

@@ -20,8 +20,8 @@ const { PLAN_LIMITS } = require('../utils/planLimits');
  * Always reference PLAN_LIMITS from planLimits.js.
  */
 const planGuard = (feature) => (req, res, next) => {
-  const plan = req.user?.plan || 'free';
-  const limits = PLAN_LIMITS[plan];
+  const plan = req.user?.subscriptionLifecycle?.effectivePlan || req.user?.plan || 'free';
+  const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
 
   if (!limits) {
     return res.status(403).json({
@@ -33,7 +33,7 @@ const planGuard = (feature) => (req, res, next) => {
   if (!limits[feature]) {
     return res.status(403).json({
       code: 'PLAN_LIMIT',
-      message: `This feature is not available on the ${plan} plan. Please upgrade to access it.`,
+      message: `This feature is not available on your active plan (${limits.name || plan}). Please upgrade to access it.`,
       feature,
       currentPlan: plan,
     });
