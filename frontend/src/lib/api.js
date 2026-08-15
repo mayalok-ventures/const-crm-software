@@ -3,8 +3,8 @@ import axios from 'axios';
 const getBaseUrl = () => {
   // Use env var if set (works for both local dev and production builds)
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
-  // Fallback to production API endpoint
-  return 'https://api.coresetu.com/api';
+  // Fallback to live AWS backend API endpoint
+  return 'http://13.51.219.53/api';
 };
 
 const API_URL = getBaseUrl();
@@ -31,15 +31,22 @@ const injectToken = (config) => {
 
 const handleAuthError = (err) => {
   if (typeof window !== 'undefined') {
+    const currentPath = window.location.pathname || '';
+    const isAuthPage = currentPath.includes('/login') || currentPath.includes('/signup');
+
     if (err.response?.status === 403 && err.response?.data?.code === 'SUSPENDED') {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       const reason = encodeURIComponent(err.response.data.message || 'Account suspended.');
-      window.location.href = `/login?error=suspended&reason=${reason}`;
+      if (!isAuthPage) {
+        window.location.href = `/login?error=suspended&reason=${reason}`;
+      }
     } else if (err.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      if (!isAuthPage) {
+        window.location.href = '/login';
+      }
     }
   }
   return Promise.reject(err);
@@ -54,3 +61,4 @@ uploadApi.interceptors.request.use(injectToken);
 uploadApi.interceptors.response.use((res) => res, handleAuthError);
 
 export default api;
+
