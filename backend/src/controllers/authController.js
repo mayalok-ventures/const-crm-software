@@ -309,7 +309,7 @@ exports.verify2FA = async (req, res) => {
       secret: user.twoFactorSecret,
       encoding: 'base32',
       token: String(otp).trim(),
-      window: 1, // Allow +/- 30s clock drift
+      window: 2, // Allow +/- 60s clock drift
     });
 
     if (!verified) {
@@ -388,25 +388,27 @@ exports.setup2FA = async (req, res) => {
 // @access Private
 exports.enable2FA = async (req, res) => {
   try {
-    const { otp } = req.body;
-    if (!otp) return res.status(400).json({ message: '6-digit code required' });
+    const rawToken = req.body.token || req.body.otp || req.body.code;
+    if (!rawToken) return res.status(400).json({ message: '6-digit Authenticator code required' });
 
     const user = await User.findById(req.user._id);
-    if (!user.twoFactorSecret) {
+    const activeSecret = req.body.secret || user.twoFactorSecret;
+    if (!activeSecret) {
       return res.status(400).json({ message: 'Please initialize 2FA setup first.' });
     }
 
     const verified = speakeasy.totp.verify({
-      secret: user.twoFactorSecret,
+      secret: activeSecret,
       encoding: 'base32',
-      token: String(otp).trim(),
-      window: 1,
+      token: String(rawToken).trim(),
+      window: 2, // Allow +/- 60s clock drift
     });
 
     if (!verified) {
-      return res.status(400).json({ message: 'Invalid 6-digit code. Please verify the code on your app.' });
+      return res.status(400).json({ message: 'Invalid 6-digit code. Please verify the code on your Authenticator app.' });
     }
 
+    user.twoFactorSecret = activeSecret;
     user.twoFactorEnabled = true;
     await user.save();
 

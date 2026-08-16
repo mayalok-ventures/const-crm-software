@@ -1075,8 +1075,8 @@ export default function SuperAdminDashboard() {
               <div>
                 <label style={{ fontSize: 12, color: '#94a3b8', display: 'block', marginBottom: 4 }}>Broadcast Target</label>
                 <select
-                  value={alertTarget}
-                  onChange={e => setAlertTarget(e.target.value)}
+                  value={alertForm.userId}
+                  onChange={e => setAlertForm(f => ({ ...f, userId: e.target.value }))}
                   style={{ width: '100%', padding: 10, borderRadius: 8, background: '#1e293b', border: '1px solid #334155', color: 'white' }}
                 >
                   <option value="all">Everyone (All Accounts)</option>
@@ -1088,8 +1088,8 @@ export default function SuperAdminDashboard() {
               <div>
                 <label style={{ fontSize: 12, color: '#94a3b8', display: 'block', marginBottom: 4 }}>Notification Title *</label>
                 <input
-                  value={alertTitle}
-                  onChange={e => setAlertTitle(e.target.value)}
+                  value={alertForm.title}
+                  onChange={e => setAlertForm(f => ({ ...f, title: e.target.value }))}
                   placeholder="e.g. Scheduled System Upgrade"
                   style={{ width: '100%', padding: 10, borderRadius: 8, background: '#1e293b', border: '1px solid #334155', color: 'white' }}
                   required
@@ -1100,8 +1100,8 @@ export default function SuperAdminDashboard() {
                 <label style={{ fontSize: 12, color: '#94a3b8', display: 'block', marginBottom: 4 }}>Message Content *</label>
                 <textarea
                   rows={4}
-                  value={alertMessage}
-                  onChange={e => setAlertMessage(e.target.value)}
+                  value={alertForm.message}
+                  onChange={e => setAlertForm(f => ({ ...f, message: e.target.value }))}
                   placeholder="Write message here..."
                   style={{ width: '100%', padding: 10, borderRadius: 8, background: '#1e293b', border: '1px solid #334155', color: 'white', resize: 'vertical' }}
                   required
