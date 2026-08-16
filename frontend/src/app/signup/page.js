@@ -232,6 +232,13 @@ export default function SignupPage() {
           <button className="btn btn-primary btn-full" type="submit" disabled={loading} style={{ marginTop: 8, height: 44, borderRadius: 12 }}>
             {loading ? <div className="spinner" style={{ width: 18, height: 18 }} /> : 'Complete Registration'}
           </button>
+
+          <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', margin: '12px 0 4px', lineHeight: 1.4 }}>
+            By creating an account, you agree to our{' '}
+            <Link href="/terms" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>Terms of Service</Link>{' '}
+            and{' '}
+            <Link href="/privacy" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>Privacy Policy</Link>.
+          </p>
         </form>
 
         <p style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: 'var(--text-muted)' }}>

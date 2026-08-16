@@ -199,6 +199,13 @@ export default function LoginPage() {
               {loading ? <div className="spinner" style={{ width: 18, height: 18 }} /> : 'Sign In'}
             </button>
 
+            <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', margin: '10px 0 4px', lineHeight: 1.4 }}>
+              By signing in, you agree to our{' '}
+              <Link href="/terms" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>Terms of Service</Link>{' '}
+              and{' '}
+              <Link href="/privacy" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>Privacy Policy</Link>.
+            </p>
+
             <div style={{ textAlign: 'center', marginTop: 8 }}>
               <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Don't have an account? </span>
               <Link href="/signup" style={{ color: 'var(--accent)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>

@@ -580,12 +580,13 @@ exports.getMe = async (req, res) => {
 // @access Private
 exports.updateProfile = async (req, res) => {
   try {
-    const { name, phone, profilePicture, companyInfo, localization } = req.body;
+    const { name, phone, profilePicture, avatarIcon, companyInfo, localization } = req.body;
     const user = await User.findById(req.user._id);
 
     if (name) user.name = name.trim();
     if (phone) user.phone = phone.replace(/\D/g, '');
     if (profilePicture !== undefined) user.profilePicture = profilePicture;
+    if (avatarIcon !== undefined) user.avatarIcon = avatarIcon;
 
     if (companyInfo) {
       user.companyInfo = {

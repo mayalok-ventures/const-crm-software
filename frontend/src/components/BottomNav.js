@@ -170,16 +170,34 @@ export default function BottomNav({ active }) {
           })}
         </div>
 
+        {/* Legal links in sidebar */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '8px 8px 4px',
+          fontSize: 11,
+          color: 'var(--text-muted)',
+          marginTop: 'auto'
+        }}>
+          <Link href="/privacy" style={{ color: 'var(--text-muted)', textDecoration: 'none', transition: 'color 0.15s' }} className="hover:text-white">
+            Privacy Policy
+          </Link>
+          <span>•</span>
+          <Link href="/terms" style={{ color: 'var(--text-muted)', textDecoration: 'none', transition: 'color 0.15s' }} className="hover:text-white">
+            Terms
+          </Link>
+        </div>
+
         {/* Footer version badge */}
         <div style={{
           fontSize: 11,
           color: 'var(--text-muted)',
-          padding: '10px 8px 0',
+          padding: '8px 8px 0',
           borderTop: '1px solid var(--border)',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginTop: 'auto'
         }}>
           <span>v2.2.0 • SaaS Edition</span>
           <span style={{ fontSize: 9, background: 'rgba(16, 185, 129, 0.1)', color: 'var(--green)', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>PRO</span>

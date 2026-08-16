@@ -418,36 +418,42 @@ textarea.input { resize: vertical; min-height: 72px; }
   }
 }
 
-/* Modal overlay */
+/* Modal overlay (Strictly above Bottom Nav z-index: 1000) */
 .modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.4);
-  backdrop-filter: blur(4px);
-  z-index: 200;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
+  position: fixed !important;
+  inset: 0 !important;
+  background: rgba(15, 23, 42, 0.55) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+  z-index: 10050 !important;
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
 }
 @media (min-width: 768px) {
   .modal-overlay {
-    align-items: center;
+    align-items: center !important;
+    padding: 20px !important;
   }
 }
 
 .modal-sheet {
-  background: var(--card);
-  border-radius: 24px 24px 0 0;
-  border: 1px solid var(--border);
-  width: 100%;
-  max-width: 540px;
-  max-height: 90dvh;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding: 24px 20px;
-  padding-bottom: calc(24px + env(safe-area-inset-bottom, 16px));
-  animation: slideUp 0.3s ease;
-  box-sizing: border-box;
+  background: var(--card) !important;
+  border-radius: 24px 24px 0 0 !important;
+  border: 1px solid var(--border) !important;
+  border-bottom: none !important;
+  width: 100% !important;
+  max-width: 540px !important;
+  max-height: 88dvh !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding: 24px 20px !important;
+  padding-bottom: max(36px, calc(env(safe-area-inset-bottom, 0px) + 28px)) !important;
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  box-sizing: border-box !important;
+  position: relative !important;
+  z-index: 10051 !important;
 }
 @keyframes slideUp {
   from { transform: translateY(100%); }
@@ -455,9 +461,12 @@ textarea.input { resize: vertical; min-height: 72px; }
 }
 @media (min-width: 768px) {
   .modal-sheet {
-    border-radius: 18px;
-    animation: fadeInScale 0.2s ease;
-    margin: 20px;
+    border-radius: 20px !important;
+    border-bottom: 1px solid var(--border) !important;
+    animation: fadeInScale 0.2s ease !important;
+    margin: 20px !important;
+    max-height: 85vh !important;
+    padding-bottom: 24px !important;
   }
   @keyframes fadeInScale {
     from { opacity: 0; transform: scale(0.95); }
@@ -467,14 +476,15 @@ textarea.input { resize: vertical; min-height: 72px; }
 
 /* Pull handle */
 .modal-handle {
-  width: 40px; height: 4px;
-  background: var(--border);
-  border-radius: 2px;
-  margin: -10px auto 16px;
+  width: 44px !important; 
+  height: 5px !important;
+  background: var(--border) !important;
+  border-radius: 3px !important;
+  margin: -10px auto 16px !important;
 }
 @media (min-width: 768px) {
   .modal-handle {
-    display: none;
+    display: none !important;
   }
 }
 
@@ -1034,7 +1044,7 @@ svg.lucide {
   box-sizing: border-box;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 767px) {
   .details-split-grid {
     display: flex;
     flex-direction: column;
@@ -1044,6 +1054,39 @@ svg.lucide {
   .lead-card {
     padding: 12px 14px;
     border-radius: 12px;
+  }
+
+  /* Universal Mobile Bottom Clearance: Prevents Bottom Navigation from covering final form CTA buttons */
+  body {
+    padding-bottom: max(84px, calc(env(safe-area-inset-bottom, 0px) + 76px)) !important;
+  }
+
+  .page-container,
+  .app-shell,
+  .app-container,
+  .page-content,
+  .dashboard-container,
+  .leads-container,
+  .templates-container,
+  .projects-container,
+  .profile-container,
+  .campaigns-container,
+  .groups-container,
+  .analytics-container {
+    padding-bottom: max(100px, calc(env(safe-area-inset-bottom, 0px) + 88px)) !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Form action buttons on mobile */
+  .modal-actions,
+  .form-actions,
+  .btn-form-footer {
+    margin-bottom: max(16px, calc(env(safe-area-inset-bottom, 0px) + 8px)) !important;
+  }
+
+  .fab {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
+    z-index: 999 !important;
   }
 }
 

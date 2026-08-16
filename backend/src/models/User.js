@@ -41,6 +41,9 @@ const userSchema = new mongoose.Schema({
   // Profile Picture URL or local path
   profilePicture: { type: String, default: null },
 
+  // Chosen Profile Avatar Icon (1 of 10 presets)
+  avatarIcon: { type: String, default: 'avatar-1' },
+
   // Role hierarchy
   role: {
     type: String,
