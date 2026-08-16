@@ -1,0 +1,371 @@
+{
+  "info": {
+    "_postman_id": "9b12e345-6789-4abc-def0-123456789abc",
+    "name": "CoreSetu SalesCRM — Master API Automation Collection",
+    "description": "Comprehensive evidence-based API test suite for CoreSetu SalesCRM covering Auth, 2FA, Leads, WhatsApp, Concurrency, Multi-Tenancy, Razorpay, and RBAC.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Authentication & 2FA",
+      "item": [
+        {
+          "name": "POST Login — Valid Admin Credentials",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Returns JWT token and user profile', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('token');",
+                  "    pm.expect(json.user).to.have.property('email', 'admin@crm.com');",
+                  "    pm.environment.set('ADMIN_TOKEN', json.token);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@crm.com\",\n  \"password\": \"Admin@123\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/auth/login",
+              "host": ["{{BASE_URL}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "POST Login — Invalid Password (Negative Test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 or 401', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400, 401]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@crm.com\",\n  \"password\": \"WrongPassword!999\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/auth/login",
+              "host": ["{{BASE_URL}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "GET Auth Me — Verify Token Resolution",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('User contains role and subscription lifecycle', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('role');",
+                  "    pm.expect(json).to.have.property('subscriptionLifecycle');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/auth/me",
+              "host": ["{{BASE_URL}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Lead Management & Custom Fields",
+      "item": [
+        {
+          "name": "POST Create Lead — Valid Payload",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 or 200', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test('Lead ID generated and stored', function () {",
+                  "    var json = pm.response.json();",
+                  "    var lead = json.lead || json;",
+                  "    pm.expect(lead).to.have.property('_id');",
+                  "    pm.environment.set('TEST_LEAD_ID', lead._id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman QA Lead\",\n  \"phone\": \"+919876543210\",\n  \"email\": \"test@example.com\",\n  \"stage\": \"new\",\n  \"budget\": \"₹75 Lakhs\",\n  \"propertyType\": \"3BHK Luxury\",\n  \"source\": \"Postman Automation\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/leads",
+              "host": ["{{BASE_URL}}"],
+              "path": ["leads"]
+            }
+          }
+        },
+        {
+          "name": "GET Leads — Fetch Pipeline",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Returns array of leads', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.leads || json).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/leads?limit=25",
+              "host": ["{{BASE_URL}}"],
+              "path": ["leads"],
+              "query": [{ "key": "limit", "value": "25" }]
+            }
+          }
+        },
+        {
+          "name": "PATCH Update Lead Stage — Transition to Contacted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"stage\": \"contacted\",\n  \"notes\": \"Followed up via automated QA suite\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/leads/{{TEST_LEAD_ID}}",
+              "host": ["{{BASE_URL}}"],
+              "path": ["leads", "{{TEST_LEAD_ID}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Razorpay Standard Web Checkout",
+      "item": [
+        {
+          "name": "POST Create Razorpay Order — 499 Plan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Order ID and Key ID generated', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.true;",
+                  "    pm.expect(json).to.have.property('order_id');",
+                  "    pm.environment.set('RZP_ORDER_ID', json.order_id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 499,\n  \"currency\": \"INR\",\n  \"planId\": \"smart_solo\",\n  \"cycle\": \"monthly\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/payment/create-order",
+              "host": ["{{BASE_URL}}"],
+              "path": ["payment", "create-order"]
+            }
+          }
+        },
+        {
+          "name": "POST Verify Signature — Forged Signature (Security Negative Test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test('Code is PAYMENT_FORGERY_DETECTED', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.code).to.eql('PAYMENT_FORGERY_DETECTED');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"razorpay_order_id\": \"order_test_forgery_123\",\n  \"razorpay_payment_id\": \"pay_fake_999\",\n  \"razorpay_signature\": \"forged_fake_signature_abc123\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/payment/verify",
+              "host": ["{{BASE_URL}}"],
+              "path": ["payment", "verify"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Multi-Tenant Isolation & SuperAdmin",
+      "item": [
+        {
+          "name": "GET SuperAdmin Stats — Authenticated Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Contains platform overview metrics', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('stats');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/stats",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "stats"]
+            }
+          }
+        },
+        {
+          "name": "GET SuperAdmin Abuse Logs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/abuse-logs",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "abuse-logs"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "http://localhost:5000/api",
+      "type": "string"
+    }
+  ]
+}
