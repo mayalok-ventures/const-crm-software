@@ -28,6 +28,9 @@ const campaignWorker = require('./src/services/campaignWorker');
 
 const app = express();
 
+// Trust reverse proxy (Nginx & Cloudflare) for accurate client IP identification and rate-limiting
+app.set('trust proxy', 1);
+
 // Security & CORS Configuration
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },

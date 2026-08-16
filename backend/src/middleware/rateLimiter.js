@@ -77,6 +77,7 @@ const apiLimiter = rateLimit({
   max: 400,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: { message: 'Too many requests, please try again later.' },
   handler: async (req, res, next, options) => {
     // Skip abuse logging for read-only status polling endpoints — these are not abuse
@@ -93,6 +94,7 @@ const authLimiter = rateLimit({
   max: process.env.NODE_ENV === 'production' ? 15 : 500,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: { message: 'Too many login attempts, please try again in 15 minutes.' },
   handler: async (req, res, next, options) => {
     // Record login spam violation
