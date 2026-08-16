@@ -101,6 +101,9 @@ export default function SuperAdminDashboard() {
 
   // Abuse Logs
   const [abuseLogs, setAbuseLogs] = useState([]);
+  const [loadingAbuse, setLoadingAbuse] = useState(false);
+
+  const abuseUsers = users?.filter(u => (u.abuseScore && u.abuseScore > 0) || (u.loginAttempts && u.loginAttempts > 3) || u.suspension?.isSuspended) || [];
 
   // Verify SuperAdmin
   useEffect(() => {
@@ -176,11 +179,14 @@ export default function SuperAdminDashboard() {
   };
 
   const fetchAbuseLogs = async () => {
+    setLoadingAbuse(true);
     try {
       const { data } = await api.get('/admin/abuse-logs');
       setAbuseLogs(data.logs || []);
     } catch {
       toast.error('Failed to load audit logs');
+    } finally {
+      setLoadingAbuse(false);
     }
   };
 

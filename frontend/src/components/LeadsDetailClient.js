@@ -41,6 +41,19 @@ const STAGE_LABELS = {
   lost: '❌ Lost / Dropped'
 };
 
+const STATUS_COLORS = {
+  new: 'badge-new',
+  cold: 'badge-tag',
+  warm: 'badge-follow_up',
+  hot: 'badge-danger',
+  contacted: 'badge-tag',
+  site_visit_scheduled: 'badge-follow_up',
+  negotiation: 'badge-follow_up',
+  payment_done: 'badge-closed',
+  closed: 'badge-closed',
+  lost: 'badge-tag',
+};
+
 const ACTION_ICONS = {
   lead_created: '✨',
   status_changed: '🔄',
