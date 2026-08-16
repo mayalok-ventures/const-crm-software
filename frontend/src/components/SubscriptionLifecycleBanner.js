@@ -11,32 +11,29 @@ export default function SubscriptionLifecycleBanner() {
   const [lifecycle, setLifecycle] = useState(null);
   const [user, setUser] = useState(null);
 
-  const checkStatus = async () => {
+  const checkStatus = () => {
     const isAuthPage = pathname === '/login' || pathname === '/signup';
     if (isAuthPage) {
       setLifecycle(null);
+      setUser(null);
       return;
     }
 
-    try {
-      const { data } = await api.get('/auth/me');
-      if (data) {
-        setUser(data);
-        saveLocalUser(data);
-        if (data.subscriptionLifecycle) {
-          setLifecycle(data.subscriptionLifecycle);
-        }
-      }
-    } catch {
-      const localUser = getUser();
-      if (localUser?.subscriptionLifecycle) {
-        setLifecycle(localUser.subscriptionLifecycle);
-      }
+    const localUser = getUser();
+    setUser(localUser);
+    if (localUser?.subscriptionLifecycle) {
+      setLifecycle(localUser.subscriptionLifecycle);
+    } else {
+      setLifecycle(null);
     }
   };
 
   useEffect(() => {
     checkStatus();
+
+    const handleUpdate = () => checkStatus();
+    window.addEventListener('user-updated', handleUpdate);
+    return () => window.removeEventListener('user-updated', handleUpdate);
   }, [pathname]);
 
   if (!lifecycle || lifecycle.state === 'ACTIVE' || user?.isAdmin || user?.role === 'superadmin') {

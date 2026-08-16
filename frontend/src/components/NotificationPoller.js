@@ -93,6 +93,7 @@ export default function NotificationPoller() {
     let backoffMs = 0;
 
     const checkNotifications = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       if (!token || isFetchingRef.current) return;
 
@@ -113,7 +114,7 @@ export default function NotificationPoller() {
         }
       } catch (err) {
         if (err.response?.status === 429) {
-          backoffMs = Math.min((backoffMs || 15000) * 2, 120000);
+          backoffMs = Math.min((backoffMs || 20000) * 2, 120000);
         }
       } finally {
         isFetchingRef.current = false;
@@ -122,9 +123,9 @@ export default function NotificationPoller() {
 
     checkNotifications();
 
-    // Polling backup timer
+    // Polling backup timer (every 20s when active)
     const poll = () => {
-      const delay = 15000 + backoffMs;
+      const delay = 20000 + backoffMs;
       return setTimeout(async () => {
         await checkNotifications();
         timerRef.current = poll();
@@ -133,13 +134,21 @@ export default function NotificationPoller() {
 
     timerRef.current = poll();
 
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkNotifications();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      document.removeEventListener('visibilitychange', handleVisibility);
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
     };
-  }, [router]);
+  }, []);
 
   return null;
 }

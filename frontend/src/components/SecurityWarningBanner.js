@@ -10,7 +10,7 @@ export default function SecurityWarningBanner() {
   const pathname = usePathname();
   const [showBanner, setShowBanner] = useState(false);
 
-  const check2FAStatus = async () => {
+  const check2FAStatus = () => {
     const isAuthPage = pathname === '/login' || pathname === '/signup';
     if (isAuthPage) {
       setShowBanner(false);
@@ -23,35 +23,25 @@ export default function SecurityWarningBanner() {
       return;
     }
 
-    // If local user explicitly has 2FA enabled, hide immediately
-    if (localUser.twoFactorEnabled === true) {
+    // Hide immediately if user has 2FA enabled
+    if (localUser.twoFactorEnabled === true || localUser.twoFactorSecret) {
       setShowBanner(false);
       return;
     }
 
-    // Authoritative check with backend API to avoid stale localStorage
-    try {
-      const { data } = await api.get('/auth/me');
-      if (data) {
-        saveLocalUser(data);
-        if (data.twoFactorEnabled === true || data.twoFactorSecret) {
-          setShowBanner(false);
-          return;
-        }
-      }
-      setShowBanner(true);
-    } catch {
-      // If API fails, fallback to local state
-      setShowBanner(!localUser.twoFactorEnabled);
-    }
+    setShowBanner(true);
   };
 
   useEffect(() => {
     check2FAStatus();
 
-    const handle2FAUpdate = () => check2FAStatus();
-    window.addEventListener('2fa-status-changed', handle2FAUpdate);
-    return () => window.removeEventListener('2fa-status-changed', handle2FAUpdate);
+    const handleUpdate = () => check2FAStatus();
+    window.addEventListener('2fa-status-changed', handleUpdate);
+    window.addEventListener('user-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('2fa-status-changed', handleUpdate);
+      window.removeEventListener('user-updated', handleUpdate);
+    };
   }, [pathname]);
 
   if (!showBanner) return null;

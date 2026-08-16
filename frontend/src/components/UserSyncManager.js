@@ -22,8 +22,8 @@ export default function UserSyncManager() {
     if (!token) return;
 
     const now = Date.now();
-    // Throttle sync calls to max once every 2.5 seconds
-    if (now - lastSyncRef.current < 2500) return;
+    // Throttle sync calls to max once every 60 seconds to keep SPA navigation ultra-fast
+    if (now - lastSyncRef.current < 60000) return;
     lastSyncRef.current = now;
 
     syncUser();
@@ -50,11 +50,6 @@ export default function UserSyncManager() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
-
-  // 4. Trigger sync on page navigation
-  useEffect(() => {
-    triggerSync('route_change');
-  }, [pathname]);
 
   return null;
 }

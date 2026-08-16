@@ -242,14 +242,14 @@ textarea.input { resize: vertical; min-height: 72px; }
 .badge-closed { background: rgba(16, 185, 129, 0.08); color: #059669; border: 1px solid rgba(16, 185, 129, 0.2); }
 .badge-tag { background: rgba(148, 163, 184, 0.08); color: var(--text-muted); border: 1px solid var(--border); font-size: 10px; padding: 2px 6px; }
 
-/* Bottom nav */
+/* Bottom nav (Mobile) */
 .bottom-nav {
   position: fixed !important;
   bottom: 0 !important;
   left: 0 !important;
   right: 0 !important;
   width: 100% !important;
-  height: 62px !important;
+  height: 60px !important;
   background: rgba(255, 255, 255, 0.98) !important;
   backdrop-filter: blur(16px) !important;
   -webkit-backdrop-filter: blur(16px) !important;
@@ -257,10 +257,10 @@ textarea.input { resize: vertical; min-height: 72px; }
   display: flex !important;
   align-items: stretch !important;
   justify-content: space-around !important;
-  z-index: 99999 !important;
+  z-index: 1000 !important;
   pointer-events: auto !important;
   padding-bottom: env(safe-area-inset-bottom, 0px) !important;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06) !important;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05) !important;
   touch-action: manipulation !important;
   box-sizing: border-box !important;
 }
@@ -270,11 +270,10 @@ textarea.input { resize: vertical; min-height: 72px; }
   }
 }
 
-.nav-item {
+.bottom-nav-link {
   flex: 1 1 0% !important;
   width: 100% !important;
   height: 100% !important;
-  min-height: 52px !important;
   display: flex !important;
   flex-direction: column !important;
   align-items: center !important;
@@ -283,10 +282,10 @@ textarea.input { resize: vertical; min-height: 72px; }
   gap: 3px !important;
   cursor: pointer !important;
   color: var(--text-muted) !important;
-  transition: color 0.15s, transform 0.1s !important;
+  transition: color 0.15s ease, transform 0.1s ease !important;
   text-decoration: none !important;
   font-size: 11px !important;
-  font-weight: 600 !important;
+  font-weight: 500 !important;
   min-width: 0 !important;
   pointer-events: auto !important;
   touch-action: manipulation !important;
@@ -294,14 +293,16 @@ textarea.input { resize: vertical; min-height: 72px; }
   -webkit-user-select: none !important;
   box-sizing: border-box !important;
 }
-.nav-item * {
+.bottom-nav-link * {
   pointer-events: none !important;
 }
-.nav-item.active { 
+.bottom-nav-link.active { 
   color: var(--accent) !important; 
   font-weight: 700 !important;
 }
-.nav-item:active { transform: scale(0.92) !important; }
+.bottom-nav-link:active { 
+  transform: scale(0.92) !important; 
+}
 
 /* Desktop Sidebar Nav */
 .sidebar-nav {
@@ -309,19 +310,52 @@ textarea.input { resize: vertical; min-height: 72px; }
 }
 @media (min-width: 768px) {
   .sidebar-nav {
-    display: flex;
-    flex-direction: column;
-    width: 240px;
-    background: var(--surface);
-    border-right: 1px solid var(--border);
-    height: 100vh;
-    position: fixed;
-    left: 0;
-    top: 0;
-    padding: 24px 16px;
-    flex-shrink: 0;
-    z-index: 40;
+    display: flex !important;
+    flex-direction: column !important;
+    width: 240px !important;
+    background: var(--surface) !important;
+    border-right: 1px solid var(--border) !important;
+    height: 100vh !important;
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    padding: 24px 16px !important;
+    flex-shrink: 0 !important;
+    z-index: 100 !important;
+    pointer-events: auto !important;
+    overflow-y: auto !important;
+    box-sizing: border-box !important;
   }
+}
+
+.sidebar-nav-link {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 10px 14px !important;
+  border-radius: 10px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: var(--text-muted) !important;
+  text-decoration: none !important;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease !important;
+  cursor: pointer !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
+}
+.sidebar-nav-link:hover {
+  background: rgba(79, 70, 229, 0.06) !important;
+  color: var(--text) !important;
+}
+.sidebar-nav-link.active {
+  background: rgba(79, 70, 229, 0.1) !important;
+  color: var(--accent) !important;
+  font-weight: 700 !important;
+}
+.sidebar-nav-link:active {
+  transform: scale(0.98) !important;
 }
 
 /* Page container (Constrained responsive container) */
