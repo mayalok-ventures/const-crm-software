@@ -160,9 +160,14 @@ function ProjectModal({ project, onClose, onSaved }) {
             <textarea className="input" rows={2} placeholder="Key benefits, deliverables, and selling points..." value={form.description} onChange={set('description')} />
           </div>
 
-          <button type="submit" disabled={loading} className="btn btn-primary btn-full" style={{ marginTop: 8, height: 44, borderRadius: 12 }}>
-            {loading ? <div className="spinner" style={{ width: 18, height: 18 }} /> : (isEdit ? 'Update Package' : 'Save to Catalog')}
-          </button>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-ghost" onClick={onClose} style={{ height: 44, borderRadius: 12 }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={loading} className="btn btn-primary" style={{ height: 44, borderRadius: 12 }}>
+              {loading ? <div className="spinner" style={{ width: 18, height: 18 }} /> : (isEdit ? 'Update Package' : 'Save to Catalog')}
+            </button>
+          </div>
         </form>
       </div>
     </div>

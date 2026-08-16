@@ -153,10 +153,10 @@ function CreateGroupModal({ leads, onClose, onCreated }) {
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button type="button" className="btn btn-ghost btn-full" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
-              {loading ? 'Creating...' : 'Create'}
+          <div className="modal-actions">
+            <button type="button" className="btn btn-ghost" onClick={onClose} style={{ height: 42 }}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={loading} style={{ height: 42 }}>
+              {loading ? 'Creating...' : 'Create Audience Group'}
             </button>
           </div>
         </form>
@@ -241,15 +241,15 @@ function BulkSendModal({ group, onClose }) {
               🎯 Will send to <strong style={{ color: 'var(--text)' }}>{leadsCount}</strong> leads in group <strong>{group.name}</strong> asynchronously via backend.
             </p>
 
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button type="button" className="btn btn-ghost btn-full" onClick={onClose} disabled={submitting}>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={onClose} disabled={submitting} style={{ height: 42 }}>
                 Cancel
               </button>
               <button
                 type="submit"
-                className="btn btn-success btn-full"
+                className="btn btn-success"
                 disabled={submitting || leadsCount === 0}
-                style={{ flex: 2, justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 8 }}
+                style={{ height: 42, justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 8 }}
               >
                 {submitting ? 'Launching...' : 'Launch Campaign'}
               </button>

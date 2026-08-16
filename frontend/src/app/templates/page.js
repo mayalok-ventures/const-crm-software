@@ -200,10 +200,12 @@ function TemplateModal({ template, onClose, onSaved }) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-            <button type="button" className="btn btn-ghost btn-full" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
-              {loading ? <div className="spinner" style={{ width: 18, height: 18 }} /> : isEdit ? 'Update' : 'Create'}
+          <div className="modal-actions">
+            <button type="button" className="btn btn-ghost" onClick={onClose} style={{ height: 42 }}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={loading} style={{ height: 42 }}>
+              {loading ? <div className="spinner" style={{ width: 18, height: 18 }} /> : isEdit ? 'Update Template' : 'Create Template'}
             </button>
           </div>
         </form>
