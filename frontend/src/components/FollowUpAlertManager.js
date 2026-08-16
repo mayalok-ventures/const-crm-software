@@ -281,11 +281,12 @@ export default function FollowUpAlertManager() {
   return (
     <div style={{
       position: 'fixed',
-      bottom: 24,
-      right: 24,
-      zIndex: 9999,
+      bottom: 74,
+      right: 16,
+      left: 16,
+      zIndex: 9000,
       maxWidth: 420,
-      width: 'calc(100vw - 32px)',
+      margin: '0 auto',
       background: '#0f172a',
       borderRadius: 16,
       border: '2px solid #ef4444',

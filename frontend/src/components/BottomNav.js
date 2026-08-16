@@ -1,12 +1,14 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import { getUser } from '@/lib/auth';
 import {
   Home, FileText, Users, BarChart2, User, MessageCircle,
   Package, Send, Zap, Shield, Crown, ChevronRight
 } from 'lucide-react';
+import PlanStatusWidget from '@/components/PlanStatusWidget';
 
 const MOBILE_ITEMS = [
   { href: '/dashboard', label: 'Leads', icon: Home, key: 'dashboard' },
@@ -27,9 +29,9 @@ const DESKTOP_ITEMS = [
   { href: '/profile', label: 'Organization & Profile', icon: User, key: 'profile' },
 ];
 
-import PlanStatusWidget from '@/components/PlanStatusWidget';
-
 export default function BottomNav({ active }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   useEffect(() => {
@@ -39,20 +41,110 @@ export default function BottomNav({ active }) {
     }
   }, []);
 
+  const handleMobileNav = (e, href) => {
+    // Proactively route on touch/click to prevent any link-hijacking or event capture bugs
+    if (pathname !== href) {
+      router.push(href);
+    }
+  };
+
   return (
     <>
       {/* Mobile Bottom Navigation (Visible only on mobile screens < 768px) */}
-      <nav className="bottom-nav md:hidden">
-        {MOBILE_ITEMS.map(({ href, label, icon: Icon, key }) => (
-          <Link key={key} href={href} prefetch={true} className={`nav-item ${active === key ? 'active' : ''}`}>
-            <Icon size={20} />
-            <span>{label}</span>
-          </Link>
-        ))}
+      <nav
+        className="bottom-nav md:hidden"
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          width: '100%',
+          height: '62px',
+          zIndex: 99999,
+          pointerEvents: 'auto',
+          display: 'flex',
+          alignItems: 'stretch',
+          justifyContent: 'space-around',
+          background: 'rgba(255, 255, 255, 0.98)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          borderTop: '1px solid var(--border)',
+          boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.06)',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          boxSizing: 'border-box',
+          touchAction: 'manipulation',
+        }}
+      >
+        {MOBILE_ITEMS.map(({ href, label, icon: Icon, key }) => {
+          const isActive = active === key || pathname === href;
+          return (
+            <Link
+              key={key}
+              href={href}
+              prefetch={true}
+              onClick={(e) => handleMobileNav(e, href)}
+              className={`nav-item ${isActive ? 'active' : ''}`}
+              style={{
+                flex: '1 1 0%',
+                height: '100%',
+                width: '100%',
+                minHeight: '54px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textDecoration: 'none',
+                cursor: 'pointer',
+                pointerEvents: 'auto',
+                padding: '6px 2px',
+                gap: '3px',
+                color: isActive ? 'var(--accent)' : 'var(--text-muted)',
+                fontWeight: isActive ? 700 : 500,
+                fontSize: '11px',
+                minWidth: 0,
+                touchAction: 'manipulation',
+                userSelect: 'none',
+                WebkitUserSelect: 'none',
+                boxSizing: 'border-box',
+              }}
+            >
+              <Icon size={20} style={{ pointerEvents: 'none', flexShrink: 0 }} />
+              <span style={{ pointerEvents: 'none', lineHeight: 1, whiteSpace: 'nowrap' }}>{label}</span>
+            </Link>
+          );
+        })}
         {isSuperAdmin && (
-          <Link href="/superadmin-dashboard" prefetch={true} className="nav-item" style={{ color: '#f59e0b' }}>
-            <Crown size={20} />
-            <span>Admin</span>
+          <Link
+            href="/superadmin-dashboard"
+            prefetch={true}
+            onClick={(e) => handleMobileNav(e, '/superadmin-dashboard')}
+            className={`nav-item ${active === 'superadmin' || pathname === '/superadmin-dashboard' ? 'active' : ''}`}
+            style={{
+              flex: '1 1 0%',
+              height: '100%',
+              width: '100%',
+              minHeight: '54px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textDecoration: 'none',
+              cursor: 'pointer',
+              pointerEvents: 'auto',
+              padding: '6px 2px',
+              gap: '3px',
+              color: '#f59e0b',
+              fontWeight: 700,
+              fontSize: '11px',
+              minWidth: 0,
+              touchAction: 'manipulation',
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+              boxSizing: 'border-box',
+            }}
+          >
+            <Crown size={20} style={{ pointerEvents: 'none', flexShrink: 0 }} />
+            <span style={{ pointerEvents: 'none', lineHeight: 1, whiteSpace: 'nowrap' }}>Admin</span>
           </Link>
         )}
       </nav>
@@ -111,7 +203,7 @@ export default function BottomNav({ active }) {
           )}
 
           {DESKTOP_ITEMS.map(({ href, label, icon: Icon, key }) => {
-            const isActive = active === key;
+            const isActive = active === key || pathname === href;
             return (
               <Link
                 key={key}
