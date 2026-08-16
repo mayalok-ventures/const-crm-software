@@ -385,16 +385,34 @@ const restoreSession = async (userId, cleanPhone) => {
   setupSocketListeners(sock, userId, cleanPhone, saveCreds);
 };
 
+// Global per-user lock to prevent duplicate concurrent requestPairingCode() calls
+// A second call while one is in flight would invalidate the first code on WhatsApp servers.
+const pairingCodeLocks = {};
+
 const connect = async (userId, phoneNumber) => {
   const user = await User.findById(userId).select('phone localization').lean();
   const countryCode = user?.localization?.countryPhoneCode || '91';
 
-  let cleanPhone = String(phoneNumber).replace(/[^0-9]/g, '').replace(/^0+/, '');
+  // ── STRICT E.164 PHONE NORMALIZATION ───────────────────────────────────────
+  // Strip everything except digits, then strip leading zeros
+  let cleanPhone = String(phoneNumber)
+    .replace(/[\s\-().+]/g, '')  // Remove spaces, dashes, parens, plus
+    .replace(/[^0-9]/g, '')      // Remove any other non-numeric char
+    .replace(/^0+/, '');         // Strip leading zeros
+
+  // Prefix country code for 10-digit local numbers
   if (cleanPhone.length === 10) {
     cleanPhone = countryCode + cleanPhone;
   }
-  if (!cleanPhone || cleanPhone.length < 8) {
-    throw new Error('Invalid phone number. Please include your country code.');
+
+  // Validate: must be 7-15 digits per ITU E.164
+  if (!cleanPhone || cleanPhone.length < 7 || cleanPhone.length > 15) {
+    throw new Error(`Invalid phone number "${phoneNumber}". Please use your full number with country code (e.g. 919876543210).`);
+  }
+
+  // Guard: prevent concurrent pairing code requests for the same user
+  if (pairingCodeLocks[userId]) {
+    throw new Error('A pairing code request is already in progress. Please wait a few seconds.');
   }
 
   if (sessions[userId]) {
@@ -420,6 +438,7 @@ const connect = async (userId, phoneNumber) => {
   sock.ev.on('creds.update', saveCreds);
   updateActivity(userId);
 
+  pairingCodeLocks[userId] = true;
   try {
     const code = await new Promise((resolve, reject) => {
       let requested = false;
@@ -496,10 +515,12 @@ const connect = async (userId, phoneNumber) => {
       }
     }, 110000);
 
+    delete pairingCodeLocks[userId];
     return { pairingCode: code };
   } catch (err) {
     console.error('[WA] Failed to get pairing code:', err.message);
     pairingInProgress[userId] = false;
+    delete pairingCodeLocks[userId];
     delete pairingReconnectAttempts[userId];
     sessionStates[userId] = { status: 'disconnected', phone: null, pairingCode: null, qrCode: null };
     throw new Error(`Failed to generate pairing code: ${err.message}`);
@@ -613,16 +634,25 @@ const sendMedia = async (userId, to, mediaArg, captionArg = '', mediaTypeArg = n
   const mediaSource = resolveMediaSource(mediaPath);
   if (!mediaSource) throw new Error('Could not resolve media source file');
 
+  // ── ISSUE 3 FIX: Use `caption` (NOT `text`) for Baileys media messages ──────
+  // `caption` is the Baileys-correct key for text accompanying image/video/document.
+  // An empty string is falsy — explicitly coerce to string then trim.
+  const captionText = (typeof caption === 'string' && caption.trim().length > 0)
+    ? caption.trim()
+    : undefined;
+
   let payload = {};
   if (mediaType === 'image') {
-    payload = { image: mediaSource, caption: caption || undefined };
+    payload = { image: mediaSource, caption: captionText };
   } else if (mediaType === 'video') {
-    payload = { video: mediaSource, caption: caption || undefined };
+    payload = { video: mediaSource, caption: captionText };
   } else if (mediaType === 'audio') {
     payload = { audio: mediaSource, mimetype: 'audio/mp4' };
   } else {
-    const fileName = (typeof mediaPath === 'string' && path.basename(mediaPath)) ? path.basename(mediaPath) : 'document.pdf';
-    payload = { document: mediaSource, mimetype: 'application/pdf', fileName, caption: caption || undefined };
+    const fileName = (typeof mediaPath === 'string' && path.basename(mediaPath))
+      ? path.basename(mediaPath)
+      : 'document.pdf';
+    payload = { document: mediaSource, mimetype: 'application/pdf', fileName, caption: captionText };
   }
 
   const result = await sock.sendMessage(jid, payload);

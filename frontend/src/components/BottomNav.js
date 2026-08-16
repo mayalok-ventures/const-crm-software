@@ -44,13 +44,13 @@ export default function BottomNav({ active }) {
       {/* Mobile Bottom Navigation (Visible only on mobile screens < 768px) */}
       <nav className="bottom-nav md:hidden">
         {MOBILE_ITEMS.map(({ href, label, icon: Icon, key }) => (
-          <Link key={key} href={href} className={`nav-item ${active === key ? 'active' : ''}`}>
+          <Link key={key} href={href} prefetch={true} className={`nav-item ${active === key ? 'active' : ''}`}>
             <Icon size={20} />
             <span>{label}</span>
           </Link>
         ))}
         {isSuperAdmin && (
-          <Link href="/superadmin-dashboard" className="nav-item" style={{ color: '#f59e0b' }}>
+          <Link href="/superadmin-dashboard" prefetch={true} className="nav-item" style={{ color: '#f59e0b' }}>
             <Crown size={20} />
             <span>Admin</span>
           </Link>
@@ -89,6 +89,7 @@ export default function BottomNav({ active }) {
           {isSuperAdmin && (
             <Link
               href="/superadmin-dashboard"
+              prefetch={true}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -115,6 +116,7 @@ export default function BottomNav({ active }) {
               <Link
                 key={key}
                 href={href}
+                prefetch={true}
                 className={`nav-item ${isActive ? 'active' : ''}`}
                 style={{
                   display: 'flex',

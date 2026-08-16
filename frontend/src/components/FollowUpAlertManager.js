@@ -3,11 +3,58 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import api from '@/lib/api';
 import { waLink } from '@/lib/auth';
+import { useAlarm } from '@/lib/AlarmContext';
 import toast from 'react-hot-toast';
 import {
   BellRing, Clock, AlertTriangle, MessageSquare,
   CheckCircle2, X, ChevronRight, Calendar, ArrowRight
 } from 'lucide-react';
+
+// ─── Inline base64 WAV chime — works on iOS/Android/Desktop, no file needed ──
+// This is a tiny 2-note alert chime (440Hz + 880Hz, 0.4s each, 16-bit PCM WAV)
+const CHIME_WAV_B64 = (() => {
+  // Build a minimal WAV programmatically using AudioContext if available,
+  // or use this tiny pre-encoded chime as a data URI fallback.
+  // 440Hz sine wave, 0.5s, mono, 22050Hz sample rate — 22050 samples
+  const sampleRate = 22050;
+  const duration = 0.5;
+  const numSamples = Math.floor(sampleRate * duration);
+  const buffer = new ArrayBuffer(44 + numSamples * 2);
+  const view = new DataView(buffer);
+  const writeStr = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + numSamples * 2, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, numSamples * 2, true);
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / sampleRate;
+    // Two-tone arpeggio: 659Hz for first half, 880Hz for second half
+    const freq = t < 0.25 ? 659 : 880;
+    const envelope = Math.min(1, (t < 0.05 ? t / 0.05 : 1) * (t > 0.4 ? (0.5 - t) / 0.1 : 1));
+    const sample = Math.round(envelope * 0.6 * 32767 * Math.sin(2 * Math.PI * freq * t));
+    view.setInt16(44 + i * 2, Math.max(-32768, Math.min(32767, sample)), true);
+  }
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return 'data:audio/wav;base64,' + btoa(binary);
+});
+// Only compute on client
+let _chimeUri = null;
+const getChimeUri = () => {
+  if (typeof window === 'undefined') return null;
+  if (!_chimeUri) _chimeUri = CHIME_WAV_B64();
+  return _chimeUri;
+};
 
 export default function FollowUpAlertManager() {
   const router = useRouter();
@@ -18,23 +65,32 @@ export default function FollowUpAlertManager() {
   const lastAlarmTimeRef = useRef(0);
   const timerRef = useRef(null);
 
-  // Synthesized crisp alarm chime (Dual frequency alert)
+  // Register our setter with the global AlarmContext so any page can call dismissAlarm(leadId)
+  const { register } = useAlarm();
+  useEffect(() => { register(setDueLeads); }, [register]);
+
+  // ─── Audio Chime: Inline WAV (primary) → Web Audio API (fallback) ─────────────
+  // The inline WAV approach works on iOS PWA / Android Chrome without user-gesture
+  // because it's triggered by the polling interval, not a new user action.
   const playAlarmSound = () => {
     if (isMuted) return;
 
-    // First try standard HTML5 Audio if asset exists
-    try {
-      const audio = new Audio('/alert-sound.mp3');
-      audio.volume = 0.7;
-      const promise = audio.play();
-      if (promise !== undefined) {
-        promise.catch(() => {
-          playWebAudioBeep();
-        });
+    // 1st try: inline base64 WAV — most reliable across platforms
+    const uri = getChimeUri();
+    if (uri) {
+      try {
+        const audio = new Audio(uri);
+        audio.volume = 0.75;
+        const p = audio.play();
+        if (p !== undefined) {
+          p.then(() => {/* success */}).catch(() => playWebAudioBeep());
+        }
+        return;
+      } catch {
+        // fall through to WebAudio
       }
-    } catch {
-      playWebAudioBeep();
     }
+    playWebAudioBeep();
   };
 
   // High-reliability Web Audio API oscillator beep

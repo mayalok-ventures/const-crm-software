@@ -6,6 +6,7 @@ import SecurityWarningBanner from '@/components/SecurityWarningBanner';
 import SubscriptionLifecycleBanner from '@/components/SubscriptionLifecycleBanner';
 import FollowUpAlertManager from '@/components/FollowUpAlertManager';
 import UserSyncManager from '@/components/UserSyncManager';
+import { AlarmProvider } from '@/lib/AlarmContext';
 
 const inter = Inter({ subsets: ['latin'], display: 'swap' });
 
@@ -77,26 +78,28 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body className={inter.className}>
-        <SecurityWarningBanner />
-        <SubscriptionLifecycleBanner />
-        <UserSyncManager />
-        {children}
-        <NotificationPoller />
-        <FollowUpAlertManager />
-        <Toaster
-          position="top-center"
-          toastOptions={{
-            duration: 3000,
-            style: {
-              background: '#ffffff',
-              color: '#0f172a',
-              border: '1px solid #e2e8f0',
-              borderRadius: '12px',
-              fontSize: '14px',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
-            },
-          }}
-        />
+        <AlarmProvider>
+          <SecurityWarningBanner />
+          <SubscriptionLifecycleBanner />
+          <UserSyncManager />
+          {children}
+          <NotificationPoller />
+          <FollowUpAlertManager />
+          <Toaster
+            position="top-center"
+            toastOptions={{
+              duration: 3000,
+              style: {
+                background: '#ffffff',
+                color: '#0f172a',
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                fontSize: '14px',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
+              },
+            }}
+          />
+        </AlarmProvider>
       </body>
     </html>
   );
