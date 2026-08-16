@@ -23,6 +23,7 @@ const paymentRoutes = require('./src/routes/payments');
 const companyRoutes = require('./src/routes/company');
 const projectsRoutes = require('./src/routes/projects');
 const notificationsRoutes = require('./src/routes/notifications');
+const subscriptionRoutes = require('./src/routes/subscriptionRoutes');
 const waSession = require('./src/services/waSession');
 const campaignWorker = require('./src/services/campaignWorker');
 
@@ -86,8 +87,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Dedicated Webhook Route
-const { handleRazorpayWebhook } = require('./src/controllers/paymentController');
-app.post('/api/webhooks/razorpay', handleRazorpayWebhook);
+const { handleSubscriptionWebhook } = require('./src/controllers/subscriptionController');
+app.post('/api/webhooks/razorpay', handleSubscriptionWebhook);
 
 // Rate limiting
 app.use('/api', (req, res, next) => {
@@ -108,6 +109,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/campaigns', campaignRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/company', companyRoutes);
@@ -127,11 +129,15 @@ app.use((err, req, res, next) => {
 });
 
 const { seedSuperAdmin } = require('./src/utils/seedSuperAdmin');
+const { seedPlans } = require('./src/utils/seedPlans');
 
 // Start server after DB is ready
 connectDB().then(async () => {
   // Seed superadmin if not exists
   await seedSuperAdmin();
+
+  // Seed standard subscription plans if not exists
+  await seedPlans();
 
   // Start cron jobs
   startFollowUpCron();
