@@ -108,6 +108,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/campaigns', campaignRoutes);
+app.use('/api/payment', paymentRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/company', companyRoutes);
 app.use('/api/projects', projectsRoutes);

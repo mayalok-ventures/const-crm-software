@@ -196,11 +196,34 @@ const generateTemp2FAToken = (userId) => {
   return jwt.sign({ id: userId, pending2FA: true }, process.env.JWT_SECRET, { expiresIn: '10m' });
 };
 
+const optionalAuth = async (req, res, next) => {
+  try {
+    let token;
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+      token = req.headers.authorization.split(' ')[1];
+    }
+    if (!token) return next();
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded && decoded.id) {
+      const user = await User.findById(decoded.id).select('-password').lean();
+      if (user && user.isActive) {
+        req.user = user;
+      }
+    }
+  } catch (e) {
+    // Ignore invalid token and continue as guest
+  }
+  next();
+};
+
 module.exports = {
   protect,
+  optionalAuth,
   adminOnly,
   checkPlanExpiry,
   calculateSubscriptionLifecycle,
   generateToken,
   generateTemp2FAToken,
 };
+

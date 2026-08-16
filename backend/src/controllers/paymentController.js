@@ -9,53 +9,71 @@ const { razorpayInstance, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK
 const { getPlanPrice, getPlanDetails } = require('../utils/planLimits');
 const { updateUserPlan } = require('../utils/subscriptionManager');
 
-// @desc  Create Razorpay Order for Plan Subscription
-// @route POST /api/payments/create-order
-// @access Private
+// @desc  Create Razorpay Order for Plan Subscription or Custom Web Checkout
+// @route POST /api/payment/create-order, POST /api/payments/create-order
+// @access Public / Authenticated
 exports.createRazorpayOrder = async (req, res) => {
   try {
-    const { planId, cycle = 'monthly', couponCode } = req.body;
+    let { amount, currency = 'INR', receipt, planId, cycle = 'monthly', couponCode, notes = {} } = req.body;
 
-    if (!planId) {
-      return res.status(400).json({ message: 'planId is required' });
-    }
-
-    const plan = getPlanDetails(planId);
-    if (!plan || plan.id === 'free') {
-      return res.status(400).json({ message: 'Invalid subscription plan selected' });
-    }
-
-    const selectedCycle = cycle === 'yearly' ? 'yearly' : 'monthly';
-    const originalPrice = getPlanPrice(planId, selectedCycle);
-
-    let discountedPrice = originalPrice;
+    let amountInPaise = 0;
+    let selectedPlan = null;
+    let selectedCycle = cycle === 'yearly' ? 'yearly' : 'monthly';
+    let originalPrice = 0;
+    let discountedPrice = 0;
     let validCoupon = null;
 
-    if (couponCode) {
-      validCoupon = await Coupon.findOne({ code: String(couponCode).toUpperCase().trim(), isActive: true });
-      if (validCoupon && (!validCoupon.expiresAt || new Date() <= new Date(validCoupon.expiresAt))) {
-        const discount = (originalPrice * (validCoupon.discountPercent || 0)) / 100;
-        discountedPrice = Math.max(0, Math.round(originalPrice - discount));
+    if (planId) {
+      selectedPlan = getPlanDetails(planId);
+      if (!selectedPlan || selectedPlan.id === 'free') {
+        return res.status(400).json({ success: false, message: 'Invalid subscription plan selected' });
       }
+
+      originalPrice = getPlanPrice(planId, selectedCycle);
+      discountedPrice = originalPrice;
+
+      if (couponCode) {
+        validCoupon = await Coupon.findOne({ code: String(couponCode).toUpperCase().trim(), isActive: true });
+        if (validCoupon && (!validCoupon.expiresAt || new Date() <= new Date(validCoupon.expiresAt))) {
+          const discount = (originalPrice * (validCoupon.discountPercent || 0)) / 100;
+          discountedPrice = Math.max(0, Math.round(originalPrice - discount));
+        }
+      }
+
+      amountInPaise = Math.round(discountedPrice * 100);
+    } else if (amount !== undefined && amount !== null) {
+      const numAmount = Number(amount);
+      if (isNaN(numAmount) || numAmount <= 0) {
+        return res.status(400).json({ success: false, message: 'Invalid payment amount specified' });
+      }
+      // If amount passed is in INR (e.g. 500) vs already in paise (e.g. 50000)
+      amountInPaise = numAmount < 100 ? Math.round(numAmount * 100) : Math.round(numAmount);
+      originalPrice = amountInPaise / 100;
+      discountedPrice = originalPrice;
+    } else {
+      return res.status(400).json({ success: false, message: 'Either planId or amount is required to create an order' });
     }
 
-    const amountInPaise = Math.round(discountedPrice * 100);
+    // Minimum transaction check (Razorpay enforces min 100 paise / ₹1)
+    if (amountInPaise < 100) {
+      return res.status(400).json({ success: false, message: 'Amount must be at least 100 paise (₹1.00)' });
+    }
 
-    // Create Order with Razorpay
-    let order;
-    const receiptId = `rcpt_${req.user._id.toString().slice(-6)}_${Date.now().toString().slice(-6)}`;
+    const receiptId = receipt || `rcpt_${req.user?._id?.toString().slice(-6) || 'guest'}_${Date.now().toString().slice(-6)}`;
     const orderNotes = {
-      userId: req.user._id.toString(),
-      companyId: (req.user.companyId || (req.user.workStatus === 'company_owner' ? req.user._id : null))?.toString() || '',
-      planId,
-      cycle: selectedCycle,
-      couponCode: validCoupon?.code || '',
+      ...notes,
+      userId: req.user?._id?.toString() || '',
+      companyId: (req.user?.companyId || (req.user?.workStatus === 'company_owner' ? req.user?._id : null))?.toString() || '',
+      planId: planId || '',
+      cycle: selectedCycle || '',
+      couponCode: validCoupon?.code || couponCode || '',
     };
 
+    let order;
     if (razorpayInstance && RAZORPAY_KEY_SECRET && !RAZORPAY_KEY_SECRET.startsWith('rzp_test_mock')) {
       order = await razorpayInstance.orders.create({
         amount: amountInPaise,
-        currency: 'INR',
+        currency: currency.toUpperCase(),
         receipt: receiptId,
         notes: orderNotes,
       });
@@ -67,7 +85,7 @@ exports.createRazorpayOrder = async (req, res) => {
         amount: amountInPaise,
         amount_paid: 0,
         amount_due: amountInPaise,
-        currency: 'INR',
+        currency: currency.toUpperCase(),
         receipt: receiptId,
         status: 'created',
         notes: orderNotes,
@@ -76,47 +94,56 @@ exports.createRazorpayOrder = async (req, res) => {
 
     res.json({
       success: true,
+      order_id: order.id,
       orderId: order.id,
-      amount: amountInPaise,
-      currency: 'INR',
+      amount: order.amount,
+      currency: order.currency,
+      key_id: RAZORPAY_KEY_ID,
       keyId: RAZORPAY_KEY_ID,
       planId,
       cycle: selectedCycle,
-      planName: plan.name,
+      planName: selectedPlan?.name || 'Standard Checkout',
       originalPrice,
       finalPrice: discountedPrice,
-      user: {
+      user: req.user ? {
         name: req.user.name,
         email: req.user.email,
         phone: req.user.phone,
-      }
+      } : undefined
     });
   } catch (error) {
     console.error('[Payments] createRazorpayOrder error:', error);
-    res.status(500).json({ message: error.message || 'Failed to create payment order' });
+    res.status(500).json({ success: false, message: error.message || 'Failed to create payment order' });
   }
 };
 
 // @desc  Verify Razorpay Payment Signature (HMAC SHA256 Anti-Spoofing Verification)
-// @route POST /api/payments/verify
-// @access Private
+// @route POST /api/payment/verify, POST /api/payments/verify
+// @access Public / Authenticated
 exports.verifyRazorpayPayment = async (req, res) => {
   try {
     const {
       razorpay_order_id,
+      order_id,
+      orderId,
       razorpay_payment_id,
+      payment_id,
       razorpay_signature,
+      signature,
       planId,
       cycle = 'monthly',
       couponCode,
     } = req.body;
 
-    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-      return res.status(400).json({ message: 'Missing Razorpay signature verification parameters.' });
-    }
+    const targetOrderId = razorpay_order_id || order_id || orderId;
+    const targetPaymentId = razorpay_payment_id || payment_id;
+    const targetSignature = razorpay_signature || signature;
 
-    if (!planId) {
-      return res.status(400).json({ message: 'planId is required for subscription activation' });
+    if (!targetOrderId || !targetPaymentId || !targetSignature) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing Razorpay signature verification parameters (order_id, payment_id, signature required).'
+      });
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -124,76 +151,91 @@ exports.verifyRazorpayPayment = async (req, res) => {
     // ─────────────────────────────────────────────────────────────
     const expectedSignature = crypto
       .createHmac('sha256', RAZORPAY_KEY_SECRET)
-      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .update(`${targetOrderId}|${targetPaymentId}`)
       .digest('hex');
 
-    const isMatch = expectedSignature === razorpay_signature;
+    const isMatch = expectedSignature === targetSignature;
 
     if (!isMatch) {
       // Security Incident: Log payload forgery attempt
-      try {
-        await AbuseLog.create({
-          userId: req.user._id,
-          ip: req.ip || req.connection?.remoteAddress,
-          type: 'suspicious_activity',
-          detail: `PAYMENT_SIGNATURE_FORGERY_ATTEMPT: Signature mismatch for order ${razorpay_order_id}. Provided: ${razorpay_signature}, Expected: ${expectedSignature}`,
-        });
-      } catch (err) {
-        console.warn('[Payments] Could not record abuse log:', err.message);
+      if (req.user?._id) {
+        try {
+          await AbuseLog.create({
+            userId: req.user._id,
+            ip: req.ip || req.connection?.remoteAddress,
+            type: 'suspicious_activity',
+            detail: `PAYMENT_SIGNATURE_FORGERY_ATTEMPT: Signature mismatch for order ${targetOrderId}. Provided: ${targetSignature}, Expected: ${expectedSignature}`,
+          });
+        } catch (err) {
+          console.warn('[Payments] Could not record abuse log:', err.message);
+        }
       }
 
       return res.status(400).json({
+        success: false,
         code: 'PAYMENT_FORGERY_DETECTED',
         message: 'Payment verification failed: Cryptographic signature mismatch. Unauthorized tampering attempt detected.',
       });
     }
 
     // ─────────────────────────────────────────────────────────────
-    // 2. CENTRALIZED PLAN UPDATE & TRANSACTION INVOICE VIA MANAGER
+    // 2. CENTRALIZED PLAN UPDATE & TRANSACTION INVOICE VIA MANAGER (IF PLAN ID GIVEN)
     // ─────────────────────────────────────────────────────────────
-    const selectedCycle = cycle === 'yearly' ? 'yearly' : 'monthly';
-    const originalPrice = getPlanPrice(planId, selectedCycle);
-    let finalPrice = originalPrice;
+    if (planId && req.user?._id) {
+      const selectedCycle = cycle === 'yearly' ? 'yearly' : 'monthly';
+      const originalPrice = getPlanPrice(planId, selectedCycle);
+      let finalPrice = originalPrice;
 
-    if (couponCode) {
-      const coupon = await Coupon.findOne({ code: String(couponCode).toUpperCase().trim() });
-      if (coupon) {
-        finalPrice = Math.max(0, Math.round(originalPrice * (1 - (coupon.discountPercent / 100))));
-        coupon.usedCount = (coupon.usedCount || 0) + 1;
-        await coupon.save();
+      if (couponCode) {
+        const coupon = await Coupon.findOne({ code: String(couponCode).toUpperCase().trim() });
+        if (coupon) {
+          finalPrice = Math.max(0, Math.round(originalPrice * (1 - (coupon.discountPercent / 100))));
+          coupon.usedCount = (coupon.usedCount || 0) + 1;
+          await coupon.save();
+        }
       }
+
+      const { user, subscriptionLifecycle } = await updateUserPlan(
+        req.user._id,
+        planId,
+        selectedCycle,
+        false,
+        {
+          paymentId: targetPaymentId,
+          orderId: targetOrderId,
+          signature: targetSignature,
+          couponCode: couponCode || null,
+          originalPrice,
+          discountedPrice: finalPrice,
+          paymentMethod: 'razorpay',
+        }
+      );
+
+      const plan = getPlanDetails(planId);
+
+      return res.json({
+        success: true,
+        message: `🎉 ${plan.name} subscription successfully activated!`,
+        payment_id: targetPaymentId,
+        order_id: targetOrderId,
+        plan: user.plan,
+        billingCycle: user.billingCycle,
+        planStartDate: user.planStartDate,
+        planEndDate: user.planEndDate,
+        subscriptionLifecycle,
+      });
     }
 
-    const { user, subscriptionLifecycle } = await updateUserPlan(
-      req.user._id,
-      planId,
-      selectedCycle,
-      false,
-      {
-        paymentId: razorpay_payment_id,
-        orderId: razorpay_order_id,
-        signature: razorpay_signature,
-        couponCode: couponCode || null,
-        originalPrice,
-        discountedPrice: finalPrice,
-        paymentMethod: 'razorpay',
-      }
-    );
-
-    const plan = getPlanDetails(planId);
-
-    res.json({
+    // Standard checkout verification without plan subscription
+    return res.json({
       success: true,
-      message: `🎉 ${plan.name} subscription successfully activated!`,
-      plan: user.plan,
-      billingCycle: user.billingCycle,
-      planStartDate: user.planStartDate,
-      planEndDate: user.planEndDate,
-      subscriptionLifecycle,
+      message: 'Payment verified successfully ✅',
+      payment_id: targetPaymentId,
+      order_id: targetOrderId,
     });
   } catch (error) {
     console.error('[Payments] verifyRazorpayPayment error:', error);
-    res.status(500).json({ message: 'Server error during payment verification' });
+    res.status(500).json({ success: false, message: error.message || 'Server error during payment verification' });
   }
 };
 
