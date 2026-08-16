@@ -7,7 +7,7 @@ import api from '@/lib/api';
 import { waLink } from '@/lib/auth';
 import BottomNav from '@/components/BottomNav';
 import {
-  Plus, Search, Bell, MessageCircle, Calendar, Package,
+  Plus, Search, Bell, MessageCircle, Phone, Calendar, Package,
   User, ChevronRight, Filter, X, ShieldAlert, CheckCircle, Volume2, Mic, AlertTriangle, ArrowRight, MapPin, Briefcase,
   Download, Upload, FileSpreadsheet, FileText, ChevronDown, Check, TrendingUp, DollarSign, Award, BarChart2
 } from 'lucide-react';
@@ -899,53 +899,69 @@ export default function DashboardPage() {
     <div className="app-shell">
       <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="page-header">
-          <div>
-            <h1 className="page-title">Sales Pipeline & Leads</h1>
-            <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-              Active opportunities & client accounts ({pagination.total || leads.length})
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            {/* Dynamic Plan & Upgrade Widget */}
-            <PlanStatusWidget />
+        <div className="page-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+          {/* Top Row: Title + Plan Status & Notifications */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 10 }}>
+            <div>
+              <h1 className="page-title" style={{ fontSize: 'clamp(17px, 4vw, 22px)' }}>Sales Pipeline & Leads</h1>
+              <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-muted)' }}>
+                Active prospects ({pagination.total || leads.length})
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+              {/* Dynamic Plan & Upgrade Widget */}
+              <PlanStatusWidget />
 
-            {/* Import Button */}
+              {/* Notification Bell */}
+              <Link href="/notifications" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-muted)', textDecoration: 'none' }}>
+                <Bell size={16} />
+                {unread > 0 && <div className="notif-badge" />}
+              </Link>
+            </div>
+          </div>
+
+          {/* Bottom Row: Mobile Horizontal Scrollable Quick Action Strip */}
+          <div className="action-strip">
+            <button
+              onClick={() => {
+                if (leadLimitReached) setShowUpgrade(true);
+                else setShowAdd(true);
+              }}
+              className="btn btn-primary btn-sm"
+              style={{ gap: 4, borderRadius: 8, flexShrink: 0 }}
+            >
+              <Plus size={14} /> Add Lead
+            </button>
+
             <button
               onClick={() => setShowImport(true)}
               className="btn btn-secondary btn-sm"
-              style={{ gap: 5, borderRadius: 10, fontSize: 12 }}
-              title="Bulk Import Leads via Excel or CSV"
+              style={{ gap: 4, borderRadius: 8, flexShrink: 0 }}
+              title="Bulk Import Leads"
             >
-              <Upload size={14} /> Import
+              <Upload size={13} /> Import
             </button>
 
-            {/* Selective Export Button */}
             <button
               onClick={() => setShowExportLeadsModal(true)}
               className="btn btn-secondary btn-sm"
-              style={{ gap: 5, borderRadius: 10, fontSize: 12 }}
-              title="Selective Lead Export by Status"
+              style={{ gap: 4, borderRadius: 8, flexShrink: 0 }}
+              title="Selective Lead Export"
             >
-              <Download size={14} /> Export Leads
+              <Download size={13} /> Export
             </button>
 
-            {/* Analytics Export Button */}
             <button
               onClick={() => setShowExportAnalyticsModal(true)}
               className="btn btn-secondary btn-sm"
-              style={{ gap: 5, borderRadius: 10, fontSize: 12, color: 'var(--accent)', borderColor: 'var(--accent)' }}
-              title="Export Full Dashboard Analytics Report"
+              style={{ gap: 4, borderRadius: 8, flexShrink: 0, color: 'var(--accent)', borderColor: 'var(--accent)' }}
+              title="Analytics Report"
             >
-              <BarChart2 size={14} /> Analytics Report
+              <BarChart2 size={13} /> Analytics
             </button>
 
-            <Link href="/projects" className="btn btn-secondary btn-sm" style={{ gap: 5, borderRadius: 10, fontSize: 12 }}>
-              <Package size={15} /> Catalog
-            </Link>
-            <Link href="/notifications" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38, borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-muted)', textDecoration: 'none' }}>
-              <Bell size={18} />
-              {unread > 0 && <div className="notif-badge" />}
+            <Link href="/projects" className="btn btn-secondary btn-sm" style={{ gap: 4, borderRadius: 8, flexShrink: 0 }}>
+              <Package size={13} /> Catalog
             </Link>
           </div>
         </div>
@@ -953,82 +969,64 @@ export default function DashboardPage() {
         <div className="page-content">
           {/* Master Revenue & Performance KPI Banner */}
           <div style={{
-            background: 'linear-gradient(135deg, rgba(79,70,229,0.12) 0%, rgba(34,197,94,0.12) 100%)',
-            border: '1px solid rgba(79,70,229,0.25)',
-            borderRadius: 16,
-            padding: '16px 20px',
-            marginBottom: 20,
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: 16,
-            alignItems: 'center'
+            background: 'linear-gradient(135deg, rgba(79,70,229,0.1) 0%, rgba(34,197,94,0.1) 100%)',
+            border: '1px solid rgba(79,70,229,0.2)',
+            borderRadius: 14,
+            padding: '12px 14px',
+            marginBottom: 16,
           }}>
-            {/* Total Revenue Generated Card */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{
-                width: 44,
-                height: 44,
-                borderRadius: 12,
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                color: 'white',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 4px 12px rgba(16,185,129,0.35)'
-              }}>
-                <Award size={22} />
+            <div className="kpi-grid-mobile" style={{ alignItems: 'center' }}>
+              {/* Total Revenue Generated Card */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: 'white',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 3px 8px rgba(16,185,129,0.3)',
+                  flexShrink: 0
+                }}>
+                  <Award size={18} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: '#10b981', letterSpacing: 0.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    Revenue Won
+                  </p>
+                  <h3 style={{ margin: '1px 0 0', fontSize: 'clamp(15px, 3.5vw, 19px)', fontWeight: 800, color: 'var(--text)' }}>
+                    {user?.localization?.currencySymbol || '₹'}{Number(analyticsData?.totalRevenue || 0).toLocaleString()}
+                  </h3>
+                </div>
               </div>
-              <div>
-                <p style={{ margin: 0, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: '#10b981', letterSpacing: 0.5 }}>
-                  Total Revenue Generated
-                </p>
-                <h3 style={{ margin: '2px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>
-                  {user?.localization?.currencySymbol || '₹'}{Number(analyticsData?.totalRevenue || 0).toLocaleString()}
-                </h3>
-              </div>
-            </div>
 
-            {/* Conversion Rate */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{
-                width: 44,
-                height: 44,
-                borderRadius: 12,
-                background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                color: 'white',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 4px 12px rgba(79,70,229,0.35)'
-              }}>
-                <TrendingUp size={22} />
+              {/* Conversion Rate */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                  color: 'white',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 3px 8px rgba(79,70,229,0.3)',
+                  flexShrink: 0
+                }}>
+                  <TrendingUp size={18} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--accent)', letterSpacing: 0.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    Win Rate
+                  </p>
+                  <h3 style={{ margin: '1px 0 0', fontSize: 'clamp(15px, 3.5vw, 19px)', fontWeight: 800, color: 'var(--text)' }}>
+                    {analyticsData?.conversionRate || 0}%
+                  </h3>
+                </div>
               </div>
-              <div>
-                <p style={{ margin: 0, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--accent)', letterSpacing: 0.5 }}>
-                  Win Conversion Rate
-                </p>
-                <h3 style={{ margin: '2px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>
-                  {analyticsData?.conversionRate || 0}%
-                </h3>
-              </div>
-            </div>
-
-            {/* Quick Actions in KPI strip */}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-              <button
-                onClick={() => setShowExportLeadsModal(true)}
-                className="btn btn-secondary btn-sm"
-                style={{ fontSize: 12, gap: 5, borderRadius: 8, background: 'var(--card)' }}
-              >
-                <Download size={13} /> Selective Export
-              </button>
-              <button
-                onClick={() => setShowExportAnalyticsModal(true)}
-                className="btn btn-primary btn-sm"
-                style={{ fontSize: 12, gap: 5, borderRadius: 8 }}
-              >
-                <BarChart2 size={13} /> Export Report
-              </button>
             </div>
           </div>
 
@@ -1179,6 +1177,26 @@ export default function DashboardPage() {
                         Next Follow-up: {format(new Date(lead.followUpDate), 'dd MMM yyyy, h:mm a')}
                       </p>
                     )}
+
+                    {/* 1-Tap Quick Action Buttons for Mobile Sales Reps */}
+                    <div className="lead-card-actions" onClick={e => e.stopPropagation()}>
+                      <a
+                        href={`tel:${lead.phone}`}
+                        className="lead-action-btn lead-action-call"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <Phone size={13} /> Call
+                      </a>
+                      <a
+                        href={waLink(lead.phone, `Hello ${lead.name}, regarding your inquiry for ${lead.project || 'our services'}...`)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="lead-action-btn lead-action-wa"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <MessageCircle size={13} /> WhatsApp
+                      </a>
+                    </div>
                   </div>
                 </Link>
               ))}

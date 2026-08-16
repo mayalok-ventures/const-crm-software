@@ -717,6 +717,7 @@ export default function LeadDetailPage() {
   const [saving, setSaving] = useState(false);
   const [waStatus, setWaStatus] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [mobileTab, setMobileTab] = useState('details');
 
   useEffect(() => {
     try {
@@ -937,18 +938,52 @@ export default function LeadDetailPage() {
 
         <div className="page-content">
           {/* Quick Action Top Bar */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
-            <a href={`tel:${lead.phone}`} className="btn btn-secondary" style={{ flex: 1, gap: 8, justifyContent: 'center', minWidth: 140 }}>
-              <Phone size={16} /> Call Client
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+            <a href={`tel:${lead.phone}`} className="btn btn-secondary btn-sm" style={{ flex: 1, gap: 6, justifyContent: 'center' }}>
+              <Phone size={14} /> Call Client
             </a>
             
             <button 
               onClick={() => setShowTemplates(true)} 
-              className="btn btn-primary" 
-              style={{ flex: 1.5, gap: 8, justifyContent: 'center', minWidth: 180 }}
+              className="btn btn-primary btn-sm" 
+              style={{ flex: 1.3, gap: 6, justifyContent: 'center' }}
             >
-              <MessageCircle size={16} /> Send Proposal / Template
+              <MessageCircle size={14} /> Send Proposal
             </button>
+          </div>
+
+          {/* Mobile Segmented Tab Controller (Visible on Mobile & Tablet < 1024px) */}
+          <div className="lg:hidden" style={{ marginBottom: 14 }}>
+            <div className="segmented-control">
+              <button
+                type="button"
+                onClick={() => setMobileTab('details')}
+                className={`segmented-btn ${mobileTab === 'details' ? 'active' : ''}`}
+              >
+                📋 Info
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileTab('chat')}
+                className={`segmented-btn ${mobileTab === 'chat' ? 'active' : ''}`}
+              >
+                💬 Chat
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileTab('memos')}
+                className={`segmented-btn ${mobileTab === 'memos' ? 'active' : ''}`}
+              >
+                🎙️ Audio
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileTab('audit')}
+                className={`segmented-btn ${mobileTab === 'audit' ? 'active' : ''}`}
+              >
+                ⏱️ Timeline
+              </button>
+            </div>
           </div>
 
           {/* ─────────────────────────────────────────────────────────────
@@ -960,7 +995,7 @@ export default function LeadDetailPage() {
             {/* LEFT COLUMN */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {/* Deal & Lead Info Card */}
-              <div className="card">
+              <div className={`card ${mobileTab === 'details' ? 'block' : 'hidden lg:block'}`}>
                 <p className="section-title" style={{ margin: '0 0 12px' }}>📋 Deal Requirements & Client Info</p>
                 {editing ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1117,37 +1152,12 @@ export default function LeadDetailPage() {
                         );
                       }
 
-                      if (field.fieldType === 'number') {
-                        return (
-                          <div key={field.fieldId}>
-                            <label className="label">{field.label} {isMandatory && '*'}</label>
-                            <input
-                              className="input"
-                              type="number"
-                              placeholder={`Enter ${field.label}...`}
-                              value={currentVal}
-                              onChange={e => {
-                                const val = e.target.value;
-                                if (isSystem) {
-                                  setForm(f => ({ ...f, [field.fieldId]: val }));
-                                } else {
-                                  setForm(f => ({ ...f, customData: { ...(f.customData || {}), [field.fieldId]: val } }));
-                                }
-                              }}
-                              required={isMandatory}
-                            />
-                          </div>
-                        );
-                      }
-
-                      // Text / Phone / Email
-                      const inputType = field.fieldId === 'phone' ? 'tel' : (field.fieldId === 'email' ? 'email' : 'text');
                       return (
                         <div key={field.fieldId}>
                           <label className="label">{field.label} {isMandatory && '*'}</label>
                           <input
                             className="input"
-                            type={inputType}
+                            type={field.fieldType === 'number' ? 'number' : field.fieldType === 'email' ? 'email' : 'text'}
                             placeholder={`Enter ${field.label}...`}
                             value={currentVal}
                             onChange={e => {
@@ -1166,57 +1176,92 @@ export default function LeadDetailPage() {
                   </div>
                 ) : (
                   <div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
-                      {(lead.status === 'closed' || lead.closedDealAmount) && (
-                        <div style={{ gridColumn: '1/-1', padding: '12px 14px', background: 'linear-gradient(135deg, rgba(34,197,94,0.15), rgba(16,185,129,0.08))', border: '1px solid rgba(34,197,94,0.4)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#22c55e', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
-                              🏆
-                            </div>
-                            <div>
-                              <p style={{ margin: 0, fontSize: 11, color: '#16a34a', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Final Closed Deal Revenue</p>
-                              <p style={{ margin: '2px 0 0', fontSize: 18, fontWeight: 800, color: '#15803d' }}>
-                                ₹{Number(lead.closedDealAmount || 0).toLocaleString('en-IN')}
-                              </p>
-                            </div>
-                          </div>
-                          <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, background: '#22c55e', color: 'white', fontWeight: 700 }}>
-                            Verified Won Deal
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
+                      <div>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Status / Stage</span>
+                        <div style={{ marginTop: 2 }}>
+                          <span className={`badge ${STATUS_COLORS[lead.status] || 'badge-tag'}`}>
+                            {STAGE_LABELS[lead.status] || lead.status}
                           </span>
+                        </div>
+                      </div>
+
+                      {lead.company && (
+                        <div>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Company</span>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{lead.company}</p>
                         </div>
                       )}
 
-                      {[
-                        ['Pipeline Stage', <span key="s" className="badge badge-closed">{STAGE_LABELS[lead.status] || lead.status}</span>],
-                        ['Linked Offering', (lead.projectId?.name || lead.project) ? <Link key="p" href="/projects" style={{ color: 'var(--accent)', fontWeight: 600, textDecoration: 'none' }}>📦 {lead.projectId?.name || lead.project}</Link> : '—'],
-                        ['Tier / Category', lead.propertyType || '—'],
-                        ['Deal Value / Budget', lead.budget ? <strong key="b" style={{ color: 'var(--green)' }}>{lead.budget}</strong> : '—'],
-                        ['Market / Region', lead.location || '—'],
-                        ['Assigned Owner', lead.assignedToName || 'Unassigned (Common Pool)'],
-                      ].map(([label, val]) => (
-                        <div key={label}>
-                          <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>{label}</p>
-                          <p style={{ margin: '2px 0 0', fontSize: 13, fontWeight: 500 }}>{val}</p>
-                        </div>
-                      ))}
-
-                      {lead.siteVisitDate && (
-                        <div style={{ gridColumn: '1/-1', padding: '10px 12px', background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.25)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <Calendar size={16} color="#f97316" />
-                          <p style={{ margin: 0, fontSize: 13, color: '#f97316', fontWeight: 600 }}>
-                            Meeting / Demo Scheduled: {format(new Date(lead.siteVisitDate), 'dd MMM yyyy, h:mm a')}
+                      {lead.email && (
+                        <div>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Email</span>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                            <a href={`mailto:${lead.email}`} style={{ color: 'var(--accent)', textDecoration: 'none' }}>{lead.email}</a>
                           </p>
                         </div>
                       )}
 
-                      {/* Lost Reason Card (if marked lost) */}
-                      {lead.lostReason && (
-                        <div style={{ gridColumn: '1/-1', padding: '12px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {lead.project && (
+                        <div>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Selected Offering</span>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>📦 {lead.project}</p>
+                        </div>
+                      )}
+
+                      {lead.propertyType && (
+                        <div>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Category / Type</span>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{lead.propertyType}</p>
+                        </div>
+                      )}
+
+                      {lead.budget && (
+                        <div>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Budget</span>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--green)' }}>💰 {lead.budget}</p>
+                        </div>
+                      )}
+
+                      {lead.closedDealAmount && (
+                        <div style={{ background: 'rgba(34,197,94,0.1)', padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(34,197,94,0.3)' }}>
+                          <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 700 }}>🏆 Closed Deal Value</span>
+                          <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: 'var(--green)' }}>
+                            ₹{Number(lead.closedDealAmount).toLocaleString('en-IN')}
+                          </p>
+                        </div>
+                      )}
+
+                      {lead.location && (
+                        <div>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Location</span>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>📍 {lead.location}</p>
+                        </div>
+                      )}
+
+                      {lead.followUpDate && (
+                        <div>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Next Action</span>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>
+                            📅 {format(new Date(lead.followUpDate), 'dd MMM yyyy, h:mm a')}
+                          </p>
+                        </div>
+                      )}
+
+                      {lead.assignedToName && (
+                        <div>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Assigned Specialist</span>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>👤 {lead.assignedToName}</p>
+                        </div>
+                      )}
+
+                      {/* Lost Reason Detail Callout (if Lost) */}
+                      {isLostStage(lead.status) && lead.lostReason && (
+                        <div style={{ gridColumn: '1/-1', padding: '10px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontSize: 14 }}>❌</span>
-                            <p style={{ margin: 0, fontSize: 11, color: 'var(--red)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                              Lost Reason Analysis
-                            </p>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--red)', textTransform: 'uppercase' }}>
+                              ⚠️ Dropped Reason:
+                            </span>
                           </div>
                           <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
                             {lead.lostReason}
@@ -1228,49 +1273,13 @@ export default function LeadDetailPage() {
                           )}
                         </div>
                       )}
-
-                      {/* Marketing & Attribution Source (if present) */}
-                      {(lead.source || lead.utmCampaign || lead.utmMedium || lead.utmSource) && (
-                        <div style={{ gridColumn: '1/-1', padding: '10px 14px', background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 10 }}>
-                          <p style={{ margin: '0 0 4px', fontSize: 10, color: 'var(--accent)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                            🎯 Inbound Attribution & Campaign Tracking
-                          </p>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12 }}>
-                            {lead.source && <span>Source: <strong>{lead.source}</strong></span>}
-                            {lead.utmCampaign && <span>Campaign: <strong>{lead.utmCampaign}</strong></span>}
-                            {lead.utmMedium && <span>Medium: <strong>{lead.utmMedium}</strong></span>}
-                            {lead.utmSource && <span>UTM Source: <strong>{lead.utmSource}</strong></span>}
-                          </div>
-                        </div>
-                      )}
                     </div>
-
-                    {/* Dynamic Custom Data (View Mode) */}
-                    {lead.customData && Object.keys(lead.customData).length > 0 && (
-                      <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-                        <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--accent)', letterSpacing: 0.5 }}>
-                          ✨ Dynamic Custom Attributes
-                        </p>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
-                          {Object.entries(lead.customData).map(([key, val]) => (
-                            <div key={key} style={{ background: 'var(--surface)', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)' }}>
-                              <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize', display: 'block' }}>
-                                {key.replace(/_/g, ' ')}
-                              </span>
-                              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
-                                {String(val || '—')}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
 
               {/* Notes Card */}
-              <div className="card">
+              <div className={`card ${mobileTab === 'details' ? 'block' : 'hidden lg:block'}`}>
                 <p className="section-title" style={{ margin: '0 0 12px' }}>📝 Client & Negotiation Notes</p>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
                   <textarea
@@ -1307,7 +1316,7 @@ export default function LeadDetailPage() {
               </div>
 
               {/* Audio Memos */}
-              <div className="card">
+              <div className={`card ${mobileTab === 'memos' ? 'block' : 'hidden lg:block'}`}>
                 <RecordingSection leadId={id} />
               </div>
             </div>
@@ -1315,15 +1324,17 @@ export default function LeadDetailPage() {
             {/* RIGHT COLUMN */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {/* WhatsApp Live Conversation */}
-              <WhatsAppChatSection
-                lead={lead}
-                waStatus={waStatus}
-                onOpenTemplates={() => setShowTemplates(true)}
-                refreshKey={chatRefreshKey}
-              />
+              <div className={mobileTab === 'chat' ? 'block' : 'hidden lg:block'}>
+                <WhatsAppChatSection
+                  lead={lead}
+                  waStatus={waStatus}
+                  onOpenTemplates={() => setShowTemplates(true)}
+                  refreshKey={chatRefreshKey}
+                />
+              </div>
 
               {/* Activity Audit Trail */}
-              <div className="card">
+              <div className={`card ${mobileTab === 'audit' ? 'block' : 'hidden lg:block'}`}>
                 <p className="section-title" style={{ margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Activity size={16} color="var(--accent)" /> Client Activity Audit Trail
                 </p>
