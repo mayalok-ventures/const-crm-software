@@ -92,6 +92,44 @@ export default function FollowUpAlertManager() {
     }
   };
 
+  const triggerBrowserNotification = (leads) => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
+      return;
+    }
+
+    if (Notification.permission === 'granted' && leads.length > 0) {
+      const topLead = leads[0];
+      const count = leads.length;
+      const title = count === 1 ? `⏰ Follow-up Due: ${topLead.name}` : `⏰ ${count} Leads Due for Follow-up!`;
+      const body = count === 1
+        ? `Phone: ${topLead.phone} • Requirement: ${topLead.project || topLead.budget || 'Pending call'}`
+        : `${topLead.name} and ${count - 1} other client(s) need immediate follow-up.`;
+
+      try {
+        const notif = new Notification(title, {
+          body,
+          icon: '/android-chrome-192x192.png',
+          badge: '/favicon-32x32.png',
+          tag: 'follow-up-alert',
+          requireInteraction: true,
+        });
+
+        notif.onclick = () => {
+          window.focus();
+          if (topLead._id) {
+            router.push(`/leads/${topLead._id}`);
+          }
+          notif.close();
+        };
+      } catch (err) {
+        console.warn('[FollowUpNotification] Native notification failed:', err);
+      }
+    }
+  };
+
   const checkDueFollowUps = async () => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const isAuthPage = pathname === '/login' || pathname === '/signup';
@@ -104,11 +142,12 @@ export default function FollowUpAlertManager() {
 
       if (leads.length > 0) {
         const now = Date.now();
-        // 5-minute persistent alarm interval (300,000 ms)
-        const fiveMinutes = 5 * 60 * 1000;
-        if (now - lastAlarmTimeRef.current >= fiveMinutes) {
+        // 3-minute alarm interval (180,000 ms)
+        const threeMinutes = 3 * 60 * 1000;
+        if (now - lastAlarmTimeRef.current >= threeMinutes) {
           lastAlarmTimeRef.current = now;
           playAlarmSound();
+          triggerBrowserNotification(leads);
           setIsOpen(true);
         }
       } else {
@@ -120,6 +159,15 @@ export default function FollowUpAlertManager() {
   };
 
   useEffect(() => {
+    // Request notification permissions on user interaction if not yet determined
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      const handleUserClick = () => {
+        Notification.requestPermission();
+        window.removeEventListener('click', handleUserClick);
+      };
+      window.addEventListener('click', handleUserClick, { once: true });
+    }
+
     checkDueFollowUps();
     timerRef.current = setInterval(checkDueFollowUps, 45000); // Poll every 45s
 

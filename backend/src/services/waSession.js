@@ -74,12 +74,15 @@ const normalizePhoneAndJid = (phone, defaultCountryCode = '91') => {
 
 const resolveMediaSource = (mediaPath) => {
   if (!mediaPath) return null;
-  if (mediaPath.startsWith('http://') || mediaPath.startsWith('https://')) {
-    return { url: mediaPath };
+  const safePath = Array.isArray(mediaPath) ? mediaPath[0] : (typeof mediaPath === 'object' ? (mediaPath.url || mediaPath.image || mediaPath.video || mediaPath.document || '') : mediaPath);
+  if (!safePath || typeof safePath !== 'string') return null;
+
+  if (safePath.startsWith('http://') || safePath.startsWith('https://')) {
+    return { url: safePath };
   }
 
   // Local file
-  let localPath = mediaPath;
+  let localPath = safePath;
   if (localPath.startsWith('/uploads/')) {
     localPath = path.join(__dirname, '../../', localPath.replace(/^\//, ''));
   } else if (!path.isAbsolute(localPath)) {
@@ -89,7 +92,7 @@ const resolveMediaSource = (mediaPath) => {
   if (fs.existsSync(localPath)) {
     return fs.readFileSync(localPath); // Buffer for Baileys
   }
-  return { url: mediaPath };
+  return { url: safePath };
 };
 
 const recordOutboundMessage = async (userId, to, text, mediaUrl = null, mediaType = null) => {
@@ -383,8 +386,16 @@ const restoreSession = async (userId, cleanPhone) => {
 };
 
 const connect = async (userId, phoneNumber) => {
-  const cleanPhone = phoneNumber.replace(/\D/g, '');
-  if (!cleanPhone) throw new Error('Invalid phone number');
+  const user = await User.findById(userId).select('phone localization').lean();
+  const countryCode = user?.localization?.countryPhoneCode || '91';
+
+  let cleanPhone = String(phoneNumber).replace(/[^0-9]/g, '').replace(/^0+/, '');
+  if (cleanPhone.length === 10) {
+    cleanPhone = countryCode + cleanPhone;
+  }
+  if (!cleanPhone || cleanPhone.length < 8) {
+    throw new Error('Invalid phone number. Please include your country code.');
+  }
 
   if (sessions[userId]) {
     const old = sessions[userId];
@@ -546,7 +557,34 @@ const sendText = async (userId, to, text) => {
   return result;
 };
 
-const sendMedia = async (userId, to, mediaPath, caption = '', mediaType = null) => {
+const sendMedia = async (userId, to, mediaArg, captionArg = '', mediaTypeArg = null) => {
+  let mediaPath = mediaArg;
+  let caption = captionArg;
+  let mediaType = mediaTypeArg;
+
+  if (mediaArg && typeof mediaArg === 'object' && !Array.isArray(mediaArg)) {
+    if (mediaArg.image) {
+      mediaPath = mediaArg.image;
+      mediaType = 'image';
+    } else if (mediaArg.video) {
+      mediaPath = mediaArg.video;
+      mediaType = 'video';
+    } else if (mediaArg.document) {
+      mediaPath = mediaArg.document;
+      mediaType = 'document';
+    } else if (mediaArg.audio) {
+      mediaPath = mediaArg.audio;
+      mediaType = 'audio';
+    } else if (mediaArg.url || mediaArg.mediaUrl) {
+      mediaPath = mediaArg.url || mediaArg.mediaUrl;
+    }
+    caption = caption || mediaArg.text || mediaArg.caption || '';
+  }
+
+  if (Array.isArray(mediaPath)) {
+    mediaPath = mediaPath[0];
+  }
+
   const user = await User.findById(userId).select('phone localization').lean();
   const countryCode = user?.localization?.countryPhoneCode || '91';
 
@@ -575,12 +613,13 @@ const sendMedia = async (userId, to, mediaPath, caption = '', mediaType = null) 
   } else if (mediaType === 'audio') {
     payload = { audio: mediaSource, mimetype: 'audio/mp4' };
   } else {
-    payload = { document: mediaSource, mimetype: 'application/pdf', fileName: path.basename(mediaPath) || 'document.pdf', caption: caption || undefined };
+    const fileName = (typeof mediaPath === 'string' && path.basename(mediaPath)) ? path.basename(mediaPath) : 'document.pdf';
+    payload = { document: mediaSource, mimetype: 'application/pdf', fileName, caption: caption || undefined };
   }
 
   const result = await sock.sendMessage(jid, payload);
   updateActivity(userId);
-  await recordOutboundMessage(userId, to, caption || `[Media attachment: ${mediaType || 'document'}]`, mediaPath, mediaType);
+  await recordOutboundMessage(userId, to, caption || `[Media attachment: ${mediaType || 'document'}]`, typeof mediaPath === 'string' ? mediaPath : null, mediaType);
   return result;
 };
 
