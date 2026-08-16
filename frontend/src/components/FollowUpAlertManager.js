@@ -300,9 +300,11 @@ export default function FollowUpAlertManager() {
         padding: '12px 16px',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between'
+        justifyContent: 'space-between',
+        gap: 8,
+        minWidth: 0,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
           <div style={{
             background: '#ffffff',
             borderRadius: '50%',
@@ -311,11 +313,12 @@ export default function FollowUpAlertManager() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#dc2626'
+            color: '#dc2626',
+            flexShrink: 0,
           }}>
             <BellRing size={14} className="animate-pulse" />
           </div>
-          <span style={{ fontWeight: 800, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <span className="truncate" style={{ fontWeight: 800, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5, minWidth: 0 }}>
             Follow-Up Due Alert ({dueLeads.length})
           </span>
         </div>
@@ -333,7 +336,8 @@ export default function FollowUpAlertManager() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            flexShrink: 0,
           }}
         >
           <X size={14} />
@@ -354,17 +358,19 @@ export default function FollowUpAlertManager() {
                 background: '#1e293b',
                 border: '1px solid #334155',
                 borderRadius: 12,
-                padding: '12px 14px'
+                padding: '12px 14px',
+                width: '100%',
+                boxSizing: 'border-box',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                <div>
-                  <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#f8fafc' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, width: '100%', minWidth: 0, marginBottom: 6 }}>
+                <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                  <h4 className="truncate" style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#f8fafc' }}>
                     {lead.name}
                   </h4>
-                  <div style={{ fontSize: 11, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                    <span>+{lead.phone}</span>
-                    {lead.company && <span>• {lead.company}</span>}
+                  <div className="truncate" style={{ fontSize: 11, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, minWidth: 0 }}>
+                    <span className="truncate">+{lead.phone}</span>
+                    {lead.company && <span className="truncate">• {lead.company}</span>}
                   </div>
                 </div>
 
@@ -382,15 +388,16 @@ export default function FollowUpAlertManager() {
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 2
+                    gap: 2,
+                    flexShrink: 0,
                   }}
                 >
-                  Open <ArrowRight size={11} />
+                  Open <ArrowRight size={11} className="flex-shrink-0" />
                 </button>
               </div>
 
               {/* Quick Action Buttons */}
-              <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap', width: '100%' }}>
                 {lead.phone && lead.phone !== '0000000000' && (
                   <a
                     href={waLink(lead.phone, `Hi ${lead.name}! Reaching out regarding your inquiry. Are you available for a quick update?`)}
@@ -400,31 +407,33 @@ export default function FollowUpAlertManager() {
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: 4,
-                      padding: '4px 8px',
+                      padding: '5px 9px',
                       borderRadius: 6,
                       background: 'rgba(34, 197, 94, 0.15)',
                       border: '1px solid rgba(34, 197, 94, 0.3)',
                       color: '#22c55e',
                       textDecoration: 'none',
                       fontSize: 11,
-                      fontWeight: 700
+                      fontWeight: 700,
+                      flexShrink: 0,
                     }}
                   >
-                    <MessageSquare size={11} /> WA Chat
+                    <MessageSquare size={11} className="flex-shrink-0" /> WA Chat
                   </a>
                 )}
 
                 <button
                   onClick={() => handleReschedule(lead._id, 1)}
                   style={{
-                    padding: '4px 8px',
+                    padding: '5px 9px',
                     borderRadius: 6,
                     background: '#334155',
                     border: '1px solid #475569',
                     color: '#f8fafc',
                     fontSize: 11,
                     fontWeight: 600,
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    flexShrink: 0,
                   }}
                 >
                   +1 Hour
@@ -433,14 +442,15 @@ export default function FollowUpAlertManager() {
                 <button
                   onClick={() => handleReschedule(lead._id, 24)}
                   style={{
-                    padding: '4px 8px',
+                    padding: '5px 9px',
                     borderRadius: 6,
                     background: '#334155',
                     border: '1px solid #475569',
                     color: '#f8fafc',
                     fontSize: 11,
                     fontWeight: 600,
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    flexShrink: 0,
                   }}
                 >
                   Tomorrow
@@ -449,14 +459,15 @@ export default function FollowUpAlertManager() {
                 <button
                   onClick={() => handleUpdateStatus(lead._id, 'closed')}
                   style={{
-                    padding: '4px 8px',
+                    padding: '5px 9px',
                     borderRadius: 6,
                     background: 'rgba(99, 102, 241, 0.15)',
                     border: '1px solid rgba(99, 102, 241, 0.3)',
                     color: '#818cf8',
                     fontSize: 11,
                     fontWeight: 700,
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    flexShrink: 0,
                   }}
                 >
                   ✓ Closed Won

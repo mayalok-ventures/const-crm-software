@@ -1056,13 +1056,13 @@ export default function DashboardPage() {
           )}
 
           {/* Search & Filter Bar */}
-          <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
-            <div className="search-bar" style={{ flex: 1, position: 'relative' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 14, width: '100%' }}>
+            <div className="search-bar" style={{ flex: '1 1 200px', minWidth: 160, position: 'relative' }}>
               <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: 12, top: 13 }} />
               <input
                 className="input"
                 type="search"
-                placeholder="Search leads by name, phone, package, budget..."
+                placeholder="Search leads by name, phone, package..."
                 value={search}
                 onChange={e => { setSearch(e.target.value); setPage(1); }}
                 style={{ paddingLeft: 36, height: 42, fontSize: 13, borderRadius: 10 }}
@@ -1075,7 +1075,7 @@ export default function DashboardPage() {
                 value={projectFilter}
                 onChange={e => { setProjectFilter(e.target.value); setPage(1); }}
                 className="input"
-                style={{ width: 170, height: 42, fontSize: 12, borderRadius: 10 }}
+                style={{ flex: '1 1 140px', minWidth: 130, height: 42, fontSize: 12, borderRadius: 10 }}
               >
                 <option value="">All Packages</option>
                 {projects.map(p => (
@@ -1127,54 +1127,54 @@ export default function DashboardPage() {
               </div>
             </div>
           ) : (
-            <div className="leads-list">
+            <div className="leads-list" style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
               {leads.map(lead => (
-                <Link key={lead._id} href={`/leads/${lead._id}`} style={{ textDecoration: 'none' }}>
+                <Link key={lead._id} href={`/leads/${lead._id}`} style={{ textDecoration: 'none', display: 'block', width: '100%' }}>
                   <div className="lead-card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                      <div>
-                        <h3 className="lead-name">{lead.name}</h3>
-                        <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, width: '100%', minWidth: 0, marginBottom: 4 }}>
+                      <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                        <h3 className="lead-name truncate" style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{lead.name}</h3>
+                        <p className="truncate" style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
                           +{lead.phone} {lead.company ? `• ${lead.company}` : ''}
                         </p>
                       </div>
-                      <span className={`badge ${STATUS_COLORS[lead.status] || 'badge-tag'}`}>
+                      <span className={`badge ${STATUS_COLORS[lead.status] || 'badge-tag'} flex-shrink-0`} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
                         {STAGE_LABELS[lead.status] || lead.status}
                       </span>
                     </div>
 
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '8px 0' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '6px 0', width: '100%', minWidth: 0 }}>
                       {lead.project && (
-                        <span style={{ fontSize: 11, padding: '2px 6px', background: 'var(--surface)', borderRadius: 4, color: 'var(--text-muted)' }}>
+                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'var(--surface)', borderRadius: 4, color: 'var(--text-muted)', flexShrink: 0 }}>
                           📦 {lead.project}
                         </span>
                       )}
                       {lead.budget && (
-                        <span style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(34,197,94,0.1)', borderRadius: 4, color: 'var(--green)', fontWeight: 600 }}>
+                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(34,197,94,0.1)', borderRadius: 4, color: 'var(--green)', fontWeight: 600, flexShrink: 0 }}>
                           💰 {lead.budget}
                         </span>
                       )}
                       {lead.closedDealAmount && (
-                        <span style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(16,185,129,0.15)', borderRadius: 4, color: '#10b981', fontWeight: 700 }}>
+                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(16,185,129,0.15)', borderRadius: 4, color: '#10b981', fontWeight: 700, flexShrink: 0 }}>
                           🏆 Won: ₹{Number(lead.closedDealAmount).toLocaleString('en-IN')}
                         </span>
                       )}
                       {lead.location && (
-                        <span style={{ fontSize: 11, padding: '2px 6px', background: 'var(--surface)', borderRadius: 4, color: 'var(--text-muted)' }}>
+                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'var(--surface)', borderRadius: 4, color: 'var(--text-muted)', flexShrink: 0 }}>
                           📍 {lead.location}
                         </span>
                       )}
                       {lead.assignedToName && (
-                        <span style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(99,102,241,0.1)', borderRadius: 4, color: 'var(--accent)', fontWeight: 500 }}>
+                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(99,102,241,0.1)', borderRadius: 4, color: 'var(--accent)', fontWeight: 500, flexShrink: 0 }}>
                           👤 {lead.assignedToName}
                         </span>
                       )}
                     </div>
 
                     {lead.followUpDate && (
-                      <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Calendar size={12} />
-                        Next Follow-up: {format(new Date(lead.followUpDate), 'dd MMM yyyy, h:mm a')}
+                      <p className="truncate" style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, width: '100%' }}>
+                        <Calendar size={12} className="flex-shrink-0" />
+                        <span className="truncate">Next Follow-up: {format(new Date(lead.followUpDate), 'dd MMM yyyy, h:mm a')}</span>
                       </p>
                     )}
 
@@ -1182,19 +1182,19 @@ export default function DashboardPage() {
                     <div className="lead-card-actions" onClick={e => e.stopPropagation()}>
                       <a
                         href={`tel:${lead.phone}`}
-                        className="lead-action-btn lead-action-call"
+                        className="lead-action-btn lead-action-call flex-shrink-0"
                         onClick={e => e.stopPropagation()}
                       >
-                        <Phone size={13} /> Call
+                        <Phone size={13} className="flex-shrink-0" /> Call
                       </a>
                       <a
                         href={waLink(lead.phone, `Hello ${lead.name}, regarding your inquiry for ${lead.project || 'our services'}...`)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="lead-action-btn lead-action-wa"
+                        className="lead-action-btn lead-action-wa flex-shrink-0"
                         onClick={e => e.stopPropagation()}
                       >
-                        <MessageCircle size={13} /> WhatsApp
+                        <MessageCircle size={13} className="flex-shrink-0" /> WhatsApp
                       </a>
                     </div>
                   </div>

@@ -981,17 +981,17 @@ export default function LeadDetailPage() {
 
         <div className="page-content">
           {/* Quick Action Top Bar */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-            <a href={`tel:${lead.phone}`} className="btn btn-secondary btn-sm" style={{ flex: 1, gap: 6, justifyContent: 'center' }}>
-              <Phone size={14} /> Call Client
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14, width: '100%' }}>
+            <a href={`tel:${lead.phone}`} className="btn btn-secondary btn-sm" style={{ flex: '1 1 130px', minWidth: 110, gap: 6, justifyContent: 'center', flexShrink: 0 }}>
+              <Phone size={14} className="flex-shrink-0" /> Call Client
             </a>
             
             <button 
               onClick={() => setShowTemplates(true)} 
               className="btn btn-primary btn-sm" 
-              style={{ flex: 1.3, gap: 6, justifyContent: 'center' }}
+              style={{ flex: '1.2 1 150px', minWidth: 130, gap: 6, justifyContent: 'center', flexShrink: 0 }}
             >
-              <MessageCircle size={14} /> Send Proposal
+              <MessageCircle size={14} className="flex-shrink-0" /> Send Proposal
             </button>
           </div>
 
@@ -1219,82 +1219,82 @@ export default function LeadDetailPage() {
                   </div>
                 ) : (
                   <div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
-                      <div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, width: '100%' }}>
+                      <div style={{ minWidth: 0 }}>
                         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Status / Stage</span>
                         <div style={{ marginTop: 2 }}>
-                          <span className={`badge ${STATUS_COLORS[lead.status] || 'badge-tag'}`}>
+                          <span className={`badge ${STATUS_COLORS[lead.status] || 'badge-tag'} flex-shrink-0`}>
                             {STAGE_LABELS[lead.status] || lead.status}
                           </span>
                         </div>
                       </div>
 
                       {lead.company && (
-                        <div>
+                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
                           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Company</span>
-                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{lead.company}</p>
+                          <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{lead.company}</p>
                         </div>
                       )}
 
                       {lead.email && (
-                        <div>
+                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
                           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Email</span>
-                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-                            <a href={`mailto:${lead.email}`} style={{ color: 'var(--accent)', textDecoration: 'none' }}>{lead.email}</a>
+                          <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                            <a href={`mailto:${lead.email}`} style={{ color: 'var(--accent)', textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lead.email}</a>
                           </p>
                         </div>
                       )}
 
                       {lead.project && (
-                        <div>
+                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
                           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Selected Offering</span>
-                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>📦 {lead.project}</p>
+                          <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>📦 {lead.project}</p>
                         </div>
                       )}
 
                       {lead.propertyType && (
-                        <div>
+                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
                           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Category / Type</span>
-                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{lead.propertyType}</p>
+                          <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{lead.propertyType}</p>
                         </div>
                       )}
 
                       {lead.budget && (
-                        <div>
+                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
                           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Budget</span>
-                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--green)' }}>💰 {lead.budget}</p>
+                          <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--green)' }}>💰 {lead.budget}</p>
                         </div>
                       )}
 
                       {lead.closedDealAmount && (
-                        <div style={{ background: 'rgba(34,197,94,0.1)', padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(34,197,94,0.3)' }}>
+                        <div style={{ background: 'rgba(34,197,94,0.1)', padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(34,197,94,0.3)', minWidth: 0, overflow: 'hidden' }}>
                           <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 700 }}>🏆 Closed Deal Value</span>
-                          <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: 'var(--green)' }}>
+                          <p className="truncate" style={{ margin: 0, fontSize: 15, fontWeight: 800, color: 'var(--green)' }}>
                             ₹{Number(lead.closedDealAmount).toLocaleString('en-IN')}
                           </p>
                         </div>
                       )}
 
                       {lead.location && (
-                        <div>
+                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
                           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Location</span>
-                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>📍 {lead.location}</p>
+                          <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>📍 {lead.location}</p>
                         </div>
                       )}
 
                       {lead.followUpDate && (
-                        <div>
+                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
                           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Next Action</span>
-                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>
+                          <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>
                             📅 {format(new Date(lead.followUpDate), 'dd MMM yyyy, h:mm a')}
                           </p>
                         </div>
                       )}
 
                       {lead.assignedToName && (
-                        <div>
+                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
                           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Assigned Specialist</span>
-                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>👤 {lead.assignedToName}</p>
+                          <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>👤 {lead.assignedToName}</p>
                         </div>
                       )}
 
@@ -1345,8 +1345,8 @@ export default function LeadDetailPage() {
                 {lead.notes?.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 240, overflowY: 'auto' }}>
                     {[...lead.notes].reverse().map((n, i) => (
-                      <div key={i} style={{ padding: '8px 12px', background: 'var(--surface)', borderRadius: 10, borderLeft: '3px solid var(--accent)' }}>
-                        <p style={{ margin: 0, fontSize: 12, lineHeight: 1.45 }}>{n.text}</p>
+                      <div key={i} style={{ padding: '8px 12px', background: 'var(--surface)', borderRadius: 10, borderLeft: '3px solid var(--accent)', width: '100%', boxSizing: 'border-box' }}>
+                        <p style={{ margin: 0, fontSize: 12, lineHeight: 1.45, wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}>{n.text}</p>
                         <p style={{ margin: '3px 0 0', fontSize: 10, color: 'var(--text-muted)' }}>
                           {n.authorName || 'Agent'} • {format(new Date(n.createdAt), 'dd MMM, h:mm a')}
                         </p>
@@ -1384,14 +1384,14 @@ export default function LeadDetailPage() {
                 {lead.leadActivities && lead.leadActivities.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 320, overflowY: 'auto' }}>
                     {lead.leadActivities.slice().reverse().map((act, i) => (
-                      <div key={act._id || i} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 8, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                        <div style={{ fontSize: 16, marginTop: 1 }}>{ACTION_ICONS[act.action] || '📌'}</div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)' }}>
+                      <div key={act._id || i} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 8, display: 'flex', gap: 10, alignItems: 'flex-start', width: '100%', minWidth: 0 }}>
+                        <div style={{ fontSize: 16, marginTop: 1, flexShrink: 0 }}>{ACTION_ICONS[act.action] || '📌'}</div>
+                        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', flexWrap: 'wrap', gap: 4 }}>
                             <span style={{ fontWeight: 600, color: 'var(--text)' }}>{act.performerName || 'Agent'}</span>
                             <span>{format(new Date(act.timestamp), 'dd MMM, h:mm a')}</span>
                           </div>
-                          <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>{act.details}</p>
+                          <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)', wordBreak: 'break-word', overflowWrap: 'break-word' }}>{act.details}</p>
                         </div>
                       </div>
                     ))}
