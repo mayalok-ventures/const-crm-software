@@ -700,8 +700,27 @@ function CloseDealModal({ isOpen, onClose, onConfirm, initialAmount }) {
 }
 
 export default function LeadDetailPage() {
-  const { id } = useParams();
+  const params = useParams();
   const router = useRouter();
+
+  // Extract actual ID from params or window.location for Cloudflare Pages static SPA fallback
+  const getActualId = () => {
+    if (params?.id && params.id !== 'placeholder' && params.id !== '[id]' && params.id !== 'undefined') {
+      return params.id;
+    }
+    if (typeof window !== 'undefined') {
+      const parts = window.location.pathname.split('/').filter(Boolean);
+      const idx = parts.indexOf('leads');
+      if (idx !== -1 && parts[idx + 1] && parts[idx + 1] !== 'placeholder') {
+        return parts[idx + 1];
+      }
+    }
+    return params?.id || '';
+  };
+
+  const [leadId, setLeadId] = useState(getActualId());
+  const id = leadId || getActualId();
+
   const [lead, setLead] = useState(null);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -720,6 +739,13 @@ export default function LeadDetailPage() {
   const [mobileTab, setMobileTab] = useState('details');
 
   useEffect(() => {
+    if (!leadId) {
+      const resolved = getActualId();
+      if (resolved) setLeadId(resolved);
+    }
+  }, [params]);
+
+  useEffect(() => {
     try {
       const u = localStorage.getItem('user');
       if (u) setCurrentUser(JSON.parse(u));
@@ -727,11 +753,15 @@ export default function LeadDetailPage() {
   }, []);
 
   useEffect(() => {
-    if (!id || id === '[id]' || id === 'placeholder') return;
+    const activeId = leadId || getActualId();
+    if (!activeId || activeId === '[id]' || activeId === 'placeholder' || activeId === 'undefined') {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     Promise.all([
-      api.get(`/leads/${id}`),
+      api.get(`/leads/${activeId}`),
       api.get('/projects').catch(() => ({ data: [] })),
       api.get('/whatsapp/status').catch(() => ({ data: null })),
     ]).then(([leadRes, projRes, waRes]) => {

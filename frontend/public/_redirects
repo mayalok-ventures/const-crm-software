@@ -3,4 +3,8 @@
 /leads/* /leads/placeholder/index.html 200
 /campaigns/* /campaigns/placeholder/index.html 200
 /share/* /share/placeholder/index.html 200
+/admin /admin/index.html 200
+/admin/* /admin/index.html 200
+/superadmin-dashboard /superadmin-dashboard/index.html 200
+/superadmin-dashboard/* /superadmin-dashboard/index.html 200
 /* /index.html 200

@@ -1158,8 +1158,8 @@ export default function ProfilePage() {
               TAB 1: PERSONAL INFO
              ───────────────────────────────────────────────────────────── */}
           {activeTab === 'personal' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
-              <div className="card" style={{ padding: '22px 20px' }}>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full">
+              <div className="card" style={{ padding: '20px 16px' }}>
                 <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <User size={18} color="var(--accent)" /> General Account Details
                 </h3>
@@ -1192,7 +1192,7 @@ export default function ProfilePage() {
                 </form>
               </div>
 
-              <div className="card" style={{ padding: '22px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div className="card" style={{ padding: '20px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                 <div>
                   <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Lock size={18} color="var(--accent)" /> Role & Permissions
@@ -1240,7 +1240,7 @@ export default function ProfilePage() {
               </div>
 
               {/* SECTION: Universal Localization & Regional Currency Settings */}
-              <div className="card" style={{ padding: '22px 20px', borderLeft: '4px solid #3b82f6', gridColumn: '1 / -1' }}>
+              <div className="card" style={{ padding: '20px 16px', borderLeft: '4px solid #3b82f6', gridColumn: '1 / -1' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
                   <div>
                     <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1252,7 +1252,7 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                <form onSubmit={handleSaveLocalization} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14, alignItems: 'end' }}>
+                <form onSubmit={handleSaveLocalization} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 w-full items-end">
                   {/* Currency Selector */}
                   <div>
                     <label className="label">Default Operating Currency</label>
@@ -1311,9 +1311,9 @@ export default function ProfilePage() {
                     type="submit"
                     disabled={savingLocalization}
                     className="btn btn-primary"
-                    style={{ height: 42, borderRadius: 10, background: '#3b82f6', borderColor: '#3b82f6' }}
+                    style={{ height: 42, borderRadius: 10, background: '#3b82f6', borderColor: '#3b82f6', width: '100%', justifyContent: 'center' }}
                   >
-                    {savingLocalization ? 'Saving...' : 'Save Regional Settings 🌐'}
+                    {savingLocalization ? 'Saving...' : 'Save Settings 🌐'}
                   </button>
                 </form>
               </div>
@@ -1324,7 +1324,7 @@ export default function ProfilePage() {
               TAB 2: SECURITY & 2FA
              ───────────────────────────────────────────────────────────── */}
           {activeTab === 'security' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full">
               {/* 2FA Card */}
               <div className="card" style={{ padding: '22px 20px' }}>
                 <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -2127,11 +2127,14 @@ export default function ProfilePage() {
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'var(--surface)', padding: 16, borderRadius: 14, border: '1px solid var(--border)', marginBottom: 16 }}>
-              {totpSetupData.qrCode ? (
-                <img src={totpSetupData.qrCode} alt="2FA QR Code" style={{ width: 180, height: 180, borderRadius: 8 }} />
-              ) : (
-                <div className="spinner" />
-              )}
+              {(() => {
+                const qrSrc = totpSetupData.qrCode || totpSetupData.qrCodeUrl || (totpSetupData.secret ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(totpSetupData.otpauthUrl || `otpauth://totp/CRM?secret=${totpSetupData.secret}`)}` : null);
+                return qrSrc ? (
+                  <img src={qrSrc} alt="2FA QR Code" style={{ width: 180, height: 180, borderRadius: 8, background: 'white', padding: 4 }} />
+                ) : (
+                  <div className="spinner" />
+                );
+              })()}
               <div style={{ marginTop: 12, textAlign: 'center' }}>
                 <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Or enter manual secret key:</span>
                 <p style={{ margin: '4px 0 0', fontFamily: 'monospace', fontSize: 13, fontWeight: 800, color: 'var(--accent)', letterSpacing: 1 }}>

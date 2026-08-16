@@ -365,11 +365,17 @@ exports.setup2FA = async (req, res) => {
     await user.save();
 
     // Generate QR Code data URL
-    const qrCodeUrl = await qrcode.toDataURL(secret.otpauth_url);
+    const qrCodeUrl = await qrcode.toDataURL(secret.otpauth_url, {
+      margin: 1,
+      width: 256,
+      color: { dark: '#000000', light: '#ffffff' }
+    });
 
     res.json({
       secret: secret.base32,
-      qrCodeUrl,
+      qrCode: qrCodeUrl,
+      qrCodeUrl: qrCodeUrl,
+      otpauthUrl: secret.otpauth_url,
     });
   } catch (error) {
     console.error('setup2FA error:', error);

@@ -10,7 +10,23 @@ import { ChevronLeft, RefreshCw, AlertTriangle, CheckCircle, XCircle, ArrowLeft,
 export default function CampaignDetailsPage() {
   const params = useParams();
   const router = useRouter();
-  const campaignId = params.id;
+
+  const getActualId = () => {
+    if (params?.id && params.id !== 'placeholder' && params.id !== '[id]' && params.id !== 'undefined') {
+      return params.id;
+    }
+    if (typeof window !== 'undefined') {
+      const parts = window.location.pathname.split('/').filter(Boolean);
+      const idx = parts.indexOf('campaigns');
+      if (idx !== -1 && parts[idx + 1] && parts[idx + 1] !== 'placeholder') {
+        return parts[idx + 1];
+      }
+    }
+    return params?.id || '';
+  };
+
+  const [activeId, setActiveId] = useState(getActualId());
+  const campaignId = activeId || getActualId();
 
   const [campaign, setCampaign] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -21,6 +37,7 @@ export default function CampaignDetailsPage() {
   const [logsLoading, setLogsLoading] = useState(true);
 
   const fetchCampaign = async () => {
+    if (!campaignId || campaignId === 'placeholder') return;
     try {
       const res = await api.get(`/campaigns/${campaignId}`);
       setCampaign(res.data);
@@ -32,6 +49,7 @@ export default function CampaignDetailsPage() {
   };
 
   const fetchLogs = async (p = page) => {
+    if (!campaignId || campaignId === 'placeholder') return;
     setLogsLoading(true);
     try {
       const res = await api.get(`/campaigns/${campaignId}/logs?page=${p}&limit=50`);
@@ -45,6 +63,13 @@ export default function CampaignDetailsPage() {
       setLogsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!activeId) {
+      const resolved = getActualId();
+      if (resolved) setActiveId(resolved);
+    }
+  }, [params]);
 
   useEffect(() => {
     if (campaignId && campaignId !== '[id]' && campaignId !== 'placeholder' && campaignId !== 'undefined') {

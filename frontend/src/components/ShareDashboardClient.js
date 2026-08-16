@@ -8,13 +8,39 @@ import { format } from 'date-fns';
 const STATUS_LABELS = { new: 'New', contacted: 'Contacted', follow_up: 'Follow-up', closed: 'Closed' };
 
 export default function ShareDashboardPage() {
-  const { token } = useParams();
+  const params = useParams();
+
+  const getActualToken = () => {
+    if (params?.token && params.token !== 'placeholder' && params.token !== '[token]' && params.token !== 'undefined') {
+      return params.token;
+    }
+    if (typeof window !== 'undefined') {
+      const parts = window.location.pathname.split('/').filter(Boolean);
+      const idx = parts.indexOf('share');
+      if (idx !== -1 && parts[idx + 1] && parts[idx + 1] !== 'placeholder') {
+        return parts[idx + 1];
+      }
+    }
+    return params?.token || '';
+  };
+
+  const [activeToken, setActiveToken] = useState(getActualToken());
+  const token = activeToken || getActualToken();
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    if (!activeToken) {
+      const resolved = getActualToken();
+      if (resolved) setActiveToken(resolved);
+    }
+  }, [params]);
+
+  useEffect(() => {
     if (!token || token === '[token]' || token === 'placeholder' || token === 'undefined') return;
+    setLoading(true);
     api.get(`/share/${token}`).then(r => setData(r.data)).catch(e => setError(e.response?.data?.message || 'Invalid link')).finally(() => setLoading(false));
   }, [token]);
 
