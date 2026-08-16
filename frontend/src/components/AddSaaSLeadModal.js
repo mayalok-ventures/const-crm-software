@@ -374,16 +374,14 @@ export default function AddSaaSLeadModal({ isOpen, onClose, onCreated }) {
           </div>
 
           {/* Submit Actions */}
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 6 }}>
+          <div className="modal-actions">
             <button
               type="button"
               onClick={onClose}
+              className="btn btn-ghost"
               style={{
-                padding: '10px 18px',
+                height: 42,
                 borderRadius: 8,
-                background: '#1e293b',
-                border: '1px solid #334155',
-                color: '#94a3b8',
                 fontSize: 13,
                 fontWeight: 600,
                 cursor: 'pointer'
@@ -394,8 +392,9 @@ export default function AddSaaSLeadModal({ isOpen, onClose, onCreated }) {
             <button
               type="submit"
               disabled={loading}
+              className="btn btn-primary"
               style={{
-                padding: '10px 22px',
+                height: 42,
                 borderRadius: 8,
                 background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
                 border: 'none',
@@ -405,6 +404,7 @@ export default function AddSaaSLeadModal({ isOpen, onClose, onCreated }) {
                 cursor: 'pointer',
                 display: 'inline-flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: 8,
                 boxShadow: '0 4px 12px rgba(99,102,241,0.3)'
               }}

@@ -143,21 +143,24 @@ export default function AvatarPickerModal({ isOpen, currentAvatarId, onClose, on
         </div>
 
         {/* Modal Action CTA Buttons */}
-        <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+        <div className="modal-actions">
           <button
             type="button"
-            className="btn btn-ghost btn-full"
+            className="btn btn-ghost"
             onClick={onClose}
             disabled={saving}
+            style={{ height: 44, borderRadius: 12 }}
           >
             Cancel
           </button>
           <button
             type="button"
-            className="btn btn-primary btn-full"
+            className="btn btn-primary"
             onClick={handleConfirm}
             disabled={saving}
             style={{
+              height: 44,
+              borderRadius: 12,
               background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
               fontWeight: 700,
             }}

@@ -133,11 +133,11 @@ export default function LostReasonModal({ isOpen, targetStage, leadName, onConfi
             />
           </div>
 
-          <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+          <div className="modal-actions">
             <button
               type="button"
               onClick={onCancel}
-              className="btn btn-ghost btn-full"
+              className="btn btn-ghost"
               style={{ height: 42, borderRadius: 10 }}
             >
               Cancel
@@ -145,7 +145,7 @@ export default function LostReasonModal({ isOpen, targetStage, leadName, onConfi
             <button
               type="submit"
               disabled={submitting}
-              className="btn btn-full"
+              className="btn"
               style={{
                 background: 'var(--red)',
                 color: '#fff',

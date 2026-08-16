@@ -705,19 +705,44 @@ const initSessions = async () => {
 
     for (const uId of sessionsWithCreds) {
       const user = await User.findById(uId).select('phone').lean();
-      if (user && user.phone) {
-        console.log(`[WA] Restoring registered MongoDB session for user ${uId} (${user.phone})`);
-        try {
-          await restoreSession(uId, user.phone);
-        } catch (e) {
-          console.warn(`[WA] Session restore notice for user ${uId}:`, e.message);
-        }
+      const phoneToUse = user?.phone || 'whatsapp';
+      console.log(`[WA] Restoring registered MongoDB session for user ${uId} (${phoneToUse})`);
+      try {
+        await restoreSession(uId, phoneToUse);
+      } catch (e) {
+        console.warn(`[WA] Session restore notice for user ${uId}:`, e.message);
       }
     }
   } catch (err) {
     console.error('[WA] initSessions error:', err.message);
   }
 };
+
+// ── 7-DAY RESILIENT SESSION GUARANTEE & BACKGROUND HEARTBEAT ───────────────
+// Periodically checks all registered credentials in MongoDB every 45 seconds.
+// If any session dropped connection or server restarted, automatically restore it
+// so users stay connected even after leaving the site or being offline for 7+ days.
+setInterval(async () => {
+  try {
+    const sessionsWithCreds = await WhatsAppAuth.distinct('sessionId', { key: 'creds' });
+    for (const uId of sessionsWithCreds) {
+      if (pairingInProgress[uId]) continue; // Skip if actively in pairing window
+      
+      const st = getStatus(uId);
+      if (st.status !== 'connected' && st.status !== 'connecting') {
+        const user = await User.findById(uId).select('phone').lean();
+        console.log(`[WA-Heartbeat] Auto-healing offline WhatsApp session for user ${uId}...`);
+        try {
+          await restoreSession(uId, user?.phone || 'whatsapp');
+        } catch (err) {
+          console.warn(`[WA-Heartbeat] Session heal retry notice for ${uId}:`, err.message);
+        }
+      }
+    }
+  } catch (e) {
+    // Non-blocking background heartbeat
+  }
+}, 45000);
 
 module.exports = {
   connect,

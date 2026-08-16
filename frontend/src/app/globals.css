@@ -161,7 +161,46 @@ html, body {
   gap: 3px;
   flex-shrink: 0;
 }
-.btn-full { width: 100%; flex-shrink: 0; }
+.btn-full { 
+  width: 100%; 
+  flex: 1 1 0%; 
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* Form & Modal action button containers: Ensure both Cancel and CTA are visible directly beneath without horizontal scrolling */
+.modal-actions,
+.modal-btn-row,
+.form-actions,
+.form-actions-row {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: stretch !important;
+  gap: 10px !important;
+  width: 100% !important;
+  margin-top: 16px !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+}
+
+.modal-actions > .btn,
+.modal-btn-row > .btn,
+.form-actions > .btn,
+.form-actions-row > .btn,
+.modal-actions > button,
+.modal-btn-row > button,
+.form-actions > button,
+.form-actions-row > button {
+  flex: 1 1 0% !important;
+  min-width: 0 !important;
+  width: auto !important;
+  max-width: 100% !important;
+  justify-content: center !important;
+  text-align: center !important;
+  box-sizing: border-box !important;
+}
+
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 @media (max-width: 640px) {

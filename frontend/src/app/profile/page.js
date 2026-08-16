@@ -1,253 +1,377 @@
+// UI — CAMPAIGN POLLING ONLY:
+// This page displays campaign status by polling the backend API.
+// All actual campaign execution (sending messages, retries, delays) happens
+// in the backend worker (workers/campaign.worker.js via BullMQ).
+//
+// ⚠️ HISTORY WARNING:
+// This file previously contained a frontend campaign loop using window.open.
+// That approach caused:
+//   - Data loss when browser tab was closed mid-campaign
+//   - No resumability after disconnection
+//   - Pop-up blocker interference
+//   - False "sent" logs when windows were blocked
+//
+// DO NOT move campaign logic back to the frontend. The correct flow is:
+//   1. User clicks "Start Campaign" → POST /api/campaigns (creates job in BullMQ)
+//   2. This page polls GET /api/campaigns/:id every 3s (status only)
+//   3. Worker runs in backend, persists progress in MongoDB
+//
+// Any future developer who says "it's just a loop, let's simplify"
+// is about to break the campaign system. This comment is your warning.
 'use client';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import Image from 'next/image';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
-import { setAuth } from '@/lib/auth';
-import { Eye, EyeOff, Zap, User, Mail, Phone, Lock, Building2, Briefcase, ShieldAlert, Layers } from 'lucide-react';
+import { waLink } from '@/lib/auth';
+import BottomNav from '@/components/BottomNav';
+import { Users, Plus, MessageCircle, Trash2, ChevronRight, AlertTriangle, X, Check, Loader, Play, Pause } from 'lucide-react';
 
-const INDUSTRY_OPTIONS = [
-  'Agency',
-  'SaaS',
-  'Real Estate',
-  'E-commerce',
-  'Consulting',
-  'Healthcare',
-  'Education',
-  'Other'
-];
+const BULK_MAX = 500;
+const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
-export default function SignupPage() {
-  const router = useRouter();
-  const [form, setForm] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    password: '',
-    confirmPassword: '',
-    workStatus: 'company_owner', // 'company_owner' | 'independent_agent'
-    companyName: '',
-    industryType: 'Agency',
-  });
-  const [showPass, setShowPass] = useState(false);
+function CreateGroupModal({ leads, onClose, onCreated }) {
+  const [form, setForm] = useState({ name: '', type: 'manual', tags: '', leadIds: [] });
   const [loading, setLoading] = useState(false);
+  const [allLeads, setAllLeads] = useState(leads || []);
+  const [leadsLoading, setLeadsLoading] = useState(!leads);
 
-  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
-
-  const handleSignup = async (e) => {
-    e.preventDefault();
-    if (!form.name || !form.password) return toast.error('Name and password required');
-    if (!form.email && !form.phone) return toast.error('Provide email or phone number');
-    if (form.password !== form.confirmPassword) return toast.error('Passwords do not match');
-    if (form.password.length < 6) return toast.error('Password must be at least 6 characters');
-    if (form.workStatus === 'company_owner' && !form.companyName.trim()) {
-      return toast.error('Please enter your Organization / Agency Name');
+  useEffect(() => {
+    if (!leads) {
+      api.get('/leads?limit=50').then(r => setAllLeads(r.data.leads)).finally(() => setLeadsLoading(false));
     }
+  }, [leads]);
 
+  const toggle = (id) => setForm(f => ({
+    ...f,
+    leadIds: f.leadIds.includes(id) ? f.leadIds.filter(x => x !== id) : [...f.leadIds, id],
+  }));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) return toast.error('Group name required');
     setLoading(true);
     try {
-      const { data } = await api.post('/auth/register', {
-        name: form.name,
-        email: form.email || undefined,
-        phone: form.phone || undefined,
-        password: form.password,
-        workStatus: form.workStatus,
-        companyName: form.companyName || undefined,
-        industryType: form.industryType || 'Agency',
-      });
-      setAuth(data, data.token);
-      toast.success(`Account registered! Welcome, ${data.name} 🎉`);
-
-      if (data.role === 'superadmin' || data.isAdmin) {
-        router.replace('/superadmin-dashboard');
-      } else {
-        router.replace('/dashboard');
-      }
+      const payload = {
+        name: form.name.trim(),
+        type: form.type,
+        tags: form.type === 'tag_based' ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
+        leadIds: form.type === 'manual' ? form.leadIds : undefined,
+      };
+      const res = await api.post('/groups', payload);
+      toast.success('Group created');
+      onCreated(res.data);
+      onClose();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Signup failed');
+      toast.error(err.response?.data?.message || 'Failed to create group');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="auth-wrapper">
-      <div className="auth-card" style={{ paddingBottom: 20, maxWidth: 480 }}>
-        {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 20 }}>
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 10,
-          }}>
-            <Image
-              src="/logo.png"
-              alt="SalesCRM Logo"
-              width={56}
-              height={56}
-              style={{ borderRadius: 14, objectFit: 'contain', boxShadow: '0 8px 32px rgba(79, 70, 229, 0.3)' }}
-              priority
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={e => e.stopPropagation()}>
+        <div className="modal-handle" />
+        <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>Create Group</h2>
+
+        <form onSubmit={submit}>
+          <div style={{ marginBottom: 12 }}>
+            <label className="label">Group Name</label>
+            <input
+              type="text"
+              className="input"
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="e.g. Warm Leads"
+              required
             />
           </div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, color: 'var(--text)' }}>
-            Create Account
-          </h1>
-          <p style={{ color: 'var(--text-muted)', marginTop: 4, fontSize: 13 }}>Universal Sales & Operations Command Center</p>
-        </div>
 
-        <form onSubmit={handleSignup} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Strict Role Selection */}
-          <div>
-            <label className="label" style={{ marginBottom: 6, fontWeight: 700 }}>
-              Select Account Role *
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div style={{ marginBottom: 12 }}>
+            <label className="label">Type</label>
+            <div style={{ display: 'flex', gap: 10 }}>
               <button
                 type="button"
-                onClick={() => setForm(f => ({ ...f, workStatus: 'company_owner' }))}
-                style={{
-                  padding: '12px 10px',
-                  borderRadius: 12,
-                  border: form.workStatus === 'company_owner' ? '2px solid var(--accent)' : '1px solid var(--border)',
-                  background: form.workStatus === 'company_owner' ? 'rgba(79,70,229,0.1)' : 'var(--surface)',
-                  color: form.workStatus === 'company_owner' ? 'var(--accent)' : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  textAlign: 'center',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 4
-                }}
+                className={`btn btn-full ${form.type === 'manual' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setForm(f => ({ ...f, type: 'manual' }))}
               >
-                <Building2 size={20} />
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>🏢 Agency Owner</span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.2 }}>Manage reps, team pool & catalog</span>
+                Manual Select
               </button>
-
               <button
                 type="button"
-                onClick={() => setForm(f => ({ ...f, workStatus: 'independent_agent' }))}
-                style={{
-                  padding: '12px 10px',
-                  borderRadius: 12,
-                  border: form.workStatus === 'independent_agent' ? '2px solid var(--accent)' : '1px solid var(--border)',
-                  background: form.workStatus === 'independent_agent' ? 'rgba(79,70,229,0.1)' : 'var(--surface)',
-                  color: form.workStatus === 'independent_agent' ? 'var(--accent)' : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  textAlign: 'center',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 4
-                }}
+                className={`btn btn-full ${form.type === 'tag_based' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setForm(f => ({ ...f, type: 'tag_based' }))}
               >
-                <Briefcase size={20} />
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>👤 Solo Agent</span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.2 }}>Individual sales & direct deals</span>
+                Tag Based
               </button>
             </div>
-            <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <ShieldAlert size={12} color="var(--accent)" />
-              <span>Role is locked upon signup and cannot be changed later.</span>
-            </p>
           </div>
 
-          {/* Industry Vertical Selector */}
-          <div>
-            <label className="label">
-              <Layers size={12} style={{ display: 'inline', marginRight: 4 }} />
-              Industry Vertical *
-            </label>
-            <select
-              className="input"
-              value={form.industryType}
-              onChange={set('industryType')}
-              required
-            >
-              {INDUSTRY_OPTIONS.map(ind => (
-                <option key={ind} value={ind}>{ind}</option>
-              ))}
-            </select>
-          </div>
-
-          {form.workStatus === 'company_owner' && (
-            <div>
-              <label className="label">
-                <Building2 size={12} style={{ display: 'inline', marginRight: 4 }} />
-                Organization / Agency Name *
-              </label>
+          {form.type === 'tag_based' ? (
+            <div style={{ marginBottom: 14 }}>
+              <label className="label">Tags (comma separated)</label>
               <input
-                className="input"
                 type="text"
-                placeholder="e.g. Apex Growth Solutions"
-                value={form.companyName}
-                onChange={set('companyName')}
-                required
+                className="input"
+                value={form.tags}
+                onChange={e => setForm(f => ({ ...f, tags: e.target.value }))}
+                placeholder="vip, warm, web-inquiry"
               />
+            </div>
+          ) : (
+            <div style={{ marginBottom: 14 }}>
+              <label className="label">Select Leads</label>
+              {leadsLoading ? (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: 12 }}><div className="spinner" /></div>
+              ) : (
+                <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
+                  {allLeads.map(l => (
+                    <div
+                      key={l._id}
+                      onClick={() => toggle(l._id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '6px 8px',
+                        cursor: 'pointer',
+                        borderRadius: 6,
+                        backgroundColor: form.leadIds.includes(l._id) ? 'var(--primary-light)' : 'transparent',
+                        marginBottom: 4
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{l.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{l.phone}</div>
+                      </div>
+                      {form.leadIds.includes(l._id) && <Check size={14} color="var(--primary)" />}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          <div>
-            <label className="label"><User size={12} style={{ display: 'inline', marginRight: 4 }} />Full Name *</label>
-            <input className="input" type="text" placeholder="Your full name" value={form.name} onChange={set('name')} autoComplete="name" required />
+          <div className="modal-actions">
+            <button type="button" className="btn btn-ghost" onClick={onClose} style={{ height: 42 }}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={loading} style={{ height: 42 }}>
+              {loading ? 'Creating...' : 'Create Audience Group'}
+            </button>
           </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
-          <div>
-            <label className="label"><Mail size={12} style={{ display: 'inline', marginRight: 4 }} />Email (optional if phone provided)</label>
-            <input className="input" type="email" placeholder="your@email.com" value={form.email} onChange={set('email')} autoComplete="email" inputMode="email" />
-          </div>
+function BulkSendModal({ group, onClose }) {
+  const router = useRouter();
+  const [name, setName] = useState(`${group.name} Campaign`);
+  const [template, setTemplate] = useState(group.campaignTemplate || '');
+  const [loading, setLoading] = useState(true);
+  const [leadsCount, setLeadsCount] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
 
-          <div>
-            <label className="label"><Phone size={12} style={{ display: 'inline', marginRight: 4 }} />Phone (optional if email provided)</label>
-            <input className="input" type="tel" placeholder="+91 9999999999" value={form.phone} onChange={set('phone')} autoComplete="tel" inputMode="tel" />
-          </div>
+  useEffect(() => {
+    api.get(`/groups/${group._id}/leads`).then(r => {
+      setLeadsCount(r.data.length);
+    }).finally(() => setLoading(false));
+  }, [group._id]);
 
-          <div>
-            <label className="label"><Lock size={12} style={{ display: 'inline', marginRight: 4 }} />Password *</label>
-            <div style={{ position: 'relative' }}>
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return toast.error('Enter campaign name');
+    if (!template.trim()) return toast.error('Enter a message');
+    
+    setSubmitting(true);
+    try {
+      const response = await api.post('/campaigns', {
+        groupId: group._id,
+        name: name.trim(),
+        template: template.trim(),
+      });
+      toast.success('Campaign launched successfully! 🎉');
+      router.push(`/campaigns/${response.data._id}`);
+      onClose();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to start campaign');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={e => e.stopPropagation()}>
+        <div className="modal-handle" />
+        <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Start Campaign — {group.name}</h2>
+
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 0' }}><div className="spinner" /></div>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <div style={{ marginBottom: 14 }}>
+              <label className="label">Campaign Name</label>
               <input
+                type="text"
                 className="input"
-                type={showPass ? 'text' : 'password'}
-                placeholder="Min 6 characters"
-                value={form.password}
-                onChange={set('password')}
-                style={{ paddingRight: 48 }}
-                autoComplete="new-password"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="e.g. July Promo"
+                required
+                disabled={submitting}
+              />
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label className="label">Message (use {'{name}'}, {'{phone}'})</label>
+              <textarea
+                className="input"
+                placeholder="Hi {name}! ..."
+                value={template}
+                onChange={e => setTemplate(e.target.value)}
+                rows={5}
+                disabled={submitting}
                 required
               />
-              <button type="button" onClick={() => setShowPass(!showPass)} style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
-                {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+            </div>
+
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+              🎯 Will send to <strong style={{ color: 'var(--text)' }}>{leadsCount}</strong> leads in group <strong>{group.name}</strong> asynchronously via backend.
+            </p>
+
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={onClose} disabled={submitting} style={{ height: 42 }}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-success"
+                disabled={submitting || leadsCount === 0}
+                style={{ height: 42, justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 8 }}
+              >
+                {submitting ? 'Launching...' : 'Launch Campaign'}
               </button>
             </div>
-          </div>
-
-          <div>
-            <label className="label">Confirm Password *</label>
-            <input className="input" type="password" placeholder="Repeat password" value={form.confirmPassword} onChange={set('confirmPassword')} autoComplete="new-password" required />
-          </div>
-
-          <button className="btn btn-primary btn-full" type="submit" disabled={loading} style={{ marginTop: 8, height: 44, borderRadius: 12 }}>
-            {loading ? <div className="spinner" style={{ width: 18, height: 18 }} /> : 'Complete Registration'}
-          </button>
-
-          <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', margin: '12px 0 4px', lineHeight: 1.4 }}>
-            By creating an account, you agree to our{' '}
-            <Link href="/terms" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>Terms of Service</Link>{' '}
-            and{' '}
-            <Link href="/privacy" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>Privacy Policy</Link>.
-          </p>
-        </form>
-
-        <p style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: 'var(--text-muted)' }}>
-          Already have an account?{' '}
-          <Link href="/login" style={{ color: 'var(--accent)', fontWeight: 600 }}>
-            Sign In
-          </Link>
-        </p>
+          </form>
+        )}
       </div>
+    </div>
+  );
+}
+
+export default function GroupsPage() {
+  const [groups, setGroups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [bulkGroup, setBulkGroup] = useState(null);
+
+  const fetchGroups = () => {
+    api.get('/groups').then(r => setGroups(r.data)).finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchGroups();
+  }, []);
+
+  const deleteGroup = async (id) => {
+    if (!confirm('Delete this group?')) return;
+    try {
+      await api.delete(`/groups/${id}`);
+      setGroups(prev => prev.filter(g => g._id !== id));
+      toast.success('Group deleted');
+    } catch {
+      toast.error('Failed');
+    }
+  };
+
+  return (
+    <div className="app-shell">
+      <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+        <div className="page-header">
+          <h1 className="page-title">Audience Groups</h1>
+          <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)}>
+            <Plus size={16} /> New Group
+          </button>
+        </div>
+
+        <div className="page-content">
+          <div style={{ padding:'12px 14px', background:'rgba(37,211,102,0.08)', border:'1px solid rgba(37,211,102,0.15)', borderRadius:12, marginBottom:20, fontSize:13, color:'var(--text-muted)', display:'flex', gap:10, alignItems:'flex-start' }}>
+            <MessageCircle size={16} color="#25D366" style={{ flexShrink:0, marginTop:1 }} />
+            <span>Target custom client segments and audience lists for automated bulk broadcast outreach.</span>
+          </div>
+
+          {loading ? (
+            <div style={{ display:'flex', justifyContent:'center', padding:'40px 0' }}><div className="spinner" /></div>
+          ) : groups.length === 0 ? (
+            <div className="empty-state card" style={{ padding: '48px 20px', textAlign: 'center' }}>
+              <Users size={44} color="var(--border)" style={{ marginBottom: 10 }} />
+              <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>No audience groups yet</h3>
+              <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Create audience segments to bulk send WhatsApp campaigns</p>
+            </div>
+          ) : (
+            <div className="responsive-card-grid">
+              {groups.map(g => (
+                <div key={g._id} className="card card-hover" style={{ padding: 16, borderRadius: 14 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                    <div style={{ width:44, height:44, borderRadius:12, background:'rgba(79,70,229,0.1)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                      <Users size={20} color="var(--accent)" />
+                    </div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <p style={{ margin:0, fontWeight:700, fontSize:14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</p>
+                        {g.campaignStatus && g.campaignStatus !== 'idle' && (
+                          <span style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            marginLeft: 8,
+                            padding: '2px 6px',
+                            borderRadius: 6,
+                            background: g.campaignStatus === 'sending' ? 'rgba(79,70,229,0.15)' : g.campaignStatus === 'paused' ? 'rgba(245,158,11,0.15)' : 'rgba(34,197,94,0.15)',
+                            color: g.campaignStatus === 'sending' ? 'var(--accent)' : g.campaignStatus === 'paused' ? '#eab308' : '#22c55e',
+                            textTransform: 'uppercase'
+                          }}>
+                            {g.campaignStatus}
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ margin:'2px 0 0', fontSize:12, color:'var(--text-muted)' }}>
+                        {g.type === 'tag_based' ? `Tags: ${g.tags.join(', ')}` : `${g.leadIds.length} members`}
+                      </p>
+                    </div>
+                    <div style={{ display:'flex', gap:6 }}>
+                      <button
+                        onClick={() => setBulkGroup(g)}
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: '6px 10px', fontSize: 12, gap: 4, borderRadius: 8 }}
+                      >
+                        <MessageCircle size={13} color="#22c55e" /> Send
+                      </button>
+                      <button onClick={() => deleteGroup(g._id)} style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:8, padding: 6, cursor:'pointer', color:'var(--red)' }}>
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showCreate && <CreateGroupModal onClose={() => setShowCreate(false)} onCreated={g => setGroups(prev => [g, ...prev])} />}
+      {bulkGroup && (
+        <BulkSendModal 
+          group={bulkGroup} 
+          onClose={() => {
+            setBulkGroup(null);
+            fetchGroups();
+          }} 
+        />
+      )}
+
+      <BottomNav active="groups" />
     </div>
   );
 }

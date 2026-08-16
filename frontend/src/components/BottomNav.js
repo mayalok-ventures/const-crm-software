@@ -11,22 +11,22 @@ import {
 import PlanStatusWidget from '@/components/PlanStatusWidget';
 
 const MOBILE_ITEMS = [
-  { href: '/dashboard/', label: 'Leads', icon: Home, key: 'dashboard' },
-  { href: '/projects/', label: 'Catalog', icon: Package, key: 'projects' },
-  { href: '/whatsapp/', label: 'Inbox', icon: MessageCircle, key: 'whatsapp' },
-  { href: '/templates/', label: 'Templates', icon: FileText, key: 'templates' },
-  { href: '/profile/', label: 'Profile', icon: User, key: 'profile' },
+  { href: '/dashboard', label: 'Leads', icon: Home, key: 'dashboard' },
+  { href: '/projects', label: 'Catalog', icon: Package, key: 'projects' },
+  { href: '/whatsapp', label: 'Inbox', icon: MessageCircle, key: 'whatsapp' },
+  { href: '/templates', label: 'Templates', icon: FileText, key: 'templates' },
+  { href: '/profile', label: 'Profile', icon: User, key: 'profile' },
 ];
 
 const DESKTOP_ITEMS = [
-  { href: '/dashboard/', label: 'Leads Pipeline', icon: Home, key: 'dashboard' },
-  { href: '/projects/', label: 'Products & Packages', icon: Package, key: 'projects' },
-  { href: '/whatsapp/', label: 'WhatsApp Hub', icon: MessageCircle, key: 'whatsapp' },
-  { href: '/campaigns/', label: 'Broadcast Campaigns', icon: Send, key: 'campaigns' },
-  { href: '/templates/', label: 'Message Templates', icon: FileText, key: 'templates' },
-  { href: '/groups/', label: 'Audience Groups', icon: Users, key: 'groups' },
-  { href: '/analytics/', label: 'Sales Analytics', icon: BarChart2, key: 'analytics' },
-  { href: '/profile/', label: 'Organization & Profile', icon: User, key: 'profile' },
+  { href: '/dashboard', label: 'Leads Pipeline', icon: Home, key: 'dashboard' },
+  { href: '/projects', label: 'Products & Packages', icon: Package, key: 'projects' },
+  { href: '/whatsapp', label: 'WhatsApp Hub', icon: MessageCircle, key: 'whatsapp' },
+  { href: '/campaigns', label: 'Broadcast Campaigns', icon: Send, key: 'campaigns' },
+  { href: '/templates', label: 'Message Templates', icon: FileText, key: 'templates' },
+  { href: '/groups', label: 'Audience Groups', icon: Users, key: 'groups' },
+  { href: '/analytics', label: 'Sales Analytics', icon: BarChart2, key: 'analytics' },
+  { href: '/profile', label: 'Organization & Profile', icon: User, key: 'profile' },
 ];
 
 export default function BottomNav({ active }) {
@@ -49,29 +49,6 @@ export default function BottomNav({ active }) {
     return normalize(pathname) === normalize(href);
   };
 
-  const handleNavigate = (e, targetHref) => {
-    const currentNorm = normalize(pathname);
-    const targetNorm = normalize(targetHref);
-    
-    // If clicking current page, let it be
-    if (currentNorm === targetNorm) {
-      return;
-    }
-
-    // Trigger Next.js router
-    router.push(targetHref);
-
-    // Guaranteed fallback: If Next.js client router is stuck or blocked, force location transition
-    if (typeof window !== 'undefined') {
-      setTimeout(() => {
-        const nowNorm = normalize(window.location.pathname);
-        if (nowNorm !== targetNorm) {
-          window.location.href = targetHref;
-        }
-      }, 250);
-    }
-  };
-
   return (
     <>
       {/* Mobile Bottom Navigation (Visible only on mobile screens < 768px) */}
@@ -82,8 +59,6 @@ export default function BottomNav({ active }) {
             <Link
               key={key}
               href={href}
-              prefetch={true}
-              onClick={(e) => handleNavigate(e, href)}
               className={`bottom-nav-link ${activeState ? 'active' : ''}`}
             >
               <Icon size={20} />
@@ -93,10 +68,8 @@ export default function BottomNav({ active }) {
         })}
         {isSuperAdmin && (
           <Link
-            href="/superadmin-dashboard/"
-            prefetch={true}
-            onClick={(e) => handleNavigate(e, '/superadmin-dashboard/')}
-            className={`bottom-nav-link ${isLinkActive('superadmin', '/superadmin-dashboard/') ? 'active' : ''}`}
+            href="/superadmin-dashboard"
+            className={`bottom-nav-link ${isLinkActive('superadmin', '/superadmin-dashboard') ? 'active' : ''}`}
             style={{ color: '#f59e0b' }}
           >
             <Crown size={20} />
@@ -136,10 +109,8 @@ export default function BottomNav({ active }) {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {isSuperAdmin && (
             <Link
-              href="/superadmin-dashboard/"
-              prefetch={true}
-              onClick={(e) => handleNavigate(e, '/superadmin-dashboard/')}
-              className={`sidebar-nav-link ${isLinkActive('superadmin', '/superadmin-dashboard/') ? 'active' : ''}`}
+              href="/superadmin-dashboard"
+              className={`sidebar-nav-link ${isLinkActive('superadmin', '/superadmin-dashboard') ? 'active' : ''}`}
               style={{
                 color: '#f59e0b',
                 background: 'rgba(245, 158, 11, 0.12)',
@@ -159,8 +130,6 @@ export default function BottomNav({ active }) {
               <Link
                 key={key}
                 href={href}
-                prefetch={true}
-                onClick={(e) => handleNavigate(e, href)}
                 className={`sidebar-nav-link ${activeState ? 'active' : ''}`}
               >
                 <Icon size={18} color={activeState ? 'var(--accent)' : 'currentColor'} />
