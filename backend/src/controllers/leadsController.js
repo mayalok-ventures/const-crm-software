@@ -849,6 +849,20 @@ exports.importLeads = async (req, res) => {
     const basePermissionQuery = await buildLeadPermissionQuery(req.user);
     const currentCount = await Lead.countDocuments(basePermissionQuery);
 
+    // Anti-Fraud Daily Import Velocity Enforcement
+    const { checkImportVelocity } = require('../middleware/antiFraud');
+    const tenantId = companyId || req.user._id;
+    const velocityCheck = await checkImportVelocity(tenantId, 1);
+    if (!velocityCheck.allowed) {
+      return res.status(429).json({
+        success: false,
+        code: velocityCheck.code,
+        message: velocityCheck.message,
+        dailyLimit: velocityCheck.dailyLimit,
+        importedToday: velocityCheck.importedToday,
+      });
+    }
+
     if (maxLeads !== Infinity && currentCount >= maxLeads) {
       return res.status(403).json({
         code: 'LIMIT_REACHED',

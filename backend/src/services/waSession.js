@@ -416,6 +416,19 @@ const connect = async (userId, phoneNumber) => {
     throw new Error(`Invalid phone number "${phoneNumber}". Please provide your full mobile number with country code (e.g. 919876543210).`);
   }
 
+  // ── ANTI-FRAUD: 90-DAY WHATSAPP NUMBER COOLDOWN CHECK ────────────────────
+  const WAFingerprint = require('../models/WAFingerprint');
+  const bannedFingerprint = await WAFingerprint.findOne({
+    phone: cleanPhone,
+    cooldownUntil: { $gt: new Date() },
+    unbannedAt: null,
+  });
+
+  if (bannedFingerprint) {
+    const unbanDate = new Date(bannedFingerprint.cooldownUntil).toLocaleDateString();
+    throw new Error(`Anti-Fraud Security Lock: WhatsApp number +${cleanPhone} is under a 90-day cooldown until ${unbanDate} due to ${bannedFingerprint.reason}.`);
+  }
+
   // Guard: prevent concurrent pairing code requests for the same user
   if (pairingCodeLocks[userId]) {
     throw new Error('A pairing code request is already in progress. Please wait a few seconds.');

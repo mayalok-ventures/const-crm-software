@@ -360,3 +360,252 @@ exports.getAbuseLogs = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUPERADMIN SUBSCRIPTION OVERRIDE & FRAUD AUDITING
+// ─────────────────────────────────────────────────────────────────────────────
+
+const Plan = require('../models/Plan');
+const Subscription = require('../models/Subscription');
+const Entitlement = require('../models/Entitlement');
+const AuditLog = require('../models/AuditLog');
+const WAFingerprint = require('../models/WAFingerprint');
+
+// @desc  SuperAdmin Subscription Override (Lifetime Free / Custom Quotas / Export Gate Bypass)
+// @route POST /api/admin/subscriptions/override
+// @access SuperAdmin
+exports.overrideSubscription = async (req, res) => {
+  try {
+    const {
+      targetUserId,
+      planCode,
+      isLifetimeFree = false,
+      overrideDays = 365,
+      bypassExportGate = false,
+      customSeats,
+      customLeads,
+      customWAQuota,
+      reason,
+    } = req.body;
+
+    if (!targetUserId) {
+      return res.status(400).json({ success: false, message: 'targetUserId is required' });
+    }
+    if (!reason) {
+      return res.status(400).json({ success: false, message: 'An administrative reason is mandatory for overrides.' });
+    }
+
+    const targetUser = await User.findById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({ success: false, message: 'Target user not found' });
+    }
+
+    const isOrg = targetUser.workStatus === 'company_owner' || !!targetUser.companyId;
+    const accountType = isOrg ? 'ORGANIZATION' : 'INDIVIDUAL';
+    const targetCompanyId = targetUser.companyId || (targetUser.workStatus === 'company_owner' ? targetUser._id : null);
+
+    // Resolve plan
+    let plan = null;
+    if (planCode) {
+      plan = await Plan.findOne({ code: String(planCode).toUpperCase().trim() });
+    }
+    if (!plan) {
+      // Default to highest tier for the account type
+      plan = await Plan.findOne({
+        accountType,
+        tier: 3,
+        interval: 'yearly',
+      }) || await Plan.findOne({ accountType });
+    }
+
+    const beforeSub = await Subscription.findOne({ userId: targetUserId }).lean();
+    const beforeEnt = await Entitlement.findOne({ userId: targetUserId }).lean();
+
+    const overrideExpiresAt = isLifetimeFree
+      ? new Date('2099-12-31T23:59:59.999Z')
+      : new Date(Date.now() + (parseInt(overrideDays, 10) || 365) * 24 * 60 * 60 * 1000);
+
+    // Create or update Subscription
+    const updatedSub = await Subscription.findOneAndUpdate(
+      { userId: targetUserId },
+      {
+        $set: {
+          userId: targetUserId,
+          companyId: targetCompanyId,
+          accountType,
+          planId: plan._id,
+          quantity: customSeats || plan.defaultEntitlements?.maxSeats || 1,
+          status: 'ACTIVE',
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: overrideExpiresAt,
+          gracePeriodEnd: null,
+          billingLock: false,
+          superadminOverride: {
+            isOverridden: true,
+            overriddenBy: req.user._id,
+            overrideReason: reason,
+            overrideExpiresAt,
+            isLifetimeFree: !!isLifetimeFree,
+          },
+        },
+      },
+      { upsert: true, new: true }
+    );
+
+    // Provision Entitlements
+    const seatsMax = customSeats || plan.defaultEntitlements?.maxSeats || 1;
+    const leadsMax = customLeads || plan.defaultEntitlements?.maxLeads || 50000;
+    const waMonthly = customWAQuota || plan.defaultEntitlements?.monthlyWAQuota || 50000;
+
+    const updatedEnt = await Entitlement.findOneAndUpdate(
+      { userId: targetUserId },
+      {
+        $set: {
+          userId: targetUserId,
+          companyId: targetCompanyId,
+          subscriptionId: updatedSub._id,
+          accountType,
+          status: 'ACTIVE',
+          seats: {
+            maxAllowed: seatsMax,
+            currentUsed: beforeEnt?.seats?.currentUsed || 1,
+          },
+          leads: {
+            maxAllowed: leadsMax,
+            currentCount: beforeEnt?.leads?.currentCount || 0,
+          },
+          whatsapp: {
+            monthlyLimit: waMonthly,
+            messagesSentThisPeriod: 0,
+            quotaResetDate: overrideExpiresAt,
+            isDripEnabled: false, // SuperAdmin overrides receive full quota immediately
+            totalAnnualQuota: waMonthly * 12,
+            drippedQuotaAccumulator: waMonthly * 12,
+          },
+          exportGating: {
+            canExportData: bypassExportGate || (plan.defaultEntitlements?.exportGatedDays === 0),
+            exportUnlockedAt: bypassExportGate ? new Date() : null,
+            gatingReason: bypassExportGate ? 'SuperAdmin Override Bypass' : null,
+          },
+          importVelocity: {
+            dailyLimit: 25000,
+            importedToday: 0,
+            lastResetAt: new Date(),
+          },
+          features: {
+            advancedAnalytics: true,
+            customWebhooks: true,
+            bulkCampaigns: true,
+            customFields: true,
+            pipelineCustomization: true,
+            prioritySupport: true,
+            dedicatedSenderId: true,
+          },
+        },
+      },
+      { upsert: true, new: true }
+    );
+
+    // Update target user model
+    targetUser.plan = plan.tier === 3 ? 'enterprise' : (plan.tier === 2 ? 'pro' : 'starter');
+    targetUser.planStartDate = new Date();
+    targetUser.planEndDate = overrideExpiresAt;
+    await targetUser.save({ validateBeforeSave: false });
+
+    // Record immutable audit log
+    await AuditLog.create({
+      actorId: req.user._id,
+      actorRole: 'superadmin',
+      targetUserId,
+      targetCompanyId,
+      action: isLifetimeFree ? 'SUPERADMIN_LIFETIME_GRANT' : 'SUPERADMIN_SUBSCRIPTION_OVERRIDE',
+      beforeState: { subscription: beforeSub, entitlement: beforeEnt },
+      afterState: { subscription: updatedSub, entitlement: updatedEnt },
+      reason,
+      riskScore: 0,
+      ipAddress: req.ip || req.headers['x-forwarded-for'] || null,
+      userAgent: req.headers['user-agent'] || null,
+    });
+
+    res.json({
+      success: true,
+      message: `Successfully applied SuperAdmin override for user ${targetUser.name || targetUser.email}`,
+      subscription: updatedSub,
+      entitlement: updatedEnt,
+    });
+  } catch (error) {
+    console.error('SuperAdmin override error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
+// @desc  Get Immutable Audit Logs
+// @route GET /api/admin/subscriptions/audit-logs
+// @access SuperAdmin
+exports.getAuditLogs = async (req, res) => {
+  try {
+    const { action, targetUserId, page = 1, limit = 50 } = req.query;
+    const query = {};
+    if (action) query.action = action;
+    if (targetUserId) query.targetUserId = targetUserId;
+
+    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    const [logs, total] = await Promise.all([
+      AuditLog.find(query)
+        .populate('actorId', 'name email username role')
+        .populate('targetUserId', 'name email username phone')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit, 10))
+        .lean(),
+      AuditLog.countDocuments(query),
+    ]);
+
+    res.json({
+      success: true,
+      logs,
+      total,
+      page: parseInt(page, 10),
+      pages: Math.ceil(total / parseInt(limit, 10)),
+    });
+  } catch (error) {
+    console.error('Get audit logs error:', error);
+    res.status(500).json({ success: false, message: 'Server error loading audit logs' });
+  }
+};
+
+// @desc  Unban WhatsApp Phone Number Fingerprint
+// @route POST /api/admin/subscriptions/unban-wa
+// @access SuperAdmin
+exports.unbanWhatsAppFingerprint = async (req, res) => {
+  try {
+    const { phone, reason = 'SuperAdmin manual unban' } = req.body;
+    if (!phone) return res.status(400).json({ success: false, message: 'phone number is required' });
+
+    const cleanPhone = String(phone).replace(/\D/g, '');
+    const fingerprint = await WAFingerprint.findOne({ phone: cleanPhone });
+
+    if (!fingerprint) {
+      return res.status(404).json({ success: false, message: 'No active WhatsApp cooldown record found for this number.' });
+    }
+
+    fingerprint.unbannedAt = new Date();
+    fingerprint.unbannedBy = req.user._id;
+    fingerprint.cooldownUntil = new Date(0);
+    await fingerprint.save();
+
+    await AuditLog.create({
+      actorId: req.user._id,
+      actorRole: 'superadmin',
+      targetUserId: fingerprint.bannedFromUserId,
+      action: 'SUPERADMIN_SUBSCRIPTION_OVERRIDE',
+      reason: `WhatsApp unban for +${cleanPhone}: ${reason}`,
+      metadata: { phone: cleanPhone },
+    });
+
+    res.json({ success: true, message: `Successfully unbanned WhatsApp number +${cleanPhone}` });
+  } catch (error) {
+    console.error('Unban WhatsApp error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};

@@ -5,6 +5,7 @@ const {
   createSubscription,
   getCurrentSubscription,
   cancelSubscription,
+  changePlan,
   handleSubscriptionWebhook,
 } = require('../controllers/subscriptionController');
 
@@ -12,6 +13,7 @@ const {
 router.post('/create', protect, createSubscription);
 router.get('/current', protect, getCurrentSubscription);
 router.post('/cancel', protect, cancelSubscription);
+router.post('/change-plan', protect, changePlan);
 
 // ── Razorpay Webhook Endpoint ───────────────────────────────────────────────
 router.post('/webhook', handleSubscriptionWebhook);

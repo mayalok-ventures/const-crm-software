@@ -7,6 +7,7 @@ const {
   exportLeads, importLeads
 } = require('../controllers/leadsController');
 const { protect, checkPlanExpiry } = require('../middleware/auth');
+const { enforceExportGating } = require('../middleware/antiFraud');
 
 // Multer in-memory storage for Excel/CSV parsing
 const upload = multer({
@@ -17,7 +18,7 @@ const upload = multer({
 router.use(protect);
 
 // Export & Import Routes
-router.get('/export', exportLeads);
+router.get('/export', enforceExportGating, exportLeads);
 router.post('/import', checkPlanExpiry, upload.single('file'), importLeads);
 
 // Lead Standard Routes

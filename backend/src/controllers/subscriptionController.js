@@ -633,3 +633,178 @@ exports.handleSubscriptionWebhook = async (req, res) => {
     res.status(200).json({ status: 'error', message: err.message });
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. PLAN MODIFICATION (UPGRADE PRORATION & END-OF-CYCLE DOWNGRADE)
+// ─────────────────────────────────────────────────────────────────────────────
+exports.changePlan = async (req, res) => {
+  try {
+    const { targetPlanCode, targetQuantity = 1 } = req.body;
+    const { tenantId, accountType, isOwner } = resolveTenantIdentity(req.user);
+
+    if (!isOwner) {
+      return res.status(403).json({ success: false, message: 'Only account owners can modify plans.' });
+    }
+
+    if (!targetPlanCode) {
+      return res.status(400).json({ success: false, message: 'targetPlanCode is required.' });
+    }
+
+    // 1. Fetch Target Plan
+    const targetPlan = await Plan.findOne({ code: String(targetPlanCode).toUpperCase().trim(), isActive: true });
+    if (!targetPlan) {
+      return res.status(400).json({ success: false, message: 'Invalid or inactive target plan selected.' });
+    }
+
+    // 2. Strict Account Type Isolation Check
+    if (targetPlan.accountType !== accountType) {
+      return res.status(403).json({
+        success: false,
+        message: `Account isolation violation: An ${accountType} account cannot change to an ${targetPlan.accountType} plan.`,
+      });
+    }
+
+    // 3. Fetch Active Subscription
+    const subscription = await Subscription.findOne({
+      userId: tenantId,
+      status: { $in: ['ACTIVE', 'AUTHENTICATED'] },
+    }).populate('planId');
+
+    if (!subscription) {
+      return res.status(404).json({ success: false, message: 'No active subscription found to modify.' });
+    }
+
+    const currentPlan = subscription.planId;
+    const requestedSeats = accountType === 'ORGANIZATION' ? Math.max(1, parseInt(targetQuantity, 10) || 1) : 1;
+
+    // 4. Determine UPGRADE vs DOWNGRADE
+    const isIntervalUpgrade = currentPlan.interval === 'monthly' && targetPlan.interval === 'yearly';
+    const isTierUpgrade = targetPlan.tier > currentPlan.tier;
+    const isSeatsUpgrade = requestedSeats > (subscription.quantity || 1);
+    const isUpgrade = isIntervalUpgrade || isTierUpgrade || (targetPlan.tier === currentPlan.tier && isSeatsUpgrade);
+
+    // 5. Ensure Razorpay target plan exists
+    const rzpTargetPlanId = await ensureRazorpayPlan(targetPlan);
+
+    if (isUpgrade) {
+      // ── UPGRADE: IMMEDIATE PRORATION CALCULATION ─────────────────────────
+      const now = Date.now();
+      const periodStart = new Date(subscription.currentPeriodStart).getTime();
+      const periodEnd = new Date(subscription.currentPeriodEnd).getTime();
+      const totalDuration = Math.max(1, periodEnd - periodStart);
+      const remainingDuration = Math.max(0, periodEnd - now);
+      const unusedFraction = remainingDuration / totalDuration;
+
+      // Current plan value calculation
+      const currentExtraSeats = Math.max(0, (subscription.quantity || 1) - (currentPlan.defaultEntitlements?.maxSeats || 1));
+      const currentTotalPaise = currentPlan.priceInPaise + (currentExtraSeats * (currentPlan.perSeatPriceInPaise || 0));
+      const unusedValuePaise = Math.round(currentTotalPaise * unusedFraction);
+
+      // Target plan value calculation
+      const targetExtraSeats = Math.max(0, requestedSeats - (targetPlan.defaultEntitlements?.maxSeats || 1));
+      const targetTotalPaise = targetPlan.priceInPaise + (targetExtraSeats * (targetPlan.perSeatPriceInPaise || 0));
+
+      const payableDifferencePaise = Math.max(0, targetTotalPaise - unusedValuePaise);
+
+      // Update Razorpay subscription schedule
+      if (subscription.razorpaySubscriptionId && razorpayInstance) {
+        try {
+          await razorpayInstance.subscriptions.update(subscription.razorpaySubscriptionId, {
+            plan_id: rzpTargetPlanId,
+            schedule_change_at: 'now',
+            quantity: requestedSeats,
+          });
+        } catch (rzpErr) {
+          console.warn('[Billing Engine] Razorpay update notice:', rzpErr.message);
+        }
+      }
+
+      const previousPlanId = subscription.planId;
+      subscription.planId = targetPlan._id;
+      subscription.quantity = requestedSeats;
+      subscription.currentPeriodStart = new Date();
+      subscription.currentPeriodEnd = new Date(now + (targetPlan.interval === 'yearly' ? 365 : 30) * 24 * 60 * 60 * 1000);
+      subscription.pendingChange = { targetPlanId: null, targetQuantity: null, changeType: null, requestedAt: null, effectiveDate: null, prorationSummary: null };
+      await subscription.save();
+
+      // Immediately sync upgraded entitlements
+      await syncEntitlementsForSubscription(subscription, targetPlan, req.user);
+
+      await AuditLog.create({
+        actorId: req.user._id,
+        actorRole: req.user.role === 'superadmin' ? 'superadmin' : 'user',
+        targetUserId: tenantId,
+        targetCompanyId: subscription.companyId,
+        action: 'SUBSCRIPTION_PRORATION_APPLIED',
+        beforeState: { planId: previousPlanId, code: currentPlan.code },
+        afterState: { planId: targetPlan._id, code: targetPlan.code },
+        reason: `Immediate upgrade executed with proration adjustment.`,
+        metadata: {
+          unusedValuePaise,
+          targetTotalPaise,
+          payableDifferencePaise,
+        },
+      });
+
+      return res.json({
+        success: true,
+        changeType: 'UPGRADE',
+        message: `Upgraded to ${targetPlan.name} immediately.`,
+        proration: {
+          unusedValuePaise,
+          targetTotalPaise,
+          payableDifferencePaise,
+        },
+        subscription,
+      });
+    } else {
+      // ── DOWNGRADE: SCHEDULE AT END OF BILLING CYCLE ──────────────────────
+      if (subscription.razorpaySubscriptionId && razorpayInstance) {
+        try {
+          await razorpayInstance.subscriptions.update(subscription.razorpaySubscriptionId, {
+            plan_id: rzpTargetPlanId,
+            schedule_change_at: 'cycle_end',
+            quantity: requestedSeats,
+          });
+        } catch (rzpErr) {
+          console.warn('[Billing Engine] Razorpay downgrade schedule notice:', rzpErr.message);
+        }
+      }
+
+      subscription.pendingChange = {
+        targetPlanId: targetPlan._id,
+        targetQuantity: requestedSeats,
+        changeType: 'DOWNGRADE',
+        requestedAt: new Date(),
+        effectiveDate: subscription.currentPeriodEnd,
+        prorationSummary: {
+          reason: 'Downgrade scheduled at end of cycle. No refund.',
+          targetPlanCode: targetPlan.code,
+        },
+      };
+      await subscription.save();
+
+      await AuditLog.create({
+        actorId: req.user._id,
+        actorRole: req.user.role === 'superadmin' ? 'superadmin' : 'user',
+        targetUserId: tenantId,
+        targetCompanyId: subscription.companyId,
+        action: 'SUBSCRIPTION_DOWNGRADE_SCHEDULED',
+        beforeState: { planId: currentPlan._id, code: currentPlan.code },
+        afterState: { targetPlanId: targetPlan._id, code: targetPlan.code, effectiveDate: subscription.currentPeriodEnd },
+        reason: `Scheduled downgrade to ${targetPlan.name} at end of cycle on ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}.`,
+      });
+
+      return res.json({
+        success: true,
+        changeType: 'DOWNGRADE',
+        message: `Your downgrade to ${targetPlan.name} is scheduled for the end of your billing period (${new Date(subscription.currentPeriodEnd).toLocaleDateString()}). Current plan remains active until then.`,
+        effectiveDate: subscription.currentPeriodEnd,
+        subscription,
+      });
+    }
+  } catch (err) {
+    console.error('[Billing Engine] changePlan error:', err);
+    res.status(500).json({ success: false, message: err.message || 'Server error changing plan' });
+  }
+};

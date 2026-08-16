@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const Lead = require('../models/Lead');
 const Notification = require('../models/Notification');
+const { processSubscriptionLifecycle } = require('../services/subscriptionWorker');
 
 // Run every minute — check for due follow-ups
 const startFollowUpCron = () => {
@@ -36,7 +37,19 @@ const startFollowUpCron = () => {
     }
   });
 
-  console.log('[Cron] Follow-up notification scheduler started');
+  // Run every 15 minutes — process subscription downgrades, grace expiries, and quota drips
+  cron.schedule('*/15 * * * *', async () => {
+    try {
+      await processSubscriptionLifecycle();
+    } catch (err) {
+      console.error('[Cron] Subscription lifecycle worker error:', err.message);
+    }
+  });
+
+  // Execute initial lifecycle pass at startup
+  processSubscriptionLifecycle().catch(console.error);
+
+  console.log('[Cron] Follow-up notification & Subscription lifecycle schedulers active');
 };
 
 module.exports = { startFollowUpCron };
