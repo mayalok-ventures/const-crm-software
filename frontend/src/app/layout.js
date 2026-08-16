@@ -47,15 +47,29 @@ export default function RootLayout({ children }) {
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="theme-color" content="#6366f1" />
+        <link rel="manifest" href="/manifest.json" />
         <script src="https://checkout.razorpay.com/v1/checkout.js" async />
         <script
           dangerouslySetInnerHTML={{
             __html: `
               if ('serviceWorker' in navigator) {
                 window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js')
-                    .then(function(reg) { console.log('ServiceWorker registered'); })
-                    .catch(function(err) { console.error('ServiceWorker registration failed', err); });
+                  navigator.serviceWorker.register('/sw.js').then(function(reg) {
+                    console.log('[PWA] ServiceWorker registered, scope:', reg.scope);
+                    reg.addEventListener('updatefound', function() {
+                      var newSW = reg.installing;
+                      if (newSW) {
+                        newSW.addEventListener('statechange', function() {
+                          if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                            newSW.postMessage({ type: 'SKIP_WAITING' });
+                          }
+                        });
+                      }
+                    });
+                  }).catch(function(err) {
+                    console.warn('[PWA] ServiceWorker registration failed:', err);
+                  });
                 });
               }
             `

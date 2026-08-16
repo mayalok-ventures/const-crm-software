@@ -1,31 +1,80 @@
 {
-  "name": "SalesCRM",
-  "short_name": "SalesCRM",
-  "description": "Mobile-first sales CRM with WhatsApp follow-ups",
+  "name": "CoreSetu CRM",
+  "short_name": "CoreSetu",
+  "description": "Fast, mobile-first CRM with WhatsApp follow-ups, lead tracking, and sales pipeline management.",
   "start_url": "/dashboard",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#0f0f17",
+  "background_color": "#0f172a",
   "theme_color": "#6366f1",
-  "orientation": "portrait",
+  "orientation": "portrait-primary",
+  "lang": "en",
+  "categories": ["business", "productivity"],
   "icons": [
+    {
+      "src": "/favicon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
     {
       "src": "/android-chrome-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "/android-chrome-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
     }
   ],
   "shortcuts": [
     {
-      "name": "Add Lead",
+      "name": "Dashboard",
+      "short_name": "Home",
       "url": "/dashboard",
-      "description": "Open dashboard to add a lead"
+      "description": "View your sales dashboard",
+      "icons": [{ "src": "/favicon-32x32.png", "sizes": "32x32" }]
+    },
+    {
+      "name": "My Leads",
+      "short_name": "Leads",
+      "url": "/leads/placeholder",
+      "description": "Browse and manage your leads",
+      "icons": [{ "src": "/favicon-32x32.png", "sizes": "32x32" }]
+    },
+    {
+      "name": "WhatsApp",
+      "short_name": "WA",
+      "url": "/whatsapp",
+      "description": "Open WhatsApp chat inbox",
+      "icons": [{ "src": "/favicon-32x32.png", "sizes": "32x32" }]
     }
-  ]
+  ],
+  "screenshots": [],
+  "related_applications": [],
+  "prefer_related_applications": false
 }

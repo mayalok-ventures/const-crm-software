@@ -435,12 +435,19 @@ const connect = async (userId, phoneNumber) => {
         requested = true;
         clearTimeout(timeout);
         try {
-          console.log(`[WA] Requesting pairing code for ${cleanPhone}...`);
+          // Wait for socket to be fully open before requesting pairing code
+          let waitMs = 0;
+          const maxWait = 8000;
+          while (sock.ws?.readyState !== 1 /* WebSocket.OPEN */ && waitMs < maxWait) {
+            await new Promise(r => setTimeout(r, 300));
+            waitMs += 300;
+          }
+          console.log(`[WA] Requesting pairing code for ${cleanPhone} after ${waitMs}ms socket wait...`);
           const pairingCode = await sock.requestPairingCode(cleanPhone);
           resolve(pairingCode);
         } catch (err) {
-          console.warn(`[WA] Pairing code attempt 1 failed (${err.message}). Retrying in 1.5s...`);
-          await new Promise(r => setTimeout(r, 1500));
+          console.warn(`[WA] Pairing code attempt 1 failed (${err.message}). Retrying in 3s...`);
+          await new Promise(r => setTimeout(r, 3000));
           try {
             const pairingCode2 = await sock.requestPairingCode(cleanPhone);
             resolve(pairingCode2);
@@ -455,15 +462,16 @@ const connect = async (userId, phoneNumber) => {
           if (sessionStates[userId]) {
             sessionStates[userId] = { ...sessionStates[userId], qrCode: update.qr };
           }
-          setTimeout(() => tryRequest(), 500);
+          setTimeout(() => tryRequest(), 1000);
         }
 
         if (update.connection === 'connecting' && !requested) {
-          setTimeout(() => tryRequest(), 2000);
+          setTimeout(() => tryRequest(), 3000);
         }
       });
 
-      setTimeout(() => tryRequest(), 4000);
+      // Initial trigger: wait 5000ms to let the WebSocket fully handshake
+      setTimeout(() => tryRequest(), 5000);
     });
 
     pairingInProgress[userId] = true;
