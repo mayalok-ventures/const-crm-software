@@ -1,0 +1,15 @@
+{
+  "name": "mobile-crm-workspace",
+  "version": "2.2.0",
+  "description": "SalesCRM Mobile-first Monorepo Workspace",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:api": "node scratch/run_master_qa_suite.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "playwright": "^1.62.1"
+  }
+}
