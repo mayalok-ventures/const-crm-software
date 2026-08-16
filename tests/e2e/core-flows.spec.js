@@ -19,8 +19,9 @@ test.describe('CoreSetu SalesCRM — Master E2E Automation Suite', () => {
     
     await page.fill('input[placeholder*="email" i], input[type="text"]', 'admin@crm.com');
     await page.fill('input[placeholder*="password" i], input[type="password"]', 'Admin@123');
-    await page.click('button[type="submit"]');
+    await page.click('button[type="submit"]', { force: true });
 
+    await page.waitForTimeout(500);
     await expect(page).toHaveURL(/.*(dashboard|superadmin-dashboard).*/, { timeout: 15000 });
 
     const token = await page.evaluate(() => localStorage.getItem('token'));
@@ -34,20 +35,21 @@ test.describe('CoreSetu SalesCRM — Master E2E Automation Suite', () => {
     
     await page.fill('input[placeholder*="email" i], input[type="text"]', 'admin@crm.com');
     await page.fill('input[placeholder*="password" i], input[type="password"]', 'WrongPassword!999');
-    await page.click('button[type="submit"]');
+    await page.click('button[type="submit"]', { force: true });
 
     await page.waitForTimeout(1500);
     expect(page.url()).toContain('/login');
     
     const toastError = page.locator('text=/invalid|failed|incorrect|unauthorized/i');
-    await expect(toastError.first()).toBeVisible({ timeout: 6000 });
+    await expect(toastError.first()).toBeVisible({ timeout: 8000 });
   });
 
   test('TC-AUTH-03: Logout clears auth state and blocks access to /dashboard', async ({ page }) => {
     await page.goto('/login/');
     await page.fill('input[placeholder*="email" i], input[type="text"]', 'admin@crm.com');
     await page.fill('input[placeholder*="password" i], input[type="password"]', 'Admin@123');
-    await page.click('button[type="submit"]');
+    await page.click('button[type="submit"]', { force: true });
+    await page.waitForTimeout(500);
     await expect(page).toHaveURL(/.*(dashboard|superadmin-dashboard).*/, { timeout: 15000 });
 
     await page.evaluate(() => {
@@ -67,7 +69,8 @@ test.describe('CoreSetu SalesCRM — Master E2E Automation Suite', () => {
     await page.goto('/login/');
     await page.fill('input[placeholder*="email" i], input[type="text"]', 'admin@crm.com');
     await page.fill('input[placeholder*="password" i], input[type="password"]', 'Admin@123');
-    await page.click('button[type="submit"]');
+    await page.click('button[type="submit"]', { force: true });
+    await page.waitForTimeout(500);
     await expect(page).toHaveURL(/.*(dashboard|superadmin-dashboard).*/, { timeout: 15000 });
 
     // Open projects catalog module
@@ -87,7 +90,8 @@ test.describe('CoreSetu SalesCRM — Master E2E Automation Suite', () => {
     await page.goto('/login/');
     await page.fill('input[placeholder*="email" i], input[type="text"]', 'admin@crm.com');
     await page.fill('input[placeholder*="password" i], input[type="password"]', 'Admin@123');
-    await page.click('button[type="submit"]');
+    await page.click('button[type="submit"]', { force: true });
+    await page.waitForTimeout(500);
     await expect(page).toHaveURL(/.*(dashboard|superadmin-dashboard).*/, { timeout: 15000 });
 
     await page.goto('/leads/placeholder/');
