@@ -253,8 +253,18 @@ export default function WhatsAppConnectPage() {
     }
   };
 
+  const formatPairingCode = (code) => {
+    if (!code) return '';
+    const clean = String(code).replace(/[^a-zA-Z0-9]/g, '');
+    if (clean.length === 8) {
+      return `${clean.slice(0, 4)} - ${clean.slice(4)}`;
+    }
+    return code;
+  };
+
   const copyCode = () => {
-    navigator.clipboard.writeText(pairingCode);
+    const raw = String(pairingCode || '').replace(/[^a-zA-Z0-9]/g, '');
+    navigator.clipboard.writeText(raw);
     toast.success('Code copied to clipboard! 📋');
   };
 
@@ -747,7 +757,7 @@ export default function WhatsAppConnectPage() {
                             boxShadow: '0 0 0 4px rgba(99,102,241,0.1)',
                           }}>
                             <span style={{ fontSize: 32, fontWeight: 800, letterSpacing: 4, fontFamily: 'monospace', color: 'var(--accent-light)' }}>
-                              {pairingCode}
+                              {formatPairingCode(pairingCode)}
                             </span>
                             <button onClick={copyCode} className="btn btn-ghost btn-sm" style={{ padding: 8, minHeight: 'auto' }} title="Copy code">
                               <Copy size={16} />
