@@ -26,6 +26,8 @@ const notificationsRoutes = require('./src/routes/notifications');
 const subscriptionRoutes = require('./src/routes/subscriptionRoutes');
 const waSession = require('./src/services/waSession');
 const campaignWorker = require('./src/services/campaignWorker');
+const metaIntegrationRoutes = require('./src/routes/metaRoutes')
+const googleIntegrationRoutes = require('.src//routes/googleRoutes');
 
 const app = express();
 
@@ -115,6 +117,8 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/company', companyRoutes);
 app.use('/api/projects', projectsRoutes);
 app.use('/api', shareRoutes);
+app.use('/api/integrations/meta',metaIntegrationRoutes);
+app.use('/api/integrations/google',googleIntegrationRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
