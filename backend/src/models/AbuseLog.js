@@ -17,7 +17,7 @@ const abuseLogSchema = new mongoose.Schema({
   ip: { type: String, default: null },
   type: {
     type: String,
-    enum: ['too_many_requests', 'bulk_spam', 'invalid_login', 'suspicious_activity'],
+    enum: ['too_many_requests', 'bulk_spam', 'invalid_login', 'suspicious_activity', 'price_discrepancy', 'custom_pricing_flag'],
     required: true,
   },
   detail: { type: String, default: '' },

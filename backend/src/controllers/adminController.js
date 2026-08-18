@@ -789,6 +789,16 @@ exports.convertLeadWithPlan = async (req, res) => {
         : `Deal converted with plan "${selectedPlan?.name || plan_id}" (₹${finalPayable.toLocaleString()})`,
     });
 
+    // Explicit Anti-Fraud AbuseLog Entry for SuperAdmin Review
+    if (isCustomPrice) {
+      await AbuseLog.create({
+        userId: req.user._id,
+        type: 'price_discrepancy',
+        detail: `Agent ${req.user.name} (${req.user.email}) entered custom conversion price of ₹${finalPayable.toLocaleString()} for lead "${lead.name}" (ID: ${lead._id}). Stated reason: ${custom_price_reason || 'None provided'}`,
+        timestamp: new Date(),
+      }).catch(err => console.warn('[AbuseLog] Failed to log custom price discrepancy:', err.message));
+    }
+
     res.status(200).json({
       success: true,
       message: `Lead converted successfully! Payment of ₹${finalPayable.toLocaleString()} recorded.`,

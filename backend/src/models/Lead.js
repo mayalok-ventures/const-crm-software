@@ -205,7 +205,36 @@ const leadSchema = new mongoose.Schema({
     default: '',
     trim: true,
   },
-}, { timestamps: true });
+}, {
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true },
+});
+
+// Virtual aliases for camelCase / snake_case interoperability
+leadSchema.virtual('serviceRequired')
+  .get(function() { return this.service_required; })
+  .set(function(v) { this.service_required = v; });
+
+leadSchema.virtual('monthlySpend')
+  .get(function() { return this.monthly_spend; })
+  .set(function(v) { this.monthly_spend = v; });
+
+leadSchema.virtual('goalTimeline')
+  .get(function() { return this.goal_timeline; })
+  .set(function(v) { this.goal_timeline = v; });
+
+leadSchema.virtual('selectedPlanId')
+  .get(function() { return this.selected_plan_id; })
+  .set(function(v) { this.selected_plan_id = v; });
+
+leadSchema.virtual('payableAmount')
+  .get(function() { return this.payable_amount; })
+  .set(function(v) { this.payable_amount = v; });
+
+leadSchema.virtual('paidAmount')
+  .get(function() { return this.paid_amount; })
+  .set(function(v) { this.paid_amount = v; });
 
 // Indexes for fast queries
 leadSchema.index({ userId: 1 });
