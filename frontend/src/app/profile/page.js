@@ -2364,6 +2364,31 @@ export default function ProfilePage() {
                   {totpSetupData.secret}
                 </p>
               </div>
+
+              {totpSetupData.recoveryCodes && totpSetupData.recoveryCodes.length > 0 && (
+                <div style={{ marginTop: 14, width: '100%', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)' }}>Emergency Backup Codes (Save these!)</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(totpSetupData.recoveryCodes.join('\n'));
+                        toast.success('Backup codes copied to clipboard! 📋');
+                      }}
+                      style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      Copy All
+                    </button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4, fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)' }}>
+                    {totpSetupData.recoveryCodes.map((code, idx) => (
+                      <div key={idx} style={{ background: 'var(--background)', padding: '2px 6px', borderRadius: 4, textAlign: 'center' }}>
+                        {code}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <form onSubmit={handleVerifyAndEnable2FA} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

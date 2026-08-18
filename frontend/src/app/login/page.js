@@ -63,16 +63,24 @@ export default function LoginPage() {
     }
   };
 
+  const [useRecovery, setUseRecovery] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState('');
+
   const handleVerify2FA = async (e) => {
     e.preventDefault();
-    if (!otp.trim()) return toast.error('Please enter the 6-digit verification code');
+    if (!useRecovery && !otp.trim()) return toast.error('Please enter the 6-digit verification code');
+    if (useRecovery && !recoveryCode.trim()) return toast.error('Please enter your emergency backup code');
 
     setLoading(true);
     try {
-      const { data } = await api.post('/auth/verify-2fa', {
-        tempToken,
-        otp: otp.trim(),
-      });
+      const payload = { tempToken };
+      if (useRecovery) {
+        payload.recoveryCode = recoveryCode.trim().toUpperCase();
+      } else {
+        payload.otp = otp.replace(/\D/g, '').trim();
+      }
+
+      const { data } = await api.post('/auth/verify-2fa', payload);
       setAuth(data, data.token);
       toast.success(`Security check passed! Welcome, ${data.name}! 🚀`);
       if (data.role === 'superadmin' || data.isAdmin) {
@@ -87,16 +95,25 @@ export default function LoginPage() {
     }
   };
 
-  const handleResend2FA = async () => {
-    if (resending) return;
-    setResending(true);
+  const handleReset2FAEmergency = async () => {
+    if (!confirm('Are you sure you want to remove 2FA from your account? You will be signed in directly with your password.')) return;
+    setLoading(true);
     try {
-      await api.post('/auth/resend-2fa', { tempToken });
-      toast.success('New verification code sent! 📲');
+      const { data } = await api.post('/auth/reset-2fa-emergency', {
+        identifier,
+        password,
+      });
+      setAuth(data, data.token);
+      toast.success('2FA successfully removed! Welcome back! 🎉');
+      if (data.role === 'superadmin' || data.isAdmin) {
+        router.replace('/superadmin-dashboard');
+      } else {
+        router.replace('/dashboard');
+      }
     } catch (err) {
-      toast.error('Failed to resend code. Please try logging in again.');
+      toast.error(err.response?.data?.message || 'Failed to reset 2FA');
     } finally {
-      setResending(false);
+      setLoading(false);
     }
   };
 
@@ -216,39 +233,92 @@ export default function LoginPage() {
         ) : (
           /* Step 2: 2FA TOTP Screen */
           <form onSubmit={handleVerify2FA} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ textAlign: 'center' }}>
-              <input
-                className="input"
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="000000"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                autoFocus
-                style={{
-                  fontSize: 28,
-                  fontWeight: 800,
-                  letterSpacing: 10,
-                  textAlign: 'center',
-                  padding: '14px 0',
-                  borderRadius: 14,
-                  border: '2px solid var(--accent)',
-                }}
-              />
-              <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginTop: 8 }}>
-                Open Authenticator app on your phone & enter the live code
-              </span>
-            </div>
+            {!useRecovery ? (
+              <div style={{ textAlign: 'center' }}>
+                <label className="label" style={{ textAlign: 'center', marginBottom: 8 }}>
+                  6-Digit Authenticator Code
+                </label>
+                <input
+                  className="input"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="000000"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                  autoFocus
+                  style={{
+                    fontSize: 28,
+                    fontWeight: 800,
+                    letterSpacing: 10,
+                    textAlign: 'center',
+                    padding: '14px 0',
+                    borderRadius: 14,
+                    border: '2px solid var(--accent)',
+                  }}
+                />
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginTop: 8 }}>
+                  Open Authenticator app (Google Authenticator / Authy) & enter the current code
+                </span>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center' }}>
+                <label className="label" style={{ textAlign: 'center', marginBottom: 8 }}>
+                  Emergency Backup Recovery Code
+                </label>
+                <input
+                  className="input"
+                  type="text"
+                  maxLength={10}
+                  placeholder="XXXX-XXXX"
+                  value={recoveryCode}
+                  onChange={(e) => setRecoveryCode(e.target.value.toUpperCase())}
+                  autoFocus
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 700,
+                    letterSpacing: 4,
+                    textAlign: 'center',
+                    padding: '12px 0',
+                    borderRadius: 14,
+                    border: '2px solid var(--accent)',
+                  }}
+                />
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginTop: 8 }}>
+                  Enter one of your 8-digit emergency recovery codes
+                </span>
+              </div>
+            )}
 
-            <button type="submit" disabled={loading || otp.length < 6} className="btn btn-primary btn-full" style={{ height: 44, borderRadius: 12 }}>
-              {loading ? <div className="spinner" style={{ width: 18, height: 18 }} /> : 'Verify Code & Sign In'}
+            <button
+              type="submit"
+              disabled={loading || (!useRecovery && otp.length < 6) || (useRecovery && !recoveryCode.trim())}
+              className="btn btn-primary btn-full"
+              style={{ height: 44, borderRadius: 12 }}
+            >
+              {loading ? <div className="spinner" style={{ width: 18, height: 18 }} /> : (useRecovery ? 'Verify Recovery Code' : 'Verify Code & Sign In')}
             </button>
 
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 4 }}>
               <button
                 type="button"
-                onClick={() => { setStep2FA(false); setOtp(''); }}
+                onClick={() => { setUseRecovery(!useRecovery); setOtp(''); setRecoveryCode(''); }}
+                style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                {useRecovery ? 'Use 6-Digit Authenticator App Code' : 'Lost Device? Use Emergency Recovery Code'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleReset2FAEmergency}
+                style={{ background: 'none', border: 'none', color: 'var(--red)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              >
+                🔓 Remove / Reset 2FA with Password
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setStep2FA(false); setOtp(''); setRecoveryCode(''); setUseRecovery(false); }}
                 className="btn btn-ghost btn-sm"
                 style={{ gap: 6, fontSize: 12 }}
               >

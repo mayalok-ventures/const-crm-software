@@ -1131,7 +1131,11 @@ export default function DashboardPage() {
           ) : (
             <div className="leads-list" style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
               {leads.map(lead => (
-                <Link key={lead._id} href={`/leads/${lead._id}`} style={{ textDecoration: 'none', display: 'block', width: '100%' }}>
+                <div
+                  key={lead._id}
+                  onClick={() => router.push(`/leads/${lead._id}`)}
+                  style={{ textDecoration: 'none', display: 'block', width: '100%', cursor: 'pointer' }}
+                >
                   <div className="lead-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, width: '100%', minWidth: 0, marginBottom: 4 }}>
                       <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
@@ -1200,7 +1204,7 @@ export default function DashboardPage() {
                       </a>
                     </div>
                   </div>
-                </Link>
+                </div>
               ))}
             </div>
           )}

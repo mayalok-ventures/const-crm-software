@@ -70,12 +70,66 @@ const leadSchema = new mongoose.Schema({
   company: { type: String, trim: true },
   tags: [{ type: String, trim: true }],
 
-  // Sales Pipeline Stage (Supports standard + dynamic custom stages)
-  status: {
+  // Standardized 6 Services
+  service_required: {
     type: String,
-    default: 'new',
+    enum: [
+      'digital_marketing',
+      'web_development',
+      'seo_optimization',
+      'crm_automation',
+      'branding_design',
+      'cloud_infrastructure'
+    ],
+    default: 'digital_marketing',
+    lowercase: true,
     trim: true,
   },
+  monthly_spend: {
+    type: Number,
+    default: 0,
+    min: [0, 'Monthly spend cannot be negative'],
+  },
+  goal_timeline: {
+    type: String,
+    enum: ['immediate', 'within_1_month', '1_to_3_months', '3_to_6_months', 'flexible'],
+    default: 'immediate',
+    trim: true,
+  },
+
+  // Sales Pipeline Stage (Exact 5 baseline stages)
+  status: {
+    type: String,
+    enum: [
+      'new_lead',
+      'contacted',
+      'not_interested',
+      'converted',
+      'payment_done',
+      // Legacy compatibility
+      'new',
+      'site_visit_scheduled',
+      'negotiation',
+      'closed',
+      'lost'
+    ],
+    default: 'new_lead',
+    trim: true,
+  },
+
+  // Plan Selection, Payable & Paid Tracking
+  selected_plan_id: { type: String, default: null },
+  selectedPlanId: { type: String, default: null },
+  payable_amount: { type: Number, default: 0, min: 0 },
+  payableAmount: { type: Number, default: 0, min: 0 },
+  paid_amount: { type: Number, default: 0, min: 0 },
+  paidAmount: { type: Number, default: 0, min: 0 },
+
+  // Concurrency & Optimistic Locking Version
+  version: { type: Number, default: 1 },
+
+  // Soft Deletion
+  deletedAt: { type: Date, default: null },
 
   // Deal Dimensions & Revenue Tracking
   propertyType: { type: String, default: '' },
@@ -86,14 +140,26 @@ const leadSchema = new mongoose.Schema({
   areasOfInterest: [{ type: String, trim: true }],
   siteVisitDate: { type: Date, default: null },
 
-  // Dynamic Custom Form Fields (Key-Value Data from User's customLeadFields)
+  // Dynamic Custom Form Fields & Metadata (agent_custom_price, admin_flag, etc.)
   customData: {
     type: mongoose.Schema.Types.Mixed,
     default: {},
   },
+  metadata: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {
+      offers_applied: [],
+      payable_amount: 0,
+      agent_custom_price: false,
+      admin_flag: false,
+      custom_price_reason: '',
+      whatsapp_connected: false,
+      templates_sent: [],
+    },
+  },
 
   notes: [noteSchema],
-  followUpDate: { type: Date, required: true },
+  followUpDate: { type: Date, default: () => new Date(Date.now() + 24 * 60 * 60 * 1000) },
   followUpNotified: { type: Boolean, default: false },
   lastContactedAt: { type: Date, default: null },
   
@@ -109,7 +175,8 @@ const leadSchema = new mongoose.Schema({
 
   source: {
     type: String,
-    default: 'manual',
+    enum: ['signup', 'agent_manual', 'import', 'other', 'platform_registration', 'Auto-Signup', 'manual', 'meta_webhook', 'google_webhook'],
+    default: 'agent_manual',
   },
   utmCampaign: {
     type: String,
@@ -157,6 +224,8 @@ leadSchema.index(
   { unique: true, partialFilterExpression: { companyId: { $eq: null } } }
 );
 leadSchema.index({ userId: 1, createdAt: -1 });
+leadSchema.index({ status: 1, service_required: 1, assignedTo: 1 });
+leadSchema.index({ deletedAt: 1, createdAt: -1 });
 leadSchema.index({ name: 'text', phone: 'text', company: 'text', email: 'text', project: 'text' });
 
 module.exports = mongoose.model('Lead', leadSchema);

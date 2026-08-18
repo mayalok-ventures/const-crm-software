@@ -55,19 +55,37 @@ const userSchema = new mongoose.Schema({
   // Work Status & RBAC (STRICTLY IMMUTABLE AFTER SIGNUP)
   workStatus: {
     type: String,
-    enum: ['company_owner', 'independent_agent'],
+    enum: ['company_owner', 'independent_agent', 'agent', 'employee'],
     default: 'independent_agent',
   },
   companyRole: {
     type: String,
-    enum: ['owner', 'agent', 'solo'],
-    default: 'solo',
+    enum: ['owner', 'agent', 'solo', 'sales_rep', 'manager', 'telecaller'],
+    default: 'agent',
   },
   // Associated Company (points to company owner user)
   companyId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null,
+  },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+  incentive_pct: {
+    type: Number,
+    default: 10,
+  },
+  incentivePct: {
+    type: Number,
+    default: 10,
+  },
+  whatsapp_connection: {
+    type: String,
+    enum: ['agent_owned', 'use_admin_number', 'admin_proxy'],
+    default: 'agent_owned',
   },
 
   // Industry Vertical (LOCKED & IMMUTABLE AFTER SIGNUP)
@@ -191,6 +209,7 @@ const userSchema = new mongoose.Schema({
     default: 'totp',
   },
   twoFactorSecret: { type: String, default: null },
+  twoFactorRecoveryCodes: [{ type: String, uppercase: true, trim: true }],
   twoFactorOtp: { type: String, default: null },
   twoFactorOtpExpires: { type: Date, default: null },
 

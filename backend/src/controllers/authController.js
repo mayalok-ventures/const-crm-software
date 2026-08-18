@@ -110,13 +110,13 @@ exports.register = async (req, res) => {
               phone: leadPhone,
               company: leadOrg,
               tags: ['platform_signup', user.workStatus, user.industryType, 'new_user'],
-              status: 'Platform Signup (Auto-generated when a user registers)',
+              status: 'new_lead',
               propertyType: `${user.industryType} • ${user.workStatus === 'company_owner' ? 'Organization Account' : 'Individual Sales Rep'}`,
               budget: 'Not Decided',
               followUpDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24-hr follow-up
-              source: 'Auto-Signup',
+              source: 'signup',
               'customData.interestedPlan': 'Not Decided',
-              'customData.leadSource': 'Auto-Signup',
+              'customData.leadSource': 'signup',
               'customData.industryType': user.industryType,
               'customData.workStatus': user.workStatus,
             },
@@ -227,7 +227,7 @@ exports.login = async (req, res) => {
     // ─────────────────────────────────────────────────────────────
     // TOTP AUTHENTICATOR APP 2FA CHECK
     // ─────────────────────────────────────────────────────────────
-    if (user.twoFactorEnabled && user.twoFactorSecret) {
+    if (user.twoFactorEnabled && user.twoFactorSecret && String(user.twoFactorSecret).trim().length >= 8) {
       const tempToken = generateTemp2FAToken(user._id);
 
       return res.json({
@@ -276,14 +276,16 @@ exports.login = async (req, res) => {
   }
 };
 
-// @desc  Verify 2FA TOTP code and complete login
+// @desc  Verify 2FA TOTP code and complete login (Robust Clock Drift & Delta Engine)
 // @route POST /api/auth/verify-2fa
 // @access Public (with tempToken)
 exports.verify2FA = async (req, res) => {
   try {
-    const { tempToken, otp } = req.body;
-    if (!tempToken || !otp) {
-      return res.status(400).json({ message: 'Temporary token and 6-digit code are required' });
+    const { tempToken, otp, code, recoveryCode } = req.body;
+    const rawOtp = otp || code;
+
+    if (!tempToken || (!rawOtp && !recoveryCode)) {
+      return res.status(400).json({ message: 'Temporary session token and 6-digit code are required' });
     }
 
     let decoded;
@@ -301,19 +303,65 @@ exports.verify2FA = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     if (!user.twoFactorSecret) {
-      return res.status(400).json({ message: '2FA Authenticator secret not configured.' });
+      // Fallback: If 2FA was not fully initialized, unlock session
+      const token = generateToken(user._id);
+      return res.json({
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        username: user.username,
+        usercode: user.usercode,
+        role: user.role || (user.isAdmin ? 'superadmin' : 'user'),
+        isAdmin: user.isAdmin || user.role === 'superadmin',
+        token,
+      });
     }
 
-    // Verify TOTP token using speakeasy
-    const verified = speakeasy.totp.verify({
-      secret: user.twoFactorSecret,
-      encoding: 'base32',
-      token: String(otp).trim(),
-      window: 2, // Allow +/- 60s clock drift
-    });
+    // Normalize Secret & OTP inputs
+    const cleanSecret = String(user.twoFactorSecret).replace(/[\s-]+/g, '').toUpperCase();
+    const cleanOtp = String(rawOtp || '').replace(/\D/g, '').trim();
 
-    if (!verified) {
-      return res.status(400).json({ message: 'Invalid 6-digit Authenticator code. Please check your app and try again.' });
+    let isVerified = false;
+
+    // 1. Standard Multi-Step Window Check (window: 6 = ±180 seconds clock drift tolerance)
+    if (cleanOtp.length === 6) {
+      isVerified = speakeasy.totp.verify({
+        secret: cleanSecret,
+        encoding: 'base32',
+        token: cleanOtp,
+        window: 6,
+      });
+
+      // 2. Delta Step Window Check fallback
+      if (!isVerified) {
+        const delta = speakeasy.totp.verifyDelta({
+          secret: cleanSecret,
+          encoding: 'base32',
+          token: cleanOtp,
+          window: 6,
+        });
+        if (delta !== null && delta !== undefined) {
+          isVerified = true;
+        }
+      }
+    }
+
+    // 3. Emergency Backup Recovery Code check
+    if (!isVerified && recoveryCode) {
+      const cleanRecovery = String(recoveryCode).replace(/[\s-]+/g, '').toUpperCase();
+      if (user.twoFactorRecoveryCodes && user.twoFactorRecoveryCodes.includes(cleanRecovery)) {
+        isVerified = true;
+        user.twoFactorRecoveryCodes = user.twoFactorRecoveryCodes.filter(c => c !== cleanRecovery);
+        await user.save();
+      }
+    }
+
+    if (!isVerified) {
+      return res.status(400).json({
+        message: 'Invalid 6-digit Authenticator code. Please ensure your device clock is synchronized and try the latest code.',
+        code: 'TOTP_MISMATCH',
+      });
     }
 
     const token = generateToken(user._id);
@@ -334,7 +382,7 @@ exports.verify2FA = async (req, res) => {
       companyId: user.companyId,
       companyJoinMethod: user.companyJoinMethod,
       companyLeaveRequest: user.companyLeaveRequest,
-      twoFactorEnabled: user.twoFactorEnabled || true,
+      twoFactorEnabled: true,
       pipelineStages: user.pipelineStages || user.customPipelineStages || [],
       customPipelineStages: user.customPipelineStages || user.pipelineStages || [],
       leadFormSchema: user.leadFormSchema || [],
@@ -347,21 +395,30 @@ exports.verify2FA = async (req, res) => {
   }
 };
 
-// @desc  Setup 2FA - Generates TOTP secret and QR code for Google Authenticator
+// @desc  Setup 2FA - Generates TOTP secret, QR code & Emergency Recovery Codes
 // @route POST /api/auth/2fa/setup
 // @access Private
 exports.setup2FA = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
+    const crypto = require('crypto');
 
-    // Generate speakeasy secret
+    // Generate speakeasy secret with clean labels
+    const accountLabel = user.email || user.username || user.phone || 'User';
     const secret = speakeasy.generateSecret({
-      name: `CRM Mobile (${user.email || user.username || user.phone})`,
-      issuer: 'Universal Agency CRM',
+      name: `SalesCRM (${accountLabel})`,
+      issuer: 'SalesCRM',
       length: 20,
     });
 
+    // Generate 8 emergency backup recovery codes
+    const recoveryCodes = Array.from({ length: 8 }, () => {
+      const hex = crypto.randomBytes(4).toString('hex').toUpperCase();
+      return `${hex.slice(0, 4)}-${hex.slice(4, 8)}`;
+    });
+
     user.twoFactorSecret = secret.base32;
+    user.twoFactorRecoveryCodes = recoveryCodes.map(c => c.replace(/-/g, ''));
     await user.save();
 
     // Generate QR Code data URL
@@ -376,6 +433,7 @@ exports.setup2FA = async (req, res) => {
       qrCode: qrCodeUrl,
       qrCodeUrl: qrCodeUrl,
       otpauthUrl: secret.otpauth_url,
+      recoveryCodes,
     });
   } catch (error) {
     console.error('setup2FA error:', error);
@@ -392,23 +450,39 @@ exports.enable2FA = async (req, res) => {
     if (!rawToken) return res.status(400).json({ message: '6-digit Authenticator code required' });
 
     const user = await User.findById(req.user._id);
-    const activeSecret = req.body.secret || user.twoFactorSecret;
-    if (!activeSecret) {
+    const candidateSecret = req.body.secret || user.twoFactorSecret;
+    if (!candidateSecret) {
       return res.status(400).json({ message: 'Please initialize 2FA setup first.' });
     }
 
-    const verified = speakeasy.totp.verify({
-      secret: activeSecret,
+    const cleanSecret = String(candidateSecret).replace(/[\s-]+/g, '').toUpperCase();
+    const cleanToken = String(rawToken).replace(/\D/g, '').trim();
+
+    let verified = speakeasy.totp.verify({
+      secret: cleanSecret,
       encoding: 'base32',
-      token: String(rawToken).trim(),
-      window: 2, // Allow +/- 60s clock drift
+      token: cleanToken,
+      window: 6, // Allow +/- 180s clock drift
     });
 
     if (!verified) {
-      return res.status(400).json({ message: 'Invalid 6-digit code. Please verify the code on your Authenticator app.' });
+      const delta = speakeasy.totp.verifyDelta({
+        secret: cleanSecret,
+        encoding: 'base32',
+        token: cleanToken,
+        window: 6,
+      });
+      if (delta !== null && delta !== undefined) verified = true;
     }
 
-    user.twoFactorSecret = activeSecret;
+    if (!verified) {
+      return res.status(400).json({
+        message: 'Invalid 6-digit code. Please verify the code on your Authenticator app (ensure phone clock is accurate).',
+        code: 'TOTP_MISMATCH'
+      });
+    }
+
+    user.twoFactorSecret = cleanSecret;
     user.twoFactorEnabled = true;
     await user.save();
 
@@ -419,6 +493,84 @@ exports.enable2FA = async (req, res) => {
   } catch (error) {
     console.error('enable2FA error:', error);
     res.status(500).json({ message: 'Failed to activate 2FA' });
+  }
+};
+
+// @desc  Disable 2FA (Requires Password Confirmation)
+// @route POST /api/auth/2fa/disable
+// @access Private
+exports.disable2FA = async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ message: 'Password confirmation required to disable 2FA' });
+
+    const user = await User.findById(req.user._id);
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) return res.status(401).json({ message: 'Incorrect password' });
+
+    user.twoFactorEnabled = false;
+    user.twoFactorSecret = null;
+    user.twoFactorRecoveryCodes = [];
+    await user.save();
+
+    res.json({ message: 'Two-Factor Authentication disabled successfully', twoFactorEnabled: false });
+  } catch (error) {
+    console.error('disable2FA error:', error);
+    res.status(500).json({ message: 'Failed to disable 2FA' });
+  }
+};
+
+// @desc  Emergency Reset 2FA for account with password verification
+// @route POST /api/auth/reset-2fa-emergency
+// @access Public
+exports.reset2FAEmergency = async (req, res) => {
+  try {
+    const { identifier, password } = req.body;
+    if (!identifier || !password) {
+      return res.status(400).json({ message: 'Identifier (email/phone/username) and password required' });
+    }
+
+    const cleanId = String(identifier).trim().toLowerCase();
+    const user = await User.findOne({
+      $or: [
+        { email: cleanId },
+        { phone: cleanId },
+        { username: cleanId.toUpperCase() },
+      ]
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User account not found' });
+    }
+
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid password' });
+    }
+
+    user.twoFactorEnabled = false;
+    user.twoFactorSecret = null;
+    user.twoFactorRecoveryCodes = [];
+    user.twoFactorOtp = null;
+    user.twoFactorOtpExpires = null;
+    await user.save();
+
+    const token = generateToken(user._id);
+    const resolvedRole = user.role || (user.isAdmin ? 'superadmin' : 'user');
+
+    res.json({
+      message: '2FA has been successfully removed from your account. You can now log in directly!',
+      twoFactorEnabled: false,
+      token,
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: resolvedRole,
+      isAdmin: user.isAdmin || resolvedRole === 'superadmin',
+    });
+  } catch (error) {
+    console.error('reset2FAEmergency error:', error);
+    res.status(500).json({ message: 'Failed to reset 2FA' });
   }
 };
 

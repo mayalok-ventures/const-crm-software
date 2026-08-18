@@ -8,6 +8,11 @@ const { Readable } = require('stream');
 
 // Helper to construct query respecting Company Lead Sharing Mode
 const buildLeadPermissionQuery = async (user) => {
+  if (user.role === 'superadmin' || user.isAdmin) {
+    // SuperAdmin has universal master access across all platform leads
+    return {};
+  }
+
   const isOwner = user.workStatus === 'company_owner' || user.companyRole === 'owner';
   const companyId = isOwner ? user._id : user.companyId;
 
@@ -534,20 +539,48 @@ exports.trackMessage = async (req, res) => {
 
     if (!lead) return res.status(404).json({ message: 'Lead not found' });
 
+    const beforeStatus = lead.status;
     lead.messageSentCount = (lead.messageSentCount || 0) + 1;
     lead.templateUsageCount = (lead.templateUsageCount || 0) + 1;
     lead.lastContactedAt = new Date();
+
+    // Auto-contact: if still in new_lead stage, automatically transition to contacted
+    if (['new_lead', 'new'].includes(lead.status)) {
+      lead.status = 'contacted';
+    }
 
     lead.leadActivities.push({
       action: 'message_sent',
       performedBy: req.user._id,
       performerName: req.user.name,
-      details: `WhatsApp message dispatched by ${req.user.name}`,
+      details: `WhatsApp message dispatched by ${req.user.name}. Status: ${lead.status}`,
       timestamp: new Date(),
     });
 
     await lead.save();
-    res.json({ message: 'Message tracked successfully' });
+
+    // Log global activity
+    try {
+      const ActivityLog = require('../models/ActivityLog');
+      await ActivityLog.create({
+        user_id: req.user._id,
+        userId: req.user._id,
+        userName: req.user.name,
+        role: req.user.role || 'agent',
+        action: 'MESSAGE_DISPATCHED',
+        target_type: 'lead',
+        targetType: 'lead',
+        target_id: String(lead._id),
+        targetId: String(lead._id),
+        details: `Sent WhatsApp message to ${lead.name} (${lead.phone}). Stage auto-updated to ${lead.status}`,
+        before_state: { status: beforeStatus },
+        after_state: { status: lead.status },
+      });
+    } catch (e) {
+      // non-blocking
+    }
+
+    res.json({ message: 'Message tracked successfully', status: lead.status });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }

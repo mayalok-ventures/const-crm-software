@@ -2,6 +2,10 @@ const crypto = require('crypto');
 const PaymentRequest = require('../models/PaymentRequest');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
+const Lead = require('../models/Lead');
+const Payment = require('../models/Payment');
+const Incentive = require('../models/Incentive');
+const ActivityLog = require('../models/ActivityLog');
 const Coupon = require('../models/Coupon');
 const AbuseLog = require('../models/AbuseLog');
 const waSession = require('../services/waSession');
@@ -270,14 +274,87 @@ exports.handleRazorpayWebhook = async (req, res) => {
       const notes = { ...order.notes, ...payment.notes };
 
       const userId = notes.userId;
+      const leadId = notes.leadId || notes.lead_id;
       const planId = notes.planId;
       const cycle = notes.cycle === 'yearly' ? 'yearly' : 'monthly';
       const couponCode = notes.couponCode || null;
+      const paymentId = payment.id || `pay_webhook_${Date.now()}`;
+      const amountInRupees = payment.amount ? payment.amount / 100 : (notes.amount ? Number(notes.amount) : getPlanPrice(planId, cycle));
 
+      // ── Idempotent Lead Auto-Conversion ──
+      if (leadId) {
+        const lead = await Lead.findById(leadId);
+        if (lead) {
+          // Idempotency: verify if this payment ID was already recorded
+          const existingPayment = await Payment.findOne({ transaction_id: paymentId });
+          if (!existingPayment) {
+            const recordedPayment = await Payment.create({
+              lead_id: lead._id,
+              leadId: lead._id,
+              agent_id: lead.assignedTo || null,
+              agentId: lead.assignedTo || null,
+              amount: amountInRupees,
+              method: payment.method || 'gateway_webhook',
+              transaction_id: paymentId,
+              transactionId: paymentId,
+              plan_id: planId || null,
+              status: 'completed',
+              verified_by_agent: true,
+              verifiedByAgent: true,
+              verified_at: new Date(),
+              verifiedAt: new Date(),
+              notes: `Auto-verified via Razorpay Webhook (${paymentId})`,
+            });
+
+            // Update Lead state
+            lead.paid_amount = (lead.paid_amount || 0) + amountInRupees;
+            lead.paidAmount = lead.paid_amount;
+            lead.selected_plan_id = planId || lead.selected_plan_id;
+            lead.selectedPlanId = lead.selected_plan_id;
+            lead.status = 'converted';
+            lead.version = (lead.version || 1) + 1;
+            await lead.save();
+
+            // Calculate Agent Incentive if assigned
+            if (lead.assignedTo) {
+              const agent = await User.findById(lead.assignedTo);
+              if (agent && (agent.incentive_pct > 0 || agent.incentivePct > 0)) {
+                const pct = agent.incentive_pct || agent.incentivePct;
+                const incentiveAmount = (amountInRupees * pct) / 100;
+                await Incentive.create({
+                  agent_id: agent._id,
+                  agentId: agent._id,
+                  total_sales: amountInRupees,
+                  incentive_pct: pct,
+                  incentive_amount: incentiveAmount,
+                  deals_count: 1,
+                  lead_ids: [lead._id],
+                });
+              }
+            }
+
+            // Log activity
+            await ActivityLog.create({
+              user_id: lead.assignedTo || lead.userId,
+              userId: lead.assignedTo || lead.userId,
+              userName: 'Payment Gateway',
+              role: 'system',
+              action: 'WEBHOOK_PAYMENT_CONVERTED',
+              target_type: 'lead',
+              targetType: 'lead',
+              target_id: String(lead._id),
+              targetId: String(lead._id),
+              details: `Lead auto-converted upon receiving ₹${amountInRupees} payment via webhook (TXN: ${paymentId})`,
+              timestamp: new Date(),
+            });
+            console.log(`[Webhook] Auto-converted lead ${lead._id} for ₹${amountInRupees}`);
+          }
+        }
+      }
+
+      // ── SaaS Plan Subscription Activation ──
       if (userId && planId) {
-        const paymentId = payment.id || `pay_webhook_${Date.now()}`;
         const orderId = payment.order_id || order.id || 'webhook_order';
-        const amountInRupees = payment.amount ? payment.amount / 100 : getPlanPrice(planId, cycle);
 
         await updateUserPlan(
           userId,
