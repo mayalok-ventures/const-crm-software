@@ -5,7 +5,7 @@ const router = express.Router();
 const integrationController = require('../controllers/integrationController');
 
 const metaRoutes = require('./metaRoutes');
-const googleRoutes = require('./googleRoutes');
+const googleRoutes = require('./googleRoute');
 
 // ============================================================
 // PROVIDER ROUTES

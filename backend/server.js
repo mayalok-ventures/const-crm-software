@@ -27,7 +27,7 @@ const subscriptionRoutes = require('./src/routes/subscriptionRoutes');
 const waSession = require('./src/services/waSession');
 const campaignWorker = require('./src/services/campaignWorker');
 const metaIntegrationRoutes = require('./src/routes/metaRoutes')
-const googleIntegrationRoutes = require('.src//routes/googleRoutes');
+const googleIntegrationRoutes = require('./src/routes/googleRoute');
 
 const app = express();
 
