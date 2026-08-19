@@ -400,17 +400,393 @@ const INDUSTRY_TEMPLATES = {
 };
 
 /**
+ * Specialized Sub-Profile Templates for the Education Sector (Phase 1)
+ */
+const EDUCATION_SUB_PROFILES = {
+  higher_education: {
+    label: 'Higher Education (Colleges & Universities)',
+    pipelineStages: [
+      'New Inquiry',
+      'Contacted / Verification',
+      'Eligibility Check',
+      'Campus Visit / Open Day',
+      'Application Form Sold',
+      'Application Submitted',
+      'Entrance / Merit Assessment',
+      'Provisional Offer Letter',
+      'Fee Token Paid',
+      'Enrollment Confirmed',
+      'Lost / Dropped Out',
+      'Future Intake',
+    ],
+    leadFormSchema: [
+      { fieldId: 'name', label: 'Student Full Name', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 1 },
+      { fieldId: 'phone', label: 'Student Phone Number', fieldType: 'phone', isRequired: true, isSystem: true, isHidden: false, order: 2 },
+      { fieldId: 'email', label: 'Student Email Address', fieldType: 'email', isRequired: false, isSystem: true, isHidden: false, order: 3 },
+      {
+        fieldId: 'courseApplied',
+        label: 'Degree / Course Applied',
+        fieldType: 'dropdown',
+        options: ['B.Tech / B.E.', 'MBA / PGDM', 'BBA / B.Com', 'MBBS / Medical', 'B.Sc / M.Sc', 'Law / BA LLB', 'MCA / BCA', 'PhD / Research'],
+        isRequired: true,
+        isSystem: false,
+        isHidden: false,
+        order: 4,
+      },
+      { fieldId: 'qualifyingScore', label: '12th / Grad Score (%)', fieldType: 'text', isRequired: false, isSystem: false, isHidden: false, order: 5 },
+      { fieldId: 'entranceExamScore', label: 'Entrance Exam Score / Rank', fieldType: 'text', isRequired: false, isSystem: false, isHidden: false, order: 6 },
+      { fieldId: 'preferredCampus', label: 'Preferred Campus / Branch', fieldType: 'text', isRequired: false, isSystem: false, isHidden: false, order: 7 },
+      {
+        fieldId: 'hostelRequired',
+        label: 'Hostel / Accommodation Needed',
+        fieldType: 'dropdown',
+        options: ['Yes', 'No', 'Undecided'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 8,
+      },
+      { fieldId: 'followUpDate', label: 'Next Follow-up Date', fieldType: 'date', isRequired: true, isSystem: true, isHidden: false, order: 9 },
+    ],
+  },
+
+  edtech: {
+    label: 'EdTech Companies (Online Courses)',
+    pipelineStages: [
+      'New Lead (Inbound/Ad)',
+      'Contacted / WhatsApp Sent',
+      'Trial / Masterclass Registered',
+      'Masterclass Attended',
+      'Counselling Call Completed',
+      'Scholarship / Discount Offered',
+      'Payment Link Shared',
+      'Enrolled / Active Student',
+      'Dropped / Unresponsive',
+      'Future Cohort',
+    ],
+    leadFormSchema: [
+      { fieldId: 'name', label: 'Learner Full Name', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 1 },
+      { fieldId: 'phone', label: 'WhatsApp / Phone Number', fieldType: 'phone', isRequired: true, isSystem: true, isHidden: false, order: 2 },
+      { fieldId: 'email', label: 'Email Address', fieldType: 'email', isRequired: false, isSystem: true, isHidden: false, order: 3 },
+      {
+        fieldId: 'programName',
+        label: 'Target Program / Bootcamp',
+        fieldType: 'dropdown',
+        options: ['Full Stack Web Dev', 'AI & Data Science', 'Product Management', 'Digital Marketing & Growth', 'Cloud & DevOps', 'UI/UX Design'],
+        isRequired: true,
+        isSystem: false,
+        isHidden: false,
+        order: 4,
+      },
+      {
+        fieldId: 'currentStatus',
+        label: 'Current Working Status',
+        fieldType: 'dropdown',
+        options: ['College Student', 'Early Career Professional (1-3 yrs)', 'Experienced Professional (4+ yrs)', 'Career Switcher', 'Job Seeker'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 5,
+      },
+      {
+        fieldId: 'cohortPreference',
+        label: 'Preferred Batch / Timing',
+        fieldType: 'dropdown',
+        options: ['Weekday Evening Live', 'Weekend Live Cohort', 'Self-Paced Mentorship'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 6,
+      },
+      { fieldId: 'budget', label: 'Course Fee Budget', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 7 },
+      { fieldId: 'followUpDate', label: 'Next Follow-up Date', fieldType: 'date', isRequired: true, isSystem: true, isHidden: false, order: 8 },
+    ],
+  },
+
+  study_abroad: {
+    label: 'Study Abroad & Overseas Education',
+    pipelineStages: [
+      'New Inquiry',
+      'Profile Evaluation',
+      'Country & University Shortlisting',
+      'IELTS / GRE / Test Prep',
+      'SOP & LOR Documentation',
+      'University Applications Sent',
+      'Offer / I-20 / CAS Received',
+      'Financial Proof & Loan Sanction',
+      'Visa Filing & Mock Interview',
+      'Visa Approved & Flying',
+      'Visa Rejected',
+      'Deferred Intake',
+    ],
+    leadFormSchema: [
+      { fieldId: 'name', label: 'Student Full Name', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 1 },
+      { fieldId: 'phone', label: 'Student Phone Number', fieldType: 'phone', isRequired: true, isSystem: true, isHidden: false, order: 2 },
+      { fieldId: 'email', label: 'Student Email Address', fieldType: 'email', isRequired: false, isSystem: true, isHidden: false, order: 3 },
+      {
+        fieldId: 'targetCountries',
+        label: 'Target Destination Country',
+        fieldType: 'dropdown',
+        options: ['USA', 'UK', 'Canada', 'Australia', 'Germany', 'Ireland', 'New Zealand', 'Europe / Other'],
+        isRequired: true,
+        isSystem: false,
+        isHidden: false,
+        order: 4,
+      },
+      {
+        fieldId: 'targetDegree',
+        label: 'Intended Degree Level',
+        fieldType: 'dropdown',
+        options: ["Master's / MS", 'MBA', "Bachelor's / BS", 'Postgraduate Diploma', 'PhD / Doctorate'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 5,
+      },
+      {
+        fieldId: 'targetIntake',
+        label: 'Target Intake Period',
+        fieldType: 'dropdown',
+        options: ['Fall 2026', 'Spring 2027', 'Fall 2027', 'Immediate / Next Available'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 6,
+      },
+      {
+        fieldId: 'englishTestStatus',
+        label: 'English Proficiency Status',
+        fieldType: 'dropdown',
+        options: ['IELTS Cleared', 'TOEFL Cleared', 'PTE Cleared', 'Duolingo Cleared', 'Preparing / Not Appeared'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 7,
+      },
+      {
+        fieldId: 'budgetBand',
+        label: 'Estimated Total Budget',
+        fieldType: 'dropdown',
+        options: ['Under ₹15 Lakhs', '₹15 - ₹25 Lakhs', '₹25 - ₹40 Lakhs', '₹40 Lakhs+'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 8,
+      },
+      {
+        fieldId: 'loanRequired',
+        label: 'Education Loan Needed',
+        fieldType: 'dropdown',
+        options: ['Yes - Assistance Required', 'Self-Funded', 'Already Sanctioned'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 9,
+      },
+      { fieldId: 'followUpDate', label: 'Next Follow-up Date', fieldType: 'date', isRequired: true, isSystem: true, isHidden: false, order: 10 },
+    ],
+  },
+
+  test_prep: {
+    label: 'Test Prep & Coaching Institutes',
+    pipelineStages: [
+      'Walk-in / Online Inquiry',
+      'Demo Class Scheduled',
+      'Demo Class Attended',
+      'Diagnostic / Scholarship Test',
+      'Parent Counselling Completed',
+      'Batch Allocated & Fee Quoted',
+      'Seat Reserved / Token Paid',
+      'Full Admission Confirmed',
+      'Lost / Competitor Chosen',
+      'Next Year Repeater',
+    ],
+    leadFormSchema: [
+      { fieldId: 'name', label: 'Student Full Name', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 1 },
+      { fieldId: 'phone', label: 'Parent / Student Phone', fieldType: 'phone', isRequired: true, isSystem: true, isHidden: false, order: 2 },
+      { fieldId: 'email', label: 'Email Address', fieldType: 'email', isRequired: false, isSystem: true, isHidden: false, order: 3 },
+      {
+        fieldId: 'targetExam',
+        label: 'Target Competitive Exam',
+        fieldType: 'dropdown',
+        options: ['IIT-JEE (Main & Advanced)', 'NEET (Medical UG)', 'CAT / MBA Entrance', 'UPSC / Civil Services', 'Foundation (Class 8-10)', 'SAT / ACT / AP'],
+        isRequired: true,
+        isSystem: false,
+        isHidden: false,
+        order: 4,
+      },
+      {
+        fieldId: 'currentClass',
+        label: 'Current Class / Standard',
+        fieldType: 'dropdown',
+        options: ['Class 9', 'Class 10', 'Class 11', 'Class 12', '12th Pass / Repeater Batch'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 5,
+      },
+      {
+        fieldId: 'deliveryMode',
+        label: 'Preferred Learning Mode',
+        fieldType: 'dropdown',
+        options: ['Offline Classroom Centre', 'Live Interactive Online', 'Hybrid (Classroom + Online)'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 6,
+      },
+      { fieldId: 'schoolName', label: 'Current School / College', fieldType: 'text', isRequired: false, isSystem: false, isHidden: false, order: 7 },
+      { fieldId: 'followUpDate', label: 'Next Follow-up Date', fieldType: 'date', isRequired: true, isSystem: true, isHidden: false, order: 8 },
+    ],
+  },
+
+  k12: {
+    label: 'K-12 Schools',
+    pipelineStages: [
+      'Inquiry / Prospect',
+      'School Tour & Interaction Scheduled',
+      'School Tour Completed',
+      'Child Readiness / Entrance Assessment',
+      'Parent Interview Completed',
+      'Admission Offer Extended',
+      'Registration & Admission Fee Paid',
+      'Enrolled (Kit Issued)',
+      'Lost / Opted Other School',
+      'Next Academic Year',
+    ],
+    leadFormSchema: [
+      { fieldId: 'name', label: 'Child Full Name', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 1 },
+      { fieldId: 'phone', label: 'Parent Contact Number', fieldType: 'phone', isRequired: true, isSystem: true, isHidden: false, order: 2 },
+      { fieldId: 'email', label: 'Parent Email Address', fieldType: 'email', isRequired: false, isSystem: true, isHidden: false, order: 3 },
+      {
+        fieldId: 'seekingGrade',
+        label: 'Seeking Grade / Class',
+        fieldType: 'dropdown',
+        options: ['Nursery / Playgroup', 'Kindergarten (LKG/UKG)', 'Primary (Grade 1-5)', 'Middle School (Grade 6-8)', 'Secondary (Grade 9-10)', 'Senior Secondary (Grade 11-12)'],
+        isRequired: true,
+        isSystem: false,
+        isHidden: false,
+        order: 4,
+      },
+      {
+        fieldId: 'curriculumPreference',
+        label: 'Curriculum / Board Preference',
+        fieldType: 'dropdown',
+        options: ['CBSE', 'ICSE', 'IB (PYP/MYP/DP)', 'Cambridge / IGCSE', 'State Board'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 5,
+      },
+      {
+        fieldId: 'transportNeeded',
+        label: 'School Bus / Transport Needed',
+        fieldType: 'dropdown',
+        options: ['Yes', 'No'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 6,
+      },
+      {
+        fieldId: 'siblingEnrolled',
+        label: 'Sibling Enrolled in School',
+        fieldType: 'dropdown',
+        options: ['Yes', 'No'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 7,
+      },
+      { fieldId: 'followUpDate', label: 'Next Follow-up Date', fieldType: 'date', isRequired: true, isSystem: true, isHidden: false, order: 8 },
+    ],
+  },
+
+  admission_consultants: {
+    label: 'Admission Consultants & Counsellors (Domestic)',
+    pipelineStages: [
+      'Lead Received',
+      'Tele-Counselling / Discovery',
+      'Budget & Merit Evaluation',
+      'College Options Shortlisted',
+      'Direct Campus Visit Arranged',
+      'Seat Block / Token Advance',
+      'Management / Merit Quota Filing',
+      'Offer Letter & Fee Submission',
+      'Admission Finalized & Invoiced',
+      'Lost to Direct College',
+      'Back-up Option',
+    ],
+    leadFormSchema: [
+      { fieldId: 'name', label: 'Candidate Full Name', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 1 },
+      { fieldId: 'phone', label: 'Candidate Phone Number', fieldType: 'phone', isRequired: true, isSystem: true, isHidden: false, order: 2 },
+      { fieldId: 'email', label: 'Email Address', fieldType: 'email', isRequired: false, isSystem: true, isHidden: false, order: 3 },
+      {
+        fieldId: 'targetDomain',
+        label: 'Target Stream / Domain',
+        fieldType: 'dropdown',
+        options: ['Engineering (B.Tech/BE)', 'Management (MBA/PGDM/BBA)', 'Medical (MBBS/BDS/BAMS)', 'Pharmacy (B.Pharm)', 'Law (BA LLB/BBA LLB)', 'Architecture / Design', 'Nursing & Allied Health'],
+        isRequired: true,
+        isSystem: false,
+        isHidden: false,
+        order: 4,
+      },
+      { fieldId: 'targetState', label: 'Target State / City Preference', fieldType: 'text', isRequired: false, isSystem: false, isHidden: false, order: 5 },
+      {
+        fieldId: 'packageBudget',
+        label: 'Total Package Budget',
+        fieldType: 'dropdown',
+        options: ['Under ₹5 Lakhs', '₹5 - ₹10 Lakhs', '₹10 - ₹20 Lakhs', '₹20 - ₹35 Lakhs', '₹35 Lakhs+'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 6,
+      },
+      { fieldId: 'academicScore', label: '10th / 12th / Grad %', fieldType: 'text', isRequired: false, isSystem: false, isHidden: false, order: 7 },
+      { fieldId: 'entranceRank', label: 'Entrance Exam Score / Rank', fieldType: 'text', isRequired: false, isSystem: false, isHidden: false, order: 8 },
+      {
+        fieldId: 'quotaPreference',
+        label: 'Admission Quota Preference',
+        fieldType: 'dropdown',
+        options: ['Merit Quota Only', 'Management / Institutional Quota', 'Open to Both based on Fee'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 9,
+      },
+      { fieldId: 'followUpDate', label: 'Next Follow-up Date', fieldType: 'date', isRequired: true, isSystem: true, isHidden: false, order: 10 },
+    ],
+  },
+};
+
+/**
+ * Retrieves sub-profile specific defaults for Education vertical
+ */
+const getEducationSubProfileDefaults = (subProfile) => {
+  if (!subProfile) return null;
+  const key = String(subProfile).toLowerCase().trim().replace(/[\s-]+/g, '_');
+  return EDUCATION_SUB_PROFILES[key] || null;
+};
+
+/**
  * Normalizes industry string and retrieves corresponding default templates
  */
-const getIndustryDefaults = (industryType = 'Agency') => {
+const getIndustryDefaults = (industryType = 'Agency', educationSubProfile = null) => {
   const ind = String(industryType || 'Agency').trim().toUpperCase();
+
+  if (ind.includes('EDU') || ind.includes('ACADEMIC') || ind.includes('SCHOOL') || ind.includes('COLLEGE')) {
+    if (educationSubProfile) {
+      const subDefaults = getEducationSubProfileDefaults(educationSubProfile);
+      if (subDefaults) return subDefaults;
+    }
+    return INDUSTRY_TEMPLATES.EDUCATION;
+  }
 
   if (ind.includes('CONSULT')) return INDUSTRY_TEMPLATES.CONSULTING;
   if (ind.includes('SAAS') || ind.includes('SOFTWARE') || ind.includes('TECH')) return INDUSTRY_TEMPLATES.SAAS;
   if (ind.includes('REAL') || ind.includes('ESTATE') || ind.includes('PROPERTY')) return INDUSTRY_TEMPLATES['REAL ESTATE'];
   if (ind.includes('COMMERCE') || ind.includes('RETAIL') || ind.includes('STORE')) return INDUSTRY_TEMPLATES['E-COMMERCE'];
   if (ind.includes('HEALTH') || ind.includes('CLINIC') || ind.includes('DOCTOR') || ind.includes('HOSPITAL')) return INDUSTRY_TEMPLATES.HEALTHCARE;
-  if (ind.includes('EDU') || ind.includes('ACADEMIC') || ind.includes('SCHOOL') || ind.includes('COLLEGE')) return INDUSTRY_TEMPLATES.EDUCATION;
   if (ind.includes('AGENCY') || ind.includes('MARKETING')) return INDUSTRY_TEMPLATES.AGENCY;
 
   return INDUSTRY_TEMPLATES.OTHER;
@@ -418,5 +794,7 @@ const getIndustryDefaults = (industryType = 'Agency') => {
 
 module.exports = {
   INDUSTRY_TEMPLATES,
+  EDUCATION_SUB_PROFILES,
+  getEducationSubProfileDefaults,
   getIndustryDefaults,
 };

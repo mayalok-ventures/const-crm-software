@@ -12,7 +12,7 @@ const {
   createAdminOffer, applyOfferToLead,
   getAdminAgents, createAdminAgent, updateAdminAgent, getAgentActivityLogs, getAgentsPerformance, reassignAgentLeads,
   getActivityLogs, getAdminTemplates, createAdminTemplate,
-  purgeFakeDataAndCleanSlate
+  purgeFakeDataAndCleanSlate, purgeTestDataOnly
 } = require('../controllers/adminController');
 const { protect, adminOnly } = require('../middleware/auth');
 
@@ -20,6 +20,8 @@ router.use(protect, adminOnly);
 
 // Clean Slate Purge (Deletes all test/fake data & users, preserving SuperAdmin)
 router.post('/clean-slate', purgeFakeDataAndCleanSlate);
+// Selective Test Data Purge (Deletes ONLY test/fake accounts & leads, 100% preserving real users)
+router.post('/purge-test-data', purgeTestDataOnly);
 
 // 1. Global Metrics & Inbound Captured Leads
 router.get('/metrics', getGlobalMetrics);

@@ -105,6 +105,23 @@ const userSchema = new mongoose.Schema({
     immutable: true,
   },
 
+  // Education Niche Sub-Profile (For Education sector accounts)
+  educationSubProfile: {
+    type: String,
+    enum: [
+      'higher_education',
+      'edtech',
+      'study_abroad',
+      'test_prep',
+      'k12',
+      'admission_consultants',
+      'other',
+      null,
+    ],
+    default: null,
+    immutable: true,
+  },
+
   // Dynamic Pipeline Stages (Industry default + User customized)
   pipelineStages: [{
     type: String,

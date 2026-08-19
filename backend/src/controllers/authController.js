@@ -12,17 +12,17 @@ const { generateUniqueUsercode } = require('../utils/generateUsercode');
 const { getIndustryDefaults } = require('../utils/industryTemplates');
 
 // Helper to construct dynamic default form schema based on industry vertical
-const getDefaultLeadFormSchema = (industryType = 'Agency') => {
-  return getIndustryDefaults(industryType).leadFormSchema;
+const getDefaultLeadFormSchema = (industryType = 'Agency', educationSubProfile = null) => {
+  return getIndustryDefaults(industryType, educationSubProfile).leadFormSchema;
 };
 exports.getDefaultLeadFormSchema = getDefaultLeadFormSchema;
 
-// @desc  Register new user (WorkStatus strictly locked at signup + Industry Vertical)
+// @desc  Register new user (WorkStatus strictly locked at signup + Industry Vertical + Sub-Profile)
 // @route POST /api/auth/register
 // @access Public
 exports.register = async (req, res) => {
   try {
-    const { name, email, phone, password, workStatus, companyName, industryType } = req.body;
+    const { name, email, phone, password, workStatus, companyName, industryType, educationSubProfile } = req.body;
 
     if (!name || !password) {
       return res.status(400).json({ message: 'Name and password are required' });
@@ -51,9 +51,12 @@ exports.register = async (req, res) => {
     const selectedWorkStatus = workStatus === 'company_owner' ? 'company_owner' : 'independent_agent';
     const selectedCompanyRole = selectedWorkStatus === 'company_owner' ? 'owner' : 'solo';
     const selectedIndustry = industryType || 'Agency';
+    const selectedEducationSubProfile = (selectedIndustry.toUpperCase().includes('EDU') || selectedIndustry.toUpperCase().includes('ACADEMIC'))
+      ? (educationSubProfile || null)
+      : null;
 
     // Industry defaults (Form Schema + Pipeline Stages)
-    const { leadFormSchema: defaultSchema, pipelineStages: defaultStages } = getIndustryDefaults(selectedIndustry);
+    const { leadFormSchema: defaultSchema, pipelineStages: defaultStages } = getIndustryDefaults(selectedIndustry, selectedEducationSubProfile);
 
     // Generate unique username & usercode
     const username = await generateUniqueUsername(User);
@@ -68,6 +71,7 @@ exports.register = async (req, res) => {
       username,
       usercode,
       industryType: selectedIndustry,
+      educationSubProfile: selectedEducationSubProfile,
       workStatus: selectedWorkStatus,
       companyRole: selectedCompanyRole,
       companyInfo: {
@@ -97,35 +101,45 @@ exports.register = async (req, res) => {
       });
 
       if (superAdmin && String(superAdmin._id) !== String(user._id)) {
-        const leadPhone = user.phone || `000${user.usercode?.replace(/\D/g, '') || user._id.toString().slice(-6)}`;
         const leadOrg = user.companyInfo?.companyName || (user.workStatus === 'company_owner' ? `${user.name}'s Organization` : 'Individual Solo');
         
+        const isTestSignup = Boolean(
+          (user.email && (user.email.includes('@crmtest.com') || user.email.includes('@edcrm.com') || user.email.includes('@test.com') || user.email.startsWith('test_') || user.email.startsWith('edu_') || user.email.startsWith('counsellor_'))) ||
+          (user.phone && (user.phone.startsWith('9200') || user.phone.startsWith('9300') || user.phone.startsWith('000')))
+        );
+
+        const searchCriteria = user.email
+          ? { userId: superAdmin._id, email: user.email }
+          : { userId: superAdmin._id, phone: user.phone || user.usercode };
+
         await Lead.findOneAndUpdate(
-          { userId: superAdmin._id, email: user.email },
+          searchCriteria,
           {
             $set: {
               userId: superAdmin._id,
               name: user.name,
-              email: user.email,
-              phone: leadPhone,
+              email: user.email || '',
+              phone: user.phone || user.usercode || '',
               company: leadOrg,
-              tags: ['platform_signup', user.workStatus, user.industryType, 'new_user'],
+              tags: ['platform_signup', user.workStatus, user.industryType, isTestSignup ? 'test_data' : 'real_production_user'],
               status: 'new_lead',
               propertyType: `${user.industryType} • ${user.workStatus === 'company_owner' ? 'Organization Account' : 'Individual Sales Rep'}`,
               budget: 'Not Decided',
               followUpDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24-hr follow-up
               source: 'signup',
+              isTestData: isTestSignup,
               'customData.interestedPlan': 'Not Decided',
               'customData.leadSource': 'signup',
               'customData.industryType': user.industryType,
               'customData.workStatus': user.workStatus,
+              'customData.usercode': user.usercode,
             },
             $push: {
               leadActivities: {
                 action: 'lead_created',
                 performedBy: superAdmin._id,
                 performerName: 'SuperAdmin Capture Engine',
-                details: `New platform signup: ${user.name} (${user.usercode}) • Industry: ${user.industryType} • Mode: ${user.workStatus}`,
+                details: `New platform signup: ${user.name} (${user.usercode}) • Industry: ${user.industryType} • Mode: ${user.workStatus} • ${isTestSignup ? '[Test Account]' : '[Real Production User]'}`,
                 timestamp: new Date(),
               }
             }
@@ -135,7 +149,7 @@ exports.register = async (req, res) => {
 
         await Notification.create({
           userId: superAdmin._id,
-          title: '🎉 New Platform Signup',
+          title: isTestSignup ? '🧪 New Test Signup' : '🎉 New Real Platform Signup',
           message: `${user.name} (${user.usercode}) signed up in ${user.industryType} industry as a ${user.workStatus === 'company_owner' ? 'Company Owner' : 'Solo Agent'}.`,
           type: 'platform_signup',
         });
@@ -155,6 +169,7 @@ exports.register = async (req, res) => {
       usercode: user.usercode,
       role: user.role || 'user',
       industryType: user.industryType,
+      educationSubProfile: user.educationSubProfile || null,
       workStatus: user.workStatus,
       companyRole: user.companyRole,
       twoFactorEnabled: user.twoFactorEnabled,
@@ -259,6 +274,7 @@ exports.login = async (req, res) => {
       role: resolvedRole,
       isAdmin: user.isAdmin || resolvedRole === 'superadmin',
       industryType: user.industryType || 'Agency',
+      educationSubProfile: user.educationSubProfile || null,
       workStatus: user.workStatus,
       companyRole: user.companyRole,
       companyId: user.companyId,
@@ -378,6 +394,7 @@ exports.verify2FA = async (req, res) => {
       role: resolvedRole,
       isAdmin: user.isAdmin || resolvedRole === 'superadmin',
       industryType: user.industryType || 'Agency',
+      educationSubProfile: user.educationSubProfile || null,
       workStatus: user.workStatus,
       companyRole: user.companyRole,
       companyId: user.companyId,
@@ -700,7 +717,7 @@ exports.getMe = async (req, res) => {
       user.usercode = code;
     }
 
-    const industryDefaults = getIndustryDefaults(user.industryType);
+    const industryDefaults = getIndustryDefaults(user.industryType, user.educationSubProfile);
 
     // Auto-initialize pipelineStages if missing or empty
     if (!user.pipelineStages || user.pipelineStages.length === 0) {

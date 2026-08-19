@@ -6,20 +6,21 @@ import Image from 'next/image';
 import { getUser } from '@/lib/auth';
 import {
   Home, FileText, Users, BarChart2, User, MessageCircle,
-  Package, Send, Zap, Shield, Crown
+  Package, Send, Zap, Shield, Crown, GraduationCap
 } from 'lucide-react';
 import PlanStatusWidget from '@/components/PlanStatusWidget';
 
 const MOBILE_ITEMS = [
   { href: '/dashboard', label: 'Leads', icon: Home, key: 'dashboard' },
   { href: '/integrations', label: 'Ads & APIs', icon: Zap, key: 'integrations' },
+  { href: '/catalogue', label: 'Colleges', icon: GraduationCap, key: 'catalogue' },
   { href: '/whatsapp', label: 'Inbox', icon: MessageCircle, key: 'whatsapp' },
-  { href: '/projects', label: 'Catalog', icon: Package, key: 'projects' },
   { href: '/profile', label: 'Profile', icon: User, key: 'profile' },
 ];
 
 const DESKTOP_ITEMS = [
   { href: '/dashboard', label: 'Leads Pipeline', icon: Home, key: 'dashboard' },
+  { href: '/catalogue', label: 'Colleges & Courses', icon: GraduationCap, key: 'catalogue' },
   { href: '/integrations', label: 'Ads & Lead Integrations', icon: Zap, key: 'integrations' },
   { href: '/projects', label: 'Products & Packages', icon: Package, key: 'projects' },
   { href: '/whatsapp', label: 'WhatsApp Hub', icon: MessageCircle, key: 'whatsapp' },

@@ -6,7 +6,11 @@ import Image from 'next/image';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import { setAuth } from '@/lib/auth';
-import { Eye, EyeOff, Zap, User, Mail, Phone, Lock, Building2, Briefcase, ShieldAlert, Layers } from 'lucide-react';
+import {
+  Eye, EyeOff, Zap, User, Mail, Phone, Lock, Building2,
+  Briefcase, ShieldAlert, Layers, GraduationCap, Laptop,
+  Globe, BookOpen, School, Compass, CheckCircle2
+} from 'lucide-react';
 
 const INDUSTRY_OPTIONS = [
   'Agency',
@@ -17,6 +21,63 @@ const INDUSTRY_OPTIONS = [
   'Healthcare',
   'Education',
   'Other'
+];
+
+const EDUCATION_SUB_PROFILES_UI = [
+  {
+    id: 'higher_education',
+    title: 'Higher Education',
+    subtitle: 'Colleges & Universities',
+    desc: 'Campus admissions, degrees, merit lists & token fees',
+    icon: GraduationCap,
+    badge: 'Colleges',
+    accentColor: 'indigo',
+  },
+  {
+    id: 'edtech',
+    title: 'EdTech Companies',
+    subtitle: 'Online Courses & Bootcamps',
+    desc: 'Webinars, free masterclasses, cohorts & upskilling',
+    icon: Laptop,
+    badge: 'Bootcamps',
+    accentColor: 'cyan',
+  },
+  {
+    id: 'study_abroad',
+    title: 'Study Abroad',
+    subtitle: 'Overseas Education',
+    desc: 'Global universities, IELTS/GRE, SOPs, I-20 & Visa filing',
+    icon: Globe,
+    badge: 'International',
+    accentColor: 'purple',
+  },
+  {
+    id: 'test_prep',
+    title: 'Test Prep & Coaching',
+    subtitle: 'Competitive Exam Institutes',
+    desc: 'IIT-JEE, NEET, CAT, UPSC, SAT demos & scholarship tests',
+    icon: BookOpen,
+    badge: 'Entrance Prep',
+    accentColor: 'amber',
+  },
+  {
+    id: 'k12',
+    title: 'K-12 Schools',
+    subtitle: 'Schools & Pre-Schools',
+    desc: 'School tours, readiness tests, parent interviews & terms',
+    icon: School,
+    badge: 'School Boards',
+    accentColor: 'emerald',
+  },
+  {
+    id: 'admission_consultants',
+    title: 'Admission Consultants',
+    subtitle: 'Counsellors & Advisors',
+    desc: 'Multi-college advisory, quota filing & hybrid catalogue',
+    icon: Compass,
+    badge: 'Hybrid Catalogue',
+    accentColor: 'blue',
+  },
 ];
 
 export default function SignupPage() {
@@ -30,6 +91,7 @@ export default function SignupPage() {
     workStatus: 'company_owner', // 'company_owner' | 'independent_agent'
     companyName: '',
     industryType: 'Agency',
+    educationSubProfile: 'higher_education',
   });
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -45,6 +107,9 @@ export default function SignupPage() {
     if (form.workStatus === 'company_owner' && !form.companyName.trim()) {
       return toast.error('Please enter your Organization / Agency Name');
     }
+    if (form.industryType === 'Education' && !form.educationSubProfile) {
+      return toast.error('Please select your specific Education Sub-Profile');
+    }
 
     setLoading(true);
     try {
@@ -56,6 +121,7 @@ export default function SignupPage() {
         workStatus: form.workStatus,
         companyName: form.companyName || undefined,
         industryType: form.industryType || 'Agency',
+        educationSubProfile: form.industryType === 'Education' ? form.educationSubProfile : undefined,
       });
       setAuth(data, data.token);
       toast.success(`Account registered! Welcome, ${data.name} 🎉`);
@@ -172,6 +238,112 @@ export default function SignupPage() {
               ))}
             </select>
           </div>
+
+          {/* Dynamic Education Sector Sub-Profile Selector (Phase 1) */}
+          {form.industryType === 'Education' && (
+            <div style={{
+              background: 'rgba(79, 70, 229, 0.04)',
+              border: '1px solid rgba(79, 70, 229, 0.25)',
+              borderRadius: 14,
+              padding: '14px 12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'between', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <GraduationCap size={16} color="var(--accent)" />
+                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.2px' }}>
+                    Select Education Sub-Profile *
+                  </span>
+                </div>
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: 'var(--accent)',
+                  background: 'rgba(79, 70, 229, 0.12)',
+                  padding: '2px 8px',
+                  borderRadius: 12,
+                  marginLeft: 'auto',
+                }}>
+                  Auto-Configures CRM
+                </span>
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0, lineHeight: 1.3 }}>
+                We will automatically tailor your pipeline stages, custom qualification fields, and enquiry form schemas for your exact vertical.
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8, marginTop: 4 }}>
+                {EDUCATION_SUB_PROFILES_UI.map((sub) => {
+                  const IconComponent = sub.icon;
+                  const isSelected = form.educationSubProfile === sub.id;
+                  return (
+                    <button
+                      key={sub.id}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, educationSubProfile: sub.id }))}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: 12,
+                        border: isSelected ? '2px solid var(--accent)' : '1px solid var(--border)',
+                        background: isSelected ? 'rgba(79, 70, 229, 0.12)' : 'var(--surface)',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 10,
+                        transition: 'all 0.15s ease',
+                        boxShadow: isSelected ? '0 4px 12px rgba(79, 70, 229, 0.15)' : 'none',
+                      }}
+                    >
+                      <div style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 10,
+                        background: isSelected ? 'var(--accent)' : 'rgba(255,255,255,0.06)',
+                        color: isSelected ? '#ffffff' : 'var(--text)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        marginTop: 2,
+                      }}>
+                        <IconComponent size={16} />
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: isSelected ? 'var(--accent)' : 'var(--text)' }}>
+                            {sub.title}
+                          </div>
+                          {isSelected ? (
+                            <CheckCircle2 size={14} color="var(--accent)" />
+                          ) : (
+                            <span style={{
+                              fontSize: 9.5,
+                              fontWeight: 600,
+                              color: 'var(--text-muted)',
+                              background: 'rgba(255,255,255,0.05)',
+                              padding: '1px 6px',
+                              borderRadius: 6,
+                            }}>
+                              {sub.badge}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 11, color: isSelected ? 'var(--text)' : 'var(--text-muted)', fontWeight: 500, marginTop: 1 }}>
+                          {sub.subtitle}
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.25 }}>
+                          {sub.desc}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {form.workStatus === 'company_owner' && (
             <div>

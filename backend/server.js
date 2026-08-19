@@ -29,6 +29,7 @@ const campaignWorker = require('./src/services/campaignWorker');
 const integrationRoutes = require('./src/routes/integrationRoutes');
 const metaIntegrationRoutes = require('./src/routes/metaRoutes');
 const googleIntegrationRoutes = require('./src/routes/googleRoute');
+const catalogueRoutes = require('./src/routes/catalogue');
 
 const app = express();
 
@@ -121,6 +122,7 @@ app.use('/api', shareRoutes);
 app.use('/api/integrations', integrationRoutes);
 app.use('/api/integrations/meta', metaIntegrationRoutes);
 app.use('/api/integrations/google', googleIntegrationRoutes);
+app.use('/api/catalogue', catalogueRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));

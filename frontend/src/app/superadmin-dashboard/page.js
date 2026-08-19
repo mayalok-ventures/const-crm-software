@@ -61,6 +61,7 @@ export default function SuperAdminDashboard() {
   const [metrics, setMetrics] = useState(null);
   const [leads, setLeads] = useState([]);
   const [agents, setAgents] = useState([]);
+  const [usersList, setUsersList] = useState([]);
   const [canonicalPlans, setCanonicalPlans] = useState([]);
   const [adminAlerts, setAdminAlerts] = useState({ flaggedLeads: [], overdueFollowUps: [], totalAlerts: 0 });
   const [activityLogs, setActivityLogs] = useState([]);
@@ -69,6 +70,10 @@ export default function SuperAdminDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [agentFilter, setAgentFilter] = useState('all');
   const [serviceFilter, setServiceFilter] = useState('all');
+  const [leadTypeFilter, setLeadTypeFilter] = useState('all'); // 'all' | 'real' | 'test'
+  const [userTypeFilter, setUserTypeFilter] = useState('all'); // 'all' | 'real' | 'test'
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userPlanFilter, setUserPlanFilter] = useState('all');
   const [viewMode, setViewMode] = useState('kanban'); // 'kanban' | 'table'
 
   // Drawer & Modals
@@ -139,10 +144,11 @@ export default function SuperAdminDashboard() {
     setLoading(true);
     try {
       const headers = { Authorization: `Bearer ${activeAuthToken}` };
-      const [mRes, lRes, aRes, pRes, alRes, actRes] = await Promise.all([
+      const [mRes, lRes, aRes, uRes, pRes, alRes, actRes] = await Promise.all([
         fetch(`${API_BASE}/admin/metrics`, { headers }),
         fetch(`${API_BASE}/admin/leads?limit=300`, { headers }),
         fetch(`${API_BASE}/admin/agents`, { headers }),
+        fetch(`${API_BASE}/admin/users?limit=300`, { headers }),
         fetch(`${API_BASE}/admin/plans`, { headers }),
         fetch(`${API_BASE}/admin/alerts-queue`, { headers }),
         fetch(`${API_BASE}/admin/activity-logs?limit=50`, { headers }),
@@ -156,6 +162,10 @@ export default function SuperAdminDashboard() {
       if (aRes.ok) {
         const aData = await aRes.json();
         setAgents(aData.agents || []);
+      }
+      if (uRes.ok) {
+        const uData = await uRes.json();
+        setUsersList(uData.users || []);
       }
       if (pRes.ok) {
         const pData = await pRes.json();
@@ -184,6 +194,8 @@ export default function SuperAdminDashboard() {
   // Filtered Leads
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
+      if (leadTypeFilter === 'real' && !lead.isRealData) return false;
+      if (leadTypeFilter === 'test' && !lead.isTestData) return false;
       if (agentFilter !== 'all') {
         const assignedId = lead.assignedTo?._id || lead.assignedTo;
         if (assignedId !== agentFilter) return false;
@@ -201,7 +213,114 @@ export default function SuperAdminDashboard() {
       }
       return true;
     });
-  }, [leads, agentFilter, serviceFilter, searchQuery]);
+  }, [leads, leadTypeFilter, agentFilter, serviceFilter, searchQuery]);
+
+  // Filtered Users
+  const filteredUsers = useMemo(() => {
+    return usersList.filter((user) => {
+      if (userTypeFilter === 'real' && !user.isRealData) return false;
+      if (userTypeFilter === 'test' && !user.isTestData) return false;
+      if (userPlanFilter !== 'all' && user.plan !== userPlanFilter) return false;
+      if (userSearchQuery.trim()) {
+        const q = userSearchQuery.toLowerCase().trim();
+        const nMatch = user.name?.toLowerCase().includes(q);
+        const pMatch = user.phone?.toLowerCase().includes(q);
+        const eMatch = user.email?.toLowerCase().includes(q);
+        const cMatch = (user.companyInfo?.companyName || user.organizationName)?.toLowerCase().includes(q);
+        const uMatch = user.usercode?.toLowerCase().includes(q) || user.username?.toLowerCase().includes(q);
+        if (!nMatch && !pMatch && !eMatch && !cMatch && !uMatch) return false;
+      }
+      return true;
+    });
+  }, [usersList, userTypeFilter, userPlanFilter, userSearchQuery]);
+
+  // User Actions: Assign Plan, Toggle Status, Delete User, Clean Test Data
+  const handleAssignPlan = async (userId, planName) => {
+    try {
+      setActionLoading(true);
+      const res = await fetch(`${API_BASE}/admin/users/${userId}/plan`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ plan: planName }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`Plan updated to ${planName.toUpperCase()} ✅`, 'success');
+        loadAllData();
+      } else {
+        showToast(data.message || 'Failed to update plan', 'error');
+      }
+    } catch (err) {
+      showToast('Error updating user plan', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleToggleUserStatus = async (userId) => {
+    try {
+      setActionLoading(true);
+      const res = await fetch(`${API_BASE}/admin/users/${userId}/status`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || 'User status updated ✅', 'success');
+        loadAllData();
+      } else {
+        showToast(data.message || 'Failed to toggle status', 'error');
+      }
+    } catch (err) {
+      showToast('Error updating status', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async (userId, userName) => {
+    if (!confirm(`Are you sure you want to permanently delete user "${userName}"? This cannot be undone.`)) return;
+    try {
+      setActionLoading(true);
+      const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`User "${userName}" deleted successfully ✅`, 'success');
+        loadAllData();
+      } else {
+        showToast(data.message || 'Failed to delete user', 'error');
+      }
+    } catch (err) {
+      showToast('Error deleting user', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handlePurgeTestData = async () => {
+    if (!confirm("⚠️ Are you sure you want to clean all test/fake leads and mock test accounts?\n\n✅ ALL REAL PRODUCTION USERS AND REAL SIGNUPS WILL BE 100% PRESERVED.")) return;
+    try {
+      setActionLoading(true);
+      const res = await fetch(`${API_BASE}/admin/purge-test-data`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || 'Test data cleaned successfully! ✅', 'success');
+        loadAllData();
+      } else {
+        showToast(data.message || 'Failed to clean test data', 'error');
+      }
+    } catch (err) {
+      showToast('Error cleaning test data', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   // 1. Create Lead (Strict 6 Fields)
   const handleCreateLead = async (e) => {
@@ -589,6 +708,14 @@ export default function SuperAdminDashboard() {
               CSV Audit
             </button>
             <button
+              onClick={handlePurgeTestData}
+              className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-bold flex items-center gap-1.5 transition"
+              title="Clean all test and fake data generated during tests/demos while permanently preserving real signups"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <span>Clean Test Data</span>
+            </button>
+            <button
               onClick={() => setShowAddLeadModal(true)}
               className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-2 transition transform active:scale-95"
             >
@@ -679,6 +806,7 @@ export default function SuperAdminDashboard() {
           <div className="flex items-center gap-2 overflow-x-auto">
             {[
               { id: 'pipeline', label: '🎯 Unified 5-Stage Pipeline', count: leads.length },
+              { id: 'users', label: '🏢 Platform Signups & Users', count: usersList.length, badgeColor: 'bg-emerald-500 text-slate-950 font-black' },
               { id: 'agents', label: '👥 Team Agents Roster', count: agents.length },
               { id: 'alerts_queue', label: '🚨 Admin Review Alerts', count: adminAlerts.totalAlerts, badgeColor: 'bg-amber-500 text-slate-950 font-black' },
               { id: 'activity_logs', label: '📋 Live Audit Logs', count: activityLogs.length },
@@ -766,11 +894,35 @@ export default function SuperAdminDashboard() {
             </div>
           </div>
 
+          {/* Quick Filter: All / Real Signups / Test Data */}
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Filter Pipeline:</span>
+            <button
+              onClick={() => setLeadTypeFilter('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${leadTypeFilter === 'all' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'}`}
+            >
+              🌟 All Leads ({leads.length})
+            </button>
+            <button
+              onClick={() => setLeadTypeFilter('real')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${leadTypeFilter === 'real' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30' : 'bg-slate-900 border border-emerald-500/30 text-emerald-400 hover:text-white'}`}
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>🟢 Real Production Signups ({leads.filter(l => l.isRealData).length})</span>
+            </button>
+            <button
+              onClick={() => setLeadTypeFilter('test')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${leadTypeFilter === 'test' ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30' : 'bg-slate-900 border border-amber-500/30 text-amber-400 hover:text-white'}`}
+            >
+              <span>🧪 Test & Mock Data ({leads.filter(l => l.isTestData).length})</span>
+            </button>
+          </div>
+
           {/* 5-STAGE KANBAN BOARD VIEW */}
           {viewMode === 'kanban' ? (
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-start">
               {KANBAN_STAGES.map((stage) => {
-                const stageLeads = filteredLeads.filter((l) => l.status === stage.id);
+                const stageLeads = filteredLeads.filter((l) => (l.status === stage.id || (!KANBAN_STAGES.some(ks => ks.id === l.status) && stage.id === 'new_lead')));
 
                 return (
                   <div key={stage.id} className="bg-[#0b1120]/80 border border-slate-800/80 rounded-2xl p-3 flex flex-col min-h-[550px]">
@@ -803,11 +955,23 @@ export default function SuperAdminDashboard() {
                               onClick={() => setSelectedLead(lead)}
                               className="group bg-[#0f172a] hover:bg-[#131d35] border border-slate-800 hover:border-indigo-500/50 rounded-xl p-3.5 shadow-sm hover:shadow-lg transition cursor-pointer flex flex-col gap-2 relative"
                             >
-                              {/* Service Badge & Admin Flag */}
-                              <div className="flex items-start justify-between gap-2">
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border uppercase tracking-wider ${serviceObj.color}`}>
-                                  {serviceObj.label}
-                                </span>
+                              {/* Service Badge & Real/Test Indicator & Admin Flag */}
+                              <div className="flex items-start justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border uppercase tracking-wider ${serviceObj.color}`}>
+                                    {serviceObj.label}
+                                  </span>
+                                  {lead.isRealData ? (
+                                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                      REAL
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                      TEST
+                                    </span>
+                                  )}
+                                </div>
                                 {lead.metadata?.admin_flag && (
                                   <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
                                     AUDIT FLAG
@@ -955,7 +1119,19 @@ export default function SuperAdminDashboard() {
                           className="hover:bg-slate-900/50 transition cursor-pointer"
                         >
                           <td className="py-3 px-4">
-                            <div className="font-bold text-white text-xs">{lead.name}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-white text-xs">{lead.name}</span>
+                              {lead.isRealData ? (
+                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                  REAL
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                  TEST
+                                </span>
+                              )}
+                            </div>
                             <div className="font-mono text-[11px] text-slate-400">{lead.phone}</div>
                             {lead.company && <div className="text-[10px] text-slate-500">{lead.company}</div>}
                           </td>
@@ -1205,6 +1381,223 @@ export default function SuperAdminDashboard() {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </main>
+      )}
+
+      {/* ── TAB: REGISTERED USERS & PLATFORM SIGNUPS ── */}
+      {activeTab === 'users' && (
+        <main className="max-w-7xl mx-auto px-6 pt-6">
+          {/* User Metrics Top Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+            <div className="bg-[#0f172a]/80 border border-slate-800 rounded-2xl p-4">
+              <div className="text-slate-400 text-xs font-semibold">Total Accounts</div>
+              <div className="text-2xl font-black text-white mt-1">{usersList.length}</div>
+              <div className="text-[10px] text-slate-500 mt-0.5">Platform Registrations</div>
+            </div>
+            <div className="bg-[#0f172a]/80 border border-emerald-500/30 rounded-2xl p-4">
+              <div className="text-emerald-400 text-xs font-semibold flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                Real Production Signups
+              </div>
+              <div className="text-2xl font-black text-emerald-400 mt-1">{usersList.filter(u => u.isRealData).length}</div>
+              <div className="text-[10px] text-slate-500 mt-0.5">Verified organic accounts</div>
+            </div>
+            <div className="bg-[#0f172a]/80 border border-amber-500/30 rounded-2xl p-4">
+              <div className="text-amber-400 text-xs font-semibold">Test / Mock Accounts</div>
+              <div className="text-2xl font-black text-amber-400 mt-1">{usersList.filter(u => u.isTestData).length}</div>
+              <div className="text-[10px] text-slate-500 mt-0.5">Integration & demo tests</div>
+            </div>
+            <div className="bg-[#0f172a]/80 border border-indigo-500/30 rounded-2xl p-4">
+              <div className="text-indigo-400 text-xs font-semibold">Company Organizations</div>
+              <div className="text-2xl font-black text-indigo-400 mt-1">{usersList.filter(u => u.workStatus === 'company_owner' || u.isOrgOwner).length}</div>
+              <div className="text-[10px] text-slate-500 mt-0.5">Agency / Org Owners</div>
+            </div>
+          </div>
+
+          {/* User Filters Bar */}
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
+            <div className="relative w-full md:w-80">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Search by name, email, phone, code..."
+                value={userSearchQuery}
+                onChange={(e) => setUserSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-slate-900/90 border border-slate-800 rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto">
+              {/* Type Filter */}
+              <div className="flex items-center bg-slate-900 border border-slate-800 rounded-xl p-1">
+                <button
+                  onClick={() => setUserTypeFilter('all')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition ${userTypeFilter === 'all' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                >
+                  All ({usersList.length})
+                </button>
+                <button
+                  onClick={() => setUserTypeFilter('real')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${userTypeFilter === 'real' ? 'bg-emerald-600 text-white' : 'text-emerald-400 hover:text-white'}`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Real Signups ({usersList.filter(u => u.isRealData).length})
+                </button>
+                <button
+                  onClick={() => setUserTypeFilter('test')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition ${userTypeFilter === 'test' ? 'bg-amber-600 text-white' : 'text-amber-400 hover:text-white'}`}
+                >
+                  Test Data ({usersList.filter(u => u.isTestData).length})
+                </button>
+              </div>
+
+              {/* Plan Filter */}
+              <select
+                value={userPlanFilter}
+                onChange={(e) => setUserPlanFilter(e.target.value)}
+                className="px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
+              >
+                <option value="all">All Subscription Plans</option>
+                <option value="free">Free Tier</option>
+                <option value="starter">Starter Plan</option>
+                <option value="growth">Growth Plan</option>
+                <option value="pro">Pro Plan</option>
+                <option value="enterprise">Enterprise Plan</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Users Table */}
+          <div className="bg-[#0b1120] border border-slate-800/80 rounded-2xl overflow-hidden shadow-xl">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-900/90 border-b border-slate-800 text-slate-400 uppercase text-[10px] font-extrabold tracking-wider">
+                    <th className="py-3.5 px-4">User Details</th>
+                    <th className="py-3.5 px-4">Contact Info</th>
+                    <th className="py-3.5 px-4">Industry / Vertical</th>
+                    <th className="py-3.5 px-4">Account Mode</th>
+                    <th className="py-3.5 px-4">Current Plan</th>
+                    <th className="py-3.5 px-4">Leads</th>
+                    <th className="py-3.5 px-4">Registered Date</th>
+                    <th className="py-3.5 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {filteredUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center text-slate-500">
+                        No registered users matching the selected filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredUsers.map((user) => (
+                      <tr key={user._id} className="hover:bg-slate-900/50 transition">
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center font-bold text-white text-xs shrink-0 shadow-md">
+                              {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-white">{user.name || 'Unnamed User'}</span>
+                                {user.isRealData ? (
+                                  <span className="px-1.5 py-0.5 rounded text-[9.5px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                    REAL USER
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                    TEST
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[11px] text-slate-400 font-mono">{user.usercode || user.username || user._id}</span>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="py-3.5 px-4">
+                          <div className="flex flex-col text-slate-300">
+                            <span>{user.email || '—'}</span>
+                            <span className="text-[11px] text-slate-400">{user.phone || 'No phone'}</span>
+                          </div>
+                        </td>
+
+                        <td className="py-3.5 px-4">
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-slate-200">{user.industryType || 'Agency'}</span>
+                            {user.educationSubProfile && (
+                              <span className="text-[10px] text-indigo-400 font-medium capitalize">
+                                {user.educationSubProfile.replace(/_/g, ' ')}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="py-3.5 px-4">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            user.workStatus === 'company_owner' || user.isOrgOwner
+                              ? 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
+                              : 'bg-slate-800 text-slate-300 border-slate-700'
+                          }`}>
+                            {user.workStatus === 'company_owner' || user.isOrgOwner ? '🏢 Organization Owner' : '👤 Single Agent'}
+                          </span>
+                        </td>
+
+                        <td className="py-3.5 px-4">
+                          <select
+                            value={user.plan || 'free'}
+                            onChange={(e) => handleAssignPlan(user._id, e.target.value)}
+                            className="px-2 py-1 bg-slate-900 border border-slate-700 rounded-lg text-xs font-bold text-indigo-300 focus:outline-none focus:border-indigo-500"
+                          >
+                            <option value="free">Free</option>
+                            <option value="starter">Starter</option>
+                            <option value="growth">Growth</option>
+                            <option value="pro">Pro</option>
+                            <option value="enterprise">Enterprise</option>
+                          </select>
+                        </td>
+
+                        <td className="py-3.5 px-4 font-bold text-slate-200">
+                          {user.leadCount || 0}
+                        </td>
+
+                        <td className="py-3.5 px-4 text-slate-400 text-[11px] whitespace-nowrap">
+                          {new Date(user.createdAt).toLocaleDateString()}
+                        </td>
+
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleToggleUserStatus(user._id)}
+                              className={`p-1.5 rounded-lg border text-xs transition ${
+                                user.isActive !== false
+                                  ? 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10'
+                                  : 'border-rose-500/30 text-rose-400 hover:bg-rose-500/10'
+                              }`}
+                              title={user.isActive !== false ? 'Active (Click to suspend)' : 'Suspended (Click to activate)'}
+                            >
+                              {user.isActive !== false ? <UserCheck className="w-3.5 h-3.5" /> : <UserX className="w-3.5 h-3.5" />}
+                            </button>
+                            {user.role !== 'superadmin' && user.email !== 'admin@crm.com' && (
+                              <button
+                                onClick={() => handleDeleteUser(user._id, user.name)}
+                                className="p-1.5 rounded-lg border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 transition"
+                                title="Delete user"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </main>
@@ -1914,6 +2307,154 @@ export default function SuperAdminDashboard() {
                   {actionLoading ? 'Transferring...' : 'Transfer Leads'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SLIDE-OVER DRAWER: LEAD DETAILS ── */}
+      {selectedLead && (
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-sm flex justify-end animate-fade-in">
+          <div className="bg-[#0b1120] border-l border-slate-800 w-full max-w-lg h-full overflow-y-auto p-6 flex flex-col justify-between shadow-2xl">
+            <div className="space-y-6">
+              {/* Drawer Header */}
+              <div className="flex items-start justify-between border-b border-slate-800 pb-4">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <h3 className="font-bold text-lg text-white">{selectedLead.name}</h3>
+                    {selectedLead.isRealData ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        REAL PRODUCTION SIGNUP
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                        TEST / MOCK DATA
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 font-mono">{selectedLead.phone} {selectedLead.email ? `• ${selectedLead.email}` : ''}</p>
+                  {selectedLead.company && <p className="text-xs text-indigo-300 mt-0.5">🏢 {selectedLead.company}</p>}
+                </div>
+                <button
+                  onClick={() => setSelectedLead(null)}
+                  className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Stage & Details Cards */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-900/80 border border-slate-800 p-3 rounded-xl">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold">Lifecycle Stage</span>
+                  <div className="mt-1">
+                    <select
+                      value={selectedLead.status}
+                      onChange={(e) => {
+                        handleStageChange(selectedLead._id, e.target.value);
+                        setSelectedLead({ ...selectedLead, status: e.target.value });
+                      }}
+                      className="w-full text-xs bg-slate-950 border border-slate-700 text-slate-200 rounded-lg px-2 py-1.5 focus:outline-none"
+                    >
+                      {KANBAN_STAGES.map((s) => (
+                        <option key={s.id} value={s.id}>{s.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="bg-slate-900/80 border border-slate-800 p-3 rounded-xl">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold">Assigned Agent</span>
+                  <p className="text-xs font-semibold text-white mt-1.5">
+                    {selectedLead.assignedTo?.name || 'Unassigned Pool'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Requirement & Source */}
+              <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Industry / Service:</span>
+                  <span className="font-bold text-indigo-300">{selectedLead.propertyType || selectedLead.service_required || 'Standard'}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Lead Source:</span>
+                  <span className="font-semibold text-slate-200 uppercase">{selectedLead.source || 'Platform Signup'}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Registered On:</span>
+                  <span className="text-slate-300 font-mono">{new Date(selectedLead.createdAt).toLocaleString()}</span>
+                </div>
+              </div>
+
+              {/* Quick Communication Actions */}
+              <div className="flex items-center gap-2">
+                <a
+                  href={`tel:${selectedLead.phone}`}
+                  className="flex-1 py-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition"
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                  Call
+                </a>
+                <button
+                  onClick={() => handleWhatsAppAction(selectedLead)}
+                  className="flex-1 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  WhatsApp
+                </button>
+                <button
+                  onClick={() => {
+                    handleOpenConvert(selectedLead);
+                  }}
+                  className="flex-1 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg shadow-purple-600/30 transition"
+                >
+                  <DollarSign className="w-3.5 h-3.5" />
+                  Convert
+                </button>
+              </div>
+
+              {/* Activity Timeline */}
+              <div>
+                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Lead History & Activities</h4>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {(!selectedLead.leadActivities || selectedLead.leadActivities.length === 0) ? (
+                    <div className="text-[11px] text-slate-500 py-3 text-center border border-dashed border-slate-800 rounded-xl">
+                      No activity logs recorded yet.
+                    </div>
+                  ) : (
+                    selectedLead.leadActivities.slice().reverse().map((act, idx) => (
+                      <div key={idx} className="p-2.5 bg-slate-900/70 border border-slate-800 rounded-xl text-xs space-y-0.5">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="font-bold text-indigo-300 uppercase">{act.action?.replace(/_/g, ' ')}</span>
+                          <span className="text-slate-500 font-mono">{new Date(act.timestamp).toLocaleString()}</span>
+                        </div>
+                        <p className="text-slate-300 text-[11px]">{act.details}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
+              <button
+                onClick={() => {
+                  setSelectedLead(null);
+                  handleOpenEditLead(selectedLead);
+                }}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold flex items-center gap-1.5"
+              >
+                <Edit className="w-3.5 h-3.5" />
+                Edit Info
+              </button>
+              <button
+                onClick={() => setSelectedLead(null)}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-xl text-xs font-bold"
+              >
+                Close Drawer
+              </button>
             </div>
           </div>
         </div>
