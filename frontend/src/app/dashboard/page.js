@@ -1262,6 +1262,7 @@ export default function DashboardPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [projectFilter, setProjectFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({});
   const [showAdd, setShowAdd] = useState(false);
@@ -1313,6 +1314,7 @@ export default function DashboardPage() {
       if (search) params.search = search;
       if (statusFilter) params.status = statusFilter;
       if (projectFilter) params.projectId = projectFilter;
+      if (sourceFilter) params.source = sourceFilter;
       const { data } = await api.get('/leads', { params });
       setLeads(data.leads);
       setPagination(data.pagination);
@@ -1321,7 +1323,7 @@ export default function DashboardPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [search, statusFilter, projectFilter, page]);
+  }, [search, statusFilter, projectFilter, sourceFilter, page]);
 
   useEffect(() => {
     fetchLeads(false);
@@ -1551,6 +1553,21 @@ export default function DashboardPage() {
               />
               {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}><X size={16} /></button>}
             </div>
+
+            <select
+              value={sourceFilter}
+              onChange={e => { setSourceFilter(e.target.value); setPage(1); }}
+              className="input"
+              style={{ flex: '1 1 140px', minWidth: 130, height: 42, fontSize: 12, borderRadius: 10 }}
+            >
+              <option value="">All Sources</option>
+              <option value="meta">Meta Ads</option>
+              <option value="google">Google Ads</option>
+              <option value="website">Organic / Web</option>
+              <option value="referral">Referral</option>
+              <option value="import">Import / CSV</option>
+              <option value="direct">Direct / Manual</option>
+            </select>
 
             {projects.length > 0 && (
               <select
