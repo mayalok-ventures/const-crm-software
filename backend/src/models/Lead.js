@@ -53,6 +53,20 @@ const leadActivitySchema = new mongoose.Schema({
   },
 }, { _id: true });
 
+const childSchema = new mongoose.Schema({
+  childName: { type: String, required: true, trim: true },
+  age: { type: Number, default: null },
+  dob: { type: Date, default: null },
+  gender: { type: String, enum: ['male', 'female', 'other', null], default: null },
+  gradeApplied: { type: String, trim: true, default: '' },
+  previousSchool: { type: String, trim: true, default: '' },
+  transportRequired: { type: Boolean, default: false },
+  status: { type: String, default: 'Inquiry', trim: true },
+  notes: { type: String, default: '' },
+  customData: { type: mongoose.Schema.Types.Mixed, default: {} },
+  createdAt: { type: Date, default: Date.now },
+}, { _id: true });
+
 const leadSchema = new mongoose.Schema({
   // Creator / Lead Owner
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -153,6 +167,10 @@ const leadSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed,
     default: {},
   },
+
+  // K-12 Multi-Child / Dependents Sub-document Array
+  // Solves the K-12 edge case: One parent phone number can hold multiple child inquiries without duplicate collision
+  children: [childSchema],
   metadata: {
     type: mongoose.Schema.Types.Mixed,
     default: {
@@ -289,6 +307,10 @@ leadSchema.virtual('paymentAmount')
 leadSchema.virtual('paymentMethod')
   .get(function() { return this.payment_method; })
   .set(function(v) { this.payment_method = v; });
+
+leadSchema.virtual('dependents')
+  .get(function() { return this.children; })
+  .set(function(v) { this.children = v; });
 
 // Indexes for fast queries
 leadSchema.index({ userId: 1 });

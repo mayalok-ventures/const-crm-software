@@ -4,7 +4,8 @@ const multer = require('multer');
 const {
   getLeads, getLead, createLead, updateLead,
   addNote, deleteLead, getTodayFollowUps, getDueFollowUps, getTags, trackMessage, trackCall,
-  reassignLead, exportLeads, importLeads, toggleLeadOrgSharing
+  reassignLead, exportLeads, importLeads, toggleLeadOrgSharing,
+  addChildInquiry, updateChildInquiry, deleteChildInquiry,
 } = require('../controllers/leadsController');
 const { protect, checkPlanExpiry } = require('../middleware/auth');
 const { enforceExportGating } = require('../middleware/antiFraud');
@@ -29,8 +30,15 @@ router.post('/:id/track-message', checkPlanExpiry, trackMessage);
 router.post('/:id/track-call', checkPlanExpiry, trackCall);
 router.put('/:id/reassign', checkPlanExpiry, reassignLead);
 router.put('/:id/share-organization', checkPlanExpiry, toggleLeadOrgSharing);
+
+// K-12 Parent-Child Multi-Inquiry Sub-routes
+router.post('/:id/children', checkPlanExpiry, addChildInquiry);
+router.put('/:id/children/:childId', checkPlanExpiry, updateChildInquiry);
+router.delete('/:id/children/:childId', checkPlanExpiry, deleteChildInquiry);
+
 router.route('/').get(getLeads).post(checkPlanExpiry, createLead);
 router.route('/:id').get(getLead).put(checkPlanExpiry, updateLead).delete(deleteLead);
 router.post('/:id/notes', checkPlanExpiry, addNote);
 
 module.exports = router;
+

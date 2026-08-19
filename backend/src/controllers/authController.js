@@ -3,6 +3,7 @@ const speakeasy = require('speakeasy');
 const qrcode = require('qrcode');
 const User = require('../models/User');
 const Lead = require('../models/Lead');
+const TenantConfig = require('../models/TenantConfig');
 const Notification = require('../models/Notification');
 const AbuseLog = require('../models/AbuseLog');
 const Coupon = require('../models/Coupon');
@@ -91,6 +92,15 @@ exports.register = async (req, res) => {
         couponCodeUsed: null,
       },
     });
+
+    // ─────────────────────────────────────────────────────────────
+    // TENANT WORKSPACE SEEDING (Pipelines, Custom Fields & Automations)
+    // ─────────────────────────────────────────────────────────────
+    try {
+      await TenantConfig.seedWorkspace(user._id, selectedIndustry, selectedEducationSubProfile, user.companyId);
+    } catch (cfgErr) {
+      console.warn('[TenantConfig Seed] Notice:', cfgErr.message);
+    }
 
     // ─────────────────────────────────────────────────────────────
     // SUPER ADMIN LEAD CAPTURE ENGINE (Automatic Lead Tracking)

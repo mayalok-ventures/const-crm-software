@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Lead = require('../../models/Lead');
 const Integration = require('../../models/Integration');
 const User = require('../../models/User');
+const TenantConfig = require('../../models/TenantConfig');
 const { normalizePhone } = require('../../utils/phoneNormalizer');
 
 class LeadIngestionService {
@@ -156,10 +157,27 @@ class LeadIngestionService {
     }
 
     // ---------------------------------------------------------
-    // 6. Lead Assignment Rules
+    // 6. Round-Robin & Attribution Assignment
     // ---------------------------------------------------------
     let assignedTo = null;
     let assignedToName = '';
+
+    try {
+      const config = await TenantConfig.findOne({
+        $or: [{ userId }, { companyId: companyId || userId }]
+      });
+      if (config?.automationSettings?.roundRobinEnabled) {
+        const { assignEdTechRoundRobin } = require('../automationHandlers');
+        const agentId = await assignEdTechRoundRobin({ tenantUserId: userId, companyId });
+        if (agentId) {
+          assignedTo = agentId;
+          const assignedUser = await User.findById(agentId).select('name');
+          assignedToName = assignedUser?.name || '';
+        }
+      }
+    } catch (rrErr) {
+      console.warn('[Lead Ingestion] Round robin assignment notice:', rrErr.message);
+    }
 
     // If tenant user has custom pipeline stage, initialize into 1st stage
     let initialStatus = 'new_lead';

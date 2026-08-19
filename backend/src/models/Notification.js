@@ -11,7 +11,8 @@ const notificationSchema = new mongoose.Schema({
     enum: [
       'follow_up', 'reminder', 'system', 'admin_alert', 'system_alert',
       'wa_reply', 'platform_signup', 'leave_request', 'leave_approved',
-      'leave_rejected', 'agent_left', 'agent_joined', 'agent_removed'
+      'leave_rejected', 'agent_left', 'agent_joined', 'agent_removed',
+      'document_verification', 'fee_reminder', 'abandoned_cart'
     ],
     default: 'follow_up',
   },

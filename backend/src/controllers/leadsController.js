@@ -1,6 +1,7 @@
 const Lead = require('../models/Lead');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const { emitCRMEvent, CRM_EVENTS } = require('../services/automationEvents');
 const xlsx = require('xlsx');
 const PDFDocument = require('pdfkit');
 const csv = require('csv-parser');
@@ -339,6 +340,15 @@ exports.createLead = async (req, res) => {
       }],
     });
 
+    emitCRMEvent(CRM_EVENTS.LEAD_CREATED, { lead, user: req.user });
+    if (lead.customData?.targetCountry) {
+      emitCRMEvent(CRM_EVENTS.LEAD_FIELD_UPDATED, {
+        lead,
+        updatedFields: { targetCountry: lead.customData.targetCountry },
+        user: req.user
+      });
+    }
+
     res.status(201).json(lead);
   } catch (error) {
     console.error('createLead error:', error);
@@ -557,6 +567,26 @@ exports.updateLead = async (req, res) => {
     }
 
     await lead.save();
+
+    // Event-Driven Automations Dispatch
+    if (changes.status) {
+      emitCRMEvent(CRM_EVENTS.LEAD_STAGE_CHANGED, {
+        lead,
+        oldStage: changes.status.from,
+        newStage: changes.status.to,
+        user: req.user,
+      });
+    }
+    if (req.body.targetCountry || req.body['customData.targetCountry'] || req.body.customData?.targetCountry) {
+      emitCRMEvent(CRM_EVENTS.LEAD_FIELD_UPDATED, {
+        lead,
+        updatedFields: {
+          targetCountry: req.body.targetCountry || req.body['customData.targetCountry'] || req.body.customData?.targetCountry,
+        },
+        user: req.user,
+      });
+    }
+
     res.json(lead);
   } catch (error) {
     console.error('updateLead error:', error);
@@ -1434,3 +1464,124 @@ exports.toggleLeadOrgSharing = async (req, res) => {
     res.status(500).json({ message: error.message || 'Failed to update sharing preference' });
   }
 };
+
+// ─────────────────────────────────────────────────────────────
+// PHASE 3: K-12 PARENT-CHILD MULTI-INQUIRY CONTROLLERS
+// Allows one parent lead to hold multiple child inquiries under 1 phone
+// ─────────────────────────────────────────────────────────────
+
+// @desc  Add child inquiry under parent lead (K-12 School Architecture)
+// @route POST /api/leads/:id/children
+// @access Private
+exports.addChildInquiry = async (req, res) => {
+  try {
+    const basePermissionQuery = await buildLeadPermissionQuery(req.user);
+    const lead = await Lead.findOne({ _id: req.params.id, ...basePermissionQuery });
+    if (!lead) return res.status(404).json({ message: 'Lead not found or unauthorized' });
+
+    const { childName, age, dob, gender, gradeApplied, previousSchool, transportRequired, status, notes, customData } = req.body;
+    if (!childName || !String(childName).trim()) {
+      return res.status(400).json({ message: 'Child name is required' });
+    }
+
+    const newChild = {
+      childName: String(childName).trim(),
+      age: age ? Number(age) : null,
+      dob: dob ? new Date(dob) : null,
+      gender: gender || null,
+      gradeApplied: gradeApplied ? String(gradeApplied).trim() : '',
+      previousSchool: previousSchool ? String(previousSchool).trim() : '',
+      transportRequired: Boolean(transportRequired),
+      status: status ? String(status).trim() : 'Inquiry',
+      notes: notes ? String(notes).trim() : '',
+      customData: typeof customData === 'object' ? customData : {},
+      createdAt: new Date(),
+    };
+
+    lead.children.push(newChild);
+    lead.leadActivities.push({
+      action: 'lead_updated',
+      performedBy: req.user._id,
+      performerName: req.user.name,
+      details: `Added child inquiry: ${newChild.childName} (Grade: ${newChild.gradeApplied || 'N/A'}, Transport: ${newChild.transportRequired ? 'Yes' : 'No'})`,
+      timestamp: new Date(),
+    });
+
+    await lead.save();
+    const createdChild = lead.children[lead.children.length - 1];
+    res.status(201).json({ success: true, child: createdChild, lead });
+  } catch (error) {
+    console.error('addChildInquiry error:', error);
+    res.status(500).json({ message: error.message || 'Failed to add child inquiry' });
+  }
+};
+
+// @desc  Update child inquiry details
+// @route PUT /api/leads/:id/children/:childId
+// @access Private
+exports.updateChildInquiry = async (req, res) => {
+  try {
+    const basePermissionQuery = await buildLeadPermissionQuery(req.user);
+    const lead = await Lead.findOne({ _id: req.params.id, ...basePermissionQuery });
+    if (!lead) return res.status(404).json({ message: 'Lead not found or unauthorized' });
+
+    const child = lead.children.id(req.params.childId);
+    if (!child) return res.status(404).json({ message: 'Child inquiry not found' });
+
+    const fields = ['childName', 'age', 'dob', 'gender', 'gradeApplied', 'previousSchool', 'transportRequired', 'status', 'notes', 'customData'];
+    fields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        if (field === 'dob' && req.body[field]) child[field] = new Date(req.body[field]);
+        else if (field === 'age' && req.body[field] !== null) child[field] = Number(req.body[field]);
+        else if (field === 'transportRequired') child[field] = Boolean(req.body[field]);
+        else child[field] = req.body[field];
+      }
+    });
+
+    lead.leadActivities.push({
+      action: 'lead_updated',
+      performedBy: req.user._id,
+      performerName: req.user.name,
+      details: `Updated child inquiry: ${child.childName} (Status: ${child.status})`,
+      timestamp: new Date(),
+    });
+
+    await lead.save();
+    res.json({ success: true, child, lead });
+  } catch (error) {
+    console.error('updateChildInquiry error:', error);
+    res.status(500).json({ message: error.message || 'Failed to update child inquiry' });
+  }
+};
+
+// @desc  Delete child inquiry from parent lead
+// @route DELETE /api/leads/:id/children/:childId
+// @access Private
+exports.deleteChildInquiry = async (req, res) => {
+  try {
+    const basePermissionQuery = await buildLeadPermissionQuery(req.user);
+    const lead = await Lead.findOne({ _id: req.params.id, ...basePermissionQuery });
+    if (!lead) return res.status(404).json({ message: 'Lead not found or unauthorized' });
+
+    const child = lead.children.id(req.params.childId);
+    if (!child) return res.status(404).json({ message: 'Child inquiry not found' });
+
+    const deletedName = child.childName;
+    child.deleteOne();
+
+    lead.leadActivities.push({
+      action: 'lead_updated',
+      performedBy: req.user._id,
+      performerName: req.user.name,
+      details: `Removed child inquiry: ${deletedName}`,
+      timestamp: new Date(),
+    });
+
+    await lead.save();
+    res.json({ success: true, message: `Child inquiry for ${deletedName} deleted successfully`, lead });
+  } catch (error) {
+    console.error('deleteChildInquiry error:', error);
+    res.status(500).json({ message: error.message || 'Failed to delete child inquiry' });
+  }
+};
+

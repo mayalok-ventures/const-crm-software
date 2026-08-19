@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const Lead = require('../models/Lead');
 const Notification = require('../models/Notification');
 const { processSubscriptionLifecycle } = require('../services/subscriptionWorker');
+const { runTestPrepFeeAlertsCron } = require('../services/automationHandlers');
 
 // Run every minute — check for due follow-ups
 const startFollowUpCron = () => {
@@ -46,10 +47,21 @@ const startFollowUpCron = () => {
     }
   });
 
+  // Run daily at 09:00 AM (and every 6 hours) — Test Prep / Education 5-day fee due date reminders
+  cron.schedule('0 9 * * *', async () => {
+    try {
+      await runTestPrepFeeAlertsCron();
+    } catch (err) {
+      console.error('[Cron] Fee due alert scheduler error:', err.message);
+    }
+  });
+
   // Execute initial lifecycle pass at startup
   processSubscriptionLifecycle().catch(console.error);
+  runTestPrepFeeAlertsCron().catch(console.error);
 
-  console.log('[Cron] Follow-up notification & Subscription lifecycle schedulers active');
+  console.log('[Cron] Follow-up notification, Subscription lifecycle & Fee Alert schedulers active');
 };
 
 module.exports = { startFollowUpCron };
+
