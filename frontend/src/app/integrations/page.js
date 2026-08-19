@@ -158,44 +158,18 @@ export default function IntegrationsPage() {
     }
   };
 
-  const handleConnectGoogle = async (e) => {
+  const handleConnectGoogle = (e) => {
     e.preventDefault();
-    try {
-      setLoading(true);
-      const frontendUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-      const response = await api.get('/integrations/google/oauth?json=true', {
-        params: { frontendUrl }
-      });
-      if (response.data && response.data.authorizationUrl) {
-        window.location.href = response.data.authorizationUrl;
-      } else {
-        toast.error('Failed to get authorization URL');
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to initialize Google connection');
-    } finally {
-      setLoading(false);
-    }
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    const frontendUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+    window.location.href = `${API_URL}/integrations/google/oauth?token=${encodeURIComponent(token)}&frontendUrl=${encodeURIComponent(frontendUrl)}`;
   };
 
-  const handleConnectMeta = async (e) => {
+  const handleConnectMeta = (e) => {
     e.preventDefault();
-    try {
-      setLoading(true);
-      const frontendUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-      const response = await api.get('/integrations/meta/oauth?json=true', {
-        params: { frontendUrl }
-      });
-      if (response.data && response.data.authorizationUrl) {
-        window.location.href = response.data.authorizationUrl;
-      } else {
-        toast.error('Failed to get authorization URL');
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to initialize Meta connection');
-    } finally {
-      setLoading(false);
-    }
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    const frontendUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+    window.location.href = `${API_URL}/integrations/meta/oauth?token=${encodeURIComponent(token)}&frontendUrl=${encodeURIComponent(frontendUrl)}`;
   };
 
   const handleFetchAccounts = async (integrationId) => {
