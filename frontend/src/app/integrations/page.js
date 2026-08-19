@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
+import api, { API_URL } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
 import {
   Zap, ArrowLeft, Check, Copy, ExternalLink, RefreshCw,
@@ -261,8 +261,8 @@ export default function IntegrationsPage() {
     }
   };
 
-  const metaWebhookUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/integrations/meta/webhook`;
-  const googleWebhookUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/integrations/google/webhook`;
+  const metaWebhookUrl = `${API_URL}/integrations/meta/webhook`;
+  const googleWebhookUrl = `${API_URL}/integrations/google/webhook`;
   const metaVerifyToken = 'crm_meta_webhook_secret_2026';
 
   return (
@@ -691,12 +691,12 @@ export default function IntegrationsPage() {
                     <input
                       className="input"
                       readOnly
-                      value={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/leads`}
+                      value={`${API_URL}/leads`}
                       style={{ fontSize: 11, height: 32, fontFamily: 'monospace' }}
                     />
                     <button
                       type="button"
-                      onClick={() => copyToClipboard(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/leads`, 'rest_leads')}
+                      onClick={() => copyToClipboard(`${API_URL}/leads`, 'rest_leads')}
                       className="btn btn-ghost btn-sm"
                       style={{ height: 32, padding: '0 8px' }}
                       title="Copy Endpoint"
