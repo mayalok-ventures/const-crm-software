@@ -1377,6 +1377,85 @@ export default function LeadDetailPage() {
                           ))
                       )}
 
+                      {/* Ad Attribution Section */}
+                      {(lead.leadSource?.provider || lead.firstTouch?.source || lead.lastTouch?.source) && (
+                        <div style={{ gridColumn: '1/-1', marginTop: 10, padding: 12, background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            🎯 Ad Attribution Details
+                          </span>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+                            {lead.leadSource?.provider && (
+                              <div>
+                                <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>Provider</span>
+                                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
+                                  {lead.leadSource.provider.toUpperCase()}
+                                </p>
+                              </div>
+                            )}
+                            {lead.leadSource?.externalLeadId && (
+                              <div>
+                                <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>External Lead ID</span>
+                                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text)', fontFamily: 'monospace' }}>
+                                  {lead.leadSource.externalLeadId}
+                                </p>
+                              </div>
+                            )}
+                            {lead.leadSource?.campaignName && (
+                              <div>
+                                <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>Campaign</span>
+                                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
+                                  {lead.leadSource.campaignName}
+                                </p>
+                              </div>
+                            )}
+                            {lead.leadSource?.adGroupName && (
+                              <div>
+                                <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>Ad Group</span>
+                                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
+                                  {lead.leadSource.adGroupName}
+                                </p>
+                              </div>
+                            )}
+                            {lead.leadSource?.adName && (
+                              <div>
+                                <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>Ad Variation</span>
+                                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
+                                  {lead.leadSource.adName}
+                                </p>
+                              </div>
+                            )}
+                            {lead.leadSource?.formName && (
+                              <div>
+                                <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>Lead Form</span>
+                                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
+                                  {lead.leadSource.formName}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* First Touch & Last Touch Timeline */}
+                          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {lead.firstTouch?.source && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
+                                <span style={{ color: 'var(--text-muted)' }}>First Touch:</span>
+                                <span style={{ fontWeight: 600, color: 'var(--text)' }}>
+                                  {lead.firstTouch.source.toUpperCase()} ({lead.firstTouch.channel || 'organic'}) • {lead.firstTouch.campaign || 'Direct'}
+                                </span>
+                              </div>
+                            )}
+                            {lead.lastTouch?.source && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
+                                <span style={{ color: 'var(--text-muted)' }}>Last Touch:</span>
+                                <span style={{ fontWeight: 600, color: 'var(--text)' }}>
+                                  {lead.lastTouch.source.toUpperCase()} ({lead.lastTouch.channel || 'organic'}) • {lead.lastTouch.campaign || 'Direct'}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Event Management Stall & Pass Cards */}
                       {lead.customData?.stallInventoryLock?.isLocked && (
                         <div style={{ gridColumn: '1/-1', padding: '10px 14px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 10 }}>

@@ -19,6 +19,12 @@ export default function IntegrationsPage() {
   const [testingGoogle, setTestingGoogle] = useState(false);
   const [copiedKey, setCopiedKey] = useState('');
 
+  // Google Ads Account Configuration states
+  const [accountsLoading, setAccountsLoading] = useState(false);
+  const [accessibleAccounts, setAccessibleAccounts] = useState([]);
+  const [selectedAccountId, setSelectedAccountId] = useState('');
+  const [configuringIntegrationId, setConfiguringIntegrationId] = useState(null);
+
   const fetchIntegrations = async () => {
     try {
       setLoading(true);
@@ -28,10 +34,14 @@ export default function IntegrationsPage() {
       ]);
 
       if (metaRes.status === 'fulfilled' && metaRes.value.data) {
-        setMetaIntegrations(Array.isArray(metaRes.value.data) ? metaRes.value.data : (metaRes.value.data.integrations || []));
+        const payload = metaRes.value.data;
+        const list = Array.isArray(payload) ? payload : (payload.data || payload.integrations || []);
+        setMetaIntegrations(list);
       }
       if (googleRes.status === 'fulfilled' && googleRes.value.data) {
-        setGoogleIntegrations(Array.isArray(googleRes.value.data) ? googleRes.value.data : (googleRes.value.data.integrations || []));
+        const payload = googleRes.value.data;
+        const list = Array.isArray(payload) ? payload : (payload.data || payload.integrations || []);
+        setGoogleIntegrations(list);
       }
     } catch {
       // Graceful fallback
@@ -42,6 +52,37 @@ export default function IntegrationsPage() {
 
   useEffect(() => {
     fetchIntegrations();
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      
+      const googleStatus = params.get('google');
+      if (googleStatus === 'connected') {
+        toast.success(`Google Ads account connected! 🔴`);
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+        fetchIntegrations();
+      } else if (googleStatus === 'error') {
+        const errorMsg = params.get('message') || 'Connection failed';
+        toast.error(`Google connection failed: ${errorMsg}`);
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+        fetchIntegrations();
+      }
+
+      const metaStatus = params.get('meta');
+      if (metaStatus === 'connected') {
+        toast.success(`Meta Ads account connected! 🔵`);
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+        fetchIntegrations();
+      } else if (metaStatus === 'error') {
+        const errorMsg = params.get('message') || 'Connection failed';
+        toast.error(`Meta connection failed: ${errorMsg}`);
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+        fetchIntegrations();
+      }
+    }
   }, []);
 
   const copyToClipboard = (text, key) => {
@@ -109,6 +150,114 @@ export default function IntegrationsPage() {
       fetchIntegrations();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to disconnect');
+    }
+  };
+
+  const handleConnectGoogle = async (e) => {
+    e.preventDefault();
+    try {
+      setLoading(true);
+      const frontendUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+      const response = await api.get('/integrations/google/oauth?json=true', {
+        params: { frontendUrl }
+      });
+      if (response.data && response.data.authorizationUrl) {
+        window.location.href = response.data.authorizationUrl;
+      } else {
+        toast.error('Failed to get authorization URL');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to initialize Google connection');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConnectMeta = async (e) => {
+    e.preventDefault();
+    try {
+      setLoading(true);
+      const frontendUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+      const response = await api.get('/integrations/meta/oauth?json=true', {
+        params: { frontendUrl }
+      });
+      if (response.data && response.data.authorizationUrl) {
+        window.location.href = response.data.authorizationUrl;
+      } else {
+        toast.error('Failed to get authorization URL');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to initialize Meta connection');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFetchAccounts = async (integrationId) => {
+    try {
+      setAccountsLoading(true);
+      setAccessibleAccounts([]);
+      setSelectedAccountId('');
+      setConfiguringIntegrationId(integrationId);
+      
+      const response = await api.get('/integrations/google/accounts', {
+        params: { integrationId }
+      });
+      
+      if (response.data && response.data.success) {
+        setAccessibleAccounts(response.data.data || []);
+        if (response.data.data?.length === 1) {
+          const rawAct = response.data.data[0];
+          const cleanId = rawAct.replace('customers/', '');
+          setSelectedAccountId(cleanId);
+        }
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to retrieve accessible accounts');
+      setConfiguringIntegrationId(null);
+    } finally {
+      setAccountsLoading(false);
+    }
+  };
+
+  const handleConfigureAccount = async () => {
+    if (!selectedAccountId) {
+      toast.error('Please select an account');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      const response = await api.post('/api/integrations/google/configure', {
+        integrationId: configuringIntegrationId,
+        accountId: selectedAccountId,
+        accountName: `Google Ads (${selectedAccountId})`,
+      });
+      
+      if (response.data && response.data.success) {
+        toast.success('Google Ads customer account configured!');
+        setConfiguringIntegrationId(null);
+        fetchIntegrations();
+      }
+    } catch (err) {
+      // Retry with local route mapping if root prefix fails
+      try {
+        const fallbackRes = await api.post('/integrations/google/configure', {
+          integrationId: configuringIntegrationId,
+          accountId: selectedAccountId,
+          accountName: `Google Ads (${selectedAccountId})`,
+        });
+        if (fallbackRes.data && fallbackRes.data.success) {
+          toast.success('Google Ads customer account configured!');
+          setConfiguringIntegrationId(null);
+          fetchIntegrations();
+          return;
+        }
+      } catch (nestedErr) {
+        toast.error(nestedErr.response?.data?.message || 'Failed to configure account');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -296,13 +445,15 @@ export default function IntegrationsPage() {
                 >
                   <Play size={12} color="#2563eb" /> {testingMeta ? 'Simulating...' : 'Test Lead Simulation'}
                 </button>
-                <a
-                  href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/integrations/meta/oauth`}
+                <button
+                  type="button"
+                  onClick={handleConnectMeta}
+                  disabled={loading}
                   className="btn btn-primary btn-sm"
                   style={{ flex: 1, background: '#2563eb', borderColor: '#2563eb', gap: 5, borderRadius: 8, fontSize: 12 }}
                 >
                   <ExternalLink size={12} /> Connect Meta
-                </a>
+                </button>
               </div>
             </div>
 
@@ -347,6 +498,107 @@ export default function IntegrationsPage() {
                   Capture high-intent leads directly from Google Search ads and asset lead forms. Inbound leads land with <strong style={{ color: '#dc2626' }}>🔴 Google Ads</strong> tags, keyword groups, and campaign names.
                 </p>
 
+                {/* Google Ads Integrations List */}
+                {googleIntegrations.map(integration => {
+                  const isPendingConfig = !integration.customerId;
+                  return (
+                    <div key={integration._id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 12, marginBottom: 14 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {isPendingConfig ? '⚠️ Configuration Required' : (integration.accountName || `Account (${integration.customerId})`)}
+                          </p>
+                          <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                            {isPendingConfig ? 'Please select a Customer Account' : `Customer ID: ${integration.customerId.replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3')}`}
+                          </p>
+                          {integration.lastSyncAt && (
+                            <p style={{ margin: '4px 0 0', fontSize: 10, color: 'var(--text-muted)' }}>
+                              Last Sync: {new Date(integration.lastSyncAt).toLocaleString()}
+                            </p>
+                          )}
+                          {integration.lastError && (
+                            <p style={{ margin: '4px 0 0', fontSize: 10.5, color: '#dc2626', fontWeight: 600 }}>
+                              Error: {integration.lastError}
+                            </p>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                          <button
+                            type="button"
+                            onClick={() => handleFetchAccounts(integration._id)}
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '4px 8px', fontSize: 11, minHeight: 0, height: 28 }}
+                          >
+                            Manage
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDisconnectGoogle(integration._id)}
+                            className="btn btn-ghost btn-sm"
+                            style={{ color: '#dc2626', padding: '4px 8px', minHeight: 0, height: 28 }}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Account Selection Panel */}
+                {configuringIntegrationId && (
+                  <div style={{ background: 'var(--surface)', border: '1.5px solid rgba(220,38,38,0.25)', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                    <h3 style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                      Select Google Ads Account
+                    </h3>
+                    
+                    {accountsLoading ? (
+                      <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>Loading accessible customer accounts...</p>
+                    ) : accessibleAccounts.length === 0 ? (
+                      <p style={{ margin: 0, fontSize: 12, color: '#dc2626' }}>No accessible Google Ads customer accounts found.</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+                        {accessibleAccounts.map(rawAct => {
+                          const cleanId = rawAct.replace('customers/', '');
+                          const displayId = cleanId.replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3');
+                          return (
+                            <label key={cleanId} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer', padding: '6px 8px', background: 'var(--background)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                              <input
+                                type="radio"
+                                name="google_customer_id"
+                                value={cleanId}
+                                checked={selectedAccountId === cleanId}
+                                onChange={(e) => setSelectedAccountId(e.target.value)}
+                              />
+                              <span>Customer Account ({displayId})</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                    
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={handleConfigureAccount}
+                        disabled={loading || !selectedAccountId}
+                        className="btn btn-primary btn-sm"
+                        style={{ background: '#dc2626', borderColor: '#dc2626', borderRadius: 8, fontSize: 12, padding: '4px 10px', minHeight: 32 }}
+                      >
+                        Connect Account
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfiguringIntegrationId(null)}
+                        className="btn btn-secondary btn-sm"
+                        style={{ borderRadius: 8, fontSize: 12, padding: '4px 10px', minHeight: 32 }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Webhook Details for Google Ads Lead Extension */}
                 <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 12, marginBottom: 14 }}>
                   <span style={{ fontSize: 10.5, textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
@@ -382,13 +634,15 @@ export default function IntegrationsPage() {
                 >
                   <Play size={12} color="#dc2626" /> {testingGoogle ? 'Simulating...' : 'Test Lead Simulation'}
                 </button>
-                <a
-                  href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/integrations/google/oauth`}
+                <button
+                  type="button"
+                  onClick={handleConnectGoogle}
+                  disabled={loading}
                   className="btn btn-primary btn-sm"
                   style={{ flex: 1, background: '#dc2626', borderColor: '#dc2626', gap: 5, borderRadius: 8, fontSize: 12 }}
                 >
                   <ExternalLink size={12} /> Connect Google
-                </a>
+                </button>
               </div>
             </div>
 
