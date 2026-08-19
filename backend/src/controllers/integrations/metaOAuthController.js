@@ -18,11 +18,12 @@ const META_SCOPES = [
   'ads_read',
 ].join(',');
 
-function generateOAuthState(userId, companyId) {
+function generateOAuthState(userId, companyId, frontendUrl) {
   const secret = process.env.JWT_SECRET || 'crm_oauth_state_hmac_secret';
   const payload = {
     userId: String(userId),
     companyId: companyId ? String(companyId) : null,
+    frontendUrl: frontendUrl || null,
     nonce: crypto.randomBytes(16).toString('hex'),
     createdAt: Date.now(),
   };
@@ -91,8 +92,17 @@ exports.startOAuth = async (req, res) => {
       });
     }
 
+    // Extract frontendUrl dynamically
+    let frontendUrl = req.query.frontendUrl || null;
+    if (!frontendUrl && req.headers.referer) {
+      try {
+        const parsedReferer = new URL(req.headers.referer);
+        frontendUrl = parsedReferer.origin;
+      } catch {}
+    }
+
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? req.user._id : null);
-    const state = generateOAuthState(req.user._id, companyId);
+    const state = generateOAuthState(req.user._id, companyId, frontendUrl);
 
     const params = new URLSearchParams({
       client_id: appId,
@@ -126,13 +136,20 @@ exports.startOAuth = async (req, res) => {
  * GET /api/integrations/meta/oauth/callback
  */
 exports.callback = async (req, res) => {
+  let resolvedFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
   try {
     const { code, state, error, error_description } = req.query;
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+    if (state) {
+      const stateData = verifyOAuthState(state);
+      if (stateData && stateData.frontendUrl) {
+        resolvedFrontendUrl = stateData.frontendUrl;
+      }
+    }
 
     if (error) {
       console.warn('Meta OAuth denied by user:', error_description || error);
-      return res.redirect(`${frontendUrl}/integrations?meta=error&message=${encodeURIComponent(error_description || 'Authorization denied')}`);
+      return res.redirect(`${resolvedFrontendUrl}/integrations?meta=error&message=${encodeURIComponent(error_description || 'Authorization denied')}`);
     }
 
     if (!code || !state) {
@@ -240,10 +257,9 @@ exports.callback = async (req, res) => {
       }
     );
 
-    return res.redirect(`${frontendUrl}/integrations?meta=connected&account=${encodeURIComponent(metaUser.name || metaUser.id)}`);
+    return res.redirect(`${resolvedFrontendUrl}/integrations?meta=connected&account=${encodeURIComponent(metaUser.name || metaUser.id)}`);
   } catch (error) {
     console.error('Meta OAuth callback processing error:', error.response?.data || error.message);
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    return res.redirect(`${frontendUrl}/integrations?meta=error&message=${encodeURIComponent(error.message || 'Meta connection failed')}`);
+    return res.redirect(`${resolvedFrontendUrl}/integrations?meta=error&message=${encodeURIComponent(error.message || 'Meta connection failed')}`);
   }
 };

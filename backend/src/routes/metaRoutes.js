@@ -5,6 +5,7 @@ const router = express.Router();
 const metaOAuthController = require('../controllers/integrations/metaOAuthController');
 const metaWebhookController = require('../controllers/integrations/metaWebhookController');
 const metaIntegrationController = require('../controllers/integrations/metaIntegrationController');
+const { protect } = require('../middleware/auth');
 
 // ============================================================
 // META OAUTH
@@ -12,6 +13,7 @@ const metaIntegrationController = require('../controllers/integrations/metaInteg
 
 router.get(
   '/oauth',
+  protect,
   metaOAuthController.startOAuth
 );
 
@@ -48,8 +50,6 @@ router.post(
   }),
   metaWebhookController.receive
 );
-
-const { protect } = require('../middleware/auth');
 
 // ============================================================
 // META ACCOUNT MANAGEMENT
