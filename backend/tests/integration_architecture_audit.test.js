@@ -139,10 +139,13 @@ async function runSuite() {
   console.log('\n--- SECTION 3: Multi-Tenant Provisioning ---');
   let companyAOwner, companyBOwner, agentA;
   {
+    const ts = Date.now();
+    await User.deleteMany({ email: { $in: ['alice@companya.com', 'arthur@companya.com', 'bob@companyb.com'] } });
+    
     companyAOwner = await User.create({
       name: 'Alice Owner (Company A)',
-      email: 'alice@companya.com',
-      phone: '919999900001',
+      email: `alice_${ts}@companya.com`,
+      phone: `919999${String(ts).slice(-6)}`,
       password: 'HashedPassword@123',
       role: 'user',
       workStatus: 'company_owner',
@@ -151,8 +154,8 @@ async function runSuite() {
 
     agentA = await User.create({
       name: 'Agent Arthur (Company A)',
-      email: 'arthur@companya.com',
-      phone: '919999900002',
+      email: `arthur_${ts}@companya.com`,
+      phone: `919998${String(ts).slice(-6)}`,
       password: 'HashedPassword@123',
       role: 'user',
       workStatus: 'employee',
@@ -162,8 +165,8 @@ async function runSuite() {
 
     companyBOwner = await User.create({
       name: 'Bob Owner (Company B)',
-      email: 'bob@companyb.com',
-      phone: '919999900003',
+      email: `bob_${ts}@companyb.com`,
+      phone: `919997${String(ts).slice(-6)}`,
       password: 'HashedPassword@123',
       role: 'user',
       workStatus: 'company_owner',
