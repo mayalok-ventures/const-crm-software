@@ -219,17 +219,38 @@ export default function CataloguePage() {
     }
   };
 
-  // Filter My Active Catalogue locally
-  const filteredMyCatalogue = useMemo(() => {
-    return myCatalogue.filter(item => {
-      const q = searchQuery.toLowerCase().trim();
-      const matchSearch = !q ||
-        item.customCollegeName?.toLowerCase().includes(q) ||
-        item.location?.city?.toLowerCase().includes(q) ||
-        item.location?.state?.toLowerCase().includes(q) ||
-        (item.courses || []).some(c => c.degreeName?.toLowerCase().includes(q) || c.specialization?.toLowerCase().includes(q));
+  // Focus state for expanding search bar
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
-      const matchType = typeFilter === 'all' || item.collegeType === typeFilter;
+  // Parse comma-separated search tokens
+  const searchTokens = useMemo(() => {
+    return searchQuery.split(',').map(s => s.trim()).filter(Boolean);
+  }, [searchQuery]);
+
+  // Filter My Active Catalogue locally with multi-token comma refinement
+  const filteredMyCatalogue = useMemo(() => {
+    const tokens = searchQuery.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+    return myCatalogue.filter(item => {
+      const matchSearch = tokens.length === 0 || tokens.every(token => {
+        const matchName = (item.customCollegeName || item.name || '').toLowerCase().includes(token);
+        const matchShort = (item.masterCollegeId?.shortCode || '').toLowerCase().includes(token);
+        const matchCity = (item.location?.city || '').toLowerCase().includes(token);
+        const matchState = (item.location?.state || '').toLowerCase().includes(token);
+        const matchCountry = (item.location?.country || '').toLowerCase().includes(token);
+        const matchType = (item.collegeType || item.type || '').toLowerCase().includes(token);
+        const matchAccreditation = (item.accreditation || item.masterCollegeId?.accreditation || []).some(a => a.toLowerCase().includes(token));
+        const matchAffiliation = (item.affiliatedUniversity || '').toLowerCase().includes(token);
+        const matchNotes = (item.notes || '').toLowerCase().includes(token);
+        const matchCourses = (item.courses || []).some(c => 
+          (c.degreeName || '').toLowerCase().includes(token) ||
+          (c.specialization || '').toLowerCase().includes(token) ||
+          (c.level || '').toLowerCase().includes(token)
+        );
+        return matchName || matchShort || matchCity || matchState || matchCountry || matchType || matchAccreditation || matchAffiliation || matchNotes || matchCourses;
+      });
+
+      const matchType = typeFilter === 'all' || item.collegeType === typeFilter || item.type === typeFilter;
       const matchState = stateFilter === 'all' || item.location?.state?.toLowerCase() === stateFilter.toLowerCase();
 
       return matchSearch && matchType && matchState;
@@ -332,52 +353,124 @@ export default function CataloguePage() {
         </div>
 
         {/* ─────────────────────────────────────────────────────────────
-            SEARCH & FILTER CONTROL BAR
+            EXPANDING SEARCH & SMART MULTI-TOKEN CONTROL BAR
            ───────────────────────────────────────────────────────────── */}
-        <div className="bg-white border border-slate-200 rounded-xl p-3.5 mb-6 shadow-sm flex flex-col md:flex-row items-center gap-3">
-          <div className="relative flex-1 w-full">
-            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder={activeTab === 'my_catalogue' ? "Search active colleges, courses, degrees, city..." : "Search 10,000+ universities by name, short code, city, or accreditation..."}
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="input pl-10 pr-8 py-2 text-xs sm:text-sm w-full bg-slate-50 border-slate-200 rounded-lg focus:bg-white focus:border-indigo-500"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm font-bold"
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-6 shadow-xs transition-all duration-300">
+          <div className="flex flex-col md:flex-row items-center gap-3">
+            {/* Dynamic Expanding Search Input */}
+            <div className={`relative transition-all duration-300 ease-out w-full ${isSearchFocused ? 'md:flex-grow' : 'md:flex-1'}`}>
+              <Search
+                size={17}
+                className={`absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors duration-200 ${
+                  isSearchFocused ? 'text-indigo-600' : 'text-slate-400'
+                }`}
+              />
+              <input
+                type="text"
+                placeholder={
+                  activeTab === 'my_catalogue'
+                    ? "🔍 Search by College, City, State, Degree, or Course (use commas e.g. Amity, Noida, MBA)..."
+                    : "🔍 Search 10,000+ Universities by Name, City, State, or Course (e.g. VIT, Vellore, CSE)..."
+                }
+                value={searchQuery}
+                onFocus={() => setIsSearchFocused(true)}
+                onBlur={() => setIsSearchFocused(false)}
+                onChange={e => setSearchQuery(e.target.value)}
+                className={`input pl-10 pr-9 py-2.5 text-xs sm:text-sm w-full rounded-xl transition-all duration-200 ${
+                  isSearchFocused
+                    ? 'bg-white border-indigo-500 shadow-md ring-2 ring-indigo-500/20'
+                    : 'bg-slate-50 border-slate-200 focus:bg-white hover:border-slate-300'
+                }`}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 w-5 h-5 flex items-center justify-center rounded-full hover:bg-slate-100 text-sm font-bold transition"
+                  title="Clear search"
+                >
+                  &times;
+                </button>
+              )}
+            </div>
+
+            {/* Filter Dropdowns */}
+            <div className="flex items-center gap-2.5 w-full md:w-auto flex-shrink-0">
+              <select
+                value={typeFilter}
+                onChange={e => setTypeFilter(e.target.value)}
+                className="input py-2.5 text-xs bg-slate-50 border-slate-200 rounded-xl flex-1 md:w-44 focus:bg-white focus:border-indigo-500"
               >
-                &times;
-              </button>
-            )}
+                <option value="all">All Institution Types</option>
+                {INSTITUTION_TYPES.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+
+              <select
+                value={stateFilter}
+                onChange={e => setStateFilter(e.target.value)}
+                className="input py-2.5 text-xs bg-slate-50 border-slate-200 rounded-xl flex-1 md:w-40 focus:bg-white focus:border-indigo-500"
+              >
+                <option value="all">All States</option>
+                {allStates.map(st => (
+                  <option key={st} value={st}>{st}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2.5 w-full md:w-auto">
-            <select
-              value={typeFilter}
-              onChange={e => setTypeFilter(e.target.value)}
-              className="input py-2 text-xs bg-slate-50 border-slate-200 rounded-lg flex-1 md:w-44 focus:bg-white"
-            >
-              <option value="all">All Institution Types</option>
-              {INSTITUTION_TYPES.map(t => (
-                <option key={t} value={t}>{t}</option>
+          {/* Active Search Token Badges & Quick Refinement Hints */}
+          {searchTokens.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t border-slate-100 animate-fade-in">
+              <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
+                <Filter size={12} className="text-indigo-500" /> Active Search Criteria ({searchTokens.length}):
+              </span>
+              {searchTokens.map((tok, idx) => (
+                <span
+                  key={idx}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs"
+                >
+                  <span>{idx === 0 ? '🏛️' : idx === 1 ? '📍' : '🎓'} {tok}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newTokens = searchTokens.filter((_, i) => i !== idx);
+                      setSearchQuery(newTokens.join(', '));
+                    }}
+                    className="hover:text-indigo-900 ml-1 text-slate-400 hover:text-slate-600 font-bold"
+                  >
+                    &times;
+                  </button>
+                </span>
               ))}
-            </select>
+              <span className="text-[11px] text-slate-400 italic">
+                (Matching all criteria simultaneously)
+              </span>
+            </div>
+          )}
 
-            <select
-              value={stateFilter}
-              onChange={e => setStateFilter(e.target.value)}
-              className="input py-2 text-xs bg-slate-50 border-slate-200 rounded-lg flex-1 md:w-40 focus:bg-white"
-            >
-              <option value="all">All States</option>
-              {allStates.map(st => (
-                <option key={st} value={st}>{st}</option>
+          {/* Quick Search Suggestions when focused & query empty */}
+          {isSearchFocused && searchTokens.length === 0 && (
+            <div className="flex items-center gap-2 flex-wrap mt-3 pt-2.5 border-t border-slate-100 text-xs text-slate-500">
+              <span className="font-medium flex items-center gap-1 text-indigo-600">
+                <Sparkles size={12} /> Try multi-token filters:
+              </span>
+              {['Amity, Noida, MBA', 'VIT, Vellore, B.Tech', 'BITS, Pilani, M.Tech', 'Oxford, UK, MBA'].map((hint) => (
+                <button
+                  key={hint}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setSearchQuery(hint);
+                  }}
+                  className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 text-[11px] font-medium border border-slate-200/80 transition"
+                >
+                  {hint}
+                </button>
               ))}
-            </select>
-          </div>
+            </div>
+          )}
         </div>
 
         {/* ─────────────────────────────────────────────────────────────
@@ -395,14 +488,23 @@ export default function CataloguePage() {
                 <div className="w-16 h-16 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto mb-4">
                   <School size={32} />
                 </div>
-                <h3 className="text-lg font-bold text-slate-900">No Institutions in Your Active Catalogue</h3>
+                <h3 className="text-lg font-bold text-slate-900">No Institutions Match Your Filter</h3>
                 <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-6 leading-relaxed">
                   {myCatalogue.length === 0
                     ? "Start building your catalogue by exploring the 10,000+ Master Repository with 1-Click Import or manually creating a custom partner institution."
-                    : "No colleges match your active search filters. Try clearing your search or location filters."}
+                    : `No colleges match the criteria "${searchQuery}". Try clearing specific tokens or location filters.`}
                 </p>
 
                 <div className="flex items-center justify-center gap-3 flex-wrap">
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="btn btn-secondary btn-sm flex items-center gap-2"
+                    >
+                      Clear Search Filter
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setActiveTab('master_explore')}
@@ -432,12 +534,15 @@ export default function CataloguePage() {
                   return (
                     <div
                       key={col._id}
-                      className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between hover:border-indigo-400 hover:shadow-md transition shadow-sm relative group overflow-hidden"
+                      onClick={() => router.push(`/colleges/${col._id}`)}
+                      role="button"
+                      tabIndex={0}
+                      className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between hover:border-indigo-500 hover:shadow-lg transition-all duration-200 shadow-xs relative group cursor-pointer overflow-hidden text-left"
                     >
                       <div>
                         {/* Header Row */}
                         <div className="flex items-start justify-between gap-3 mb-3">
-                          <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-extrabold text-base flex-shrink-0 shadow-sm">
+                          <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-extrabold text-base flex-shrink-0 shadow-sm group-hover:scale-105 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-200">
                             {col.masterCollegeId?.shortCode || name.substring(0, 2).toUpperCase()}
                           </div>
 
@@ -491,7 +596,7 @@ export default function CataloguePage() {
                         )}
 
                         {/* Degree Programs Summary */}
-                        <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 my-3.5 space-y-1.5">
+                        <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 my-3.5 space-y-1.5 group-hover:bg-indigo-50/40 group-hover:border-indigo-200/60 transition-colors">
                           <div className="flex items-center justify-between text-xs">
                             <span className="text-slate-500 font-medium">Configured Streams:</span>
                             <span className="text-indigo-600 font-bold">{courses.length} Specializations</span>
@@ -515,21 +620,20 @@ export default function CataloguePage() {
                       <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100 mt-1">
                         <button
                           type="button"
-                          onClick={() => handleDeleteCatalogueItem(col._id, name)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteCatalogueItem(col._id, name);
+                          }}
                           className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
                           title="Remove from catalogue"
                         >
                           <Trash2 size={15} />
                         </button>
 
-                        <button
-                          type="button"
-                          onClick={() => router.push(`/colleges/${col._id}`)}
-                          className="btn btn-primary btn-sm flex-1 flex items-center justify-center gap-1.5 text-xs py-2 rounded-xl font-bold transition"
-                        >
-                          <span>Drill Down & Customize</span>
-                          <ChevronRight size={14} />
-                        </button>
+                        <div className="flex-1 flex items-center justify-end gap-1 text-xs font-bold text-indigo-600 group-hover:translate-x-0.5 transition-transform">
+                          <span>View Details & Fees</span>
+                          <ChevronRight size={15} />
+                        </div>
                       </div>
                     </div>
                   );
@@ -556,7 +660,7 @@ export default function CataloguePage() {
                 </div>
                 <h3 className="text-lg font-bold text-slate-900">No Universities Found</h3>
                 <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-6 leading-relaxed">
-                  No matching institutions found in the master database. You can manually create this partner institution with 1 click.
+                  No matching institutions found in the master database for &quot;{searchQuery}&quot;. You can manually create this partner institution with 1 click.
                 </p>
                 <button
                   type="button"
@@ -578,12 +682,15 @@ export default function CataloguePage() {
                     return (
                       <div
                         key={col._id}
-                        className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between hover:border-purple-300 hover:shadow-md transition shadow-sm relative group overflow-hidden"
+                        onClick={() => router.push(isImported ? `/colleges/${col.tenantCatalogueId || col._id}` : `/colleges/${col._id}`)}
+                        role="button"
+                        tabIndex={0}
+                        className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between hover:border-purple-400 hover:shadow-lg transition-all duration-200 shadow-xs relative group cursor-pointer overflow-hidden text-left"
                       >
                         <div>
                           {/* Top Row */}
                           <div className="flex items-start justify-between gap-3 mb-3">
-                            <div className="w-12 h-12 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-700 font-extrabold text-base flex-shrink-0 shadow-sm">
+                            <div className="w-12 h-12 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-700 font-extrabold text-base flex-shrink-0 shadow-sm group-hover:scale-105 group-hover:bg-purple-600 group-hover:text-white transition-all duration-200">
                               {col.shortCode || col.name.substring(0, 2).toUpperCase()}
                             </div>
 
@@ -629,7 +736,7 @@ export default function CataloguePage() {
                           )}
 
                           {/* Programs Overview */}
-                          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 my-3.5 space-y-1.5">
+                          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 my-3.5 space-y-1.5 group-hover:bg-purple-50/40 group-hover:border-purple-200/60 transition-colors">
                             <div className="flex items-center justify-between text-xs">
                               <span className="text-slate-500 font-medium">Available Programs:</span>
                               <span className="text-indigo-600 font-bold">{courses.length} Degrees</span>
@@ -652,18 +759,17 @@ export default function CataloguePage() {
                         {/* Footer Actions */}
                         <div className="pt-3 border-t border-slate-100 mt-1 flex items-center gap-2">
                           {isImported ? (
-                            <button
-                              type="button"
-                              onClick={() => router.push(`/colleges/${col.tenantCatalogueId || col._id}`)}
-                              className="btn btn-secondary btn-sm w-full flex items-center justify-center gap-1.5 text-xs py-2 rounded-xl font-bold text-emerald-700 border-emerald-300 hover:bg-emerald-50"
-                            >
-                              <span>View in My Active Catalogue</span>
+                            <div className="w-full flex items-center justify-between text-xs font-bold text-emerald-700 py-1.5">
+                              <span>Configured in Active Catalogue</span>
                               <ChevronRight size={14} />
-                            </button>
+                            </div>
                           ) : (
                             <button
                               type="button"
-                              onClick={() => handleImportCollege(col)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleImportCollege(col);
+                              }}
                               disabled={importingId === col._id}
                               className="btn btn-primary btn-sm w-full flex items-center justify-center gap-1.5 text-xs py-2 rounded-xl font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition"
                             >

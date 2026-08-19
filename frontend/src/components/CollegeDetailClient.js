@@ -42,6 +42,13 @@ export default function CollegeDetailClient() {
   // Modals state
   const [showEditInfoModal, setShowEditInfoModal] = useState(false);
   const [showAddDegreeModal, setShowAddDegreeModal] = useState(false);
+  const [showEditDegreeModal, setShowEditDegreeModal] = useState(false);
+  const [degreeEditForm, setDegreeEditForm] = useState({
+    currentDegreeName: '',
+    newDegreeName: '',
+    level: 'Undergraduate',
+    durationYears: 4,
+  });
   const [showAddSpecModal, setShowAddSpecModal] = useState(false);
   const [targetDegreeForSpec, setTargetDegreeForSpec] = useState(null);
   const [showEditCourseModal, setShowEditCourseModal] = useState(false);
@@ -315,6 +322,52 @@ export default function CollegeDetailClient() {
     }
   };
 
+  // Open Edit Degree Modal
+  const handleOpenEditDegree = (deg) => {
+    setDegreeEditForm({
+      currentDegreeName: deg.degreeName,
+      newDegreeName: deg.degreeName,
+      level: deg.level || 'Undergraduate',
+      durationYears: deg.durationYears || 4,
+    });
+    setShowEditDegreeModal(true);
+  };
+
+  // Submit Edit Degree (Rename, change duration/level)
+  const handleSaveEditDegree = async (e) => {
+    e.preventDefault();
+    if (!college || !degreeEditForm.currentDegreeName || !isMyCatalogueItem) return;
+    if (!degreeEditForm.newDegreeName.trim()) {
+      return toast.error('Degree program name cannot be empty');
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await api.put(`/catalogue/my-catalogue/${college._id}/degrees/${encodeURIComponent(degreeEditForm.currentDegreeName)}`, {
+        newDegreeName: degreeEditForm.newDegreeName.trim(),
+        level: degreeEditForm.level,
+        durationYears: Number(degreeEditForm.durationYears) || 4,
+      });
+
+      toast.success(`Degree updated successfully! ✨`);
+      setCollege(res.data?.catalogueItem);
+      setShowEditDegreeModal(false);
+
+      if (degreeEditForm.newDegreeName !== degreeEditForm.currentDegreeName) {
+        setExpandedDegrees(prev => {
+          const next = { ...prev };
+          next[degreeEditForm.newDegreeName] = next[degreeEditForm.currentDegreeName];
+          delete next[degreeEditForm.currentDegreeName];
+          return next;
+        });
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update degree');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // Delete Degree
   const handleDeleteDegree = async (degreeName) => {
     if (!confirm(`Are you sure you want to delete the entire "${degreeName}" program and all its streams?`)) return;
@@ -579,9 +632,21 @@ export default function CollegeDetailClient() {
               </div>
 
               <div>
-                <h2 className="text-xl sm:text-2xl font-bold text-slate-900 m-0 tracking-tight">
-                  {collegeName}
-                </h2>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h2 className="text-xl sm:text-2xl font-bold text-slate-900 m-0 tracking-tight">
+                    {collegeName}
+                  </h2>
+                  {isMyCatalogueItem && (
+                    <button
+                      type="button"
+                      onClick={handleOpenEditInfo}
+                      className="inline-flex items-center gap-1 text-xs py-1 px-2.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 font-bold transition shadow-2xs"
+                      title="Edit Institution Profile Details"
+                    >
+                      <Edit3 size={12} /> Edit Profile
+                    </button>
+                  )}
+                </div>
                 <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 flex-wrap">
                   <span className="flex items-center gap-1 font-medium text-slate-700">
                     <MapPin size={13} className="text-indigo-500" /> {collegeLocation}
@@ -743,8 +808,16 @@ export default function CollegeDetailClient() {
                         <>
                           <button
                             type="button"
+                            onClick={() => handleOpenEditDegree(deg)}
+                            className="btn btn-secondary btn-sm text-xs py-1.5 px-2.5 rounded-lg flex items-center gap-1 text-indigo-700 border-indigo-200 hover:bg-indigo-50 font-bold transition shadow-2xs"
+                            title="Edit Degree Program (Name, Level, Duration)"
+                          >
+                            <Edit3 size={13} /> Edit Degree
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => handleOpenAddSpec(deg)}
-                            className="btn btn-secondary btn-sm text-xs py-1.5 px-3 rounded-lg flex items-center gap-1 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                            className="btn btn-secondary btn-sm text-xs py-1.5 px-2.5 rounded-lg flex items-center gap-1 text-emerald-700 border-emerald-300 hover:bg-emerald-50 font-bold transition shadow-2xs"
                             title="Add Specialization Stream"
                           >
                             <Plus size={13} /> Add Stream
@@ -752,7 +825,7 @@ export default function CollegeDetailClient() {
                           <button
                             type="button"
                             onClick={() => handleDeleteDegree(deg.degreeName)}
-                            className="p-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 transition"
+                            className="p-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 transition shadow-2xs"
                             title="Delete Degree & All Streams"
                           >
                             <Trash2 size={14} />
@@ -781,11 +854,23 @@ export default function CollegeDetailClient() {
                                 {/* Stream Header Row */}
                                 <div className="flex items-start justify-between gap-2 mb-2">
                                   <div>
-                                    <h5 className="text-sm font-bold text-slate-900 m-0 tracking-tight">
-                                      {course.specialization}
-                                    </h5>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <h5 className="text-sm font-bold text-slate-900 m-0 tracking-tight">
+                                        {course.specialization}
+                                      </h5>
+                                      {isMyCatalogueItem && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenEditCourse(course)}
+                                          className="text-indigo-600 hover:text-indigo-800 p-0.5 rounded hover:bg-indigo-50 transition"
+                                          title="Quick Edit Specialization & Fees"
+                                        >
+                                          <Edit3 size={13} />
+                                        </button>
+                                      )}
+                                    </div>
                                     <span className="text-[11px] text-slate-500 font-medium">
-                                      {deg.degreeName}
+                                      {deg.degreeName} ({deg.durationYears} Years)
                                     </span>
                                   </div>
 
@@ -848,21 +933,21 @@ export default function CollegeDetailClient() {
 
                               {/* Card Action Buttons */}
                               {isMyCatalogueItem && (
-                                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenEditCourse(course)}
-                                    className="btn btn-secondary btn-sm text-xs py-1 px-2.5 rounded-lg flex items-center gap-1 text-indigo-700 hover:text-indigo-800 border-indigo-200"
-                                  >
-                                    <Edit size={12} /> Edit Fee & Tie-Up
-                                  </button>
+                                <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-slate-100 mt-1">
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteCourse(course)}
                                     className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
-                                    title="Delete Stream"
+                                    title="Delete Specialization Stream"
                                   >
                                     <Trash2 size={14} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditCourse(course)}
+                                    className="btn btn-secondary btn-sm text-xs py-1 px-3 rounded-lg flex items-center gap-1.5 text-indigo-700 hover:bg-indigo-50 border-indigo-200 font-bold transition shadow-2xs"
+                                  >
+                                    <Edit size={12} /> Edit Fee & Tie-Up
                                   </button>
                                 </div>
                               )}
@@ -1131,6 +1216,76 @@ export default function CollegeDetailClient() {
                 <button type="button" className="btn btn-ghost" onClick={() => setShowAddDegreeModal(false)}>Cancel</button>
                 <button type="submit" disabled={submitting} className="btn btn-primary">
                   {submitting ? 'Generating...' : 'Add Degree & Streams 🚀'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          MODAL 2.5: EDIT DEGREE PROGRAM (RENAME, LEVEL, DURATION)
+         ───────────────────────────────────────────────────────────── */}
+      {showEditDegreeModal && (
+        <div className="modal-overlay" onClick={() => setShowEditDegreeModal(false)}>
+          <div className="modal-sheet max-w-lg bg-white" onClick={e => e.stopPropagation()}>
+            <div className="modal-handle" />
+            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2 m-0">
+                <Edit3 size={18} className="text-indigo-600" /> Edit Degree Program
+              </h3>
+              <button onClick={() => setShowEditDegreeModal(false)} className="text-slate-400 hover:text-slate-700 text-lg">&times;</button>
+            </div>
+
+            <p className="text-xs text-slate-500 -mt-2 mb-4">
+              Updating degree details across all its associated specialization streams.
+            </p>
+
+            <form onSubmit={handleSaveEditDegree} className="space-y-4">
+              <div>
+                <label className="label">Degree Program Title *</label>
+                <input
+                  type="text"
+                  className="input text-sm"
+                  placeholder="e.g. B.Tech / B.E., MBA, MBBS"
+                  value={degreeEditForm.newDegreeName}
+                  onChange={e => setDegreeEditForm(f => ({ ...f, newDegreeName: e.target.value }))}
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Academic Level</label>
+                  <select
+                    className="input text-xs"
+                    value={degreeEditForm.level}
+                    onChange={e => setDegreeEditForm(f => ({ ...f, level: e.target.value }))}
+                  >
+                    <option value="Undergraduate">Undergraduate (UG)</option>
+                    <option value="Postgraduate">Postgraduate (PG)</option>
+                    <option value="Diploma / Certification">Diploma</option>
+                    <option value="Doctorate / PhD">Doctorate</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Program Duration (Years)</label>
+                  <input
+                    type="number"
+                    className="input text-sm"
+                    value={degreeEditForm.durationYears}
+                    onChange={e => setDegreeEditForm(f => ({ ...f, durationYears: e.target.value }))}
+                    min={1}
+                    max={6}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="modal-actions pt-2 flex justify-end gap-2 border-t border-slate-100">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowEditDegreeModal(false)}>Cancel</button>
+                <button type="submit" disabled={submitting} className="btn btn-primary">
+                  {submitting ? 'Saving...' : 'Update Degree ✨'}
                 </button>
               </div>
             </form>

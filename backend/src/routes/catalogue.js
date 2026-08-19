@@ -10,6 +10,7 @@ const {
   getTenantCatalogueItem,
   updateTenantCatalogueInfo,
   addDegreeToCatalogueItem,
+  updateDegreeInCatalogueItem,
   deleteDegreeFromCatalogueItem,
   addSpecializationToCatalogueItem,
   updateCourseInCatalogueItem,
@@ -44,6 +45,7 @@ router.route('/my-catalogue/:id')
 // PHASE 2: Deep Drill-Down Degree & Specialization Management Routes
 router.put('/my-catalogue/:id/info', checkPlanExpiry, updateTenantCatalogueInfo);
 router.post('/my-catalogue/:id/degrees', checkPlanExpiry, addDegreeToCatalogueItem);
+router.put('/my-catalogue/:id/degrees/:degreeName', checkPlanExpiry, updateDegreeInCatalogueItem);
 router.delete('/my-catalogue/:id/degrees/:degreeName', checkPlanExpiry, deleteDegreeFromCatalogueItem);
 router.post('/my-catalogue/:id/specializations', checkPlanExpiry, addSpecializationToCatalogueItem);
 router.put('/my-catalogue/:id/courses/:courseId', checkPlanExpiry, updateCourseInCatalogueItem);

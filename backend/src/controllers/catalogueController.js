@@ -414,17 +414,56 @@ exports.getMasterColleges = async (req, res) => {
     }
 
     if (search && search.trim()) {
-      const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const rx = new RegExp(escaped, 'i');
-      query.$or = [
-        { name: rx },
-        { shortCode: rx },
-        { 'location.city': rx },
-        { 'location.state': rx },
-        { 'location.country': rx },
-        { accreditation: rx },
-        { type: rx },
-      ];
+      const rawTokens = search.split(',').map(s => s.trim()).filter(Boolean);
+      if (rawTokens.length === 1) {
+        const escaped = rawTokens[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const rx = new RegExp(escaped, 'i');
+        const matchingCourseCollegeIds = await MasterCourse.distinct('collegeId', {
+          $or: [
+            { degreeName: rx },
+            { specializations: rx },
+            { level: rx },
+          ],
+          isActive: true,
+        });
+
+        query.$or = [
+          { name: rx },
+          { shortCode: rx },
+          { 'location.city': rx },
+          { 'location.state': rx },
+          { 'location.country': rx },
+          { accreditation: rx },
+          { type: rx },
+          { _id: { $in: matchingCourseCollegeIds } },
+        ];
+      } else if (rawTokens.length > 1) {
+        const tokenConditions = await Promise.all(rawTokens.map(async (tok) => {
+          const escaped = tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const rx = new RegExp(escaped, 'i');
+          const matchingCourseCollegeIds = await MasterCourse.distinct('collegeId', {
+            $or: [
+              { degreeName: rx },
+              { specializations: rx },
+              { level: rx },
+            ],
+            isActive: true,
+          });
+          return {
+            $or: [
+              { name: rx },
+              { shortCode: rx },
+              { 'location.city': rx },
+              { 'location.state': rx },
+              { 'location.country': rx },
+              { accreditation: rx },
+              { type: rx },
+              { _id: { $in: matchingCourseCollegeIds } },
+            ],
+          };
+        }));
+        query.$and = tokenConditions;
+      }
     }
 
     // Auto-seed if empty
@@ -989,6 +1028,60 @@ exports.deleteDegreeFromCatalogueItem = async (req, res) => {
     });
   } catch (error) {
     console.error('deleteDegreeFromCatalogueItem error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
+// @desc  Update / Rename a Degree Program across its streams in a Tenant Catalogue Item
+// @route PUT /api/catalogue/my-catalogue/:id/degrees/:degreeName
+// @access Private
+exports.updateDegreeInCatalogueItem = async (req, res) => {
+  try {
+    const { id, degreeName } = req.params;
+    const { newDegreeName, level, durationYears } = req.body;
+
+    const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner';
+    const companyId = req.user.companyId || (isOwner ? req.user._id : null);
+
+    const query = {
+      _id: id,
+      ...(companyId
+        ? { $or: [{ companyId }, { tenantId: companyId }, { tenantId: req.user._id }] }
+        : { tenantId: req.user._id }),
+    };
+
+    const item = await TenantCatalogue.findOne(query);
+    if (!item) return res.status(404).json({ success: false, message: 'Catalogue item not found' });
+
+    const decodedDegree = decodeURIComponent(degreeName);
+    let updatedCount = 0;
+
+    item.courses.forEach(course => {
+      if (course.degreeName === decodedDegree) {
+        if (newDegreeName && newDegreeName.trim()) {
+          course.degreeName = newDegreeName.trim();
+        }
+        if (level) course.level = level;
+        if (durationYears !== undefined && durationYears !== null) {
+          course.durationYears = Number(durationYears) || course.durationYears;
+        }
+        updatedCount++;
+      }
+    });
+
+    if (updatedCount === 0) {
+      return res.status(404).json({ success: false, message: `Degree "${decodedDegree}" not found in catalogue item` });
+    }
+
+    await item.save();
+
+    res.json({
+      success: true,
+      message: `Degree updated successfully across ${updatedCount} streams ✅`,
+      catalogueItem: item,
+    });
+  } catch (error) {
+    console.error('updateDegreeInCatalogueItem error:', error);
     res.status(500).json({ success: false, message: error.message || 'Server error' });
   }
 };
