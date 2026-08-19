@@ -674,10 +674,10 @@ export default function SuperAdminDashboard() {
       )}
 
       {/* ── HEADER ── */}
-      <header className="border-b border-slate-800/80 bg-[#090d1a]/90 backdrop-blur-md sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <header className="border-b border-slate-800/80 bg-[#090d1a]/95 backdrop-blur-md sticky top-0 z-30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-0 sm:h-16 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 shrink-0">
               <Shield className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -691,43 +691,45 @@ export default function SuperAdminDashboard() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 w-full sm:w-auto">
             <button
               onClick={() => loadAllData()}
               disabled={loading}
-              className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition"
+              className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition shrink-0"
               title="Refresh CRM Data"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-indigo-400' : ''}`} />
             </button>
             <button
               onClick={handleExportActivityLogs}
-              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition"
+              className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition shrink-0 whitespace-nowrap"
             >
               <Download className="w-3.5 h-3.5" />
-              CSV Audit
+              <span>CSV Audit</span>
             </button>
             <button
               onClick={handlePurgeTestData}
-              className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-bold flex items-center gap-1.5 transition"
+              className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-bold flex items-center gap-1.5 transition shrink-0 whitespace-nowrap"
               title="Clean all test and fake data generated during tests/demos while permanently preserving real signups"
             >
               <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-              <span>Clean Test Data</span>
+              <span className="hidden sm:inline">Clean Test Data</span>
+              <span className="sm:hidden">Purge</span>
             </button>
             <button
               onClick={() => setShowAddLeadModal(true)}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-2 transition transform active:scale-95"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-1.5 transition transform active:scale-95 shrink-0 whitespace-nowrap"
             >
               <Plus className="w-4 h-4" />
-              Add Lead
+              <span>Add Lead</span>
             </button>
             <button
               onClick={() => setShowAddAgentModal(true)}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-indigo-500/40 text-indigo-300 text-xs font-bold flex items-center gap-2 transition"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-indigo-500/40 text-indigo-300 text-xs font-bold flex items-center gap-1.5 transition shrink-0 whitespace-nowrap"
             >
               <UserCheck className="w-4 h-4 text-indigo-400" />
-              Onboard Agent
+              <span className="hidden sm:inline">Onboard Agent</span>
+              <span className="sm:hidden">Agent</span>
             </button>
           </div>
         </div>

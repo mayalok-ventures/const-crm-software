@@ -1,10 +1,10 @@
-  'use client';
-
+'use client';
 import React, { useState } from 'react';
 import {
   Phone, Mail, Briefcase, Calendar, Clock, DollarSign,
   Edit, CheckCircle, AlertTriangle, MessageSquare, ArrowRight,
-  Shield, Check, X, AlertCircle
+  Shield, Check, X, AlertCircle, Sparkles, Lock, Ticket
+} from 'lucide-react';
 import { useAlarm } from '@/lib/AlarmContext';
 import { SourcePill } from '@/lib/sourceHelper';
 import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
@@ -55,6 +55,7 @@ export default function LeadCard({
   // Modals state
   const [showEditModal, setShowEditModal] = useState(false);
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
+  const [showEditFollowUpModal, setShowEditFollowUpModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -72,6 +73,11 @@ export default function LeadCard({
   });
 
   const [followUpForm, setFollowUpForm] = useState({
+    scheduled_at: '',
+    note: '',
+  });
+
+  const [editFollowUpForm, setEditFollowUpForm] = useState({
     scheduled_at: '',
     note: '',
   });
@@ -244,6 +250,69 @@ export default function LeadCard({
     }
   };
 
+  // 4b. Edit Scheduled Follow-Up
+  const handleSaveEditFollowUp = async (e) => {
+    e.preventDefault();
+    if (!editFollowUpForm.scheduled_at) {
+      setErrorMessage('Scheduled date and time are required.');
+      return;
+    }
+    if (!editFollowUpForm.note?.trim()) {
+      setErrorMessage('Follow-up note/reason is required.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setErrorMessage('');
+      const targetIso = fromLocalDatetimeStringToISO(editFollowUpForm.scheduled_at);
+
+      let updatedLead = null;
+
+      if (openFollowUp?._id) {
+        const res = await fetch(`${API_BASE}/admin/followups/${openFollowUp._id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            scheduled_at: targetIso,
+            note: editFollowUpForm.note.trim(),
+          }),
+        });
+        const data = await res.json();
+        if (data.lead) updatedLead = data.lead;
+      }
+
+      const leadRes = await fetch(`${API_BASE}/leads/${lead._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          followUpDate: targetIso,
+        }),
+      });
+      if (leadRes.ok) {
+        const data = await leadRes.json();
+        updatedLead = data;
+      }
+
+      dismissAlarm(lead._id);
+      setShowEditFollowUpModal(false);
+      onLeadUpdated(updatedLead || {
+        ...lead,
+        followUpDate: targetIso,
+        nextFollowUp: {
+          ...(openFollowUp || {}),
+          scheduled_at: targetIso,
+          note: editFollowUpForm.note.trim(),
+          status: 'open',
+        },
+      });
+    } catch (err) {
+      setErrorMessage('Error updating follow-up schedule: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // 5. Convert Lead & Anti-Fraud Discrepancy Flagging
   const handleConvertDeal = async (e) => {
     e.preventDefault();
@@ -294,6 +363,24 @@ export default function LeadCard({
         )}
       </div>
 
+      {/* Event Management Indicators: Stall Lock & Event Entry Pass */}
+      {(lead.customData?.stallInventoryLock?.isLocked || lead.customData?.eventPass?.passCode) && (
+        <div className="flex items-center gap-2 flex-wrap text-[10px]">
+          {lead.customData?.stallInventoryLock?.isLocked && (
+            <div className="px-2 py-0.5 rounded-md bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 font-bold flex items-center gap-1">
+              <Lock className="w-3 h-3 text-indigo-400" />
+              <span>Stall Locked ({lead.customData.stallInventoryLock.lockCode})</span>
+            </div>
+          )}
+          {lead.customData?.eventPass?.passCode && (
+            <div className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold flex items-center gap-1">
+              <Ticket className="w-3 h-3 text-emerald-400" />
+              <span>Pass Issued ({lead.customData.eventPass.passCode})</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Lead Title & Company */}
       <div>
         <h4 className="font-extrabold text-sm text-white group-hover:text-indigo-300 transition line-clamp-1">
@@ -342,17 +429,35 @@ export default function LeadCard({
               Due: {formatDisplayDateTime(openFollowUp.scheduled_at || openFollowUp.scheduledAt)}
             </span>
           </div>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setErrorMessage('');
-              setCompleteForm({ note: '', next_followup_at: '', next_followup_note: '' });
-              setShowCompleteModal(true);
-            }}
-            className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 rounded-lg text-[10px] font-bold shrink-0 transition"
-          >
-            Mark Done
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setErrorMessage('');
+                const currentDue = openFollowUp.scheduled_at || openFollowUp.scheduledAt || openFollowUp.dueDate;
+                setEditFollowUpForm({
+                  scheduled_at: currentDue ? toLocalDatetimeString(new Date(currentDue)) : toLocalDatetimeString(new Date()),
+                  note: openFollowUp.note || openFollowUp.reason || '',
+                });
+                setShowEditFollowUpModal(true);
+              }}
+              className="p-1 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-[10px] font-bold transition flex items-center gap-1"
+              title="Edit Follow-Up Schedule"
+            >
+              <Edit className="w-3 h-3" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setErrorMessage('');
+                setCompleteForm({ note: '', next_followup_at: '', next_followup_note: '' });
+                setShowCompleteModal(true);
+              }}
+              className="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 rounded-lg text-[10px] font-bold shrink-0 transition"
+            >
+              Mark Done
+            </button>
+          </div>
         </div>
       ) : (
         <button
@@ -782,6 +887,68 @@ export default function LeadCard({
                   className="flex-1 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-purple-600/30"
                 >
                   {submitting ? 'Converting...' : 'Confirm Conversion'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: EDIT SCHEDULED FOLLOW-UP ── */}
+      {showEditFollowUpModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[#0b1120] border border-amber-500/30 rounded-2xl w-full max-w-md p-6 shadow-2xl animate-fade-in text-left">
+            <h3 className="text-base font-bold text-white mb-1 flex items-center gap-2">
+              <Clock className="w-5 h-5 text-amber-400" />
+              Edit Scheduled Follow-Up
+            </h3>
+            <p className="text-xs text-slate-400 mb-4">Modify scheduled date, time, and reason for {lead.name}.</p>
+
+            {errorMessage && (
+              <div className="p-3 bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs rounded-xl mb-3 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEditFollowUp} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Scheduled Date & Time *</label>
+                <input
+                  type="datetime-local"
+                  required
+                  value={editFollowUpForm.scheduled_at}
+                  onChange={(e) => setEditFollowUpForm({ ...editFollowUpForm, scheduled_at: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Follow-Up Reason / Agenda *</label>
+                <textarea
+                  required
+                  rows={3}
+                  placeholder="Reason / action items for this follow-up..."
+                  value={editFollowUpForm.note}
+                  onChange={(e) => setEditFollowUpForm({ ...editFollowUpForm, note: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditFollowUpModal(false)}
+                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-amber-600/30 flex items-center justify-center gap-1.5"
+                >
+                  {submitting ? 'Updating...' : 'Update Schedule'}
                 </button>
               </div>
             </form>

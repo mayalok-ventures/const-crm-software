@@ -1,0 +1,1432 @@
+'use client';
+
+import { useState, useEffect, useMemo } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import toast from 'react-hot-toast';
+import api from '@/lib/api';
+import BottomNav from '@/components/BottomNav';
+import {
+  GraduationCap, ArrowLeft, Building2, MapPin, Globe, Award,
+  DollarSign, CheckCircle2, AlertCircle, Edit3, Trash2, Phone,
+  MessageCircle, Download, FileText, ChevronRight, ChevronDown, ExternalLink,
+  ShieldCheck, Clock, Share2, Layers, BookOpen, UserCheck, Sparkles,
+  Check, X, Plus, Edit, AlertTriangle
+} from 'lucide-react';
+import { COMMON_DEGREES, ACCREDITATION_TAGS, INSTITUTION_TYPES, getAccreditationBadgeStyle } from '@/lib/commonDegrees';
+
+const ADMISSION_STATUS_LABELS = {
+  admissions_open: { label: '🟢 Admissions Open', bg: 'rgba(16, 185, 129, 0.12)', text: '#10b981', border: 'rgba(16, 185, 129, 0.3)' },
+  seats_fast_filling: { label: '🔥 Seats Fast Filling', bg: 'rgba(245, 158, 11, 0.12)', text: '#f59e0b', border: 'rgba(245, 158, 11, 0.3)' },
+  merit_closed_mgmt_open: { label: '⚡ Merit Closed (Mgmt Open)', bg: 'rgba(139, 92, 246, 0.12)', text: '#8b5cf6', border: 'rgba(139, 92, 246, 0.3)' },
+  admissions_closed: { label: '🔴 Closed for Intake', bg: 'rgba(239, 68, 68, 0.12)', text: '#ef4444', border: 'rgba(239, 68, 68, 0.3)' },
+};
+
+const MOU_STATUS_LABELS = {
+  direct_tie_up: { label: '🤝 Direct University Tie-up', color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)' },
+  sub_agent_mou: { label: '📑 Sub-Agent MOU', color: '#6366f1', bg: 'rgba(99, 102, 241, 0.12)' },
+  informal_tie_up: { label: '📞 Direct Campus Contact', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' },
+  none: { label: '⭕ No Formal Tie-up', color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.12)' },
+};
+
+export default function CollegeDetailClient() {
+  const params = useParams();
+  const router = useRouter();
+  const collegeId = params?.id;
+
+  const [loading, setLoading] = useState(true);
+  const [college, setCollege] = useState(null);
+  const [isMyCatalogueItem, setIsMyCatalogueItem] = useState(false);
+  const [expandedDegrees, setExpandedDegrees] = useState({});
+
+  // Modals state
+  const [showEditInfoModal, setShowEditInfoModal] = useState(false);
+  const [showAddDegreeModal, setShowAddDegreeModal] = useState(false);
+  const [showAddSpecModal, setShowAddSpecModal] = useState(false);
+  const [targetDegreeForSpec, setTargetDegreeForSpec] = useState(null);
+  const [showEditCourseModal, setShowEditCourseModal] = useState(false);
+  const [editingCourse, setEditingCourse] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Forms state
+  const [infoForm, setInfoForm] = useState({
+    customCollegeName: '',
+    city: '',
+    state: '',
+    country: 'India',
+    collegeType: 'Private University',
+    accreditation: [],
+    website: '',
+    establishedYear: '',
+    affiliatedUniversity: '',
+    brochureUrl: '',
+    notes: '',
+  });
+
+  const [degreeForm, setDegreeForm] = useState({
+    selectedTemplateDegree: COMMON_DEGREES[0].degreeName,
+    customDegreeName: '',
+    level: 'Undergraduate',
+    durationYears: 4,
+    standardAnnualFee: 200000,
+    selectedSpecializations: COMMON_DEGREES[0].specializations.slice(0, 5),
+  });
+
+  const [specForm, setSpecForm] = useState({
+    degreeName: '',
+    specialization: '',
+    annualTuitionFee: 180000,
+    packageFee: 720000,
+    hostelFeePerYear: 80000,
+    oneTimeAdmissionFee: 20000,
+    currency: 'INR',
+    commissionRate: 10,
+    commissionType: 'percentage',
+    mouStatus: 'direct_tie_up',
+    contactPersonName: '',
+    contactPersonPhone: '',
+    admissionStatus: 'admissions_open',
+    quotaType: 'management_quota',
+  });
+
+  const [courseForm, setCourseForm] = useState({
+    degreeName: '',
+    specialization: '',
+    annualTuitionFee: 0,
+    packageFee: 0,
+    hostelFeePerYear: 0,
+    oneTimeAdmissionFee: 0,
+    currency: 'INR',
+    feeNotes: '',
+    commissionRate: 10,
+    commissionType: 'percentage',
+    mouStatus: 'direct_tie_up',
+    contactPersonName: '',
+    contactPersonPhone: '',
+    contactPersonEmail: '',
+    admissionStatus: 'admissions_open',
+    quotaType: 'management_quota',
+  });
+
+  useEffect(() => {
+    if (collegeId && collegeId !== 'placeholder') {
+      loadCollegeDetails();
+    }
+  }, [collegeId]);
+
+  const loadCollegeDetails = async () => {
+    setLoading(true);
+    try {
+      // 1. Try finding in user's active catalogue first
+      const myRes = await api.get('/catalogue/my-catalogue');
+      const myItems = myRes.data?.catalogue || [];
+      const foundInMy = myItems.find(c => String(c._id) === String(collegeId) || String(c.masterCollegeId?._id) === String(collegeId) || String(c.masterCollegeId) === String(collegeId));
+
+      if (foundInMy) {
+        setCollege(foundInMy);
+        setIsMyCatalogueItem(true);
+        // Expand all degrees by default
+        const initExpand = {};
+        (foundInMy.courses || []).forEach(c => {
+          if (c.degreeName) initExpand[c.degreeName] = true;
+        });
+        setExpandedDegrees(initExpand);
+      } else {
+        // 2. Fallback to master colleges catalog (read-only view with import option)
+        const masterRes = await api.get(`/catalogue/master-colleges/${collegeId}`);
+        if (masterRes.data?.college) {
+          setCollege(masterRes.data.college);
+          setIsMyCatalogueItem(false);
+          const initExpand = {};
+          (masterRes.data.college.courses || []).forEach(c => {
+            if (c.degreeName) initExpand[c.degreeName] = true;
+          });
+          setExpandedDegrees(initExpand);
+        } else {
+          toast.error('College not found in catalogue');
+        }
+      }
+    } catch (err) {
+      toast.error('Failed to load college details');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Group Courses into Degrees Hierarchy
+  const degreesGrouped = useMemo(() => {
+    if (!college) return [];
+    const courses = college.courses || [];
+    const map = {};
+
+    courses.forEach(c => {
+      const dName = c.degreeName || 'Other Programs';
+      if (!map[dName]) {
+        map[dName] = {
+          degreeName: dName,
+          level: c.level || 'Undergraduate',
+          durationYears: c.durationYears || 4,
+          streams: [],
+        };
+      }
+      map[dName].streams.push(c);
+    });
+
+    return Object.values(map);
+  }, [college]);
+
+  const toggleDegreeExpand = (degreeName) => {
+    setExpandedDegrees(prev => ({
+      ...prev,
+      [degreeName]: !prev[degreeName],
+    }));
+  };
+
+  // 1-Click Import (from Master View)
+  const handleImportToMyCatalogue = async () => {
+    setSubmitting(true);
+    try {
+      const res = await api.post(`/catalogue/import/${college._id}`, {
+        defaultCommissionRate: 10,
+        defaultMouStatus: 'direct_tie_up',
+      });
+      toast.success(res.data?.message || 'Imported to active catalogue! 🎉');
+      if (res.data?.catalogueItem) {
+        setCollege(res.data.catalogueItem);
+        setIsMyCatalogueItem(true);
+      } else {
+        loadCollegeDetails();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to import college');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Open Edit Institution Header Info Modal
+  const handleOpenEditInfo = () => {
+    setInfoForm({
+      customCollegeName: college.customCollegeName || college.name || '',
+      city: college.location?.city || '',
+      state: college.location?.state || '',
+      country: college.location?.country || 'India',
+      collegeType: college.collegeType || college.type || 'Private University',
+      accreditation: college.accreditation || [],
+      website: college.website || '',
+      establishedYear: college.establishedYear || '',
+      affiliatedUniversity: college.affiliatedUniversity || '',
+      brochureUrl: college.brochureUrl || '',
+      notes: college.notes || '',
+    });
+    setShowEditInfoModal(true);
+  };
+
+  // Save Institution Info
+  const handleSaveInfo = async (e) => {
+    e.preventDefault();
+    if (!college || !isMyCatalogueItem) return;
+    setSubmitting(true);
+    try {
+      const res = await api.put(`/catalogue/my-catalogue/${college._id}/info`, {
+        customCollegeName: infoForm.customCollegeName,
+        location: {
+          city: infoForm.city,
+          state: infoForm.state,
+          country: infoForm.country,
+        },
+        collegeType: infoForm.collegeType,
+        accreditation: infoForm.accreditation,
+        website: infoForm.website,
+        establishedYear: infoForm.establishedYear,
+        affiliatedUniversity: infoForm.affiliatedUniversity,
+        brochureUrl: infoForm.brochureUrl,
+        notes: infoForm.notes,
+      });
+
+      toast.success('Institution profile updated successfully! ✅');
+      setCollege(res.data?.catalogueItem || { ...college, ...infoForm });
+      setShowEditInfoModal(false);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update info');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Open Add Degree Modal
+  const handleOpenAddDegree = () => {
+    const first = COMMON_DEGREES[0];
+    setDegreeForm({
+      selectedTemplateDegree: first.degreeName,
+      customDegreeName: '',
+      level: first.level,
+      durationYears: first.durationYears,
+      standardAnnualFee: first.standardAnnualFee,
+      selectedSpecializations: first.specializations.slice(0, 6),
+    });
+    setShowAddDegreeModal(true);
+  };
+
+  // Handle Degree Template Selection
+  const handleSelectDegreeTemplate = (degName) => {
+    const found = COMMON_DEGREES.find(d => d.degreeName === degName);
+    if (found) {
+      setDegreeForm(prev => ({
+        ...prev,
+        selectedTemplateDegree: found.degreeName,
+        level: found.level,
+        durationYears: found.durationYears,
+        standardAnnualFee: found.standardAnnualFee,
+        selectedSpecializations: found.specializations.slice(0, 6),
+      }));
+    }
+  };
+
+  // Submit Add Degree
+  const handleSaveDegree = async (e) => {
+    e.preventDefault();
+    if (!college || !isMyCatalogueItem) return;
+
+    const degreeName = degreeForm.customDegreeName.trim() || degreeForm.selectedTemplateDegree;
+    if (!degreeName) {
+      return toast.error('Degree name is required');
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await api.post(`/catalogue/my-catalogue/${college._id}/degrees`, {
+        degreeName,
+        level: degreeForm.level,
+        durationYears: Number(degreeForm.durationYears) || 4,
+        standardAnnualFee: Number(degreeForm.standardAnnualFee) || 150000,
+        specializations: degreeForm.selectedSpecializations.length > 0
+          ? degreeForm.selectedSpecializations
+          : ['General Stream'],
+      });
+
+      toast.success(`Degree "${degreeName}" added with streams! 🎉`);
+      setCollege(res.data?.catalogueItem);
+      setShowAddDegreeModal(false);
+      setExpandedDegrees(prev => ({ ...prev, [degreeName]: true }));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to add degree');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Delete Degree
+  const handleDeleteDegree = async (degreeName) => {
+    if (!confirm(`Are you sure you want to delete the entire "${degreeName}" program and all its streams?`)) return;
+    try {
+      const res = await api.delete(`/catalogue/my-catalogue/${college._id}/degrees/${encodeURIComponent(degreeName)}`);
+      toast.success(`Degree "${degreeName}" deleted ✅`);
+      setCollege(res.data?.catalogueItem);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete degree');
+    }
+  };
+
+  // Open Add Specialization Modal
+  const handleOpenAddSpec = (deg) => {
+    setTargetDegreeForSpec(deg);
+    const foundDef = COMMON_DEGREES.find(d => d.degreeName === deg.degreeName);
+    const defaultSpec = foundDef?.specializations?.[0] || 'Artificial Intelligence & Machine Learning';
+
+    setSpecForm({
+      degreeName: deg.degreeName,
+      specialization: defaultSpec,
+      annualTuitionFee: deg.streams?.[0]?.customFeeStructure?.annualTuitionFee || 180000,
+      packageFee: (deg.streams?.[0]?.customFeeStructure?.annualTuitionFee || 180000) * (deg.durationYears || 4),
+      hostelFeePerYear: 80000,
+      oneTimeAdmissionFee: 20000,
+      currency: 'INR',
+      commissionRate: 10,
+      commissionType: 'percentage',
+      mouStatus: 'direct_tie_up',
+      contactPersonName: '',
+      contactPersonPhone: '',
+      admissionStatus: 'admissions_open',
+      quotaType: 'management_quota',
+    });
+    setShowAddSpecModal(true);
+  };
+
+  // Submit Add Specialization
+  const handleSaveSpec = async (e) => {
+    e.preventDefault();
+    if (!college || !targetDegreeForSpec || !isMyCatalogueItem) return;
+    if (!specForm.specialization.trim()) {
+      return toast.error('Specialization name is required');
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await api.post(`/catalogue/my-catalogue/${college._id}/specializations`, {
+        degreeName: targetDegreeForSpec.degreeName,
+        specialization: specForm.specialization.trim(),
+        annualTuitionFee: Number(specForm.annualTuitionFee) || 0,
+        packageFee: Number(specForm.packageFee) || 0,
+        hostelFeePerYear: Number(specForm.hostelFeePerYear) || 0,
+        oneTimeAdmissionFee: Number(specForm.oneTimeAdmissionFee) || 0,
+        currency: specForm.currency,
+        commissionRate: Number(specForm.commissionRate) || 10,
+        commissionType: specForm.commissionType,
+        mouStatus: specForm.mouStatus,
+        contactPersonName: specForm.contactPersonName,
+        contactPersonPhone: specForm.contactPersonPhone,
+        admissionStatus: specForm.admissionStatus,
+        quotaType: specForm.quotaType,
+        level: targetDegreeForSpec.level,
+        durationYears: targetDegreeForSpec.durationYears,
+      });
+
+      toast.success(`Stream "${specForm.specialization}" added! 🎯`);
+      setCollege(res.data?.catalogueItem);
+      setShowAddSpecModal(false);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to add specialization');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Open Edit Specialization Fee & Tie-Up Modal
+  const handleOpenEditCourse = (course) => {
+    setEditingCourse(course);
+    setCourseForm({
+      degreeName: course.degreeName,
+      specialization: course.specialization,
+      annualTuitionFee: course.customFeeStructure?.annualTuitionFee || 0,
+      packageFee: course.customFeeStructure?.packageFee || 0,
+      hostelFeePerYear: course.customFeeStructure?.hostelFeePerYear || 0,
+      oneTimeAdmissionFee: course.customFeeStructure?.oneTimeAdmissionFee || 0,
+      currency: course.customFeeStructure?.currency || 'INR',
+      feeNotes: course.customFeeStructure?.feeNotes || '',
+      commissionRate: course.customTieUpDetails?.commissionRate || 10,
+      commissionType: course.customTieUpDetails?.commissionType || 'percentage',
+      mouStatus: course.customTieUpDetails?.mouStatus || 'direct_tie_up',
+      contactPersonName: course.customTieUpDetails?.contactPersonName || '',
+      contactPersonPhone: course.customTieUpDetails?.contactPersonPhone || '',
+      contactPersonEmail: course.customTieUpDetails?.contactPersonEmail || '',
+      admissionStatus: course.admissionStatus || 'admissions_open',
+      quotaType: course.quotaType || 'management_quota',
+    });
+    setShowEditCourseModal(true);
+  };
+
+  // Submit Edit Specialization Course
+  const handleSaveCourse = async (e) => {
+    e.preventDefault();
+    if (!college || !editingCourse || !isMyCatalogueItem) return;
+
+    setSubmitting(true);
+    try {
+      const res = await api.put(`/catalogue/my-catalogue/${college._id}/courses/${editingCourse._id}`, {
+        degreeName: courseForm.degreeName,
+        specialization: courseForm.specialization,
+        customFeeStructure: {
+          annualTuitionFee: Number(courseForm.annualTuitionFee) || 0,
+          packageFee: Number(courseForm.packageFee) || 0,
+          hostelFeePerYear: Number(courseForm.hostelFeePerYear) || 0,
+          oneTimeAdmissionFee: Number(courseForm.oneTimeAdmissionFee) || 0,
+          currency: courseForm.currency,
+          feeNotes: courseForm.feeNotes,
+        },
+        customTieUpDetails: {
+          commissionType: courseForm.commissionType,
+          commissionRate: Number(courseForm.commissionRate) || 0,
+          mouStatus: courseForm.mouStatus,
+          contactPersonName: courseForm.contactPersonName,
+          contactPersonPhone: courseForm.contactPersonPhone,
+          contactPersonEmail: courseForm.contactPersonEmail,
+        },
+        admissionStatus: courseForm.admissionStatus,
+        quotaType: courseForm.quotaType,
+      });
+
+      toast.success(`Fee structure & tie-up updated for "${courseForm.specialization}"! 🎯`);
+      setCollege(res.data?.catalogueItem);
+      setShowEditCourseModal(false);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update stream');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Delete Specialization
+  const handleDeleteCourse = async (course) => {
+    if (!confirm(`Delete stream "${course.specialization}" under ${course.degreeName}?`)) return;
+    try {
+      const res = await api.delete(`/catalogue/my-catalogue/${college._id}/courses/${course._id}`);
+      toast.success(`Stream "${course.specialization}" removed ✅`);
+      setCollege(res.data?.catalogueItem);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to remove stream');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="app-shell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh' }}>
+        <div className="spinner" />
+      </div>
+    );
+  }
+
+  if (!college) {
+    return (
+      <div className="app-shell">
+        <div className="page-container max-w-5xl mx-auto py-12 px-4 text-center">
+          <GraduationCap size={48} className="mx-auto text-slate-500 mb-3" />
+          <h2 className="text-xl font-bold">Institution Not Found</h2>
+          <p className="text-slate-400 text-sm mt-1 mb-6">The requested college could not be retrieved from your catalogue or master repository.</p>
+          <button onClick={() => router.push('/catalogue')} className="btn btn-primary">
+            Back to Colleges & Courses
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const collegeName = college.customCollegeName || college.name;
+  const collegeType = college.collegeType || college.type || 'Private University';
+  const collegeLocation = `${college.location?.city ? college.location.city + ', ' : ''}${college.location?.state || ''} ${college.location?.country ? '(' + college.location.country + ')' : ''}`;
+  const totalStreamsCount = (college.courses || []).length;
+  const accreditations = college.accreditation || [];
+
+  return (
+    <div className="app-shell pb-24">
+      {/* Top Header Bar */}
+      <div className="header-nav sticky top-0 z-30 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 px-4 py-3">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={() => router.push('/catalogue')}
+              className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition flex-shrink-0"
+              title="Back to Catalogue"
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-base sm:text-lg font-extrabold text-white truncate m-0">
+                  {collegeName}
+                </h1>
+                {isMyCatalogueItem ? (
+                  <span className="badge bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-xs px-2 py-0.5 rounded-full font-bold">
+                    🏛️ Active Catalogue
+                  </span>
+                ) : (
+                  <span className="badge bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 text-xs px-2 py-0.5 rounded-full font-bold">
+                    🌐 Master Repository
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 truncate m-0 flex items-center gap-1.5 mt-0.5">
+                <MapPin size={12} className="text-indigo-400 flex-shrink-0" />
+                {collegeLocation} • {collegeType}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {isMyCatalogueItem ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleOpenEditInfo}
+                  className="btn btn-secondary btn-sm flex items-center gap-1.5 text-xs py-1.5 px-3 rounded-lg"
+                >
+                  <Edit3 size={13} /> Edit Institution
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenAddDegree}
+                  className="btn btn-primary btn-sm flex items-center gap-1.5 text-xs py-1.5 px-3.5 rounded-lg font-bold shadow-md shadow-indigo-600/30"
+                >
+                  <Plus size={14} /> Add Degree Program
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={handleImportToMyCatalogue}
+                disabled={submitting}
+                className="btn btn-primary btn-sm flex items-center gap-1.5 text-xs py-2 px-4 rounded-lg font-bold bg-gradient-to-r from-emerald-600 to-teal-600 shadow-md shadow-emerald-600/30"
+              >
+                {submitting ? <div className="spinner w-4 h-4" /> : <>📥 1-Click Import to My Catalogue</>}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+        {/* ─────────────────────────────────────────────────────────────
+            SECTION 1: COLLEGE PROFILE & STATS BANNER
+           ───────────────────────────────────────────────────────────── */}
+        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 mb-6 shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 relative z-10">
+            <div className="flex items-start gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500/20 via-purple-500/20 to-emerald-500/20 border border-indigo-500/30 flex items-center justify-center flex-shrink-0 shadow-inner">
+                <Building2 size={30} className="text-indigo-400" />
+              </div>
+
+              <div>
+                <h2 className="text-xl sm:text-2xl font-black text-white m-0 tracking-tight">
+                  {collegeName}
+                </h2>
+                <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 flex-wrap">
+                  <span className="flex items-center gap-1 font-medium text-slate-300">
+                    <MapPin size={13} className="text-indigo-400" /> {collegeLocation}
+                  </span>
+                  <span>•</span>
+                  <span className="text-indigo-300 font-semibold">{collegeType}</span>
+                  {college.establishedYear && (
+                    <>
+                      <span>•</span>
+                      <span>Est. {college.establishedYear}</span>
+                    </>
+                  )}
+                  {college.website && (
+                    <>
+                      <span>•</span>
+                      <a
+                        href={college.website.startsWith('http') ? college.website : `https://${college.website}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold underline"
+                      >
+                        <Globe size={12} /> Visit Official Portal <ExternalLink size={10} />
+                      </a>
+                    </>
+                  )}
+                </div>
+
+                {/* Accreditations Row */}
+                {accreditations.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap mt-3">
+                    {accreditations.map(acc => {
+                      const style = getAccreditationBadgeStyle(acc);
+                      return (
+                        <span
+                          key={acc}
+                          style={{
+                            background: style.bg,
+                            color: style.text,
+                            borderColor: style.border,
+                          }}
+                          className="px-2.5 py-0.5 rounded-md text-xs font-bold border tracking-wide shadow-sm"
+                        >
+                          🏆 {acc}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Metrics Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 flex-shrink-0">
+              <div className="bg-slate-950/70 border border-slate-800 p-3 rounded-xl min-w-[110px] text-center">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Degree Programs</span>
+                <span className="text-lg font-black text-indigo-400">{degreesGrouped.length}</span>
+              </div>
+              <div className="bg-slate-950/70 border border-slate-800 p-3 rounded-xl min-w-[110px] text-center">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Specializations</span>
+                <span className="text-lg font-black text-emerald-400">{totalStreamsCount}</span>
+              </div>
+              <div className="col-span-2 sm:col-span-1 bg-slate-950/70 border border-slate-800 p-3 rounded-xl min-w-[110px] text-center">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Tie-Up Commission</span>
+                <span className="text-lg font-black text-amber-400">Avg. 10 - 15%</span>
+              </div>
+            </div>
+          </div>
+
+          {college.notes && (
+            <div className="mt-4 pt-3 border-t border-slate-800/80 text-xs text-slate-400 flex items-start gap-2">
+              <Sparkles size={14} className="text-amber-400 flex-shrink-0 mt-0.5" />
+              <span><strong>Institutional Notes:</strong> {college.notes}</span>
+            </div>
+          )}
+        </div>
+
+        {/* ─────────────────────────────────────────────────────────────
+            SECTION 2 & 3: DRILL-DOWN DEGREES & SPECIALIZATIONS HIERARCHY
+           ───────────────────────────────────────────────────────────── */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div>
+              <h3 className="text-base sm:text-lg font-extrabold text-white m-0 flex items-center gap-2">
+                <GraduationCap size={20} className="text-indigo-400" />
+                Academic Degree Programs & Custom Fee Structures
+              </h3>
+              <p className="text-xs text-slate-400 m-0">
+                Drill down into any degree to customize seat fee structures, package amounts, and commercial payout MOUs.
+              </p>
+            </div>
+
+            {isMyCatalogueItem && (
+              <button
+                type="button"
+                onClick={handleOpenAddDegree}
+                className="btn btn-secondary btn-sm flex items-center gap-1.5 text-xs py-1.5 px-3 rounded-lg"
+              >
+                <Plus size={13} /> Add Degree
+              </button>
+            )}
+          </div>
+
+          {degreesGrouped.length === 0 ? (
+            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center">
+              <GraduationCap size={40} className="mx-auto text-slate-600 mb-3" />
+              <h4 className="text-base font-bold text-white">No Degree Programs Added Yet</h4>
+              <p className="text-xs text-slate-400 mt-1 mb-4">Add your first degree program (e.g. B.Tech, MBA, BCA) to start configuring fees.</p>
+              {isMyCatalogueItem && (
+                <button type="button" onClick={handleOpenAddDegree} className="btn btn-primary btn-sm">
+                  <Plus size={14} /> Add Degree Program
+                </button>
+              )}
+            </div>
+          ) : (
+            degreesGrouped.map((deg, dIdx) => {
+              const isExpanded = Boolean(expandedDegrees[deg.degreeName]);
+              const streamsCount = deg.streams.length;
+
+              return (
+                <div
+                  key={deg.degreeName || dIdx}
+                  className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden transition-all duration-200 shadow-md hover:border-slate-700"
+                >
+                  {/* DEGREE ACCORDION HEADER */}
+                  <div
+                    onClick={() => toggleDegreeExpand(deg.degreeName)}
+                    className="p-4 sm:p-5 flex items-center justify-between gap-4 cursor-pointer select-none bg-slate-900/90 hover:bg-slate-800/50 transition"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <button
+                        type="button"
+                        className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 flex items-center justify-center flex-shrink-0 transition"
+                      >
+                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      </button>
+
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="text-sm sm:text-base font-bold text-white m-0">
+                            {deg.degreeName}
+                          </h4>
+                          <span className="badge bg-indigo-500/10 text-indigo-300 border border-indigo-500/25 text-[11px] px-2 py-0.5 rounded-full font-bold">
+                            {deg.level}
+                          </span>
+                          <span className="badge bg-slate-800 text-slate-300 text-[11px] px-2 py-0.5 rounded-full font-medium">
+                            ⏱️ {deg.durationYears} Years
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 m-0 mt-0.5">
+                          {streamsCount} Specialization {streamsCount === 1 ? 'Stream' : 'Streams'} Configured
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                      {isMyCatalogueItem && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAddSpec(deg)}
+                            className="btn btn-secondary btn-sm text-xs py-1.5 px-3 rounded-lg flex items-center gap-1 text-emerald-400 hover:text-emerald-300 border-emerald-500/30"
+                            title="Add Specialization Stream"
+                          >
+                            <Plus size={13} /> Add Stream
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDegree(deg.degreeName)}
+                            className="p-1.5 rounded-lg bg-rose-500/10 border border-rose-500/25 text-rose-400 hover:bg-rose-500/20 transition"
+                            title="Delete Degree & All Streams"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* SPECIALIZATIONS CARDS (INSIDE DEGREE) */}
+                  {isExpanded && (
+                    <div className="p-4 sm:p-5 pt-0 border-t border-slate-800/80 bg-slate-950/40">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        {deg.streams.map((course, cIdx) => {
+                          const fee = course.customFeeStructure || {};
+                          const tieUp = course.customTieUpDetails || {};
+                          const admStatus = ADMISSION_STATUS_LABELS[course.admissionStatus] || ADMISSION_STATUS_LABELS.admissions_open;
+                          const mouStatus = MOU_STATUS_LABELS[tieUp.mouStatus] || MOU_STATUS_LABELS.direct_tie_up;
+
+                          return (
+                            <div
+                              key={course._id || cIdx}
+                              className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 flex flex-col justify-between gap-3 relative hover:border-indigo-500/40 transition shadow-sm"
+                            >
+                              <div>
+                                {/* Stream Header Row */}
+                                <div className="flex items-start justify-between gap-2 mb-2">
+                                  <div>
+                                    <h5 className="text-sm font-black text-white m-0 tracking-tight">
+                                      {course.specialization}
+                                    </h5>
+                                    <span className="text-[11px] text-slate-400 font-medium">
+                                      {deg.degreeName}
+                                    </span>
+                                  </div>
+
+                                  <span
+                                    style={{
+                                      background: admStatus.bg,
+                                      color: admStatus.text,
+                                      borderColor: admStatus.border,
+                                    }}
+                                    className="px-2 py-0.5 rounded-md text-[10px] font-bold border flex-shrink-0"
+                                  >
+                                    {admStatus.label}
+                                  </span>
+                                </div>
+
+                                {/* Fee Structure Grid */}
+                                <div className="bg-slate-950/80 border border-slate-800/80 rounded-lg p-3 grid grid-cols-2 gap-2 my-2.5">
+                                  <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Annual Tuition</span>
+                                    <span className="text-xs sm:text-sm font-black text-emerald-400">
+                                      ₹{Number(fee.annualTuitionFee || 0).toLocaleString('en-IN')} <span className="text-[10px] font-normal text-slate-400">/ yr</span>
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Full Package Fee</span>
+                                    <span className="text-xs sm:text-sm font-black text-white">
+                                      ₹{Number(fee.packageFee || 0).toLocaleString('en-IN')}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Hostel (Per Year)</span>
+                                    <span className="text-xs font-bold text-slate-300">
+                                      ₹{Number(fee.hostelFeePerYear || 0).toLocaleString('en-IN')}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">One-Time Fee</span>
+                                    <span className="text-xs font-bold text-slate-300">
+                                      ₹{Number(fee.oneTimeAdmissionFee || 0).toLocaleString('en-IN')}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Commercial Tie-Up Banner */}
+                                <div className="flex items-center justify-between gap-2 text-xs py-1.5 px-2.5 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 mb-1">
+                                  <span className="font-semibold flex items-center gap-1">
+                                    {mouStatus.label}
+                                  </span>
+                                  <span className="font-extrabold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded text-[11px]">
+                                    💰 Commission: {tieUp.commissionRate || 10}%
+                                  </span>
+                                </div>
+
+                                {(tieUp.contactPersonName || tieUp.contactPersonPhone) && (
+                                  <p className="text-[11px] text-slate-400 m-0 mt-1 truncate">
+                                    👤 SPOC: <strong>{tieUp.contactPersonName || 'Campus Desk'}</strong> {tieUp.contactPersonPhone ? `(${tieUp.contactPersonPhone})` : ''}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Card Action Buttons */}
+                              {isMyCatalogueItem && (
+                                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditCourse(course)}
+                                    className="btn btn-secondary btn-sm text-xs py-1 px-2.5 rounded-lg flex items-center gap-1 text-indigo-400 hover:text-indigo-300 border-indigo-500/30"
+                                  >
+                                    <Edit size={11} /> Edit Fee & Tie-Up
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteCourse(course)}
+                                    className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 transition"
+                                    title="Delete Stream"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* ─────────────────────────────────────────────────────────────
+          MODAL 1: EDIT INSTITUTION HEADER INFO
+         ───────────────────────────────────────────────────────────── */}
+      {showEditInfoModal && (
+        <div className="modal-overlay" onClick={() => setShowEditInfoModal(false)}>
+          <div className="modal-sheet max-w-xl" onClick={e => e.stopPropagation()}>
+            <div className="modal-handle" />
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-extrabold text-white flex items-center gap-2 m-0">
+                <Building2 size={18} className="text-indigo-400" /> Edit Institution Profile
+              </h3>
+              <button onClick={() => setShowEditInfoModal(false)} className="text-slate-400 hover:text-white">&times;</button>
+            </div>
+
+            <form onSubmit={handleSaveInfo} className="space-y-3.5">
+              <div>
+                <label className="label">Institution Name *</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={infoForm.customCollegeName}
+                  onChange={e => setInfoForm(f => ({ ...f, customCollegeName: e.target.value }))}
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">City</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={infoForm.city}
+                    onChange={e => setInfoForm(f => ({ ...f, city: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="label">State</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={infoForm.state}
+                    onChange={e => setInfoForm(f => ({ ...f, state: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Institution Type</label>
+                  <select
+                    className="input"
+                    value={infoForm.collegeType}
+                    onChange={e => setInfoForm(f => ({ ...f, collegeType: e.target.value }))}
+                  >
+                    {INSTITUTION_TYPES.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Est. Year</label>
+                  <input
+                    type="number"
+                    className="input"
+                    placeholder="e.g. 1995"
+                    value={infoForm.establishedYear}
+                    onChange={e => setInfoForm(f => ({ ...f, establishedYear: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Official Website Portal</label>
+                <input
+                  type="url"
+                  className="input"
+                  placeholder="https://..."
+                  value={infoForm.website}
+                  onChange={e => setInfoForm(f => ({ ...f, website: e.target.value }))}
+                />
+              </div>
+
+              <div>
+                <label className="label">Accreditations & Approvals (Click to Toggle)</label>
+                <div className="flex flex-wrap gap-1.5 p-2.5 bg-slate-950/70 border border-slate-800 rounded-xl">
+                  {ACCREDITATION_TAGS.map(tag => {
+                    const isSelected = infoForm.accreditation.includes(tag);
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => {
+                          setInfoForm(f => ({
+                            ...f,
+                            accreditation: isSelected
+                              ? f.accreditation.filter(t => t !== tag)
+                              : [...f.accreditation, tag]
+                          }));
+                        }}
+                        className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition ${
+                          isSelected
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm'
+                            : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                        }`}
+                      >
+                        {isSelected ? '✓ ' : '+ '}{tag}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Internal Notes / MOU Highlights</label>
+                <textarea
+                  className="input"
+                  rows={2}
+                  value={infoForm.notes}
+                  onChange={e => setInfoForm(f => ({ ...f, notes: e.target.value }))}
+                />
+              </div>
+
+              <div className="modal-actions pt-2 flex justify-end gap-2">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowEditInfoModal(false)}>Cancel</button>
+                <button type="submit" disabled={submitting} className="btn btn-primary">
+                  {submitting ? 'Saving...' : 'Save Institution Profile ✅'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          MODAL 2: ADD DEGREE PROGRAM (WITH AUTO-SPECIALIZATIONS)
+         ───────────────────────────────────────────────────────────── */}
+      {showAddDegreeModal && (
+        <div className="modal-overlay" onClick={() => setShowAddDegreeModal(false)}>
+          <div className="modal-sheet max-w-xl" onClick={e => e.stopPropagation()}>
+            <div className="modal-handle" />
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-extrabold text-white flex items-center gap-2 m-0">
+                <Plus size={18} className="text-indigo-400" /> Add Degree Program
+              </h3>
+              <button onClick={() => setShowAddDegreeModal(false)} className="text-slate-400 hover:text-white">&times;</button>
+            </div>
+
+            <form onSubmit={handleSaveDegree} className="space-y-4">
+              <div>
+                <label className="label">Pick Standard Degree Template</label>
+                <select
+                  className="input"
+                  value={degreeForm.selectedTemplateDegree}
+                  onChange={e => handleSelectDegreeTemplate(e.target.value)}
+                >
+                  {COMMON_DEGREES.map(d => (
+                    <option key={d.degreeName} value={d.degreeName}>
+                      {d.degreeName} ({d.category})
+                    </option>
+                  ))}
+                  <option value="CUSTOM">-- Custom Degree Name --</option>
+                </select>
+              </div>
+
+              {degreeForm.selectedTemplateDegree === 'CUSTOM' && (
+                <div>
+                  <label className="label">Custom Degree Title *</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="e.g. B.Voc in Digital Animation"
+                    value={degreeForm.customDegreeName}
+                    onChange={e => setDegreeForm(f => ({ ...f, customDegreeName: e.target.value }))}
+                    required
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="label">Level</label>
+                  <select
+                    className="input"
+                    value={degreeForm.level}
+                    onChange={e => setDegreeForm(f => ({ ...f, level: e.target.value }))}
+                  >
+                    <option value="Undergraduate">Undergraduate (UG)</option>
+                    <option value="Postgraduate">Postgraduate (PG)</option>
+                    <option value="Diploma / Certification">Diploma</option>
+                    <option value="Doctorate / PhD">Doctorate</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Duration (Yrs)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={degreeForm.durationYears}
+                    onChange={e => setDegreeForm(f => ({ ...f, durationYears: e.target.value }))}
+                    min={1}
+                    max={6}
+                  />
+                </div>
+                <div>
+                  <label className="label">Preset Annual Fee (₹)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={degreeForm.standardAnnualFee}
+                    onChange={e => setDegreeForm(f => ({ ...f, standardAnnualFee: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              {/* Specializations to Pre-Populate */}
+              <div>
+                <label className="label">Select Specialization Streams to Auto-Generate</label>
+                <div className="max-h-48 overflow-y-auto p-3 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1.5">
+                  {COMMON_DEGREES.find(d => d.degreeName === degreeForm.selectedTemplateDegree)?.specializations?.map(spec => {
+                    const isChecked = degreeForm.selectedSpecializations.includes(spec);
+                    return (
+                      <label
+                        key={spec}
+                        className="flex items-center gap-2.5 text-xs text-slate-300 hover:text-white p-1 rounded hover:bg-slate-900 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            setDegreeForm(f => ({
+                              ...f,
+                              selectedSpecializations: isChecked
+                                ? f.selectedSpecializations.filter(s => s !== spec)
+                                : [...f.selectedSpecializations, spec]
+                            }));
+                          }}
+                          className="rounded text-indigo-600 focus:ring-0"
+                        />
+                        <span>{spec}</span>
+                      </label>
+                    );
+                  }) || (
+                    <p className="text-xs text-slate-400 p-2">Will generate a "General Stream". You can add more specializations after creating.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="modal-actions pt-2 flex justify-end gap-2">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowAddDegreeModal(false)}>Cancel</button>
+                <button type="submit" disabled={submitting} className="btn btn-primary">
+                  {submitting ? 'Generating...' : 'Add Degree & Streams 🚀'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          MODAL 3: ADD SPECIALIZATION UNDER A SPECIFIC DEGREE
+         ───────────────────────────────────────────────────────────── */}
+      {showAddSpecModal && targetDegreeForSpec && (
+        <div className="modal-overlay" onClick={() => setShowAddSpecModal(false)}>
+          <div className="modal-sheet max-w-lg" onClick={e => e.stopPropagation()}>
+            <div className="modal-handle" />
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-extrabold text-white flex items-center gap-2 m-0">
+                <Plus size={18} className="text-emerald-400" /> Add Specialization Stream
+              </h3>
+              <button onClick={() => setShowAddSpecModal(false)} className="text-slate-400 hover:text-white">&times;</button>
+            </div>
+
+            <p className="text-xs text-slate-400 -mt-2 mb-4">
+              Adding new stream under <strong>{targetDegreeForSpec.degreeName}</strong> ({targetDegreeForSpec.durationYears} Years)
+            </p>
+
+            <form onSubmit={handleSaveSpec} className="space-y-3.5">
+              <div>
+                <label className="label">Specialization Name *</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="e.g. Artificial Intelligence & Machine Learning"
+                  value={specForm.specialization}
+                  onChange={e => setSpecForm(f => ({ ...f, specialization: e.target.value }))}
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Annual Tuition Fee (₹) *</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={specForm.annualTuitionFee}
+                    onChange={e => {
+                      const annual = Number(e.target.value) || 0;
+                      setSpecForm(f => ({
+                        ...f,
+                        annualTuitionFee: annual,
+                        packageFee: annual * (targetDegreeForSpec.durationYears || 4),
+                      }));
+                    }}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="label">Full Package Fee (₹)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={specForm.packageFee}
+                    onChange={e => setSpecForm(f => ({ ...f, packageFee: Number(e.target.value) }))}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Hostel Fee / Year (₹)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={specForm.hostelFeePerYear}
+                    onChange={e => setSpecForm(f => ({ ...f, hostelFeePerYear: Number(e.target.value) }))}
+                  />
+                </div>
+                <div>
+                  <label className="label">One-Time Admission Fee (₹)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={specForm.oneTimeAdmissionFee}
+                    onChange={e => setSpecForm(f => ({ ...f, oneTimeAdmissionFee: Number(e.target.value) }))}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Admission Status</label>
+                  <select
+                    className="input"
+                    value={specForm.admissionStatus}
+                    onChange={e => setSpecForm(f => ({ ...f, admissionStatus: e.target.value }))}
+                  >
+                    <option value="admissions_open">🟢 Admissions Open</option>
+                    <option value="seats_fast_filling">🔥 Seats Fast Filling</option>
+                    <option value="merit_closed_mgmt_open">⚡ Merit Closed (Mgmt Open)</option>
+                    <option value="admissions_closed">🔴 Closed for Intake</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Commercial Commission (%)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={specForm.commissionRate}
+                    onChange={e => setSpecForm(f => ({ ...f, commissionRate: Number(e.target.value) }))}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-actions pt-2 flex justify-end gap-2">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowAddSpecModal(false)}>Cancel</button>
+                <button type="submit" disabled={submitting} className="btn btn-primary">
+                  {submitting ? 'Saving...' : 'Add Stream 🎯'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          MODAL 4: EDIT SPECIALIZATION FEE & TIE-UP STRUCTURE
+         ───────────────────────────────────────────────────────────── */}
+      {showEditCourseModal && editingCourse && (
+        <div className="modal-overlay" onClick={() => setShowEditCourseModal(false)}>
+          <div className="modal-sheet max-w-xl" onClick={e => e.stopPropagation()}>
+            <div className="modal-handle" />
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-extrabold text-white flex items-center gap-2 m-0">
+                <Edit size={18} className="text-indigo-400" /> Customize Fee & Tie-Up Payout
+              </h3>
+              <button onClick={() => setShowEditCourseModal(false)} className="text-slate-400 hover:text-white">&times;</button>
+            </div>
+
+            <p className="text-xs text-slate-400 -mt-2 mb-4">
+              Configuring stream: <strong className="text-white">{courseForm.specialization}</strong> ({courseForm.degreeName})
+            </p>
+
+            <form onSubmit={handleSaveCourse} className="space-y-4">
+              <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl space-y-3">
+                <h5 className="text-xs font-bold uppercase tracking-wider text-emerald-400 m-0">
+                  💳 Student Fee Package Breakdown
+                </h5>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Annual Tuition Fee (₹) *</label>
+                    <input
+                      type="number"
+                      className="input"
+                      value={courseForm.annualTuitionFee}
+                      onChange={e => setCourseForm(f => ({ ...f, annualTuitionFee: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Total Package Deal (₹)</label>
+                    <input
+                      type="number"
+                      className="input"
+                      value={courseForm.packageFee}
+                      onChange={e => setCourseForm(f => ({ ...f, packageFee: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Hostel Fee / Year (₹)</label>
+                    <input
+                      type="number"
+                      className="input"
+                      value={courseForm.hostelFeePerYear}
+                      onChange={e => setCourseForm(f => ({ ...f, hostelFeePerYear: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="label">One-Time Admission Fee (₹)</label>
+                    <input
+                      type="number"
+                      className="input"
+                      value={courseForm.oneTimeAdmissionFee}
+                      onChange={e => setCourseForm(f => ({ ...f, oneTimeAdmissionFee: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="label">Fee Notes / Scholarships</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="e.g. 20% merit scholarship on 85%+ in 12th board"
+                    value={courseForm.feeNotes}
+                    onChange={e => setCourseForm(f => ({ ...f, feeNotes: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl space-y-3">
+                <h5 className="text-xs font-bold uppercase tracking-wider text-indigo-400 m-0">
+                  🤝 Agency Commercial Tie-Up & Payout
+                </h5>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">MOU / Tie-up Status</label>
+                    <select
+                      className="input"
+                      value={courseForm.mouStatus}
+                      onChange={e => setCourseForm(f => ({ ...f, mouStatus: e.target.value }))}
+                    >
+                      <option value="direct_tie_up">🤝 Direct University Tie-up</option>
+                      <option value="sub_agent_mou">📑 Sub-Agent MOU</option>
+                      <option value="informal_tie_up">📞 Direct Campus Contact</option>
+                      <option value="none">⭕ No Formal Tie-up</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Commission Rate (%)</label>
+                    <input
+                      type="number"
+                      className="input"
+                      value={courseForm.commissionRate}
+                      onChange={e => setCourseForm(f => ({ ...f, commissionRate: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Campus SPOC Name</label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="e.g. Dr. Rajesh Sharma"
+                      value={courseForm.contactPersonName}
+                      onChange={e => setCourseForm(f => ({ ...f, contactPersonName: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="label">SPOC Contact Number</label>
+                    <input
+                      type="tel"
+                      className="input"
+                      placeholder="+91 98765 43210"
+                      value={courseForm.contactPersonPhone}
+                      onChange={e => setCourseForm(f => ({ ...f, contactPersonPhone: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Admission Intake Status</label>
+                    <select
+                      className="input"
+                      value={courseForm.admissionStatus}
+                      onChange={e => setCourseForm(f => ({ ...f, admissionStatus: e.target.value }))}
+                    >
+                      <option value="admissions_open">🟢 Admissions Open</option>
+                      <option value="seats_fast_filling">🔥 Seats Fast Filling</option>
+                      <option value="merit_closed_mgmt_open">⚡ Merit Closed (Mgmt Open)</option>
+                      <option value="admissions_closed">🔴 Closed for Intake</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Target Quota</label>
+                    <select
+                      className="input"
+                      value={courseForm.quotaType}
+                      onChange={e => setCourseForm(f => ({ ...f, quotaType: e.target.value }))}
+                    >
+                      <option value="management_quota">Management Quota</option>
+                      <option value="merit_counselling">Merit Counselling</option>
+                      <option value="nri_quota">NRI / International Quota</option>
+                      <option value="institutional_direct">Institutional Direct</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-actions pt-2 flex justify-end gap-2">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowEditCourseModal(false)}>Cancel</button>
+                <button type="submit" disabled={submitting} className="btn btn-primary">
+                  {submitting ? 'Saving...' : 'Save Fee & Tie-Up Settings ✅'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <BottomNav active="catalogue" />
+    </div>
+  );
+}

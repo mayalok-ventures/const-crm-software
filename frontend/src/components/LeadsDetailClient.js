@@ -744,6 +744,9 @@ export default function LeadDetailPage() {
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [showLostModal, setShowLostModal] = useState(false);
   const [pendingLostStage, setPendingLostStage] = useState('');
+  const [showEditFollowUpModal, setShowEditFollowUpModal] = useState(false);
+  const [editFollowUpDate, setEditFollowUpDate] = useState('');
+  const [editFollowUpNote, setEditFollowUpNote] = useState('');
   const [chatRefreshKey, setChatRefreshKey] = useState(0);
   const [noteText, setNoteText] = useState('');
   const [addingNote, setAddingNote] = useState(false);
@@ -1295,11 +1298,25 @@ export default function LeadDetailPage() {
                       )}
 
                       {lead.followUpDate && (
-                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Next Action</span>
-                          <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>
-                            📅 {format(new Date(lead.followUpDate), 'dd MMM yyyy, h:mm a')}
-                          </p>
+                        <div style={{ minWidth: 0, overflow: 'hidden', gridColumn: '1/-1', padding: '10px 14px', background: 'rgba(99,102,241,0.08)', borderRadius: 10, border: '1px solid rgba(99,102,241,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                          <div>
+                            <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 700, textTransform: 'uppercase' }}>⏰ Next Action / Follow-Up</span>
+                            <p style={{ margin: '2px 0 0', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                              📅 {format(new Date(lead.followUpDate), 'dd MMM yyyy, h:mm a')}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditFollowUpDate(toLocalDatetimeString(lead.followUpDate));
+                              setEditFollowUpNote('');
+                              setShowEditFollowUpModal(true);
+                            }}
+                            className="btn btn-ghost btn-sm"
+                            style={{ padding: '4px 10px', fontSize: 11, color: 'var(--accent)', gap: 4, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8 }}
+                          >
+                            <Edit2 size={12} /> Edit Follow-Up
+                          </button>
                         </div>
                       )}
 
@@ -1307,6 +1324,56 @@ export default function LeadDetailPage() {
                         <div style={{ minWidth: 0, overflow: 'hidden' }}>
                           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Assigned Specialist</span>
                           <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>👤 {lead.assignedToName}</p>
+                        </div>
+                      )}
+
+                      {/* Dynamic Custom Fields */}
+                      {lead.customData && Object.keys(lead.customData).length > 0 && (
+                        Object.entries(lead.customData)
+                          .filter(([k, v]) => v !== null && v !== undefined && v !== '' && typeof v !== 'object')
+                          .map(([key, val]) => (
+                            <div key={key} style={{ minWidth: 0, overflow: 'hidden' }}>
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'capitalize' }}>
+                                {key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ')}
+                              </span>
+                              <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                                {String(val)}
+                              </p>
+                            </div>
+                          ))
+                      )}
+
+                      {/* Event Management Stall & Pass Cards */}
+                      {lead.customData?.stallInventoryLock?.isLocked && (
+                        <div style={{ gridColumn: '1/-1', padding: '10px 14px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 10 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase' }}>
+                              🔒 Stall Inventory Lock (Reserved)
+                            </span>
+                            <span className="badge badge-follow_up" style={{ fontSize: 10 }}>Active Lock</span>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, fontSize: 12 }}>
+                            <div><strong>Lock Code:</strong> {lead.customData.stallInventoryLock.lockCode}</div>
+                            {lead.customData.stallInventoryLock.stallSize && <div><strong>Size:</strong> {lead.customData.stallInventoryLock.stallSize}</div>}
+                            {lead.customData.stallInventoryLock.stallCategory && <div><strong>Category:</strong> {lead.customData.stallInventoryLock.stallCategory}</div>}
+                            {lead.customData.stallInventoryLock.lockExpiresAt && <div><strong>Expires:</strong> {format(new Date(lead.customData.stallInventoryLock.lockExpiresAt), 'dd MMM, h:mm a')}</div>}
+                          </div>
+                        </div>
+                      )}
+
+                      {lead.customData?.eventPass?.passCode && (
+                        <div style={{ gridColumn: '1/-1', padding: '10px 14px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 10 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <span style={{ fontSize: 11, fontWeight: 800, color: '#10b981', textTransform: 'uppercase' }}>
+                              🎟️ Digital Expo Entry Pass
+                            </span>
+                            <span className="badge badge-closed" style={{ fontSize: 10 }}>Pass Issued</span>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, fontSize: 12 }}>
+                            <div><strong>Pass Code:</strong> {lead.customData.eventPass.passCode}</div>
+                            <div><strong>Access:</strong> {lead.customData.eventPass.accessLevel || 'General Visitor'}</div>
+                            {lead.customData.eventPass.issuedAt && <div><strong>Issued:</strong> {format(new Date(lead.customData.eventPass.issuedAt), 'dd MMM, h:mm a')}</div>}
+                          </div>
                         </div>
                       )}
 
@@ -1446,6 +1513,71 @@ export default function LeadDetailPage() {
             setPendingLostStage('');
           }}
         />
+      )}
+
+      {showEditFollowUpModal && (
+        <div className="modal-overlay" onClick={() => setShowEditFollowUpModal(false)} style={{ zIndex: 9999 }}>
+          <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
+            <div className="modal-handle" />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Calendar size={18} color="var(--accent)" /> Modify Scheduled Follow-Up
+              </h2>
+              <button onClick={() => setShowEditFollowUpModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={20} /></button>
+            </div>
+
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              try {
+                const isoDate = fromLocalDatetimeStringToISO(editFollowUpDate);
+                const { data } = await api.put(`/leads/${id}`, {
+                  followUpDate: isoDate,
+                  followUpNotified: false,
+                });
+                if (editFollowUpNote.trim()) {
+                  await api.post(`/leads/${id}/notes`, {
+                    text: `📅 Follow-up rescheduled for ${formatDisplayDateTime(isoDate)}: ${editFollowUpNote.trim()}`
+                  });
+                }
+                setLead(data);
+                setForm(data);
+                toast.success('Follow-up updated successfully ⏰');
+                setShowEditFollowUpModal(false);
+              } catch (err) {
+                toast.error(err.response?.data?.message || 'Failed to update follow-up');
+              }
+            }}>
+              <div style={{ marginBottom: 12 }}>
+                <label className="label">Follow-Up Date & Time *</label>
+                <input
+                  type="datetime-local"
+                  className="input"
+                  value={editFollowUpDate}
+                  onChange={e => setEditFollowUpDate(e.target.value)}
+                  required
+                  style={{ height: 42, fontSize: 13 }}
+                />
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <label className="label">Scheduled Agenda / Note (Optional)</label>
+                <textarea
+                  className="input"
+                  placeholder="e.g. Call client back with revised quota & documents..."
+                  value={editFollowUpNote}
+                  onChange={e => setEditFollowUpNote(e.target.value)}
+                  rows={2}
+                  style={{ padding: '8px 12px', fontSize: 13, resize: 'vertical' }}
+                />
+              </div>
+
+              <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button type="button" className="btn btn-ghost" onClick={() => setShowEditFollowUpModal(false)} style={{ height: 40 }}>Cancel</button>
+                <button type="submit" className="btn btn-primary" style={{ height: 40, background: 'var(--accent)' }}>Save Follow-Up ⏰</button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -138,7 +138,7 @@ const userSchema = new mongoose.Schema({
     label: { type: String, required: true },
     fieldType: {
       type: String,
-      enum: ['text', 'email', 'phone', 'dropdown', 'date', 'number'],
+      enum: ['text', 'phone', 'email', 'dropdown', 'date', 'number', 'boolean', 'textarea', 'currency'],
       default: 'text',
     },
     options: [{ type: String, trim: true }],

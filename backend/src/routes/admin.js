@@ -7,7 +7,7 @@ const {
   overrideSubscription, getAuditLogs, unbanWhatsAppFingerprint,
   // New Unified CRM Endpoints
   createAdminLead, updateAdminLead, updateLeadStatus, updateLeadStage, getAdminLeads,
-  scheduleFollowUp, postponeFollowUp, completeFollowUp,
+  scheduleFollowUp, postponeFollowUp, completeFollowUp, updateFollowUp,
   convertLeadWithPlan, refundPayment, getAdminPlans, getAdminAlerts,
   createAdminOffer, applyOfferToLead,
   getAdminAgents, createAdminAgent, updateAdminAgent, getAgentActivityLogs, getAgentsPerformance, reassignAgentLeads,
@@ -43,6 +43,7 @@ router.post('/leads/:id/convert', convertLeadWithPlan);
 
 // 3. Follow-Ups with Mandatory Notes & Postpone Remarks
 router.post('/leads/:id/followups', scheduleFollowUp);
+router.patch('/followups/:id', updateFollowUp);
 router.patch('/followups/:id/complete', completeFollowUp);
 router.patch('/followups/:id/postpone', postponeFollowUp);
 

@@ -1,41 +1,64 @@
 const MasterCollege = require('../models/MasterCollege');
 const MasterCourse = require('../models/MasterCourse');
 const TenantCatalogue = require('../models/TenantCatalogue');
+const { COMMON_DEGREES } = require('../utils/commonDegrees');
 
-/**
- * Seed initial comprehensive master repository of Colleges & Courses
- */
+// Comprehensive Pre-seeded Master Universities Database
 const SEED_MASTER_COLLEGES = [
   {
     name: 'Vellore Institute of Technology (VIT)',
     shortCode: 'VIT',
     location: { city: 'Vellore', state: 'Tamil Nadu', country: 'India' },
     type: 'Deemed University',
-    accreditation: ['NAAC A++', 'NIRF Top 10 Engineering', 'AICTE'],
+    accreditation: ['NAAC A++', 'NIRF Top 10', 'AICTE Approved', 'ABET Accredited'],
     establishedYear: 1984,
     website: 'https://vit.ac.in',
     isFeatured: true,
     courses: [
       {
-        degreeName: 'B.Tech',
+        degreeName: 'B.Tech / B.E.',
         level: 'Undergraduate',
         durationYears: 4,
-        standardAnnualFee: 200000,
-        specializations: ['Computer Science & Engineering', 'Artificial Intelligence & Machine Learning', 'Cyber Security', 'Data Analytics', 'Electronics & Communication (ECE)', 'Mechanical Engineering'],
+        standardAnnualFee: 245000,
+        specializations: [
+          'Computer Science & Engineering (CSE)',
+          'Artificial Intelligence & Machine Learning',
+          'Data Science',
+          'Cyber Security',
+          'Mechanical Engineering',
+          'Civil Engineering',
+          'Electronics & Communication (ECE)',
+          'Electrical & Electronics (EEE)',
+          'Biotechnology',
+        ],
       },
       {
-        degreeName: 'MBA',
+        degreeName: 'M.Tech / M.E.',
         level: 'Postgraduate',
         durationYears: 2,
-        standardAnnualFee: 350000,
-        specializations: ['Business Analytics', 'Finance & Banking', 'Digital Marketing', 'Operations & Supply Chain'],
+        standardAnnualFee: 180000,
+        specializations: ['Computer Science', 'VLSI Design', 'Software Engineering', 'Automotive Engineering'],
       },
       {
-        degreeName: 'MCA',
+        degreeName: 'BCA (Bachelor of Computer Applications)',
+        level: 'Undergraduate',
+        durationYears: 3,
+        standardAnnualFee: 120000,
+        specializations: ['Full Stack Web Development', 'Data Analytics', 'General'],
+      },
+      {
+        degreeName: 'MCA (Master of Computer Applications)',
         level: 'Postgraduate',
         durationYears: 2,
         standardAnnualFee: 140000,
-        specializations: ['Cloud Computing', 'Enterprise Application Development'],
+        specializations: ['Cloud Computing', 'Enterprise Applications'],
+      },
+      {
+        degreeName: 'MBA (Master of Business Administration)',
+        level: 'Postgraduate',
+        durationYears: 2,
+        standardAnnualFee: 350000,
+        specializations: ['Finance', 'Marketing', 'Business Analytics', 'Human Resources', 'Operations'],
       },
     ],
   },
@@ -44,64 +67,70 @@ const SEED_MASTER_COLLEGES = [
     shortCode: 'MAHE',
     location: { city: 'Manipal', state: 'Karnataka', country: 'India' },
     type: 'Deemed University',
-    accreditation: ['Institute of Eminence (IoE)', 'NAAC A++', 'NIRF Ranked'],
+    accreditation: ['NAAC A++', 'Institution of Eminence', 'NIRF Top 10', 'MCI / NMC Approved'],
     establishedYear: 1953,
     website: 'https://manipal.edu',
     isFeatured: true,
     courses: [
       {
-        degreeName: 'B.Tech',
+        degreeName: 'B.Tech / B.E.',
         level: 'Undergraduate',
         durationYears: 4,
         standardAnnualFee: 335000,
-        specializations: ['Computer Science', 'Information Technology', 'Biomedical Engineering', 'Mechatronics', 'Aeronautical Engineering'],
+        specializations: [
+          'Computer Science & Engineering (CSE)',
+          'Information Technology',
+          'Aeronautical Engineering',
+          'Mechanical Engineering',
+          'Biomedical Engineering',
+        ],
       },
       {
-        degreeName: 'MBBS',
+        degreeName: 'MBBS (Bachelor of Medicine & Bachelor of Surgery)',
         level: 'Undergraduate',
         durationYears: 5.5,
-        standardAnnualFee: 1780000,
-        specializations: ['Medicine & Surgery (KMC Manipal)'],
+        standardAnnualFee: 1450000,
+        specializations: ['General Medicine & Surgery'],
       },
       {
-        degreeName: 'BBA',
+        degreeName: 'BBA (Bachelor of Business Administration)',
         level: 'Undergraduate',
         durationYears: 3,
-        standardAnnualFee: 250000,
-        specializations: ['FinTech', 'Marketing & E-Commerce', 'Human Resource Management'],
+        standardAnnualFee: 175000,
+        specializations: ['Marketing', 'Banking & Finance', 'Hospitality & Tourism'],
+      },
+      {
+        degreeName: 'B.Pharm (Bachelor of Pharmacy)',
+        level: 'Undergraduate',
+        durationYears: 4,
+        standardAnnualFee: 210000,
+        specializations: ['Pharmaceutical Sciences', 'Pharmacology'],
       },
     ],
   },
   {
-    name: 'Symbiosis International University (SIU)',
-    shortCode: 'SIU',
-    location: { city: 'Pune', state: 'Maharashtra', country: 'India' },
+    name: 'BITS Pilani (Birla Institute of Technology and Science)',
+    shortCode: 'BITS',
+    location: { city: 'Pilani', state: 'Rajasthan', country: 'India' },
     type: 'Deemed University',
-    accreditation: ['NAAC A++', 'UGC Approved', 'AACSB Member'],
-    establishedYear: 1971,
-    website: 'https://siu.edu.in',
+    accreditation: ['NAAC A', 'Institution of Eminence', 'NIRF Top 20'],
+    establishedYear: 1964,
+    website: 'https://bits-pilani.ac.in',
     isFeatured: true,
     courses: [
       {
-        degreeName: 'MBA (SIBM Pune)',
+        degreeName: 'B.Tech / B.E.',
+        level: 'Undergraduate',
+        durationYears: 4,
+        standardAnnualFee: 495000,
+        specializations: ['Computer Science & Engineering', 'Electrical & Electronics', 'Mechanical', 'Chemical Engineering', 'Civil'],
+      },
+      {
+        degreeName: 'M.Tech / M.E.',
         level: 'Postgraduate',
         durationYears: 2,
-        standardAnnualFee: 1100000,
-        specializations: ['Marketing', 'Finance', 'Human Resources', 'Operations Strategy'],
-      },
-      {
-        degreeName: 'BA LLB (Hons) / BBA LLB',
-        level: 'Undergraduate',
-        durationYears: 5,
-        standardAnnualFee: 420000,
-        specializations: ['Corporate Law', 'Intellectual Property Law', 'Constitutional Law'],
-      },
-      {
-        degreeName: 'BBA',
-        level: 'Undergraduate',
-        durationYears: 3,
-        standardAnnualFee: 360000,
-        specializations: ['Global Business Operations', 'Entrepreneurship'],
+        standardAnnualFee: 320000,
+        specializations: ['Software Systems', 'Microelectronics', 'Biotechnology'],
       },
     ],
   },
@@ -110,97 +139,203 @@ const SEED_MASTER_COLLEGES = [
     shortCode: 'AMITY',
     location: { city: 'Noida', state: 'Uttar Pradesh', country: 'India' },
     type: 'Private University',
-    accreditation: ['NAAC A+', 'WASC USA Accredited', 'AICTE'],
+    accreditation: ['NAAC A+', 'UGC Approved', 'AICTE Approved', 'WASC Accredited'],
     establishedYear: 2005,
     website: 'https://amity.edu',
     isFeatured: true,
     courses: [
       {
-        degreeName: 'B.Tech',
+        degreeName: 'B.Tech / B.E.',
+        level: 'Undergraduate',
+        durationYears: 4,
+        standardAnnualFee: 280000,
+        specializations: ['Computer Science & Engineering', 'AI & ML', 'Data Science', 'Civil Engineering'],
+      },
+      {
+        degreeName: 'MBA (Master of Business Administration)',
+        level: 'Postgraduate',
+        durationYears: 2,
+        standardAnnualFee: 420000,
+        specializations: ['Marketing & Sales', 'International Business', 'Finance', 'HR', 'Retail Management'],
+      },
+      {
+        degreeName: 'BA LLB / BBA LLB / LLB',
+        level: 'Undergraduate',
+        durationYears: 5,
+        standardAnnualFee: 210000,
+        specializations: ['Corporate Law', 'Criminal Law', 'Cyber Law'],
+      },
+      {
+        degreeName: 'B.Sc (Bachelor of Science)',
+        level: 'Undergraduate',
+        durationYears: 3,
+        standardAnnualFee: 110000,
+        specializations: ['Biotechnology', 'Microbiology', 'Forensic Science', 'Physics'],
+      },
+    ],
+  },
+  {
+    name: 'SRM Institute of Science and Technology',
+    shortCode: 'SRM',
+    location: { city: 'Chennai', state: 'Tamil Nadu', country: 'India' },
+    type: 'Deemed University',
+    accreditation: ['NAAC A++', 'NIRF Top 25', 'UGC Approved'],
+    establishedYear: 1985,
+    website: 'https://srmist.edu.in',
+    isFeatured: true,
+    courses: [
+      {
+        degreeName: 'B.Tech / B.E.',
         level: 'Undergraduate',
         durationYears: 4,
         standardAnnualFee: 260000,
-        specializations: ['Computer Science & Engg', 'Aerospace Engineering', 'Biotechnology', 'Internet of Things (IoT)'],
+        specializations: ['Computer Science', 'Cloud Computing', 'Automobile Engineering', 'Aerospace', 'ECE', 'Mechanical'],
       },
       {
-        degreeName: 'MBA',
-        level: 'Postgraduate',
-        durationYears: 2,
-        standardAnnualFee: 680000,
-        specializations: ['International Business', 'Retail Management', 'Media Management'],
-      },
-      {
-        degreeName: 'B.Des / Fashion Design',
-        level: 'Undergraduate',
-        durationYears: 4,
-        standardAnnualFee: 210000,
-        specializations: ['Fashion Communication', 'Product & Interior Design'],
-      },
-    ],
-  },
-  {
-    name: 'Northeastern University',
-    shortCode: 'NEU',
-    location: { city: 'Boston', state: 'Massachusetts', country: 'USA' },
-    type: 'Overseas University',
-    accreditation: ['NECHE', 'Top Tier R1 Research', 'Global Co-op Ranked #1'],
-    establishedYear: 1898,
-    website: 'https://northeastern.edu',
-    isFeatured: true,
-    courses: [
-      {
-        degreeName: 'MS in Computer Science',
-        level: 'Postgraduate',
-        durationYears: 2,
-        standardAnnualFee: 2800000,
-        specializations: ['Artificial Intelligence', 'Software Engineering', 'Human-Computer Interaction'],
-      },
-      {
-        degreeName: 'MS in Data Analytics & Engineering',
-        level: 'Postgraduate',
-        durationYears: 2,
-        standardAnnualFee: 2600000,
-        specializations: ['Big Data Architecture', 'Predictive Modeling'],
-      },
-      {
-        degreeName: 'Full-Time MBA',
-        level: 'Postgraduate',
-        durationYears: 2,
-        standardAnnualFee: 4200000,
-        specializations: ['Corporate Innovation', 'Supply Chain Analytics', 'Global Finance'],
-      },
-    ],
-  },
-  {
-    name: 'University of Manchester',
-    shortCode: 'UoM',
-    location: { city: 'Manchester', state: 'Greater Manchester', country: 'United Kingdom' },
-    type: 'Overseas University',
-    accreditation: ['Russell Group', 'QS World Top 35', 'Triple Crown Business School'],
-    establishedYear: 1824,
-    website: 'https://manchester.ac.uk',
-    isFeatured: true,
-    courses: [
-      {
-        degreeName: 'MSc in Advanced Computer Science',
-        level: 'Postgraduate',
-        durationYears: 1,
-        standardAnnualFee: 3200000,
-        specializations: ['Machine Learning', 'Computer Security', 'Data Management'],
-      },
-      {
-        degreeName: 'MSc in Finance',
-        level: 'Postgraduate',
-        durationYears: 1,
-        standardAnnualFee: 3500000,
-        specializations: ['Quantitative Finance', 'Corporate Financial Strategy'],
-      },
-      {
-        degreeName: 'BSc in Management / International Business',
+        degreeName: 'BBA (Bachelor of Business Administration)',
         level: 'Undergraduate',
         durationYears: 3,
-        standardAnnualFee: 2900000,
-        specializations: ['International Marketing', 'Strategic Consulting'],
+        standardAnnualFee: 115000,
+        specializations: ['General', 'Digital Marketing', 'Data Analytics'],
+      },
+      {
+        degreeName: 'MBBS (Bachelor of Medicine & Bachelor of Surgery)',
+        level: 'Undergraduate',
+        durationYears: 5.5,
+        standardAnnualFee: 1350000,
+        specializations: ['General Medicine'],
+      },
+    ],
+  },
+  {
+    name: 'Christ University',
+    shortCode: 'CHRIST',
+    location: { city: 'Bengaluru', state: 'Karnataka', country: 'India' },
+    type: 'Deemed University',
+    accreditation: ['NAAC A+', 'UGC Approved', 'QS Ranked'],
+    establishedYear: 1969,
+    website: 'https://christuniversity.in',
+    isFeatured: true,
+    courses: [
+      {
+        degreeName: 'BBA (Bachelor of Business Administration)',
+        level: 'Undergraduate',
+        durationYears: 3,
+        standardAnnualFee: 240000,
+        specializations: ['Finance & International Business', 'Marketing', 'Tourism & Travel Management'],
+      },
+      {
+        degreeName: 'B.Com / B.Com (Hons)',
+        level: 'Undergraduate',
+        durationYears: 3,
+        standardAnnualFee: 180000,
+        specializations: ['Applied Finance', 'Accounting & Taxation', 'Strategic Finance'],
+      },
+      {
+        degreeName: 'BA LLB / BBA LLB / LLB',
+        level: 'Undergraduate',
+        durationYears: 5,
+        standardAnnualFee: 220000,
+        specializations: ['Corporate Law', 'Constitutional Law'],
+      },
+      {
+        degreeName: 'BCA (Bachelor of Computer Applications)',
+        level: 'Undergraduate',
+        durationYears: 3,
+        standardAnnualFee: 145000,
+        specializations: ['General Computer Applications', 'Data Science'],
+      },
+    ],
+  },
+  {
+    name: 'Chandigarh University',
+    shortCode: 'CU',
+    location: { city: 'Mohali', state: 'Punjab', country: 'India' },
+    type: 'Private University',
+    accreditation: ['NAAC A+', 'NIRF Top 30', 'ABET Accredited', 'QS Asia Ranked'],
+    establishedYear: 2012,
+    website: 'https://cuchd.in',
+    isFeatured: true,
+    courses: [
+      {
+        degreeName: 'B.Tech / B.E.',
+        level: 'Undergraduate',
+        durationYears: 4,
+        standardAnnualFee: 190000,
+        specializations: ['CSE - IBM Cloud Computing', 'CSE - AI & ML', 'Aerospace Engineering', 'Mechatronics', 'Civil'],
+      },
+      {
+        degreeName: 'MBA (Master of Business Administration)',
+        level: 'Postgraduate',
+        durationYears: 2,
+        standardAnnualFee: 250000,
+        specializations: ['Business Analytics', 'Digital Marketing', 'Fintech', 'HR'],
+      },
+      {
+        degreeName: 'B.Pharm (Bachelor of Pharmacy)',
+        level: 'Undergraduate',
+        durationYears: 4,
+        standardAnnualFee: 140000,
+        specializations: ['General Pharmacy'],
+      },
+    ],
+  },
+  {
+    name: 'Symbiosis International University (SIU)',
+    shortCode: 'SIU',
+    location: { city: 'Pune', state: 'Maharashtra', country: 'India' },
+    type: 'Deemed University',
+    accreditation: ['NAAC A++', 'NIRF Top 35', 'UGC Approved'],
+    establishedYear: 2002,
+    website: 'https://siu.edu.in',
+    isFeatured: true,
+    courses: [
+      {
+        degreeName: 'MBA (Master of Business Administration)',
+        level: 'Postgraduate',
+        durationYears: 2,
+        standardAnnualFee: 650000,
+        specializations: ['Marketing Management', 'Finance & Banking', 'Human Resource Management', 'International Business'],
+      },
+      {
+        degreeName: 'BBA (Bachelor of Business Administration)',
+        level: 'Undergraduate',
+        durationYears: 3,
+        standardAnnualFee: 320000,
+        specializations: ['Global Business Management', 'Entrepreneurship', 'Marketing'],
+      },
+      {
+        degreeName: 'BA LLB / BBA LLB / LLB',
+        level: 'Undergraduate',
+        durationYears: 5,
+        standardAnnualFee: 380000,
+        specializations: ['Business Law', 'Criminal Law', 'IPR Law'],
+      },
+    ],
+  },
+  {
+    name: 'University of Oxford',
+    shortCode: 'OXF',
+    location: { city: 'Oxford', state: 'England', country: 'United Kingdom' },
+    type: 'Overseas University',
+    accreditation: ['QS World #2', 'THE World Top 3'],
+    establishedYear: 1096,
+    website: 'https://ox.ac.uk',
+    isFeatured: true,
+    courses: [
+      {
+        degreeName: 'M.Sc (Master of Science)',
+        level: 'Postgraduate',
+        durationYears: 1,
+        standardAnnualFee: 3800000,
+        specializations: ['Advanced Computer Science', 'Statistical Science', 'Financial Economics'],
+      },
+      {
+        degreeName: 'MBA (Master of Business Administration)',
+        level: 'Postgraduate',
+        durationYears: 1,
+        standardAnnualFee: 6500000,
+        specializations: ['Global Business Strategy', 'Social Innovation & Finance'],
       },
     ],
   },
@@ -208,12 +343,14 @@ const SEED_MASTER_COLLEGES = [
 
 // @desc  Seed master college & course database (Auto-runs if empty or via API)
 // @route POST /api/catalogue/seed-master
-// @access Private (Admin / System)
+// @access Private
 exports.seedMasterCatalogue = async (req, res) => {
   try {
     const existingCount = await MasterCollege.countDocuments();
     if (existingCount > 0 && (!req?.body?.force)) {
-      return res.json({ success: true, message: `Master catalogue already populated (${existingCount} colleges).`, count: existingCount });
+      const resp = { success: true, message: `Master catalogue already populated (${existingCount} colleges).`, count: existingCount };
+      if (res) return res.json(resp);
+      return resp;
     }
 
     let seededColleges = 0;
@@ -255,22 +392,25 @@ exports.seedMasterCatalogue = async (req, res) => {
   }
 };
 
-// @desc  Search & browse Global Master Colleges
+// @desc  Search & browse Global Master Colleges (Supports pagination & dynamic search for 10,000+ records)
 // @route GET /api/catalogue/master-colleges
 // @access Private
 exports.getMasterColleges = async (req, res) => {
   try {
-    const { search, country, state, type, page = 1, limit = 50 } = req.query;
+    const { search, country, state, type, accreditation, page = 1, limit = 50 } = req.query;
     const query = { isActive: true };
 
     if (country && country !== 'all') {
-      query['location.country'] = new RegExp(`^${country}$`, 'i');
+      query['location.country'] = new RegExp(`^${country.trim()}$`, 'i');
     }
     if (state && state !== 'all') {
-      query['location.state'] = new RegExp(state, 'i');
+      query['location.state'] = new RegExp(state.trim(), 'i');
     }
     if (type && type !== 'all') {
       query.type = type;
+    }
+    if (accreditation && accreditation !== 'all') {
+      query.accreditation = new RegExp(accreditation.trim(), 'i');
     }
 
     if (search && search.trim()) {
@@ -283,6 +423,7 @@ exports.getMasterColleges = async (req, res) => {
         { 'location.state': rx },
         { 'location.country': rx },
         { accreditation: rx },
+        { type: rx },
       ];
     }
 
@@ -292,12 +433,15 @@ exports.getMasterColleges = async (req, res) => {
       await exports.seedMasterCatalogue();
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const parsedPage = Math.max(1, parseInt(page) || 1);
+    const parsedLimit = Math.min(100, Math.max(1, parseInt(limit) || 50));
+    const skip = (parsedPage - 1) * parsedLimit;
+
     const [colleges, total] = await Promise.all([
       MasterCollege.find(query)
         .sort({ isFeatured: -1, createdAt: -1 })
         .skip(skip)
-        .limit(parseInt(limit))
+        .limit(parsedLimit)
         .lean(),
       MasterCollege.countDocuments(query),
     ]);
@@ -313,23 +457,28 @@ exports.getMasterColleges = async (req, res) => {
       courseMap[cid].push(crs);
     });
 
-    // Check which colleges are already in this tenant's catalogue
+    // Check which colleges are already imported in this tenant's catalogue
     const tenantCompanyId = req.user.companyId || (req.user.workStatus === 'company_owner' ? req.user._id : null);
     const tenantQuery = tenantCompanyId
       ? { $or: [{ companyId: tenantCompanyId }, { tenantId: req.user._id }] }
       : { tenantId: req.user._id };
 
-    const importedColleges = await TenantCatalogue.find(tenantQuery).select('masterCollegeId').lean();
-    const importedSet = new Set(importedColleges.map(ic => String(ic.masterCollegeId)));
+    const importedColleges = await TenantCatalogue.find(tenantQuery).select('masterCollegeId _id').lean();
+    const importedMap = {};
+    importedColleges.forEach(ic => {
+      if (ic.masterCollegeId) importedMap[String(ic.masterCollegeId)] = String(ic._id);
+    });
 
     const enriched = colleges.map(col => {
       const colCourses = courseMap[String(col._id)] || [];
+      const isImported = Boolean(importedMap[String(col._id)]);
       return {
         ...col,
         coursesCount: colCourses.length,
         availableDegrees: colCourses.map(c => c.degreeName),
         courses: colCourses,
-        isImported: importedSet.has(String(col._id)),
+        isImported,
+        tenantCatalogueId: importedMap[String(col._id)] || null,
       };
     });
 
@@ -337,8 +486,9 @@ exports.getMasterColleges = async (req, res) => {
       success: true,
       colleges: enriched,
       total,
-      page: parseInt(page),
-      pages: Math.ceil(total / parseInt(limit)),
+      page: parsedPage,
+      pages: Math.ceil(total / parsedLimit),
+      hasMore: parsedPage * parsedLimit < total,
     });
   } catch (error) {
     console.error('getMasterColleges error:', error);
@@ -403,6 +553,8 @@ exports.importCollegeToCatalogue = async (req, res) => {
             mappedCourses.push({
               degreeName: mc.degreeName,
               specialization: spec,
+              level: mc.level || 'Undergraduate',
+              durationYears: mc.durationYears || 4,
               customFeeStructure: {
                 annualTuitionFee: mc.standardAnnualFee || 0,
                 packageFee: (mc.standardAnnualFee || 0) * (mc.durationYears || 1),
@@ -429,6 +581,8 @@ exports.importCollegeToCatalogue = async (req, res) => {
           mappedCourses.push({
             degreeName: mc.degreeName,
             specialization: 'General',
+            level: mc.level || 'Undergraduate',
+            durationYears: mc.durationYears || 4,
             customFeeStructure: {
               annualTuitionFee: mc.standardAnnualFee || 0,
               packageFee: (mc.standardAnnualFee || 0) * (mc.durationYears || 1),
@@ -456,11 +610,16 @@ exports.importCollegeToCatalogue = async (req, res) => {
       tenantId: req.user._id,
       companyId: tenantCompanyId,
       masterCollegeId: masterCollege._id,
+      isCustomInstitution: false,
       customCollegeName: masterCollege.name,
       collegeType: masterCollege.type,
       location: masterCollege.location,
+      accreditation: masterCollege.accreditation || [],
+      establishedYear: masterCollege.establishedYear || null,
+      affiliatedUniversity: masterCollege.affiliatedUniversity || '',
       logoUrl: masterCollege.logoUrl,
       website: masterCollege.website,
+      brochureUrl: masterCollege.brochureUrl || '',
       courses: mappedCourses,
       tags: ['Imported', masterCollege.type, masterCollege.location?.country || 'India'],
       notes: `Imported from master repository by ${req.user.name}`,
@@ -477,12 +636,133 @@ exports.importCollegeToCatalogue = async (req, res) => {
   }
 };
 
-// @desc  Get Tenant's Customized Catalogue
+// @desc  PHASE 3: Add Custom Institution (Create manual college not found in master repository)
+// @route POST /api/catalogue/custom
+// @access Private
+exports.createCustomInstitution = async (req, res) => {
+  try {
+    const {
+      customCollegeName,
+      location = {},
+      collegeType = 'Private University',
+      accreditation = [],
+      website = '',
+      establishedYear = null,
+      affiliatedUniversity = '',
+      brochureUrl = '',
+      notes = '',
+      selectedDegrees = [], // Array of degreeName strings to auto-populate from dictionary
+    } = req.body;
+
+    if (!customCollegeName || !customCollegeName.trim()) {
+      return res.status(400).json({ success: false, message: 'Institution name is required' });
+    }
+
+    const tenantCompanyId = req.user.companyId || (req.user.workStatus === 'company_owner' ? req.user._id : null);
+
+    // Auto-populate courses from selected degrees or top standard degrees (B.Tech, MBA, BCA)
+    const degreesToSeed = (Array.isArray(selectedDegrees) && selectedDegrees.length > 0)
+      ? selectedDegrees
+      : ['B.Tech / B.E.', 'MBA (Master of Business Administration)', 'BCA (Bachelor of Computer Applications)', 'BBA (Bachelor of Business Administration)'];
+
+    const mappedCourses = [];
+    degreesToSeed.forEach(dName => {
+      const foundDef = COMMON_DEGREES.find(d => d.degreeName === dName || d.shortName === dName);
+      if (foundDef) {
+        foundDef.specializations.forEach(spec => {
+          mappedCourses.push({
+            degreeName: foundDef.degreeName,
+            specialization: spec,
+            level: foundDef.level,
+            durationYears: foundDef.durationYears,
+            customFeeStructure: {
+              annualTuitionFee: foundDef.standardAnnualFee,
+              packageFee: foundDef.standardAnnualFee * foundDef.durationYears,
+              hostelFeePerYear: 80000,
+              oneTimeAdmissionFee: 20000,
+              currency: 'INR',
+              feeNotes: 'Default preset. Modify as per your institutional MOU.',
+            },
+            customTieUpDetails: {
+              commissionType: 'percentage',
+              commissionRate: 10,
+              mouStatus: 'direct_tie_up',
+              contactPersonName: '',
+              contactPersonPhone: '',
+              notes: '',
+            },
+            admissionStatus: 'admissions_open',
+            quotaType: 'management_quota',
+            isActive: true,
+          });
+        });
+      } else {
+        // Custom degree name provided by user
+        mappedCourses.push({
+          degreeName: dName,
+          specialization: 'General',
+          level: 'Undergraduate',
+          durationYears: 3,
+          customFeeStructure: {
+            annualTuitionFee: 100000,
+            packageFee: 300000,
+            hostelFeePerYear: 80000,
+            oneTimeAdmissionFee: 15000,
+            currency: 'INR',
+            feeNotes: '',
+          },
+          customTieUpDetails: {
+            commissionType: 'percentage',
+            commissionRate: 10,
+            mouStatus: 'direct_tie_up',
+            contactPersonName: '',
+          },
+          admissionStatus: 'admissions_open',
+          quotaType: 'management_quota',
+          isActive: true,
+        });
+      }
+    });
+
+    const newInstitution = await TenantCatalogue.create({
+      tenantId: req.user._id,
+      companyId: tenantCompanyId,
+      masterCollegeId: null,
+      isCustomInstitution: true,
+      customCollegeName: customCollegeName.trim(),
+      collegeType,
+      location: {
+        city: location.city?.trim() || '',
+        state: location.state?.trim() || '',
+        country: location.country?.trim() || 'India',
+      },
+      accreditation: Array.isArray(accreditation) ? accreditation : [],
+      establishedYear: establishedYear ? Number(establishedYear) : null,
+      affiliatedUniversity: affiliatedUniversity?.trim() || '',
+      website: website?.trim() || '',
+      brochureUrl: brochureUrl?.trim() || '',
+      notes: notes?.trim() || 'Manually added custom institution',
+      tags: ['Custom Institution', collegeType, location.state || location.country || 'India'],
+      courses: mappedCourses,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `🎉 Custom Institution "${newInstitution.customCollegeName}" created with ${mappedCourses.length} standard streams ready for fee customization!`,
+      catalogueItem: newInstitution,
+    });
+  } catch (error) {
+    console.error('createCustomInstitution error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to create custom institution' });
+  }
+};
+
+// @desc  Get Tenant's Customized Active Catalogue
 // @route GET /api/catalogue/my-catalogue
 // @access Private
 exports.getMyCatalogue = async (req, res) => {
   try {
-    const { search, country, status } = req.query;
+    const { search, country, state, type } = req.query;
 
     const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner';
     const companyId = req.user.companyId || (isOwner ? req.user._id : null);
@@ -493,7 +773,13 @@ exports.getMyCatalogue = async (req, res) => {
       : { tenantId: req.user._id };
 
     if (country && country !== 'all') {
-      query['location.country'] = new RegExp(`^${country}$`, 'i');
+      query['location.country'] = new RegExp(`^${country.trim()}$`, 'i');
+    }
+    if (state && state !== 'all') {
+      query['location.state'] = new RegExp(state.trim(), 'i');
+    }
+    if (type && type !== 'all') {
+      query.collegeType = type;
     }
 
     if (search && search.trim()) {
@@ -502,13 +788,14 @@ exports.getMyCatalogue = async (req, res) => {
         { customCollegeName: rx },
         { 'location.city': rx },
         { 'location.state': rx },
+        { accreditation: rx },
         { 'courses.degreeName': rx },
         { 'courses.specialization': rx },
       ];
     }
 
     const items = await TenantCatalogue.find(query)
-      .populate('masterCollegeId', 'name accreditation establishedYear shortCode')
+      .populate('masterCollegeId', 'name accreditation establishedYear shortCode logoUrl website')
       .sort({ updatedAt: -1, createdAt: -1 })
       .lean();
 
@@ -550,7 +837,350 @@ exports.getTenantCatalogueItem = async (req, res) => {
   }
 };
 
-// @desc  Update Fee Structure, Tie-Up Details & Courses on a Tenant Catalogue item
+// @desc  Update Header Info of a Tenant Catalogue Institution (Name, Location, Accreditation, Type, Website)
+// @route PUT /api/catalogue/my-catalogue/:id/info
+// @access Private
+exports.updateTenantCatalogueInfo = async (req, res) => {
+  try {
+    const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner';
+    const companyId = req.user.companyId || (isOwner ? req.user._id : null);
+
+    const query = {
+      _id: req.params.id,
+      ...(companyId
+        ? { $or: [{ companyId }, { tenantId: companyId }, { tenantId: req.user._id }] }
+        : { tenantId: req.user._id }),
+    };
+
+    const item = await TenantCatalogue.findOne(query);
+    if (!item) return res.status(404).json({ success: false, message: 'Catalogue item not found' });
+
+    const {
+      customCollegeName,
+      location,
+      collegeType,
+      accreditation,
+      website,
+      establishedYear,
+      affiliatedUniversity,
+      brochureUrl,
+      notes,
+    } = req.body;
+
+    if (customCollegeName) item.customCollegeName = customCollegeName.trim();
+    if (location) item.location = { ...item.location, ...location };
+    if (collegeType) item.collegeType = collegeType;
+    if (Array.isArray(accreditation)) item.accreditation = accreditation;
+    if (website !== undefined) item.website = website.trim();
+    if (establishedYear !== undefined) item.establishedYear = establishedYear ? Number(establishedYear) : null;
+    if (affiliatedUniversity !== undefined) item.affiliatedUniversity = affiliatedUniversity.trim();
+    if (brochureUrl !== undefined) item.brochureUrl = brochureUrl.trim();
+    if (notes !== undefined) item.notes = notes;
+
+    await item.save();
+
+    res.json({
+      success: true,
+      message: 'Institution profile updated successfully ✅',
+      catalogueItem: item,
+    });
+  } catch (error) {
+    console.error('updateTenantCatalogueInfo error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
+// @desc  Add a Degree & its Specializations to a Tenant Catalogue Item
+// @route POST /api/catalogue/my-catalogue/:id/degrees
+// @access Private
+exports.addDegreeToCatalogueItem = async (req, res) => {
+  try {
+    const { degreeName, level = 'Undergraduate', durationYears = 4, specializations = [], standardAnnualFee = 150000 } = req.body;
+    if (!degreeName || !degreeName.trim()) {
+      return res.status(400).json({ success: false, message: 'Degree name is required' });
+    }
+
+    const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner';
+    const companyId = req.user.companyId || (isOwner ? req.user._id : null);
+
+    const query = {
+      _id: req.params.id,
+      ...(companyId
+        ? { $or: [{ companyId }, { tenantId: companyId }, { tenantId: req.user._id }] }
+        : { tenantId: req.user._id }),
+    };
+
+    const item = await TenantCatalogue.findOne(query);
+    if (!item) return res.status(404).json({ success: false, message: 'Catalogue item not found' });
+
+    const specsToAdd = (Array.isArray(specializations) && specializations.length > 0)
+      ? specializations
+      : ['General'];
+
+    const newCourses = specsToAdd.map(spec => ({
+      degreeName: degreeName.trim(),
+      specialization: spec.trim(),
+      level,
+      durationYears: Number(durationYears) || 4,
+      customFeeStructure: {
+        annualTuitionFee: Number(standardAnnualFee) || 150000,
+        packageFee: (Number(standardAnnualFee) || 150000) * (Number(durationYears) || 4),
+        hostelFeePerYear: 80000,
+        oneTimeAdmissionFee: 20000,
+        currency: 'INR',
+        feeNotes: '',
+      },
+      customTieUpDetails: {
+        commissionType: 'percentage',
+        commissionRate: 10,
+        mouStatus: 'direct_tie_up',
+        contactPersonName: '',
+      },
+      admissionStatus: 'admissions_open',
+      quotaType: 'management_quota',
+      isActive: true,
+    }));
+
+    item.courses.push(...newCourses);
+    await item.save();
+
+    res.status(201).json({
+      success: true,
+      message: `🎉 Added Degree "${degreeName}" with ${newCourses.length} specialization streams!`,
+      catalogueItem: item,
+    });
+  } catch (error) {
+    console.error('addDegreeToCatalogueItem error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
+// @desc  Delete an Entire Degree and all its specializations
+// @route DELETE /api/catalogue/my-catalogue/:id/degrees/:degreeName
+// @access Private
+exports.deleteDegreeFromCatalogueItem = async (req, res) => {
+  try {
+    const { id, degreeName } = req.params;
+
+    const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner';
+    const companyId = req.user.companyId || (isOwner ? req.user._id : null);
+
+    const query = {
+      _id: id,
+      ...(companyId
+        ? { $or: [{ companyId }, { tenantId: companyId }, { tenantId: req.user._id }] }
+        : { tenantId: req.user._id }),
+    };
+
+    const item = await TenantCatalogue.findOne(query);
+    if (!item) return res.status(404).json({ success: false, message: 'Catalogue item not found' });
+
+    const decodedDegree = decodeURIComponent(degreeName);
+    const prevCount = item.courses.length;
+    item.courses = item.courses.filter(c => c.degreeName !== decodedDegree);
+    const removedCount = prevCount - item.courses.length;
+
+    await item.save();
+
+    res.json({
+      success: true,
+      message: `Removed Degree "${decodedDegree}" and its ${removedCount} streams ✅`,
+      catalogueItem: item,
+    });
+  } catch (error) {
+    console.error('deleteDegreeFromCatalogueItem error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
+// @desc  Add a Specialization Stream under a Degree
+// @route POST /api/catalogue/my-catalogue/:id/specializations
+// @access Private
+exports.addSpecializationToCatalogueItem = async (req, res) => {
+  try {
+    const {
+      degreeName,
+      specialization,
+      annualTuitionFee = 150000,
+      packageFee = 600000,
+      hostelFeePerYear = 80000,
+      oneTimeAdmissionFee = 20000,
+      currency = 'INR',
+      commissionRate = 10,
+      commissionType = 'percentage',
+      mouStatus = 'direct_tie_up',
+      contactPersonName = '',
+      contactPersonPhone = '',
+      admissionStatus = 'admissions_open',
+      quotaType = 'management_quota',
+      level = 'Undergraduate',
+      durationYears = 4,
+    } = req.body;
+
+    if (!degreeName || !specialization) {
+      return res.status(400).json({ success: false, message: 'Degree name and specialization are required' });
+    }
+
+    const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner';
+    const companyId = req.user.companyId || (isOwner ? req.user._id : null);
+
+    const query = {
+      _id: req.params.id,
+      ...(companyId
+        ? { $or: [{ companyId }, { tenantId: companyId }, { tenantId: req.user._id }] }
+        : { tenantId: req.user._id }),
+    };
+
+    const item = await TenantCatalogue.findOne(query);
+    if (!item) return res.status(404).json({ success: false, message: 'Catalogue item not found' });
+
+    item.courses.push({
+      degreeName: degreeName.trim(),
+      specialization: specialization.trim(),
+      level,
+      durationYears: Number(durationYears) || 4,
+      customFeeStructure: {
+        annualTuitionFee: Number(annualTuitionFee) || 0,
+        packageFee: Number(packageFee) || 0,
+        hostelFeePerYear: Number(hostelFeePerYear) || 0,
+        oneTimeAdmissionFee: Number(oneTimeAdmissionFee) || 0,
+        currency,
+        feeNotes: '',
+      },
+      customTieUpDetails: {
+        commissionType,
+        commissionRate: Number(commissionRate) || 10,
+        mouStatus,
+        contactPersonName,
+        contactPersonPhone,
+      },
+      admissionStatus,
+      quotaType,
+      isActive: true,
+    });
+
+    await item.save();
+
+    res.status(201).json({
+      success: true,
+      message: `🎉 Added Specialization "${specialization}" under ${degreeName}!`,
+      catalogueItem: item,
+    });
+  } catch (error) {
+    console.error('addSpecializationToCatalogueItem error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
+// @desc  Update a Specific Specialization Course (Fee Structure & Tie-Up Details)
+// @route PUT /api/catalogue/my-catalogue/:id/courses/:courseId
+// @access Private
+exports.updateCourseInCatalogueItem = async (req, res) => {
+  try {
+    const { id, courseId } = req.params;
+
+    const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner';
+    const companyId = req.user.companyId || (isOwner ? req.user._id : null);
+
+    const query = {
+      _id: id,
+      ...(companyId
+        ? { $or: [{ companyId }, { tenantId: companyId }, { tenantId: req.user._id }] }
+        : { tenantId: req.user._id }),
+    };
+
+    const item = await TenantCatalogue.findOne(query);
+    if (!item) return res.status(404).json({ success: false, message: 'Catalogue item not found' });
+
+    const course = item.courses.id(courseId);
+    if (!course) return res.status(404).json({ success: false, message: 'Course stream not found' });
+
+    const {
+      degreeName,
+      specialization,
+      customFeeStructure,
+      customTieUpDetails,
+      admissionStatus,
+      quotaType,
+      isActive,
+      level,
+      durationYears,
+    } = req.body;
+
+    if (degreeName) course.degreeName = degreeName.trim();
+    if (specialization) course.specialization = specialization.trim();
+    if (level) course.level = level;
+    if (durationYears !== undefined) course.durationYears = Number(durationYears);
+    if (admissionStatus) course.admissionStatus = admissionStatus;
+    if (quotaType) course.quotaType = quotaType;
+    if (isActive !== undefined) course.isActive = Boolean(isActive);
+
+    if (customFeeStructure) {
+      course.customFeeStructure = {
+        ...course.customFeeStructure,
+        ...customFeeStructure,
+      };
+    }
+
+    if (customTieUpDetails) {
+      course.customTieUpDetails = {
+        ...course.customTieUpDetails,
+        ...customTieUpDetails,
+      };
+    }
+
+    await item.save();
+
+    res.json({
+      success: true,
+      message: `Fee structure & tie-up details for "${course.specialization}" updated successfully ✅`,
+      catalogueItem: item,
+    });
+  } catch (error) {
+    console.error('updateCourseInCatalogueItem error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
+// @desc  Delete a Specific Specialization Course Stream
+// @route DELETE /api/catalogue/my-catalogue/:id/courses/:courseId
+// @access Private
+exports.deleteCourseFromCatalogueItem = async (req, res) => {
+  try {
+    const { id, courseId } = req.params;
+
+    const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner';
+    const companyId = req.user.companyId || (isOwner ? req.user._id : null);
+
+    const query = {
+      _id: id,
+      ...(companyId
+        ? { $or: [{ companyId }, { tenantId: companyId }, { tenantId: req.user._id }] }
+        : { tenantId: req.user._id }),
+    };
+
+    const item = await TenantCatalogue.findOne(query);
+    if (!item) return res.status(404).json({ success: false, message: 'Catalogue item not found' });
+
+    const courseIndex = item.courses.findIndex(c => String(c._id) === String(courseId));
+    if (courseIndex === -1) return res.status(404).json({ success: false, message: 'Course stream not found' });
+
+    const removedCourseName = item.courses[courseIndex].specialization;
+    item.courses.splice(courseIndex, 1);
+    await item.save();
+
+    res.json({
+      success: true,
+      message: `Stream "${removedCourseName}" removed successfully ✅`,
+      catalogueItem: item,
+    });
+  } catch (error) {
+    console.error('deleteCourseFromCatalogueItem error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
+// @desc  Full Update on a Tenant Catalogue item (Backward compatibility)
 // @route PUT /api/catalogue/my-catalogue/:id
 // @access Private
 exports.updateTenantCatalogueItem = async (req, res) => {
@@ -575,6 +1205,10 @@ exports.updateTenantCatalogueItem = async (req, res) => {
       tags,
       priorityRank,
       location,
+      accreditation,
+      website,
+      establishedYear,
+      affiliatedUniversity,
     } = req.body;
 
     if (customCollegeName) item.customCollegeName = customCollegeName.trim();
@@ -582,6 +1216,10 @@ exports.updateTenantCatalogueItem = async (req, res) => {
     if (tags !== undefined) item.tags = tags;
     if (priorityRank !== undefined) item.priorityRank = Number(priorityRank);
     if (location) item.location = { ...item.location, ...location };
+    if (Array.isArray(accreditation)) item.accreditation = accreditation;
+    if (website !== undefined) item.website = website;
+    if (establishedYear !== undefined) item.establishedYear = establishedYear ? Number(establishedYear) : null;
+    if (affiliatedUniversity !== undefined) item.affiliatedUniversity = affiliatedUniversity;
 
     if (Array.isArray(courses)) {
       item.courses = courses;
@@ -600,7 +1238,7 @@ exports.updateTenantCatalogueItem = async (req, res) => {
   }
 };
 
-// @desc  Remove a College from Tenant's Catalogue
+// @desc  Remove an Institution from Tenant's Active Catalogue
 // @route DELETE /api/catalogue/my-catalogue/:id
 // @access Private
 exports.deleteTenantCatalogueItem = async (req, res) => {
@@ -618,8 +1256,9 @@ exports.deleteTenantCatalogueItem = async (req, res) => {
     const item = await TenantCatalogue.findOneAndDelete(query);
     if (!item) return res.status(404).json({ success: false, message: 'Catalogue item not found' });
 
-    res.json({ success: true, message: `${item.customCollegeName} removed from your catalogue ✅` });
+    res.json({ success: true, message: `"${item.customCollegeName}" removed from your active catalogue ✅` });
   } catch (error) {
+    console.error('deleteTenantCatalogueItem error:', error);
     res.status(500).json({ success: false, message: error.message || 'Server error' });
   }
 };

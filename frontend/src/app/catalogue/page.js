@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -9,64 +10,120 @@ import {
   GraduationCap, Search, Plus, Building2, MapPin, Globe,
   CheckCircle2, ArrowRight, Layers, Edit3, Trash2, Check,
   Clock, ShieldCheck, Sparkles, Filter, ChevronDown, ChevronUp,
-  DollarSign, UserCheck, ExternalLink, RefreshCw, BookOpen, AlertCircle
+  DollarSign, UserCheck, ExternalLink, RefreshCw, BookOpen, AlertCircle,
+  PlusCircle, School, Award, ChevronRight
 } from 'lucide-react';
+import {
+  COMMON_DEGREES,
+  ACCREDITATION_TAGS,
+  INSTITUTION_TYPES,
+  getAccreditationBadgeStyle
+} from '@/lib/commonDegrees';
 
 const ADMISSION_STATUS_LABELS = {
-  admissions_open: { label: '🟢 Admissions Open', bg: 'rgba(16, 185, 129, 0.1)', text: '#10b981', border: 'rgba(16, 185, 129, 0.25)' },
-  seats_fast_filling: { label: '🔥 Seats Fast Filling', bg: 'rgba(245, 158, 11, 0.1)', text: '#f59e0b', border: 'rgba(245, 158, 11, 0.25)' },
-  merit_closed_mgmt_open: { label: '⚡ Merit Closed (Mgmt Open)', bg: 'rgba(139, 92, 246, 0.1)', text: '#8b5cf6', border: 'rgba(139, 92, 246, 0.25)' },
-  admissions_closed: { label: '🔴 Closed for Intake', bg: 'rgba(239, 68, 68, 0.1)', text: '#ef4444', border: 'rgba(239, 68, 68, 0.25)' },
-};
-
-const MOU_STATUS_LABELS = {
-  direct_tie_up: { label: '🤝 Direct University Tie-up', color: '#10b981' },
-  sub_agent_mou: { label: '📑 Sub-Agent MOU', color: '#6366f1' },
-  informal_tie_up: { label: '📞 Direct Campus Contact', color: '#f59e0b' },
-  none: { label: '⭕ No Formal Tie-up', color: '#94a3b8' },
+  admissions_open: { label: '🟢 Open', bg: 'rgba(16, 185, 129, 0.12)', text: '#10b981', border: 'rgba(16, 185, 129, 0.25)' },
+  seats_fast_filling: { label: '🔥 Fast Filling', bg: 'rgba(245, 158, 11, 0.12)', text: '#f59e0b', border: 'rgba(245, 158, 11, 0.25)' },
+  merit_closed_mgmt_open: { label: '⚡ Mgmt Open', bg: 'rgba(139, 92, 246, 0.12)', text: '#8b5cf6', border: 'rgba(139, 92, 246, 0.25)' },
+  admissions_closed: { label: '🔴 Closed', bg: 'rgba(239, 68, 68, 0.12)', text: '#ef4444', border: 'rgba(239, 68, 68, 0.25)' },
 };
 
 export default function CataloguePage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState('my_catalogue'); // 'my_catalogue' | 'master_explore'
   const [loading, setLoading] = useState(true);
   const [importingId, setImportingId] = useState(null);
 
   // Data States
-  const [masterColleges, setMasterColleges] = useState([]);
   const [myCatalogue, setMyCatalogue] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [countryFilter, setCountryFilter] = useState('all');
-  const [expandedCollegeId, setExpandedCollegeId] = useState(null);
+  const [masterColleges, setMasterColleges] = useState([]);
+  const [masterPagination, setMasterPagination] = useState({ page: 1, total: 0, pages: 1, hasMore: false });
+  const [masterLoading, setMasterLoading] = useState(false);
 
-  // Edit / Custom Modal States
-  const [editingItem, setEditingItem] = useState(null);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [editCourseIndex, setEditCourseIndex] = useState(null);
-  const [editCourseForm, setEditCourseForm] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
+  // Filter States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [stateFilter, setStateFilter] = useState('all');
+
+  // Custom Institution Modal State
+  const [showAddCustomModal, setShowAddCustomModal] = useState(false);
+  const [submittingCustom, setSubmittingCustom] = useState(false);
+  const [customForm, setCustomForm] = useState({
+    customCollegeName: '',
+    city: '',
+    state: '',
+    country: 'India',
+    collegeType: 'Private University',
+    accreditation: ['NAAC A+', 'UGC Approved', 'AICTE Approved'],
+    website: '',
+    establishedYear: '',
+    affiliatedUniversity: '',
+    notes: '',
+    selectedDegrees: [
+      'B.Tech / B.E.',
+      'MBA (Master of Business Administration)',
+      'BCA (Bachelor of Computer Applications)',
+      'BBA (Bachelor of Business Administration)',
+    ],
+  });
 
   useEffect(() => {
-    loadAllCatalogueData();
+    loadMyCatalogue();
+    loadMasterColleges(1, '');
   }, []);
 
-  const loadAllCatalogueData = async () => {
-    setLoading(true);
+  const loadMyCatalogue = async () => {
     try {
-      const [myRes, masterRes] = await Promise.all([
-        api.get('/catalogue/my-catalogue'),
-        api.get('/catalogue/master-colleges'),
-      ]);
-      setMyCatalogue(myRes.data?.catalogue || []);
-      setMasterColleges(masterRes.data?.colleges || []);
-      if ((myRes.data?.catalogue || []).length === 0 && (masterRes.data?.colleges || []).length > 0) {
+      const res = await api.get('/catalogue/my-catalogue');
+      const items = res.data?.catalogue || [];
+      setMyCatalogue(items);
+      if (items.length === 0) {
+        // If user has no active items yet, switch to explore tab to encourage 1-click import
         setActiveTab('master_explore');
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to load catalogue data');
+      toast.error('Failed to load active catalogue');
     } finally {
       setLoading(false);
     }
   };
+
+  const loadMasterColleges = async (page = 1, search = '', type = 'all', state = 'all') => {
+    setMasterLoading(true);
+    try {
+      const params = {
+        page,
+        limit: 50,
+      };
+      if (search && search.trim()) params.search = search.trim();
+      if (type && type !== 'all') params.type = type;
+      if (state && state !== 'all') params.state = state;
+
+      const res = await api.get('/catalogue/master-colleges', { params });
+      if (res.data?.success) {
+        setMasterColleges(res.data.colleges || []);
+        setMasterPagination({
+          page: res.data.page || 1,
+          total: res.data.total || 0,
+          pages: res.data.pages || 1,
+          hasMore: res.data.hasMore || false,
+        });
+      }
+    } catch (err) {
+      console.error('loadMasterColleges error:', err);
+    } finally {
+      setMasterLoading(false);
+    }
+  };
+
+  // Debounced search for Master Repository
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (activeTab === 'master_explore') {
+        loadMasterColleges(1, searchQuery, typeFilter, stateFilter);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, typeFilter, stateFilter, activeTab]);
 
   // 1-Click Import Handler
   const handleImportCollege = async (college) => {
@@ -76,12 +133,12 @@ export default function CataloguePage() {
         defaultCommissionRate: 12,
         defaultMouStatus: 'direct_tie_up',
       });
-      toast.success(res.data?.message || `Imported ${college.name} to your catalogue! 🎉`);
+      toast.success(res.data?.message || `Imported ${college.name} to active catalogue! 🎉`);
 
       // Refresh data
-      await loadAllCatalogueData();
+      await loadMyCatalogue();
+      await loadMasterColleges(masterPagination.page, searchQuery, typeFilter, stateFilter);
       setActiveTab('my_catalogue');
-      setExpandedCollegeId(res.data?.catalogueItem?._id || college._id);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Import failed');
     } finally {
@@ -89,902 +146,747 @@ export default function CataloguePage() {
     }
   };
 
-  // Delete College from Catalogue
+  // Delete College from Active Catalogue
   const handleDeleteCatalogueItem = async (id, name) => {
     if (!confirm(`Are you sure you want to remove "${name}" from your active catalogue?`)) return;
     try {
       await api.delete(`/catalogue/my-catalogue/${id}`);
-      toast.success(`${name} removed from catalogue ✅`);
+      toast.success(`"${name}" removed from catalogue ✅`);
       setMyCatalogue(prev => prev.filter(c => c._id !== id));
+      loadMasterColleges(masterPagination.page, searchQuery, typeFilter, stateFilter);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to remove item');
     }
   };
 
-  // Open Edit Modal for a specific Course
-  const handleOpenCourseEditor = (college, course, idx) => {
-    setEditingItem(college);
-    setEditCourseIndex(idx);
-    setEditCourseForm({
-      degreeName: course.degreeName,
-      specialization: course.specialization,
-      annualTuitionFee: course.customFeeStructure?.annualTuitionFee || 0,
-      packageFee: course.customFeeStructure?.packageFee || 0,
-      hostelFeePerYear: course.customFeeStructure?.hostelFeePerYear || 0,
-      oneTimeAdmissionFee: course.customFeeStructure?.oneTimeAdmissionFee || 0,
-      currency: course.customFeeStructure?.currency || 'INR',
-      feeNotes: course.customFeeStructure?.feeNotes || '',
-      commissionRate: course.customTieUpDetails?.commissionRate || 10,
-      commissionType: course.customTieUpDetails?.commissionType || 'percentage',
-      mouStatus: course.customTieUpDetails?.mouStatus || 'direct_tie_up',
-      contactPersonName: course.customTieUpDetails?.contactPersonName || '',
-      contactPersonPhone: course.customTieUpDetails?.contactPersonPhone || '',
-      admissionStatus: course.admissionStatus || 'admissions_open',
-      quotaType: course.quotaType || 'management_quota',
-    });
-    setShowEditModal(true);
-  };
-
-  // Save Course Fee & Tie-Up Customization
-  const handleSaveCourseCustomization = async (e) => {
+  // Phase 3: Submit Custom Institution
+  const handleCreateCustomInstitution = async (e) => {
     e.preventDefault();
-    if (!editingItem || editCourseIndex === null) return;
+    if (!customForm.customCollegeName.trim()) {
+      return toast.error('Institution name is required');
+    }
 
-    setSubmitting(true);
+    setSubmittingCustom(true);
     try {
-      const updatedCourses = [...editingItem.courses];
-      updatedCourses[editCourseIndex] = {
-        ...updatedCourses[editCourseIndex],
-        customFeeStructure: {
-          annualTuitionFee: Number(editCourseForm.annualTuitionFee) || 0,
-          packageFee: Number(editCourseForm.packageFee) || 0,
-          hostelFeePerYear: Number(editCourseForm.hostelFeePerYear) || 0,
-          oneTimeAdmissionFee: Number(editCourseForm.oneTimeAdmissionFee) || 0,
-          currency: editCourseForm.currency,
-          feeNotes: editCourseForm.feeNotes,
+      const res = await api.post('/catalogue/custom', {
+        customCollegeName: customForm.customCollegeName.trim(),
+        location: {
+          city: customForm.city.trim(),
+          state: customForm.state.trim(),
+          country: customForm.country.trim() || 'India',
         },
-        customTieUpDetails: {
-          commissionType: editCourseForm.commissionType,
-          commissionRate: Number(editCourseForm.commissionRate) || 0,
-          mouStatus: editCourseForm.mouStatus,
-          contactPersonName: editCourseForm.contactPersonName,
-          contactPersonPhone: editCourseForm.contactPersonPhone,
-        },
-        admissionStatus: editCourseForm.admissionStatus,
-        quotaType: editCourseForm.quotaType,
-      };
-
-      const res = await api.put(`/catalogue/my-catalogue/${editingItem._id}`, {
-        courses: updatedCourses,
+        collegeType: customForm.collegeType,
+        accreditation: customForm.accreditation,
+        website: customForm.website.trim(),
+        establishedYear: customForm.establishedYear ? Number(customForm.establishedYear) : null,
+        affiliatedUniversity: customForm.affiliatedUniversity.trim(),
+        notes: customForm.notes.trim(),
+        selectedDegrees: customForm.selectedDegrees,
       });
 
-      toast.success('Fee structure & tie-up details saved! ✅');
-      setMyCatalogue(prev => prev.map(item => (item._id === editingItem._id ? res.data.catalogueItem : item)));
-      setShowEditModal(false);
+      toast.success(res.data?.message || 'Custom institution created! 🎉');
+      setShowAddCustomModal(false);
+
+      // Reset form
+      setCustomForm({
+        customCollegeName: '',
+        city: '',
+        state: '',
+        country: 'India',
+        collegeType: 'Private University',
+        accreditation: ['NAAC A+', 'UGC Approved', 'AICTE Approved'],
+        website: '',
+        establishedYear: '',
+        affiliatedUniversity: '',
+        notes: '',
+        selectedDegrees: [
+          'B.Tech / B.E.',
+          'MBA (Master of Business Administration)',
+          'BCA (Bachelor of Computer Applications)',
+          'BBA (Bachelor of Business Administration)',
+        ],
+      });
+
+      // Navigate straight to detail view to customize fees
+      if (res.data?.catalogueItem?._id) {
+        router.push(`/colleges/${res.data.catalogueItem._id}`);
+      } else {
+        await loadMyCatalogue();
+        setActiveTab('my_catalogue');
+      }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to update course');
+      toast.error(err.response?.data?.message || 'Failed to create custom institution');
     } finally {
-      setSubmitting(false);
+      setSubmittingCustom(false);
     }
   };
 
-  // Filtered lists
-  const filteredMaster = useMemo(() => {
-    return masterColleges.filter(col => {
-      const matchesSearch = !searchQuery.trim() || [
-        col.name,
-        col.shortCode,
-        col.location?.city,
-        col.location?.state,
-        col.location?.country,
-        ...(col.availableDegrees || []),
-      ].some(str => str && String(str).toLowerCase().includes(searchQuery.toLowerCase()));
-
-      const matchesCountry = countryFilter === 'all' || (col.location?.country || 'India').toLowerCase() === countryFilter.toLowerCase();
-      return matchesSearch && matchesCountry;
-    });
-  }, [masterColleges, searchQuery, countryFilter]);
-
+  // Filter My Active Catalogue locally
   const filteredMyCatalogue = useMemo(() => {
     return myCatalogue.filter(item => {
-      const matchesSearch = !searchQuery.trim() || [
-        item.customCollegeName,
-        item.location?.city,
-        item.location?.state,
-        item.location?.country,
-        ...(item.courses || []).map(c => `${c.degreeName} ${c.specialization}`),
-      ].some(str => str && String(str).toLowerCase().includes(searchQuery.toLowerCase()));
+      const q = searchQuery.toLowerCase().trim();
+      const matchSearch = !q ||
+        item.customCollegeName?.toLowerCase().includes(q) ||
+        item.location?.city?.toLowerCase().includes(q) ||
+        item.location?.state?.toLowerCase().includes(q) ||
+        (item.courses || []).some(c => c.degreeName?.toLowerCase().includes(q) || c.specialization?.toLowerCase().includes(q));
 
-      const matchesCountry = countryFilter === 'all' || (item.location?.country || 'India').toLowerCase() === countryFilter.toLowerCase();
-      return matchesSearch && matchesCountry;
+      const matchType = typeFilter === 'all' || item.collegeType === typeFilter;
+      const matchState = stateFilter === 'all' || item.location?.state?.toLowerCase() === stateFilter.toLowerCase();
+
+      return matchSearch && matchType && matchState;
     });
-  }, [myCatalogue, searchQuery, countryFilter]);
+  }, [myCatalogue, searchQuery, typeFilter, stateFilter]);
+
+  // Aggregate states for filter dropdown
+  const allStates = useMemo(() => {
+    const set = new Set();
+    myCatalogue.forEach(c => {
+      if (c.location?.state) set.add(c.location.state);
+    });
+    masterColleges.forEach(c => {
+      if (c.location?.state) set.add(c.location.state);
+    });
+    return Array.from(set).sort();
+  }, [myCatalogue, masterColleges]);
 
   return (
-    <div className="page-container" style={{ paddingBottom: 100 }}>
-      {/* Header */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: 12,
-        marginBottom: 20,
-      }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              boxShadow: '0 4px 14px rgba(79, 70, 229, 0.3)',
-            }}>
-              <GraduationCap size={20} />
+    <div className="app-shell pb-24">
+      {/* ─────────────────────────────────────────────────────────────
+          TOP APP BAR & HEADER
+         ───────────────────────────────────────────────────────────── */}
+      <div className="header-nav sticky top-0 z-30 bg-slate-950/95 backdrop-blur-md border-b border-slate-800/80 px-4 py-3.5">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/30 flex-shrink-0">
+              <GraduationCap size={22} />
             </div>
             <div>
-              <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: 'var(--text)', letterSpacing: '-0.3px' }}>
-                Education Hybrid Catalogue
+              <h1 className="text-base sm:text-lg font-black text-white m-0 tracking-tight flex items-center gap-2">
+                Colleges & Course Catalogue
+                <span className="badge bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                  Education Suite
+                </span>
               </h1>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
-                1-Click College Import & Dynamic Fee Structure Management
+              <p className="text-xs text-slate-400 m-0">
+                Institutional tie-ups, custom student fee packages, and 10,000+ university repository.
               </p>
             </div>
           </div>
-        </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button
-            onClick={() => loadAllCatalogueData()}
-            disabled={loading}
-            className="btn btn-secondary"
-            style={{ fontSize: 12, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6 }}
-            title="Refresh Catalogue"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            <span>Refresh</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Mode Tabs */}
-      <div style={{
-        display: 'flex',
-        gap: 8,
-        background: 'var(--surface-sunken, rgba(255,255,255,0.03))',
-        padding: 4,
-        borderRadius: 14,
-        border: '1px solid var(--border)',
-        marginBottom: 16,
-      }}>
-        <button
-          onClick={() => setActiveTab('my_catalogue')}
-          style={{
-            flex: 1,
-            padding: '10px 14px',
-            borderRadius: 10,
-            border: 'none',
-            background: activeTab === 'my_catalogue' ? 'var(--surface, #1e293b)' : 'transparent',
-            color: activeTab === 'my_catalogue' ? 'var(--accent)' : 'var(--text-muted)',
-            fontWeight: 700,
-            fontSize: 13,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            boxShadow: activeTab === 'my_catalogue' ? '0 2px 8px rgba(0,0,0,0.2)' : 'none',
-            transition: 'all 0.15s ease',
-          }}
-        >
-          <Building2 size={16} />
-          <span>My Active Catalogue</span>
-          <span style={{
-            fontSize: 11,
-            fontWeight: 800,
-            padding: '2px 8px',
-            borderRadius: 20,
-            background: activeTab === 'my_catalogue' ? 'rgba(79, 70, 229, 0.15)' : 'rgba(255,255,255,0.06)',
-            color: activeTab === 'my_catalogue' ? 'var(--accent)' : 'var(--text-muted)',
-          }}>
-            {myCatalogue.length}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('master_explore')}
-          style={{
-            flex: 1,
-            padding: '10px 14px',
-            borderRadius: 10,
-            border: 'none',
-            background: activeTab === 'master_explore' ? 'var(--surface, #1e293b)' : 'transparent',
-            color: activeTab === 'master_explore' ? 'var(--accent)' : 'var(--text-muted)',
-            fontWeight: 700,
-            fontSize: 13,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            boxShadow: activeTab === 'master_explore' ? '0 2px 8px rgba(0,0,0,0.2)' : 'none',
-            transition: 'all 0.15s ease',
-          }}
-        >
-          <Sparkles size={16} />
-          <span>Explore Master Repository</span>
-          <span style={{
-            fontSize: 11,
-            fontWeight: 800,
-            padding: '2px 8px',
-            borderRadius: 20,
-            background: activeTab === 'master_explore' ? 'rgba(79, 70, 229, 0.15)' : 'rgba(255,255,255,0.06)',
-            color: activeTab === 'master_explore' ? 'var(--accent)' : 'var(--text-muted)',
-          }}>
-            {masterColleges.length}
-          </span>
-        </button>
-      </div>
-
-      {/* Search & Country Filter Bar */}
-      <div style={{
-        display: 'flex',
-        gap: 10,
-        flexWrap: 'wrap',
-        alignItems: 'center',
-        marginBottom: 20,
-      }}>
-        <div style={{ flex: 1, minWidth: 240, position: 'relative' }}>
-          <Search size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input
-            type="text"
-            className="input"
-            placeholder={activeTab === 'my_catalogue' ? 'Search in your catalogue (e.g. VIT, MBA, B.Tech, Boston)...' : 'Search Master Repository for colleges, specializations, degrees...'}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ paddingLeft: 38, height: 42, borderRadius: 12 }}
-          />
-        </div>
-
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {[
-            { id: 'all', label: 'All Regions' },
-            { id: 'india', label: '🇮🇳 India' },
-            { id: 'usa', label: '🇺🇸 USA' },
-            { id: 'united kingdom', label: '🇬🇧 UK' },
-          ].map(c => (
+          <div className="flex items-center gap-2.5">
             <button
-              key={c.id}
-              onClick={() => setCountryFilter(c.id)}
-              style={{
-                padding: '6px 12px',
-                borderRadius: 10,
-                border: countryFilter === c.id ? '1px solid var(--accent)' : '1px solid var(--border)',
-                background: countryFilter === c.id ? 'rgba(79, 70, 229, 0.12)' : 'var(--surface)',
-                color: countryFilter === c.id ? 'var(--accent)' : 'var(--text-muted)',
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
+              type="button"
+              onClick={() => setShowAddCustomModal(true)}
+              className="btn btn-primary btn-sm flex items-center gap-2 text-xs py-2 px-4 rounded-xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:opacity-95 shadow-lg shadow-indigo-600/30 transition transform hover:-translate-y-0.5"
             >
-              {c.label}
+              <PlusCircle size={15} /> Add Custom Institution
             </button>
-          ))}
+          </div>
         </div>
       </div>
 
-      {/* ─────────────────────────────────────────────────────────────
-          TAB 1: MY ACTIVE CUSTOM CATALOGUE
-          ───────────────────────────────────────────────────────────── */}
-      {activeTab === 'my_catalogue' && (
-        <div>
-          {filteredMyCatalogue.length === 0 ? (
-            <div style={{
-              background: 'var(--surface)',
-              border: '1px dashed var(--border)',
-              borderRadius: 16,
-              padding: '40px 20px',
-              textAlign: 'center',
-            }}>
-              <div style={{
-                width: 56,
-                height: 56,
-                borderRadius: '50%',
-                background: 'rgba(79, 70, 229, 0.1)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--accent)',
-                marginBottom: 14,
-              }}>
-                <Building2 size={28} />
-              </div>
-              <h3 style={{ fontSize: 16, fontWeight: 800, margin: '0 0 6px', color: 'var(--text)' }}>
-                Your Custom Catalogue is Empty
-              </h3>
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 420, margin: '0 auto 18px', lineHeight: 1.4 }}>
-                Explore the global Master Repository and 1-click import universities with pre-built course specializations and customizable fee models.
-              </p>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+        {/* ─────────────────────────────────────────────────────────────
+            DUAL-TAB SWITCHER
+           ───────────────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between gap-4 border-b border-slate-800 pb-3 flex-wrap">
+          <div className="flex items-center gap-2 bg-slate-900/90 p-1 rounded-xl border border-slate-800 shadow-inner">
+            <button
+              type="button"
+              onClick={() => setActiveTab('my_catalogue')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-extrabold transition ${
+                activeTab === 'my_catalogue'
+                  ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-600/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Building2 size={15} />
+              <span>My Active Catalogue</span>
+              <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full ml-0.5">
+                {myCatalogue.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('master_explore')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-extrabold transition ${
+                activeTab === 'master_explore'
+                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Globe size={15} />
+              <span>Explore Master Repository</span>
+              <span className="bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] px-2 py-0.5 rounded-full ml-0.5 font-bold">
+                10,000+
+              </span>
+            </button>
+          </div>
+
+          <span className="text-xs text-slate-400 font-medium">
+            {activeTab === 'my_catalogue' ? (
+              <>Showing <strong>{filteredMyCatalogue.length}</strong> active institutions with configured fee structures</>
+            ) : (
+              <>Browsing <strong>{masterPagination.total || masterColleges.length}</strong> verified master institutions</>
+            )}
+          </span>
+        </div>
+
+        {/* ─────────────────────────────────────────────────────────────
+            SEARCH & FILTER CONTROL BAR
+           ───────────────────────────────────────────────────────────── */}
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 my-5 shadow-lg flex flex-col md:flex-row items-center gap-3">
+          <div className="relative flex-1 w-full">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder={activeTab === 'my_catalogue' ? "Search your active colleges, courses, degrees, or cities..." : "Search 10,000+ universities by name, short code, city, or accreditation..."}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="input pl-10 pr-4 py-2.5 text-xs sm:text-sm w-full bg-slate-950/90 border-slate-800 rounded-xl focus:border-indigo-500"
+            />
+            {searchQuery && (
               <button
-                onClick={() => setActiveTab('master_explore')}
-                className="btn btn-primary"
-                style={{ fontSize: 13, padding: '10px 18px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs"
               >
-                <Sparkles size={16} />
-                <span>Explore Master Repository</span>
+                &times; Clear
               </button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {filteredMyCatalogue.map((college) => {
-                const isExpanded = expandedCollegeId === college._id;
-                return (
-                  <div
-                    key={college._id}
-                    style={{
-                      background: 'var(--surface)',
-                      border: isExpanded ? '1.5px solid var(--accent)' : '1px solid var(--border)',
-                      borderRadius: 16,
-                      overflow: 'hidden',
-                      transition: 'all 0.2s ease',
-                      boxShadow: isExpanded ? '0 8px 24px rgba(0,0,0,0.2)' : 'none',
-                    }}
-                  >
-                    {/* Header Card */}
-                    <div
-                      onClick={() => setExpandedCollegeId(isExpanded ? null : college._id)}
-                      style={{
-                        padding: '16px 18px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        flexWrap: 'wrap',
-                        gap: 12,
-                        background: isExpanded ? 'rgba(79, 70, 229, 0.04)' : 'transparent',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                        <div style={{
-                          width: 44,
-                          height: 44,
-                          borderRadius: 12,
-                          background: 'rgba(255,255,255,0.06)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--accent)',
-                          fontWeight: 800,
-                          fontSize: 16,
-                          flexShrink: 0,
-                          border: '1px solid var(--border)',
-                        }}>
-                          {college.customCollegeName.charAt(0)}
-                        </div>
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <h3 style={{ fontSize: 15, fontWeight: 800, margin: 0, color: 'var(--text)' }}>
-                              {college.customCollegeName}
-                            </h3>
-                            <span style={{
-                              fontSize: 10.5,
-                              fontWeight: 700,
-                              padding: '2px 8px',
-                              borderRadius: 6,
-                              background: 'rgba(79, 70, 229, 0.15)',
-                              color: 'var(--accent)',
-                              border: '1px solid rgba(79, 70, 229, 0.3)',
-                            }}>
-                              {college.collegeType}
-                            </span>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <MapPin size={13} color="var(--text-muted)" />
-                              {college.location?.city ? `${college.location.city}, ${college.location.state || college.location.country}` : (college.location?.country || 'India')}
-                            </span>
-                            <span>•</span>
-                            <span><strong>{college.courses?.length || 0}</strong> Course Streams Configured</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteCatalogueItem(college._id, college.customCollegeName);
-                          }}
-                          className="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
-                          title="Remove from Catalogue"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                        <div style={{
-                          width: 28,
-                          height: 28,
-                          borderRadius: 8,
-                          background: 'rgba(255,255,255,0.05)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--text-muted)',
-                        }}>
-                          {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Accordion Content: Courses & Custom Fees */}
-                    {isExpanded && (
-                      <div style={{
-                        padding: '16px 18px',
-                        borderTop: '1px solid var(--border)',
-                        background: 'var(--surface-sunken, rgba(0,0,0,0.15))',
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                            Course Specializations & Fee Setup
-                          </span>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                            Click &ldquo;Configure Fees&rdquo; on any course to adjust package pricing or commission tie-ups
-                          </span>
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                          {(college.courses || []).map((course, cIdx) => {
-                            const statusObj = ADMISSION_STATUS_LABELS[course.admissionStatus] || ADMISSION_STATUS_LABELS.admissions_open;
-                            const mouObj = MOU_STATUS_LABELS[course.customTieUpDetails?.mouStatus] || MOU_STATUS_LABELS.direct_tie_up;
-
-                            return (
-                              <div
-                                key={course._id || cIdx}
-                                style={{
-                                  background: 'var(--surface)',
-                                  border: '1px solid var(--border)',
-                                  borderRadius: 12,
-                                  padding: '12px 16px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  flexWrap: 'wrap',
-                                  gap: 12,
-                                }}
-                              >
-                                <div style={{ flex: 1, minWidth: 200 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <h4 style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)', margin: 0 }}>
-                                      {course.degreeName}
-                                    </h4>
-                                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>—</span>
-                                    <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--accent)' }}>
-                                      {course.specialization || 'General'}
-                                    </span>
-                                  </div>
-
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 11.5, marginTop: 6, flexWrap: 'wrap' }}>
-                                    <span style={{ color: 'var(--text-muted)' }}>
-                                      Tuition: <strong style={{ color: '#10b981' }}>₹{(course.customFeeStructure?.annualTuitionFee || 0).toLocaleString()}</strong>/yr
-                                    </span>
-                                    <span style={{ color: 'var(--text-muted)' }}>
-                                      Package: <strong style={{ color: 'var(--text)' }}>₹{(course.customFeeStructure?.packageFee || 0).toLocaleString()}</strong>
-                                    </span>
-                                    <span style={{
-                                      padding: '2px 8px',
-                                      borderRadius: 6,
-                                      background: statusObj.bg,
-                                      color: statusObj.text,
-                                      border: `1px solid ${statusObj.border}`,
-                                      fontSize: 10.5,
-                                      fontWeight: 700,
-                                    }}>
-                                      {statusObj.label}
-                                    </span>
-                                    <span style={{ fontSize: 11, fontWeight: 600, color: mouObj.color }}>
-                                      {mouObj.label} ({course.customTieUpDetails?.commissionRate || 10}% Payout)
-                                    </span>
-                                  </div>
-                                </div>
-
-                                <button
-                                  onClick={() => handleOpenCourseEditor(college, course, cIdx)}
-                                  className="btn btn-secondary"
-                                  style={{
-                                    fontSize: 11.5,
-                                    padding: '7px 12px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 6,
-                                    borderRadius: 8,
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  <Edit3 size={13} color="var(--accent)" />
-                                  <span>Configure Fees & Tie-up</span>
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          TAB 2: EXPLORE MASTER REPOSITORY (GLOBAL DATABASE)
-          ───────────────────────────────────────────────────────────── */}
-      {activeTab === 'master_explore' && (
-        <div>
-          <div style={{
-            background: 'rgba(79, 70, 229, 0.05)',
-            border: '1px solid rgba(79, 70, 229, 0.25)',
-            borderRadius: 14,
-            padding: '14px 16px',
-            marginBottom: 16,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 10,
-          }}>
-            <div>
-              <h3 style={{ fontSize: 13.5, fontWeight: 800, margin: '0 0 2px', color: 'var(--text)' }}>
-                Global Master College Repository (Read-Only Structure)
-              </h3>
-              <p style={{ fontSize: 11.5, color: 'var(--text-muted)', margin: 0 }}>
-                Click &ldquo;Add to My Catalogue&rdquo; to import any college. All degrees & specializations will be automatically mapped into your CRM.
-              </p>
-            </div>
+            )}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14 }}>
-            {filteredMaster.map((college) => {
-              const isAlreadyInCatalogue = myCatalogue.some(mc => String(mc.masterCollegeId?._id || mc.masterCollegeId) === String(college._id));
-              const isImporting = importingId === college._id;
+          <div className="flex items-center gap-2.5 w-full md:w-auto">
+            <select
+              value={typeFilter}
+              onChange={e => setTypeFilter(e.target.value)}
+              className="input py-2.5 text-xs bg-slate-950/90 border-slate-800 rounded-xl flex-1 md:w-44"
+            >
+              <option value="all">All Institution Types</option>
+              {INSTITUTION_TYPES.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
 
-              return (
-                <div
-                  key={college._id}
-                  style={{
-                    background: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 16,
-                    padding: 16,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    gap: 14,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                  }}
-                >
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{
-                          width: 38,
-                          height: 38,
-                          borderRadius: 10,
-                          background: 'rgba(79, 70, 229, 0.1)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--accent)',
-                          fontWeight: 800,
-                          fontSize: 14,
-                          border: '1px solid rgba(79, 70, 229, 0.2)',
-                        }}>
-                          {college.name.charAt(0)}
-                        </div>
-                        <div>
-                          <h4 style={{ fontSize: 14, fontWeight: 800, margin: 0, color: 'var(--text)' }}>
-                            {college.name}
-                          </h4>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                            {college.shortCode && `${college.shortCode} • `}{college.type}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11.5, color: 'var(--text-muted)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <MapPin size={13} color="var(--text-muted)" />
-                        <span>{college.location?.city ? `${college.location.city}, ${college.location.state || college.location.country}` : college.location?.country}</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <BookOpen size={13} color="var(--text-muted)" />
-                        <span><strong>{college.coursesCount || college.courses?.length || 0}</strong> Degree Offerings Available</span>
-                      </div>
-                    </div>
-
-                    {/* Accreditations & Degrees tags */}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 10 }}>
-                      {(college.accreditation || []).slice(0, 3).map((acc, i) => (
-                        <span key={i} style={{
-                          fontSize: 10,
-                          fontWeight: 600,
-                          padding: '2px 6px',
-                          borderRadius: 4,
-                          background: 'rgba(255,255,255,0.05)',
-                          color: 'var(--text-muted)',
-                        }}>
-                          {acc}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                    {isAlreadyInCatalogue ? (
-                      <button
-                        onClick={() => {
-                          setActiveTab('my_catalogue');
-                          setExpandedCollegeId(myCatalogue.find(mc => String(mc.masterCollegeId?._id || mc.masterCollegeId) === String(college._id))?._id);
-                        }}
-                        style={{
-                          width: '100%',
-                          padding: '9px 12px',
-                          borderRadius: 10,
-                          border: '1px solid rgba(16, 185, 129, 0.3)',
-                          background: 'rgba(16, 185, 129, 0.1)',
-                          color: '#10b981',
-                          fontSize: 12,
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 6,
-                        }}
-                      >
-                        <CheckCircle2 size={14} />
-                        <span>In My Catalogue (Click to View)</span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleImportCollege(college)}
-                        disabled={isImporting}
-                        className="btn btn-primary"
-                        style={{
-                          width: '100%',
-                          fontSize: 12,
-                          padding: '9px 12px',
-                          borderRadius: 10,
-                          fontWeight: 700,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 6,
-                        }}
-                      >
-                        {isImporting ? (
-                          <>
-                            <RefreshCw size={14} className="animate-spin" />
-                            <span>Auto-mapping courses...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Plus size={14} />
-                            <span>1-Click Import to My Catalogue</span>
-                          </>
-                        )}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            <select
+              value={stateFilter}
+              onChange={e => setStateFilter(e.target.value)}
+              className="input py-2.5 text-xs bg-slate-950/90 border-slate-800 rounded-xl flex-1 md:w-40"
+            >
+              <option value="all">All States</option>
+              {allStates.map(st => (
+                <option key={st} value={st}>{st}</option>
+              ))}
+            </select>
           </div>
         </div>
-      )}
 
-      {/* ─────────────────────────────────────────────────────────────
-          MODAL: CONFIGURE FEE STRUCTURE & COMMERCIAL TIE-UP
-          ───────────────────────────────────────────────────────────── */}
-      {showEditModal && editCourseForm && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.7)',
-          backdropFilter: 'blur(4px)',
-          zIndex: 9999,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 16,
-        }}>
-          <div style={{
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            borderRadius: 18,
-            width: '100%',
-            maxWidth: 520,
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            padding: 24,
-            boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <div>
-                <h3 style={{ fontSize: 16, fontWeight: 800, margin: 0, color: 'var(--text)' }}>
-                  Configure Course & Fee Model
-                </h3>
-                <p style={{ fontSize: 12, color: 'var(--accent)', margin: '2px 0 0', fontWeight: 600 }}>
-                  {editingItem?.customCollegeName} • {editCourseForm.degreeName} ({editCourseForm.specialization})
+        {/* ─────────────────────────────────────────────────────────────
+            TAB 1: MY ACTIVE CATALOGUE
+           ───────────────────────────────────────────────────────────── */}
+        {activeTab === 'my_catalogue' && (
+          <div>
+            {loading ? (
+              <div className="py-16 text-center">
+                <div className="spinner mx-auto" />
+                <p className="text-xs text-slate-400 mt-2">Loading active catalogue...</p>
+              </div>
+            ) : filteredMyCatalogue.length === 0 ? (
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center my-6">
+                <School size={48} className="mx-auto text-slate-600 mb-3" />
+                <h3 className="text-lg font-black text-white">No Institutions in Your Active Catalogue</h3>
+                <p className="text-xs text-slate-400 max-w-md mx-auto mt-1 mb-6">
+                  {myCatalogue.length === 0
+                    ? "Start building your catalogue by exploring the 10,000+ Master Repository with 1-Click Import or manually creating a custom partner institution."
+                    : "No colleges match your active search filters. Try clearing your search or location filters."}
                 </p>
-              </div>
-              <button
-                onClick={() => setShowEditModal(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
 
-            <form onSubmit={handleSaveCourseCustomization} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {/* Fee Pricing */}
-              <div style={{ background: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 12, border: '1px solid var(--border)' }}>
-                <label className="label" style={{ fontWeight: 700, marginBottom: 8, color: 'var(--accent)' }}>
-                  💰 Fee Structure (User Controlled)
-                </label>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <div>
-                    <label className="label" style={{ fontSize: 11 }}>Annual Tuition Fee (₹ / $)</label>
-                    <input
-                      type="number"
-                      className="input"
-                      value={editCourseForm.annualTuitionFee}
-                      onChange={(e) => setEditCourseForm(f => ({ ...f, annualTuitionFee: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="label" style={{ fontSize: 11 }}>Total Package Fee (₹ / $)</label>
-                    <input
-                      type="number"
-                      className="input"
-                      value={editCourseForm.packageFee}
-                      onChange={(e) => setEditCourseForm(f => ({ ...f, packageFee: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="label" style={{ fontSize: 11 }}>Hostel / Year (₹ / $)</label>
-                    <input
-                      type="number"
-                      className="input"
-                      value={editCourseForm.hostelFeePerYear}
-                      onChange={(e) => setEditCourseForm(f => ({ ...f, hostelFeePerYear: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="label" style={{ fontSize: 11 }}>Currency</label>
-                    <select
-                      className="input"
-                      value={editCourseForm.currency}
-                      onChange={(e) => setEditCourseForm(f => ({ ...f, currency: e.target.value }))}
-                    >
-                      <option value="INR">INR (₹)</option>
-                      <option value="USD">USD ($)</option>
-                      <option value="GBP">GBP (£)</option>
-                      <option value="EUR">EUR (€)</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Commercial Tie-Up & Commission */}
-              <div style={{ background: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 12, border: '1px solid var(--border)' }}>
-                <label className="label" style={{ fontWeight: 700, marginBottom: 8, color: 'var(--accent)' }}>
-                  🤝 Commercial Tie-Up & Payout
-                </label>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <div>
-                    <label className="label" style={{ fontSize: 11 }}>MOU / Partnership Status</label>
-                    <select
-                      className="input"
-                      value={editCourseForm.mouStatus}
-                      onChange={(e) => setEditCourseForm(f => ({ ...f, mouStatus: e.target.value }))}
-                    >
-                      <option value="direct_tie_up">Direct Tie-up</option>
-                      <option value="sub_agent_mou">Sub-Agent MOU</option>
-                      <option value="informal_tie_up">Informal Campus Contact</option>
-                      <option value="none">No Tie-up</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="label" style={{ fontSize: 11 }}>Commission Rate (%)</label>
-                    <input
-                      type="number"
-                      className="input"
-                      value={editCourseForm.commissionRate}
-                      onChange={(e) => setEditCourseForm(f => ({ ...f, commissionRate: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="label" style={{ fontSize: 11 }}>Campus Contact Person</label>
-                    <input
-                      type="text"
-                      className="input"
-                      placeholder="e.g. Dr. Sharma (Admissions)"
-                      value={editCourseForm.contactPersonName}
-                      onChange={(e) => setEditCourseForm(f => ({ ...f, contactPersonName: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="label" style={{ fontSize: 11 }}>Contact Phone</label>
-                    <input
-                      type="tel"
-                      className="input"
-                      placeholder="+91 9876543210"
-                      value={editCourseForm.contactPersonPhone}
-                      onChange={(e) => setEditCourseForm(f => ({ ...f, contactPersonPhone: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Admission Status & Quota */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label className="label">Live Admission Status</label>
-                  <select
-                    className="input"
-                    value={editCourseForm.admissionStatus}
-                    onChange={(e) => setEditCourseForm(f => ({ ...f, admissionStatus: e.target.value }))}
+                <div className="flex items-center justify-center gap-3 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('master_explore')}
+                    className="btn btn-primary btn-sm flex items-center gap-2"
                   >
-                    <option value="admissions_open">Admissions Open</option>
-                    <option value="seats_fast_filling">Seats Fast Filling</option>
-                    <option value="merit_closed_mgmt_open">Merit Closed (Mgmt Open)</option>
-                    <option value="admissions_closed">Admissions Closed</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="label">Quota Category</label>
-                  <select
-                    className="input"
-                    value={editCourseForm.quotaType}
-                    onChange={(e) => setEditCourseForm(f => ({ ...f, quotaType: e.target.value }))}
+                    <Globe size={14} /> Explore Master Repository
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCustomModal(true)}
+                    className="btn btn-secondary btn-sm flex items-center gap-2"
                   >
-                    <option value="management_quota">Management Quota</option>
-                    <option value="merit_counselling">Merit Counselling</option>
-                    <option value="nri_quota">NRI / Foreign Quota</option>
-                    <option value="institutional_direct">Institutional Direct</option>
-                    <option value="scholarship_seat">Scholarship Seat</option>
-                  </select>
+                    <PlusCircle size={14} /> Add Custom Institution
+                  </button>
                 </div>
               </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {filteredMyCatalogue.map(col => {
+                  const name = col.customCollegeName || col.name;
+                  const type = col.collegeType || col.type || 'Private University';
+                  const loc = `${col.location?.city ? col.location.city + ', ' : ''}${col.location?.state || ''}`;
+                  const accreditations = col.accreditation || col.masterCollegeId?.accreditation || [];
+                  const courses = col.courses || [];
+                  const uniqueDegrees = Array.from(new Set(courses.map(c => c.degreeName))).filter(Boolean);
 
-              <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                  return (
+                    <div
+                      key={col._id}
+                      className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between hover:border-indigo-500/40 transition shadow-lg relative group overflow-hidden"
+                    >
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-600/5 rounded-full blur-2xl pointer-events-none group-hover:bg-indigo-600/10 transition" />
+
+                      <div>
+                        {/* Header Row */}
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-black text-base flex-shrink-0 shadow-inner">
+                            {col.masterCollegeId?.shortCode || name.substring(0, 2).toUpperCase()}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {col.isCustomInstitution ? (
+                              <span className="badge bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                                ✨ Custom Partner
+                              </span>
+                            ) : (
+                              <span className="badge bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                                🏛️ Verified Tie-Up
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Title & Location */}
+                        <h3 className="text-base font-black text-white m-0 tracking-tight leading-snug group-hover:text-indigo-300 transition">
+                          {name}
+                        </h3>
+                        <p className="text-xs text-slate-400 m-0 mt-1 flex items-center gap-1">
+                          <MapPin size={12} className="text-indigo-400 flex-shrink-0" />
+                          {loc || 'Location on file'} • <span className="text-slate-300 font-medium">{type}</span>
+                        </p>
+
+                        {/* Accreditations Badges */}
+                        {accreditations.length > 0 && (
+                          <div className="flex items-center gap-1.5 flex-wrap mt-3">
+                            {accreditations.slice(0, 3).map(acc => {
+                              const style = getAccreditationBadgeStyle(acc);
+                              return (
+                                <span
+                                  key={acc}
+                                  style={{
+                                    background: style.bg,
+                                    color: style.text,
+                                    borderColor: style.border,
+                                  }}
+                                  className="px-2 py-0.5 rounded text-[10px] font-bold border"
+                                >
+                                  {acc}
+                                </span>
+                              );
+                            })}
+                            {accreditations.length > 3 && (
+                              <span className="text-[10px] text-slate-400 font-bold px-1">
+                                +{accreditations.length - 3} more
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Degree Programs Summary */}
+                        <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 my-3.5 space-y-1.5">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-400 font-medium">Configured Streams:</span>
+                            <span className="text-emerald-400 font-black">{courses.length} Specializations</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                            {uniqueDegrees.slice(0, 4).map(deg => (
+                              <span key={deg} className="bg-slate-900 border border-slate-800 text-slate-300 text-[10px] px-2 py-0.5 rounded-md font-semibold">
+                                🎓 {deg}
+                              </span>
+                            ))}
+                            {uniqueDegrees.length > 4 && (
+                              <span className="text-[10px] text-slate-500 font-bold">
+                                +{uniqueDegrees.length - 4} degrees
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Footer Actions */}
+                      <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-800/80 mt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCatalogueItem(col._id, name)}
+                          className="p-2 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                          title="Remove from catalogue"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/colleges/${col._id}`)}
+                          className="btn btn-primary btn-sm flex-1 flex items-center justify-center gap-1.5 text-xs py-2 rounded-xl font-bold bg-slate-800 hover:bg-indigo-600 text-white border-slate-700 hover:border-indigo-500 transition"
+                        >
+                          <span>Drill Down & Customize</span>
+                          <ChevronRight size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─────────────────────────────────────────────────────────────
+            TAB 2: EXPLORE MASTER REPOSITORY (10,000+ SCALABLE DATABASE)
+           ───────────────────────────────────────────────────────────── */}
+        {activeTab === 'master_explore' && (
+          <div>
+            {masterLoading ? (
+              <div className="py-16 text-center">
+                <div className="spinner mx-auto" />
+                <p className="text-xs text-slate-400 mt-2">Searching master repository...</p>
+              </div>
+            ) : masterColleges.length === 0 ? (
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center my-6">
+                <Globe size={48} className="mx-auto text-slate-600 mb-3" />
+                <h3 className="text-lg font-black text-white">No Universities Found</h3>
+                <p className="text-xs text-slate-400 max-w-md mx-auto mt-1 mb-6">
+                  No matching institutions found in the master database. You can manually create this institution with 1 click.
+                </p>
                 <button
                   type="button"
-                  onClick={() => setShowEditModal(false)}
-                  className="btn btn-secondary"
-                  style={{ flex: 1, height: 42, borderRadius: 10 }}
+                  onClick={() => setShowAddCustomModal(true)}
+                  className="btn btn-primary btn-sm flex items-center gap-2 mx-auto"
                 >
-                  Cancel
+                  <PlusCircle size={15} /> Add Custom Institution
                 </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="btn btn-primary"
-                  style={{ flex: 1, height: 42, borderRadius: 10 }}
-                >
-                  {submitting ? 'Saving...' : 'Save Fee & Tie-Up Details ✅'}
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {masterColleges.map(col => {
+                    const isImported = col.isImported;
+                    const loc = `${col.location?.city ? col.location.city + ', ' : ''}${col.location?.state || ''} (${col.location?.country || 'India'})`;
+                    const accreditations = col.accreditation || [];
+                    const courses = col.courses || [];
+
+                    return (
+                      <div
+                        key={col._id}
+                        className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between hover:border-purple-500/40 transition shadow-lg relative group overflow-hidden"
+                      >
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-purple-600/5 rounded-full blur-2xl pointer-events-none group-hover:bg-purple-600/10 transition" />
+
+                        <div>
+                          {/* Top Row */}
+                          <div className="flex items-start justify-between gap-3 mb-3">
+                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500/20 to-indigo-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300 font-black text-base flex-shrink-0 shadow-inner">
+                              {col.shortCode || col.name.substring(0, 2).toUpperCase()}
+                            </div>
+
+                            {isImported ? (
+                              <span className="badge bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                <Check size={11} /> In Active Catalogue
+                              </span>
+                            ) : (
+                              <span className="badge bg-slate-800 text-slate-400 border border-slate-700 text-[10px] px-2 py-0.5 rounded-full font-medium">
+                                🌐 Master Verified
+                              </span>
+                            )}
+                          </div>
+
+                          <h3 className="text-base font-black text-white m-0 tracking-tight leading-snug group-hover:text-purple-300 transition">
+                            {col.name}
+                          </h3>
+                          <p className="text-xs text-slate-400 m-0 mt-1 flex items-center gap-1">
+                            <MapPin size={12} className="text-purple-400 flex-shrink-0" />
+                            {loc} • <span className="text-slate-300 font-medium">{col.type}</span>
+                          </p>
+
+                          {/* Accreditations */}
+                          {accreditations.length > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap mt-3">
+                              {accreditations.slice(0, 3).map(acc => {
+                                const style = getAccreditationBadgeStyle(acc);
+                                return (
+                                  <span
+                                    key={acc}
+                                    style={{
+                                      background: style.bg,
+                                      color: style.text,
+                                      borderColor: style.border,
+                                    }}
+                                    className="px-2 py-0.5 rounded text-[10px] font-bold border"
+                                  >
+                                    {acc}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Programs Overview */}
+                          <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 my-3.5 space-y-1.5">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-slate-400 font-medium">Available Programs:</span>
+                              <span className="text-indigo-300 font-bold">{courses.length} Degrees</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                              {courses.slice(0, 4).map(c => (
+                                <span key={c._id || c.degreeName} className="bg-slate-900 border border-slate-800 text-slate-300 text-[10px] px-2 py-0.5 rounded-md font-semibold">
+                                  🎓 {c.degreeName}
+                                </span>
+                              ))}
+                              {courses.length > 4 && (
+                                <span className="text-[10px] text-slate-500 font-bold">
+                                  +{courses.length - 4} more
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Footer Actions */}
+                        <div className="pt-3 border-t border-slate-800/80 mt-1 flex items-center gap-2">
+                          {isImported ? (
+                            <button
+                              type="button"
+                              onClick={() => router.push(`/colleges/${col.tenantCatalogueId || col._id}`)}
+                              className="btn btn-secondary btn-sm w-full flex items-center justify-center gap-1.5 text-xs py-2 rounded-xl font-bold text-emerald-400 border-emerald-500/30"
+                            >
+                              <span>View in My Active Catalogue</span>
+                              <ChevronRight size={14} />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleImportCollege(col)}
+                              disabled={importingId === col._id}
+                              className="btn btn-primary btn-sm w-full flex items-center justify-center gap-1.5 text-xs py-2 rounded-xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-95 shadow-md shadow-emerald-600/30 transition"
+                            >
+                              {importingId === col._id ? (
+                                <div className="spinner w-4 h-4" />
+                              ) : (
+                                <>
+                                  <Plus size={14} />
+                                  <span>1-Click Import & Auto-Map</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Pagination Controls */}
+                {masterPagination.pages > 1 && (
+                  <div className="flex items-center justify-center gap-3 pt-4">
+                    <button
+                      type="button"
+                      disabled={masterPagination.page <= 1 || masterLoading}
+                      onClick={() => loadMasterColleges(masterPagination.page - 1, searchQuery, typeFilter, stateFilter)}
+                      className="btn btn-secondary btn-sm text-xs py-1.5 px-3 rounded-lg"
+                    >
+                      ← Previous Page
+                    </button>
+                    <span className="text-xs text-slate-400 font-bold">
+                      Page {masterPagination.page} of {masterPagination.pages}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={!masterPagination.hasMore || masterLoading}
+                      onClick={() => loadMasterColleges(masterPagination.page + 1, searchQuery, typeFilter, stateFilter)}
+                      className="btn btn-secondary btn-sm text-xs py-1.5 px-3 rounded-lg"
+                    >
+                      Next Page →
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ─────────────────────────────────────────────────────────────
+          PHASE 3 MODAL: ADD CUSTOM INSTITUTION BUILDER
+         ───────────────────────────────────────────────────────────── */}
+      {showAddCustomModal && (
+        <div className="modal-overlay" onClick={() => setShowAddCustomModal(false)}>
+          <div className="modal-sheet max-w-2xl" onClick={e => e.stopPropagation()}>
+            <div className="modal-handle" />
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md">
+                  <School size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white m-0">Add Custom Partner Institution</h3>
+                  <p className="text-xs text-slate-400 m-0">Create an institution not found in the master database.</p>
+                </div>
+              </div>
+              <button onClick={() => setShowAddCustomModal(false)} className="text-slate-400 hover:text-white">&times;</button>
+            </div>
+
+            <form onSubmit={handleCreateCustomInstitution} className="space-y-4">
+              <div>
+                <label className="label">Institution / College Name *</label>
+                <input
+                  type="text"
+                  className="input text-sm"
+                  placeholder="e.g. St. Xavier's Institute of Engineering & Technology"
+                  value={customForm.customCollegeName}
+                  onChange={e => setCustomForm(f => ({ ...f, customCollegeName: e.target.value }))}
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">City *</label>
+                  <input
+                    type="text"
+                    className="input text-sm"
+                    placeholder="e.g. Pune"
+                    value={customForm.city}
+                    onChange={e => setCustomForm(f => ({ ...f, city: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="label">State *</label>
+                  <input
+                    type="text"
+                    className="input text-sm"
+                    placeholder="e.g. Maharashtra"
+                    value={customForm.state}
+                    onChange={e => setCustomForm(f => ({ ...f, state: e.target.value }))}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Institution Type</label>
+                  <select
+                    className="input text-xs"
+                    value={customForm.collegeType}
+                    onChange={e => setCustomForm(f => ({ ...f, collegeType: e.target.value }))}
+                  >
+                    {INSTITUTION_TYPES.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Established Year</label>
+                  <input
+                    type="number"
+                    className="input text-sm"
+                    placeholder="e.g. 2002"
+                    value={customForm.establishedYear}
+                    onChange={e => setCustomForm(f => ({ ...f, establishedYear: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Official Website Portal</label>
+                <input
+                  type="url"
+                  className="input text-sm"
+                  placeholder="https://institution-domain.edu.in"
+                  value={customForm.website}
+                  onChange={e => setCustomForm(f => ({ ...f, website: e.target.value }))}
+                />
+              </div>
+
+              {/* Accreditations Multi-select Pills */}
+              <div>
+                <label className="label">Accreditations & Government Approvals</label>
+                <div className="flex flex-wrap gap-1.5 p-3 bg-slate-950/70 border border-slate-800 rounded-xl">
+                  {ACCREDITATION_TAGS.map(tag => {
+                    const isSelected = customForm.accreditation.includes(tag);
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => {
+                          setCustomForm(f => ({
+                            ...f,
+                            accreditation: isSelected
+                              ? f.accreditation.filter(t => t !== tag)
+                              : [...f.accreditation, tag]
+                          }));
+                        }}
+                        className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition ${
+                          isSelected
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm'
+                            : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                        }`}
+                      >
+                        {isSelected ? '✓ ' : '+ '}{tag}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Pre-populate Standard Degrees */}
+              <div>
+                <label className="label">Pre-Populate Common Degrees & Streams (Ready for Fee Entry)</label>
+                <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-3 bg-slate-950/70 border border-slate-800 rounded-xl">
+                  {COMMON_DEGREES.map(d => {
+                    const isChecked = customForm.selectedDegrees.includes(d.degreeName);
+                    return (
+                      <label
+                        key={d.degreeName}
+                        className="flex items-center gap-2 text-xs text-slate-300 hover:text-white p-1 rounded hover:bg-slate-900 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            setCustomForm(f => ({
+                              ...f,
+                              selectedDegrees: isChecked
+                                ? f.selectedDegrees.filter(x => x !== d.degreeName)
+                                : [...f.selectedDegrees, d.degreeName]
+                            }));
+                          }}
+                          className="rounded text-indigo-600 focus:ring-0"
+                        />
+                        <span className="truncate">{d.degreeName}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Internal Notes / Tie-Up Summary</label>
+                <textarea
+                  className="input text-xs"
+                  rows={2}
+                  placeholder="e.g. Exclusive regional admissions consultancy partner MOU."
+                  value={customForm.notes}
+                  onChange={e => setCustomForm(f => ({ ...f, notes: e.target.value }))}
+                />
+              </div>
+
+              <div className="modal-actions pt-2 flex justify-end gap-2">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowAddCustomModal(false)}>Cancel</button>
+                <button type="submit" disabled={submittingCustom} className="btn btn-primary">
+                  {submittingCustom ? 'Creating Institution...' : 'Create & Configure Fees 🚀'}
                 </button>
               </div>
             </form>
@@ -992,7 +894,6 @@ export default function CataloguePage() {
         </div>
       )}
 
-      {/* Navigation */}
       <BottomNav active="catalogue" />
     </div>
   );

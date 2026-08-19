@@ -11,7 +11,7 @@ import {
   Plus, Search, Bell, MessageCircle, Phone, Calendar, Package,
   User, ChevronRight, Filter, X, ShieldAlert, CheckCircle, Volume2, Mic, AlertTriangle, ArrowRight, MapPin, Briefcase,
   Download, Upload, FileSpreadsheet, FileText, ChevronDown, Check, TrendingUp, DollarSign, Award, BarChart2,
-  Edit2, Clock, CheckCircle2, RotateCcw, Zap
+  Edit2, Clock, CheckCircle2, RotateCcw, Zap, GraduationCap
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { getIndustryDefaults } from '@/lib/industryTemplates';
@@ -256,7 +256,17 @@ function ExportLeadsModal({ onClose, user, statusFilter, projectFilter, search }
       toast.success(`${format.toUpperCase()} export complete! 📁`, { id: 'export-leads-toast' });
       onClose();
     } catch (err) {
-      toast.error('Failed to export leads', { id: 'export-leads-toast' });
+      let errorMsg = 'Failed to export leads';
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const parsed = JSON.parse(text);
+          errorMsg = parsed.message || errorMsg;
+        } catch {}
+      } else if (err.response?.data?.message) {
+        errorMsg = err.response.data.message;
+      }
+      toast.error(errorMsg, { id: 'export-leads-toast', duration: 6000 });
     } finally {
       setDownloading(false);
     }
@@ -277,6 +287,14 @@ function ExportLeadsModal({ onClose, user, statusFilter, projectFilter, search }
             </div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={20} /></button>
+        </div>
+
+        {/* Anti-Theft / Anti-Churn Policy Notice */}
+        <div style={{ padding: '10px 12px', background: 'rgba(79,70,229,0.06)', border: '1px solid rgba(79,70,229,0.2)', borderRadius: 10, marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+          <ShieldAlert size={16} color="var(--accent)" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+            <strong style={{ color: 'var(--text)' }}>Anti-Theft Security Policy:</strong> Direct spreadsheet exports may be subject to a 90-day tenure verification gate depending on subscription tier to prevent unauthorized lead poaching.
+          </div>
         </div>
 
         <form onSubmit={handleDownload}>
@@ -1315,6 +1333,22 @@ export default function DashboardPage() {
     api.get('/notifications').then(r => setUnread(r.data.unreadCount || 0)).catch(() => {});
   }, []);
 
+  const [eventPipelineMode, setEventPipelineMode] = useState('stall'); // 'stall' | 'corporate'
+  const isEventManagement = String(user?.industryType || '').toLowerCase().includes('event');
+
+  const availableStages = (() => {
+    if (isEventManagement) {
+      if (eventPipelineMode === 'corporate') {
+        return ['Prospecting', 'Pitch Deck Sent', 'Meeting Scheduled', 'Custom Proposal Sent', 'Contract Signed'];
+      }
+      return ['Lead Captured', 'Floor Plan Shared', 'Stall Blocked', 'Quotation Sent', 'Advance Paid', 'Onboarded'];
+    }
+    if (user?.customPipelineStages && user.customPipelineStages.length > 0) return user.customPipelineStages;
+    if (user?.pipelineStages && user.pipelineStages.length > 0) return user.pipelineStages;
+    const defaults = getIndustryDefaults(user?.industryType);
+    return defaults.pipelineStages;
+  })();
+
   const isFreePlan = user?.plan === 'free';
   const leadLimitReached = isFreePlan && (pagination.total >= 10);
 
@@ -1402,9 +1436,15 @@ export default function DashboardPage() {
               <BarChart2 size={13} /> Analytics
             </button>
 
-            <Link href="/projects" className="btn btn-secondary btn-sm" style={{ gap: 4, borderRadius: 8, flexShrink: 0 }}>
-              <Package size={13} /> Catalog
-            </Link>
+            {String(user?.industryType || '').trim().toLowerCase() === 'education' ? (
+              <Link href="/catalogue" className="btn btn-secondary btn-sm" style={{ gap: 4, borderRadius: 8, flexShrink: 0 }}>
+                <GraduationCap size={13} /> Colleges & Courses
+              </Link>
+            ) : (
+              <Link href="/projects" className="btn btn-secondary btn-sm" style={{ gap: 4, borderRadius: 8, flexShrink: 0 }}>
+                <Package size={13} /> Catalog
+              </Link>
+            )}
           </div>
         </div>
 
@@ -1527,32 +1567,68 @@ export default function DashboardPage() {
             )}
           </div>
 
+          {/* Event Management Dual Pipeline Switcher */}
+          {isEventManagement && (
+            <div style={{ display: 'flex', gap: 6, marginBottom: 12, background: 'var(--surface)', padding: 4, borderRadius: 10, border: '1px solid var(--border)' }}>
+              <button
+                type="button"
+                onClick={() => { setEventPipelineMode('stall'); setStatusFilter(''); setPage(1); }}
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: eventPipelineMode === 'stall' ? 'var(--accent)' : 'transparent',
+                  color: eventPipelineMode === 'stall' ? 'white' : 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                }}
+              >
+                🏢 Stall Booking Pipeline
+              </button>
+              <button
+                type="button"
+                onClick={() => { setEventPipelineMode('corporate'); setStatusFilter(''); setPage(1); }}
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: eventPipelineMode === 'corporate' ? '#9333ea' : 'transparent',
+                  color: eventPipelineMode === 'corporate' ? 'white' : 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                }}
+              >
+                🤝 Corporate Sponsorship Pipeline
+              </button>
+            </div>
+          )}
+
           {/* Pipeline Stage Filter Chips */}
           <div className="filter-chips" style={{ marginBottom: 20 }}>
             <button className={`chip ${statusFilter === '' ? 'active' : ''}`} onClick={() => { setStatusFilter(''); setPage(1); }}>
               All Stages ({pagination.total || leads.length})
             </button>
-            {user?.customPipelineStages && user.customPipelineStages.length > 0 ? (
-              user.customPipelineStages.map(stage => (
-                <button
-                  key={stage}
-                  className={`chip ${statusFilter === stage ? 'active' : ''}`}
-                  onClick={() => { setStatusFilter(stage); setPage(1); }}
-                >
-                  {stage}
-                </button>
-              ))
-            ) : (
-              Object.entries(STAGE_LABELS).map(([k, label]) => (
-                <button
-                  key={k}
-                  className={`chip ${statusFilter === k ? 'active' : ''}`}
-                  onClick={() => { setStatusFilter(k); setPage(1); }}
-                >
-                  {label}
-                </button>
-              ))
-            )}
+            {availableStages.map(stage => (
+              <button
+                key={stage}
+                className={`chip ${statusFilter === stage ? 'active' : ''}`}
+                onClick={() => { setStatusFilter(stage); setPage(1); }}
+              >
+                {STAGE_LABELS[stage] || stage}
+              </button>
+            ))}
           </div>
 
           {/* Leads Listing */}
@@ -1637,7 +1713,7 @@ export default function DashboardPage() {
                           maxWidth: '140px'
                         }}
                       >
-                        {availableStatuses.map(st => (
+                        {availableStages.map(st => (
                           <option key={st} value={st} style={{ background: '#0f172a', color: '#f8fafc' }}>
                             {STAGE_LABELS[st] || st}
                           </option>
@@ -1682,13 +1758,39 @@ export default function DashboardPage() {
                           📦 {lead.service_required?.replace(/_/g, ' ') || 'Smart Solo'}
                         </span>
                       )}
+
+                      {/* Event Management Credentials Strip */}
+                      {lead.customData?.stallInventoryLock?.isLocked && (
+                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(99,102,241,0.15)', borderRadius: 4, color: '#818cf8', fontWeight: 700, border: '1px solid rgba(99,102,241,0.3)', flexShrink: 0 }}>
+                          🔒 Stall Locked ({lead.customData.stallInventoryLock.lockCode})
+                        </span>
+                      )}
+                      {lead.customData?.eventPass?.passCode && (
+                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(16,185,129,0.15)', borderRadius: 4, color: '#34d399', fontWeight: 700, border: '1px solid rgba(16,185,129,0.3)', flexShrink: 0 }}>
+                          🎟️ Pass Issued ({lead.customData.eventPass.passCode})
+                        </span>
+                      )}
                     </div>
 
                     {lead.followUpDate && (
-                      <p className="truncate" style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, width: '100%' }}>
-                        <Calendar size={12} className="flex-shrink-0" />
-                        <span className="truncate">Next Follow-up: {format(new Date(lead.followUpDate), 'dd MMM yyyy, h:mm a')}</span>
-                      </p>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, width: '100%' }}>
+                        <p className="truncate" style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                          <Calendar size={12} className="flex-shrink-0" />
+                          <span className="truncate">Next Follow-up: {format(new Date(lead.followUpDate), 'dd MMM yyyy, h:mm a')}</span>
+                        </p>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSchedulingFollowUpLead(lead);
+                          }}
+                          className="btn btn-ghost btn-sm"
+                          style={{ padding: '1px 6px', fontSize: 10, height: 22, color: 'var(--accent)', gap: 3, flexShrink: 0 }}
+                          title="Edit Follow-up Schedule & Agenda"
+                        >
+                          <Edit2 size={10} /> Edit
+                        </button>
+                      </div>
                     )}
 
                     {/* Mobile-First Responsive Action Grid: Row 1 (Call & WA) + Row 2 (FollowUp, Note, Edit) */}

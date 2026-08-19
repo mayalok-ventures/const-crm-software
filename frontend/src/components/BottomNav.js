@@ -35,11 +35,15 @@ export default function BottomNav({ active }) {
   const router = useRouter();
   const pathname = usePathname();
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isEducation, setIsEducation] = useState(false);
 
   useEffect(() => {
     const user = getUser();
     if (user && (user.role === 'superadmin' || user.isAdmin)) {
       setIsSuperAdmin(true);
+    }
+    if (String(user?.industryType || '').trim().toLowerCase() === 'education') {
+      setIsEducation(true);
     }
   }, []);
 
@@ -51,11 +55,36 @@ export default function BottomNav({ active }) {
     return normalize(pathname) === normalize(href);
   };
 
+  // Dynamically filter navigation items based on tenant vertical
+  const mobileItems = [
+    { href: '/dashboard', label: 'Leads', icon: Home, key: 'dashboard' },
+    { href: '/integrations', label: 'Ads & APIs', icon: Zap, key: 'integrations' },
+    isEducation
+      ? { href: '/catalogue', label: 'Colleges', icon: GraduationCap, key: 'catalogue' }
+      : { href: '/projects', label: 'Catalogue', icon: Package, key: 'projects' },
+    { href: '/whatsapp', label: 'Inbox', icon: MessageCircle, key: 'whatsapp' },
+    { href: '/profile', label: 'Profile', icon: User, key: 'profile' },
+  ];
+
+  const desktopItems = [
+    { href: '/dashboard', label: 'Leads Pipeline', icon: Home, key: 'dashboard' },
+    ...(isEducation
+      ? [{ href: '/catalogue', label: 'Colleges & Courses', icon: GraduationCap, key: 'catalogue' }]
+      : [{ href: '/projects', label: 'Products & Packages', icon: Package, key: 'projects' }]),
+    { href: '/integrations', label: 'Ads & Lead Integrations', icon: Zap, key: 'integrations' },
+    { href: '/whatsapp', label: 'WhatsApp Hub', icon: MessageCircle, key: 'whatsapp' },
+    { href: '/campaigns', label: 'Broadcast Campaigns', icon: Send, key: 'campaigns' },
+    { href: '/templates', label: 'Message Templates', icon: FileText, key: 'templates' },
+    { href: '/groups', label: 'Audience Groups', icon: Users, key: 'groups' },
+    { href: '/analytics', label: 'Sales Analytics', icon: BarChart2, key: 'analytics' },
+    { href: '/profile', label: 'Organization & Profile', icon: User, key: 'profile' },
+  ];
+
   return (
     <>
       {/* Mobile Bottom Navigation (Visible only on mobile screens < 768px) */}
       <nav className="bottom-nav md:hidden">
-        {MOBILE_ITEMS.map(({ href, label, icon: Icon, key }) => {
+        {mobileItems.map(({ href, label, icon: Icon, key }) => {
           const activeState = isLinkActive(key, href);
           return (
             <Link
@@ -126,7 +155,7 @@ export default function BottomNav({ active }) {
             </Link>
           )}
 
-          {DESKTOP_ITEMS.map(({ href, label, icon: Icon, key }) => {
+          {desktopItems.map(({ href, label, icon: Icon, key }) => {
             const activeState = isLinkActive(key, href);
             return (
               <Link

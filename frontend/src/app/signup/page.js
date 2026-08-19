@@ -20,6 +20,7 @@ const INDUSTRY_OPTIONS = [
   'Consulting',
   'Healthcare',
   'Education',
+  'Event Management & Exhibitions',
   'Other'
 ];
 
@@ -120,7 +121,7 @@ export default function SignupPage() {
         password: form.password,
         workStatus: form.workStatus,
         companyName: form.companyName || undefined,
-        industryType: form.industryType || 'Agency',
+        industryType: form.industryType === 'Event Management & Exhibitions' ? 'Event Management' : (form.industryType || 'Agency'),
         educationSubProfile: form.industryType === 'Education' ? form.educationSubProfile : undefined,
       });
       setAuth(data, data.token);

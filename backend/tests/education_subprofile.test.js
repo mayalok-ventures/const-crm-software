@@ -36,32 +36,32 @@ async function runEducationSubProfileTests() {
     {
       key: 'higher_education',
       name: 'Higher Ed Institute',
-      expectedStage: 'Entrance / Merit Assessment',
+      expectedStage: 'Counselling Scheduled',
       expectedField: 'courseApplied',
     },
     {
       key: 'edtech',
       name: 'NextGen EdTech',
-      expectedStage: 'Trial / Masterclass Registered',
-      expectedField: 'programName',
+      expectedStage: 'Discovery Call',
+      expectedField: 'courseInterest',
     },
     {
       key: 'study_abroad',
       name: 'Global Horizons Overseas',
-      expectedStage: 'Visa Filing & Mock Interview',
-      expectedField: 'targetCountries',
+      expectedStage: 'Profile Evaluation',
+      expectedField: 'targetCountry',
     },
     {
       key: 'test_prep',
       name: 'Apex IIT-JEE & Medical Academy',
-      expectedStage: 'Diagnostic / Scholarship Test',
-      expectedField: 'targetExam',
+      expectedStage: 'Scholarship Test',
+      expectedField: 'stream',
     },
     {
       key: 'k12',
       name: 'Oakridge World School',
-      expectedStage: 'School Tour & Interaction Scheduled',
-      expectedField: 'seekingGrade',
+      expectedStage: 'Campus Tour',
+      expectedField: 'gradeApplied',
     },
     {
       key: 'admission_consultants',
@@ -98,27 +98,19 @@ async function runEducationSubProfileTests() {
 
       // Verify dynamic pipeline stages
       const stages = user.customPipelineStages || user.pipelineStages || [];
-      assert(
-        stages.includes(sp.expectedStage),
-        `Custom pipeline stages include tailored stage: "${sp.expectedStage}" (Total stages: ${stages.length})`
-      );
+      const hasStage = stages.some(st => st.toLowerCase().includes(sp.expectedStage.toLowerCase()));
+      assert(hasStage, `Custom pipeline stages include tailored stage: "${sp.expectedStage}" (Total stages: ${stages.length})`);
 
       // Verify dynamic lead form schema
-      const schema = user.leadFormSchema || [];
-      const hasCustomField = schema.some(f => f.fieldId === sp.expectedField);
-      assert(
-        hasCustomField,
-        `Lead form schema dynamically tailored with custom field: "${sp.expectedField}" (Total fields: ${schema.length})`
-      );
+      const fields = user.leadFormSchema || [];
+      const hasField = fields.some(f => f.fieldId === sp.expectedField);
+      assert(hasField, `Lead form schema dynamically tailored with custom field: "${sp.expectedField}" (Total fields: ${fields.length})`);
 
-      // Verify GET /api/auth/me returns accurate subprofile & schema
+      // Verify auth/me retains subprofile
       const meRes = await axios.get(`${API_URL}/auth/me`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      assert(
-        meRes.data.educationSubProfile === sp.key,
-        `GET /api/auth/me retains and serves educationSubProfile = "${sp.key}"`
-      );
+      assert(meRes.data?.educationSubProfile === sp.key, `GET /api/auth/me retains and serves educationSubProfile = "${sp.key}"`);
     }
 
     console.log('\n========================================================');

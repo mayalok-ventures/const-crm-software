@@ -769,6 +769,69 @@ exports.postponeFollowUp = async (req, res) => {
   }
 };
 
+// @desc  Edit/Update scheduled follow-up details (Date, Time, Note/Reason)
+// @route PATCH /api/admin/followups/:id
+// @access SuperAdmin / Admin
+exports.updateFollowUp = async (req, res) => {
+  try {
+    const { scheduled_at, scheduledAt, note, reason } = req.body;
+    const targetDate = scheduled_at || scheduledAt;
+    const targetNote = (note || reason || '').trim();
+
+    if (!targetDate && !targetNote) {
+      return res.status(400).json({ success: false, message: 'Please provide scheduled date or note to update' });
+    }
+
+    const followUp = await FollowUp.findById(req.params.id);
+    if (!followUp) return res.status(404).json({ success: false, message: 'Follow-up record not found' });
+
+    const beforeState = followUp.toObject();
+
+    if (targetDate) {
+      followUp.scheduled_at = new Date(targetDate);
+      followUp.scheduledAt = new Date(targetDate);
+    }
+    if (targetNote) {
+      followUp.note = targetNote;
+    }
+    await followUp.save();
+
+    const lead = await Lead.findById(followUp.lead_id || followUp.leadId);
+    if (lead) {
+      if (targetDate) {
+        lead.followUpDate = new Date(targetDate);
+        lead.followUpNotified = false;
+      }
+      if (targetNote) {
+        lead.notes.push({
+          text: `[Follow-Up Updated to ${new Date(followUp.scheduled_at).toLocaleString()}]: ${targetNote}`,
+          createdBy: req.user._id,
+          authorName: req.user.name,
+          createdAt: new Date(),
+        });
+      }
+      await lead.save();
+    }
+
+    await logActivity({
+      userId: req.user._id,
+      userName: req.user.name,
+      role: req.user.role || 'admin',
+      action: 'FOLLOWUP_UPDATED',
+      targetType: 'followup',
+      targetId: followUp._id,
+      beforeState,
+      afterState: followUp.toObject(),
+      details: `Updated follow-up schedule to ${new Date(followUp.scheduled_at).toLocaleString()}: ${targetNote || followUp.note}`,
+    });
+
+    res.json({ success: true, message: 'Follow-up schedule updated successfully', followUp, lead });
+  } catch (error) {
+    console.error('updateFollowUp error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to update follow-up' });
+  }
+};
+
 // @desc  Complete follow-up (Mandatory Note Required)
 // @route PATCH /api/admin/followups/:id/complete
 // @access SuperAdmin / Admin

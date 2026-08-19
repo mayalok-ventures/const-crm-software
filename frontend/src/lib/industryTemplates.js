@@ -396,11 +396,107 @@ export const INDUSTRY_TEMPLATES = {
       { fieldId: 'followUpDate', label: 'Next Follow-up Date', fieldType: 'date', isRequired: true, isSystem: true, isHidden: false, order: 8 },
     ],
   },
+
+  'EVENT MANAGEMENT': {
+    pipelineStages: [
+      'Lead Captured',
+      'Floor Plan Shared',
+      'Stall Blocked',
+      'Quotation Sent',
+      'Advance Paid',
+      'Onboarded',
+    ],
+    dualPipelines: {
+      stallBooking: [
+        'Lead Captured',
+        'Floor Plan Shared',
+        'Stall Blocked',
+        'Quotation Sent',
+        'Advance Paid',
+        'Onboarded',
+      ],
+      corporateSponsorship: [
+        'Prospecting',
+        'Pitch Deck Sent',
+        'Meeting Scheduled',
+        'Custom Proposal Sent',
+        'Contract Signed',
+      ],
+    },
+    leadFormSchema: [
+      { fieldId: 'name', label: 'Contact Person / Rep Name', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 1 },
+      { fieldId: 'phone', label: 'Phone Number', fieldType: 'phone', isRequired: true, isSystem: true, isHidden: false, order: 2 },
+      { fieldId: 'email', label: 'Email Address', fieldType: 'email', isRequired: false, isSystem: true, isHidden: false, order: 3 },
+      { fieldId: 'companyName', label: 'Company / Exhibitor Organization', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 4 },
+      {
+        fieldId: 'exhibitorIndustry',
+        label: 'Industry / Vertical',
+        fieldType: 'dropdown',
+        options: ['IT & Technology', 'Manufacturing & Heavy Engineering', 'Healthcare & Pharma', 'FMCG & Retail', 'Education & EdTech', 'Banking & Finance', 'Automotive & EV', 'Real Estate & Infrastructure', 'Other'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 5,
+      },
+      {
+        fieldId: 'stallSizeSqm',
+        label: 'Preferred Stall Size (sqm)',
+        fieldType: 'dropdown',
+        options: ['9 sqm (3x3 Standard)', '18 sqm (6x3 Medium)', '27 sqm (9x3 Large)', '36 sqm (6x6 Bare Plot)', '54 sqm (9x6 Island)', 'Custom Bare Space (72+ sqm)'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 6,
+      },
+      {
+        fieldId: 'stallCategoryPreference',
+        label: 'Category / Space Preference',
+        fieldType: 'dropdown',
+        options: ['Shell Scheme (Built-up Booth)', 'Raw Space (Bare Plot)', 'Premium Corner (2-Side Open)', 'Island Stall (4-Side Open)'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 7,
+      },
+      {
+        fieldId: 'pastParticipation',
+        label: 'Past Exhibitor Participation',
+        fieldType: 'dropdown',
+        options: ['Yes (Repeat Exhibitor)', 'No (First-Time Participant)'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 8,
+      },
+      {
+        fieldId: 'visitorType',
+        label: 'Visitor / Delegate Type',
+        fieldType: 'dropdown',
+        options: ['Trade Buyer / VIP', 'Conference Delegate', 'Exhibitor Staff', 'General Visitor', 'Media & Press'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 9,
+      },
+      {
+        fieldId: 'purposeOfVisit',
+        label: 'Purpose of Visit / Requirement',
+        fieldType: 'dropdown',
+        options: ['Product Sourcing / Procurement', 'B2B Partnerships & Dealerships', 'Market Research', 'Attending Keynote / Technical Sessions', 'General Networking'],
+        isRequired: false,
+        isSystem: false,
+        isHidden: false,
+        order: 10,
+      },
+      { fieldId: 'followUpDate', label: 'Next Follow-up Date', fieldType: 'date', isRequired: true, isSystem: true, isHidden: false, order: 11 },
+    ],
+  },
 };
 
 export const getIndustryDefaults = (industryType = 'Agency') => {
   const ind = String(industryType || 'Agency').trim().toUpperCase();
 
+  if (ind.includes('EVENT') || ind.includes('EXHIBIT') || ind.includes('EXPO')) return INDUSTRY_TEMPLATES['EVENT MANAGEMENT'];
   if (ind.includes('CONSULT')) return INDUSTRY_TEMPLATES.CONSULTING;
   if (ind.includes('SAAS') || ind.includes('SOFTWARE') || ind.includes('TECH')) return INDUSTRY_TEMPLATES.SAAS;
   if (ind.includes('REAL') || ind.includes('ESTATE') || ind.includes('PROPERTY')) return INDUSTRY_TEMPLATES['REAL ESTATE'];
