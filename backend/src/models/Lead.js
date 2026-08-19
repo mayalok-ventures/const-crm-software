@@ -33,6 +33,8 @@ const leadActivitySchema = new mongoose.Schema({
       'followup_scheduled',
       'followup_completed',
       'followup_postponed',
+      'stall_locked',
+      'event_pass',
     ],
   },
   performedBy: {

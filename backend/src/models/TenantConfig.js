@@ -36,7 +36,7 @@ const tenantConfigSchema = new mongoose.Schema({
   },
   industryType: {
     type: String,
-    enum: ['Education', 'Consulting', 'Agency', 'SaaS', 'Real Estate', 'E-Commerce', 'Healthcare', 'Other'],
+    enum: ['Education', 'Consulting', 'Agency', 'SaaS', 'Real Estate', 'E-Commerce', 'Healthcare', 'Event Management', 'Other'],
     default: 'Education',
     trim: true,
   },
@@ -50,6 +50,10 @@ const tenantConfigSchema = new mongoose.Schema({
     type: String,
     trim: true,
   }],
+  dualPipelines: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
   customFields: [customFieldSchema],
   automationSettings: {
     roundRobinEnabled: { type: Boolean, default: false },
@@ -60,6 +64,8 @@ const tenantConfigSchema = new mongoose.Schema({
     feeDueAlertsEnabled: { type: Boolean, default: true },
     feeDueDaysNotice: { type: Number, default: 5 },
     docVerificationTaskEnabled: { type: Boolean, default: true },
+    stallInventoryLockEnabled: { type: Boolean, default: true },
+    eventPassGenerationEnabled: { type: Boolean, default: true },
   },
   version: { type: Number, default: 1 },
 }, { timestamps: true });
@@ -71,7 +77,8 @@ tenantConfigSchema.index({ companyId: 1, industryType: 1 });
  * Seed or update tenant workspace configuration based on Industry & Education Sub-Profile
  */
 tenantConfigSchema.statics.seedWorkspace = async function(userId, industryType = 'Education', educationSubProfile = null, companyId = null) {
-  const User = mongoose.model('User');
+  const User = mongoose.models.User || require('./User');
+  const Project = mongoose.models.Project || require('./Project');
   
   // Resolve defaults from industry templates
   let template = null;
@@ -87,13 +94,15 @@ tenantConfigSchema.statics.seedWorkspace = async function(userId, industryType =
   ];
   
   const fields = template?.leadFormSchema || [];
+  const dualPipelines = template?.dualPipelines || {};
 
-  // Default automation settings tailored to the sub-profile
+  // Default automation settings tailored to the sub-profile / vertical
   const isEdTech = educationSubProfile === 'edtech';
   const isStudyAbroad = educationSubProfile === 'study_abroad';
   const isTestPrep = educationSubProfile === 'test_prep';
   const isHigherEd = educationSubProfile === 'higher_education';
   const isK12 = educationSubProfile === 'k12';
+  const isEventMgmt = String(industryType).toLowerCase().includes('event');
 
   const automationSettings = {
     roundRobinEnabled: isEdTech,
@@ -104,6 +113,8 @@ tenantConfigSchema.statics.seedWorkspace = async function(userId, industryType =
     feeDueAlertsEnabled: isTestPrep || isK12,
     feeDueDaysNotice: 5,
     docVerificationTaskEnabled: isHigherEd,
+    stallInventoryLockEnabled: isEventMgmt,
+    eventPassGenerationEnabled: isEventMgmt,
   };
 
   const config = await this.findOneAndUpdate(
@@ -115,6 +126,7 @@ tenantConfigSchema.statics.seedWorkspace = async function(userId, industryType =
         industryType,
         educationSubProfile: educationSubProfile || null,
         pipelineStages: stages,
+        dualPipelines,
         customFields: fields,
         automationSettings,
       },
@@ -134,7 +146,24 @@ tenantConfigSchema.statics.seedWorkspace = async function(userId, industryType =
     }
   });
 
+  // Seed default product catalog for Event Management (Stalls, Sponsorships, Add-ons) if needed
+  if (template?.defaultProducts && Array.isArray(template.defaultProducts)) {
+    const existingProjectsCount = await Project.countDocuments({ userId });
+    if (existingProjectsCount === 0) {
+      const projectsToSeed = template.defaultProducts.map(p => ({
+        ...p,
+        userId,
+        companyId: companyId || null,
+      }));
+      await Project.insertMany(projectsToSeed).catch((pErr) => {
+        console.warn('[TenantConfig] Product seeding notice:', pErr.message);
+      });
+      console.log(`[TenantConfig] Seeded ${projectsToSeed.length} event products for user ${userId}`);
+    }
+  }
+
   return config;
 };
 
 module.exports = mongoose.model('TenantConfig', tenantConfigSchema);
+

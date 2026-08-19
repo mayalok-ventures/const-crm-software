@@ -11,6 +11,8 @@ const CRM_EVENTS = {
   LEAD_STAGE_CHANGED: 'lead.stage_changed',
   LEAD_FIELD_UPDATED: 'lead.field_updated',
   PAYMENT_CHECKOUT_STARTED: 'lead.checkout_started',
+  STALL_BLOCKED: 'lead.stall_blocked',
+  EVENT_ONBOARDED: 'lead.event_onboarded',
 };
 
 /**

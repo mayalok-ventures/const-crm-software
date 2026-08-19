@@ -357,6 +357,119 @@ async function createHigherEdVerificationTask({ leadId, tenantUserId, companyId 
   return notification;
 }
 
+/**
+ * 6. Event Management: Stall Inventory Lock Handler
+ * Triggers when lead hits "Stall Blocked". Provisionally locks stall floor space inventory.
+ */
+async function handleStallInventoryLock({ leadId, tenantUserId, companyId }) {
+  if (!leadId) return;
+
+  const lead = await Lead.findById(leadId);
+  if (!lead) return;
+
+  const stallSize = lead.customData?.stallSizeSqm || '9 sqm';
+  const stallCategory = lead.customData?.stallCategoryPreference || 'Shell Scheme';
+  const lockCode = `STALL-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+
+  lead.customData = {
+    ...(lead.customData || {}),
+    stallInventoryLock: {
+      isLocked: true,
+      lockCode,
+      lockedAt: new Date(),
+      stallSize,
+      stallCategory,
+      lockExpiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000), // 48h provisional hold
+    },
+  };
+
+  lead.leadActivities.push({
+    action: 'stall_locked',
+    performerName: 'Floor Plan Inventory Engine',
+    details: `Stall inventory provisional hold active (Lock Code: ${lockCode} | ${stallSize} ${stallCategory}). Valid for 48 hours.`,
+    timestamp: new Date(),
+  });
+
+  await lead.save();
+
+  const recipientId = companyId || tenantUserId || lead.userId;
+  const notification = await Notification.create({
+    userId: recipientId,
+    leadId: lead._id,
+    leadName: lead.name,
+    title: '🔒 Stall Space Blocked & Locked',
+    message: `Provisional inventory hold active for ${lead.name} (${lead.customData?.companyName || 'Exhibitor'}): ${stallSize} ${stallCategory}. Lock Code: ${lockCode}`,
+    type: 'stall_locked',
+    isRead: false,
+  }).catch(() => null);
+
+  console.log(`[Event Management] Locked stall inventory for lead ${lead._id} (Lock Code: ${lockCode})`);
+  return lead.customData.stallInventoryLock;
+}
+
+/**
+ * 7. Event Management: Entry QR Code & Digital Pass Dispatcher
+ * Triggers when pipeline hits "Onboarded" or "Contract Signed".
+ */
+async function handleEventPassGeneration({ leadId, tenantUserId, companyId }) {
+  if (!leadId) return;
+
+  const lead = await Lead.findById(leadId);
+  if (!lead) return;
+
+  const passCode = `PASS-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+  const exhibitorName = lead.name || 'Delegate';
+  const orgName = lead.customData?.companyName || 'Registered Exhibitor';
+  const passType = lead.customData?.visitorType || 'Exhibitor / VIP Delegate';
+
+  lead.customData = {
+    ...(lead.customData || {}),
+    eventPass: {
+      passCode,
+      issuedAt: new Date(),
+      accessLevel: passType,
+      qrPayload: `EVENT_ACCESS:${passCode}:${lead._id}`,
+      status: 'active',
+    },
+  };
+
+  lead.leadActivities.push({
+    action: 'event_pass',
+    performerName: 'Pass & Badge Generation Engine',
+    details: `Issued digital entry access QR pass (Pass ID: ${passCode} | Access: ${passType}).`,
+    timestamp: new Date(),
+  });
+
+  await lead.save();
+
+  const recipientId = companyId || tenantUserId || lead.userId;
+  await Notification.create({
+    userId: recipientId,
+    leadId: lead._id,
+    leadName: exhibitorName,
+    title: '🎟️ Event Entry Pass Issued',
+    message: `Digital entry pass generated for ${exhibitorName} (${orgName}). Pass Code: ${passCode}`,
+    type: 'event_pass',
+    isRead: false,
+  }).catch(() => null);
+
+  // Send WhatsApp pass confirmation if phone is present
+  const recipientPhone = lead.phone;
+  if (recipientPhone && waSession) {
+    const passMessage = `🎉 *Registration Confirmed - Official Entry Pass*\n\nDear ${exhibitorName},\nYour participation for *${orgName}* is confirmed! 🚀\n\n🎟️ *Pass Code:* ${passCode}\n📍 *Access Level:* ${passType}\n\nPlease present this digital pass or QR confirmation at the registration desk for badge printing.\n\nSee you at the Expo!\n- Organizing Committee`;
+
+    try {
+      await waSession.sendText(lead.userId, recipientPhone, passMessage);
+      console.log(`[Event Management] Dispatched WhatsApp entry pass to ${recipientPhone}`);
+    } catch (waErr) {
+      console.warn(`[Event Management] WhatsApp pass dispatch notice for ${recipientPhone}:`, waErr.message);
+    }
+  }
+
+  console.log(`[Event Management] Generated digital pass for lead ${lead._id} (Pass Code: ${passCode})`);
+  return lead.customData.eventPass;
+}
+
 // -------------------------------------------------------------
 // EVENT LISTENERS REGISTRATION
 // -------------------------------------------------------------
@@ -383,6 +496,24 @@ crmEvents.on(CRM_EVENTS.LEAD_STAGE_CHANGED, async (payload) => {
       leadId: lead._id,
       tenantUserId: user?._id || lead.userId,
       delayMinutes: 15,
+    });
+  }
+
+  // 3. Event Management: "Stall Blocked" (Floor plan inventory lock)
+  if (normalizedStage.includes('stall') && normalizedStage.includes('block')) {
+    await handleStallInventoryLock({
+      leadId: lead._id,
+      tenantUserId: user?._id || lead.userId,
+      companyId: lead.companyId,
+    });
+  }
+
+  // 4. Event Management: "Onboarded" or "Contract Signed" (Digital Pass generation)
+  if (normalizedStage === 'onboarded' || (normalizedStage.includes('contract') && normalizedStage.includes('sign'))) {
+    await handleEventPassGeneration({
+      leadId: lead._id,
+      tenantUserId: user?._id || lead.userId,
+      companyId: lead.companyId,
     });
   }
 });
@@ -422,4 +553,6 @@ module.exports = {
   attachCountryDocumentChecklist,
   runTestPrepFeeAlertsCron,
   createHigherEdVerificationTask,
+  handleStallInventoryLock,
+  handleEventPassGeneration,
 };

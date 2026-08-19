@@ -6,6 +6,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 const testFiles = [
+  'tests/event_management_vertical.test.js',
   'tests/education_automations.test.js',
   'tests/hybrid_catalogue.test.js',
   'tests/education_subprofile.test.js',
