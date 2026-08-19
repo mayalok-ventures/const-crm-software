@@ -232,39 +232,80 @@ export default function FollowUpAlertManager() {
     };
   }, [pathname]);
 
-  // Quick Reschedule Action
+  // Quick Reschedule Action (Mandatory Postpone Remark Enforced)
   const handleReschedule = async (leadId, hoursToAdd) => {
+    const remark = window.prompt(`⏰ Enter justification/remark for postponing this follow-up by ${hoursToAdd >= 24 ? hoursToAdd / 24 + ' day(s)' : hoursToAdd + ' hour(s)'}:`);
+    if (!remark || !remark.trim()) {
+      return toast.error('Postpone remark is mandatory to reschedule follow-up.');
+    }
+
     try {
       const newDate = new Date(Date.now() + hoursToAdd * 60 * 60 * 1000);
       await api.put(`/leads/${leadId}`, {
         followUpDate: newDate.toISOString(),
+        postponeRemark: remark.trim(),
       });
       toast.success(`Follow-up postponed by ${hoursToAdd >= 24 ? hoursToAdd / 24 + ' day(s)' : hoursToAdd + ' hour(s)'} ⏰`);
-      // Update local state
       setDueLeads(prev => prev.filter(l => l._id !== leadId));
       if (dueLeads.length <= 1) {
         setIsOpen(false);
       }
-    } catch {
-      toast.error('Failed to reschedule follow-up');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to reschedule follow-up');
     }
   };
 
-  // Quick Mark Status Action
-  const handleUpdateStatus = async (leadId, status) => {
-    let closedDealAmount = null;
-    if (status === 'closed' || status === 'Closed') {
-      const inputAmt = window.prompt("🏆 Enter Final Closed Deal Amount (₹):");
-      if (!inputAmt) return;
-      closedDealAmount = Number(inputAmt);
-      if (!closedDealAmount || isNaN(closedDealAmount) || closedDealAmount <= 0) {
-        return toast.error("Deal amount is required to close a lead.");
+  // Complete Follow-Up Flow (Mandatory Outcome Note Enforced to dismiss alarm)
+  const handleResolveFollowUp = async (leadId) => {
+    const outcomeNote = window.prompt("📝 Enter mandatory outcome note to resolve this follow-up and stop the alarm:");
+    if (!outcomeNote || !outcomeNote.trim()) {
+      return toast.error("Outcome note is strictly required to resolve follow-up and stop alarm.");
+    }
+
+    try {
+      await api.post(`/leads/${leadId}/notes`, { text: `[Follow-Up Completed]: ${outcomeNote.trim()}` });
+      await api.put(`/leads/${leadId}`, { followUpNotified: true });
+      toast.success("Follow-up resolved & alarm cleared ✅");
+      setDueLeads(prev => prev.filter(l => l._id !== leadId));
+      if (dueLeads.length <= 1) {
+        setIsOpen(false);
       }
+
+      if (window.confirm("Follow-up saved! Would you like to schedule the subsequent follow-up now?")) {
+        router.push(`/leads/${leadId}`);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to complete follow-up');
+    }
+  };
+
+  // Quick Mark Status Action (Mandatory Payment Info on Conversion)
+  const handleUpdateStatus = async (leadId, status) => {
+    let paymentAmount = null;
+    let paymentMethod = null;
+    const isConverting = ['converted', 'payment_done', 'closed', 'Closed', 'Closed / Won'].includes(status);
+    if (isConverting) {
+      const inputAmt = window.prompt("🏆 Enter Final Closed Deal / Payment Amount (₹):");
+      if (!inputAmt) return;
+      paymentAmount = Number(inputAmt);
+      if (!paymentAmount || isNaN(paymentAmount) || paymentAmount <= 0) {
+        return toast.error("Payment amount (> 0) is required to convert a lead.");
+      }
+
+      const inputMethod = window.prompt("💳 Enter Payment Method (e.g. bank_transfer, upi, cash, card, cheque):", "bank_transfer");
+      if (!inputMethod || !inputMethod.trim()) {
+        return toast.error("Payment method is required to convert a lead.");
+      }
+      paymentMethod = inputMethod.trim();
     }
 
     try {
       const payload = { status };
-      if (closedDealAmount) payload.closedDealAmount = closedDealAmount;
+      if (paymentAmount) {
+        payload.paymentAmount = paymentAmount;
+        payload.closedDealAmount = paymentAmount;
+        payload.paymentMethod = paymentMethod;
+      }
       await api.put(`/leads/${leadId}`, payload);
       toast.success(`Lead marked as ${status} ✅`);
       setDueLeads(prev => prev.filter(l => l._id !== leadId));
@@ -458,7 +499,24 @@ export default function FollowUpAlertManager() {
                 </button>
 
                 <button
-                  onClick={() => handleUpdateStatus(lead._id, 'closed')}
+                  onClick={() => handleResolveFollowUp(lead._id)}
+                  style={{
+                    padding: '5px 9px',
+                    borderRadius: 6,
+                    background: 'rgba(34, 197, 94, 0.2)',
+                    border: '1px solid rgba(34, 197, 94, 0.4)',
+                    color: '#4ade80',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                >
+                  ✓ Note & Resolve
+                </button>
+
+                <button
+                  onClick={() => handleUpdateStatus(lead._id, 'converted')}
                   style={{
                     padding: '5px 9px',
                     borderRadius: 6,
@@ -471,7 +529,7 @@ export default function FollowUpAlertManager() {
                     flexShrink: 0,
                   }}
                 >
-                  ✓ Closed Won
+                  ✓ Convert Deal
                 </button>
               </div>
             </div>

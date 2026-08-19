@@ -29,6 +29,10 @@ const leadActivitySchema = new mongoose.Schema({
       'recording_added',
       'project_linked',
       'lead_updated',
+      'call_initiated',
+      'followup_scheduled',
+      'followup_completed',
+      'followup_postponed',
     ],
   },
   performedBy: {
@@ -70,10 +74,24 @@ const leadSchema = new mongoose.Schema({
   company: { type: String, trim: true },
   tags: [{ type: String, trim: true }],
 
-  // Standardized 6 Services
+  // CoreSetu Subscription Plans (3 Individual, 3 Organization)
   service_required: {
     type: String,
     enum: [
+      // 3 Individual Plans
+      'basic_solo',
+      'smart_solo',
+      'power_solo',
+      // 3 Organization Plans
+      'team_starter',
+      'business',
+      'enterprise',
+      // Dynamic & Backward Compatibility
+      'custom_enterprise',
+      'starter',
+      'growth',
+      'pro',
+      'free',
       'digital_marketing',
       'web_development',
       'seo_optimization',
@@ -81,7 +99,7 @@ const leadSchema = new mongoose.Schema({
       'branding_design',
       'cloud_infrastructure'
     ],
-    default: 'digital_marketing',
+    default: 'smart_solo',
     lowercase: true,
     trim: true,
   },
@@ -97,33 +115,18 @@ const leadSchema = new mongoose.Schema({
     trim: true,
   },
 
-  // Sales Pipeline Stage (Exact 5 baseline stages)
+  // Sales Pipeline Stage (Supports Dynamic Tenant Pipeline Stages & Standard Stages)
   status: {
     type: String,
-    enum: [
-      'new_lead',
-      'contacted',
-      'not_interested',
-      'converted',
-      'payment_done',
-      // Legacy compatibility
-      'new',
-      'site_visit_scheduled',
-      'negotiation',
-      'closed',
-      'lost'
-    ],
     default: 'new_lead',
     trim: true,
   },
 
   // Plan Selection, Payable & Paid Tracking
   selected_plan_id: { type: String, default: null },
-  selectedPlanId: { type: String, default: null },
   payable_amount: { type: Number, default: 0, min: 0 },
-  payableAmount: { type: Number, default: 0, min: 0 },
   paid_amount: { type: Number, default: 0, min: 0 },
-  paidAmount: { type: Number, default: 0, min: 0 },
+  payment_method: { type: String, default: null },
 
   // Concurrency & Optimistic Locking Version
   version: { type: Number, default: 1 },
@@ -175,8 +178,33 @@ const leadSchema = new mongoose.Schema({
 
   source: {
     type: String,
-    enum: ['signup', 'agent_manual', 'import', 'other', 'platform_registration', 'Auto-Signup', 'manual', 'meta_webhook', 'google_webhook'],
+    enum: [
+      'meta', 'google', 'facebook', 'instagram', 'google_ads', 'meta_ads',
+      'website', 'organic', 'referral', 'partner', 'import', 'spreadsheet',
+      'signup', 'agent_manual', 'manual', 'other', 'platform_registration',
+      'auto-signup', 'meta_webhook', 'google_webhook', 'api', 'webhook'
+    ],
     default: 'agent_manual',
+    lowercase: true,
+    trim: true,
+  },
+  leadSource: {
+    provider: { type: String, default: '' },
+    externalLeadId: { type: String, default: '' },
+    integrationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Integration', default: null },
+    accountId: { type: String, default: null },
+    pageId: { type: String, default: null },
+    formId: { type: String, default: null },
+    formName: { type: String, default: '' },
+    campaignId: { type: String, default: null },
+    campaignName: { type: String, default: '' },
+    adSetId: { type: String, default: null },
+    adSetName: { type: String, default: '' },
+    adGroupId: { type: String, default: null },
+    adGroupName: { type: String, default: '' },
+    adId: { type: String, default: null },
+    adName: { type: String, default: '' },
+    importedAt: { type: Date, default: null },
   },
   utmCampaign: {
     type: String,
@@ -211,10 +239,23 @@ const leadSchema = new mongoose.Schema({
   toObject: { virtuals: true },
 });
 
+const PLAN_DISPLAY_LABELS = {
+  basic_solo: 'Basic Solo (₹399/mo)',
+  smart_solo: 'Smart Solo (₹799/mo)',
+  power_solo: 'Power Solo (₹1,299/mo)',
+  team_starter: 'Team Starter (₹1,499/mo)',
+  business: 'Business Agency (₹2,499/mo)',
+  enterprise: 'Enterprise Command (₹4,999/mo)',
+  custom_enterprise: 'Custom Enterprise',
+};
+
 // Virtual aliases for camelCase / snake_case interoperability
 leadSchema.virtual('serviceRequired')
   .get(function() { return this.service_required; })
   .set(function(v) { this.service_required = v; });
+
+leadSchema.virtual('serviceRequiredLabel')
+  .get(function() { return PLAN_DISPLAY_LABELS[this.service_required] || this.service_required; });
 
 leadSchema.virtual('monthlySpend')
   .get(function() { return this.monthly_spend; })
@@ -236,6 +277,14 @@ leadSchema.virtual('paidAmount')
   .get(function() { return this.paid_amount; })
   .set(function(v) { this.paid_amount = v; });
 
+leadSchema.virtual('paymentAmount')
+  .get(function() { return this.paid_amount || this.payable_amount; })
+  .set(function(v) { this.paid_amount = v; this.payable_amount = v; });
+
+leadSchema.virtual('paymentMethod')
+  .get(function() { return this.payment_method; })
+  .set(function(v) { this.payment_method = v; });
+
 // Indexes for fast queries
 leadSchema.index({ userId: 1 });
 leadSchema.index({ companyId: 1 });
@@ -251,6 +300,27 @@ leadSchema.index(
 leadSchema.index(
   { userId: 1, phone: 1 },
   { unique: true, partialFilterExpression: { companyId: { $eq: null } } }
+);
+// Multi-tenant external lead ID idempotency: prevents duplicate webhook creations under high concurrency
+leadSchema.index(
+  { companyId: 1, 'leadSource.provider': 1, 'leadSource.externalLeadId': 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      companyId: { $exists: true, $type: 'objectId' },
+      'leadSource.externalLeadId': { $type: 'string' },
+    },
+  }
+);
+leadSchema.index(
+  { userId: 1, 'leadSource.provider': 1, 'leadSource.externalLeadId': 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      companyId: { $eq: null },
+      'leadSource.externalLeadId': { $type: 'string' },
+    },
+  }
 );
 leadSchema.index({ userId: 1, createdAt: -1 });
 leadSchema.index({ status: 1, service_required: 1, assignedTo: 1 });

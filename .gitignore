@@ -12,6 +12,13 @@ frontend/.env
 # Next.js build output
 .next/
 frontend/.next/
+out/
+
+# Archive and test artifacts
+*.tar.gz
+playwright-report/
+test-results/
+scratch/
 
 # Local uploads and session states
 backend/uploads/

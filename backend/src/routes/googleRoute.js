@@ -37,32 +37,39 @@ router.post(
   googleWebhookController.receive
 );
 
+const { protect } = require('../middleware/auth');
+
 // ============================================================
 // GOOGLE ACCOUNT MANAGEMENT
 // ============================================================
 
 router.get(
   '/',
+  protect,
   googleIntegrationController.getIntegrations
 );
 
 router.get(
   '/accounts',
+  protect,
   googleIntegrationController.getAccounts
 );
 
 router.post(
   '/configure',
+  protect,
   googleIntegrationController.configure
 );
 
 router.post(
   '/test',
+  protect,
   googleIntegrationController.testConnection
 );
 
 router.delete(
   '/:integrationId',
+  protect,
   googleIntegrationController.disconnect
 );
 

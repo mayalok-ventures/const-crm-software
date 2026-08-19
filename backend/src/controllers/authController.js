@@ -579,25 +579,27 @@ exports.reset2FAEmergency = async (req, res) => {
 // @access Private
 exports.updatePipelineStages = async (req, res) => {
   try {
-    const { stages } = req.body;
-    if (!Array.isArray(stages)) {
+    const rawStages = req.body.stages || req.body.pipelineStages || req.body.customPipelineStages || (Array.isArray(req.body) ? req.body : []);
+    if (!Array.isArray(rawStages)) {
       return res.status(400).json({ message: 'Stages must be an array of strings' });
     }
 
-    const cleanStages = stages.map(s => String(s).trim()).filter(Boolean);
+    const cleanStages = rawStages.map(s => String(s).trim()).filter(Boolean);
     if (cleanStages.length === 0) {
       return res.status(400).json({ message: 'At least one pipeline stage is required.' });
     }
 
-    const user = await User.findById(req.user._id);
-    user.pipelineStages = cleanStages;
-    user.customPipelineStages = cleanStages;
-    await user.save();
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { pipelineStages: cleanStages, customPipelineStages: cleanStages },
+      { new: true }
+    );
 
     res.json({
       message: 'Pipeline stages saved successfully ✅',
       pipelineStages: user.pipelineStages,
       customPipelineStages: user.customPipelineStages,
+      user,
     });
   } catch (error) {
     res.status(500).json({ message: 'Failed to save pipeline stages' });
@@ -609,7 +611,9 @@ exports.updatePipelineStages = async (req, res) => {
 // @access Private
 exports.updateFormSchema = async (req, res) => {
   try {
-    const rawList = Array.isArray(req.body) ? req.body : (req.body.schema || req.body.fields || []);
+    const rawList = Array.isArray(req.body)
+      ? req.body
+      : (req.body.schema || req.body.leadFormSchema || req.body.fields || req.body.customLeadFields || []);
     if (!Array.isArray(rawList)) {
       return res.status(400).json({ message: 'Form schema must be an array' });
     }
@@ -618,7 +622,6 @@ exports.updateFormSchema = async (req, res) => {
       const fieldId = (f.fieldId || f.label || '').toLowerCase().replace(/[^a-z0-9_]/g, '_').trim();
       const isSystem = Boolean(f.isSystem);
       const isMandatorySystem = ['name', 'phone'].includes(fieldId);
-      const isMandatoryDate = fieldId === 'followUpDate';
 
       const dependsOn = (f.dependsOn && f.dependsOn.field)
         ? { field: String(f.dependsOn.field).trim(), value: String(f.dependsOn.value || '').trim() }
@@ -629,7 +632,7 @@ exports.updateFormSchema = async (req, res) => {
         label: (f.label || fieldId).trim(),
         fieldType: ['text', 'email', 'phone', 'dropdown', 'date', 'number'].includes(f.fieldType) ? f.fieldType : 'text',
         options: Array.isArray(f.options) ? f.options.map(o => String(o).trim()).filter(Boolean) : [],
-        isRequired: isMandatorySystem || isMandatoryDate ? true : Boolean(f.isRequired),
+        isRequired: isMandatorySystem ? true : Boolean(f.isRequired),
         isSystem,
         isHidden: isMandatorySystem ? false : Boolean(f.isHidden),
         order: typeof f.order === 'number' ? f.order : (idx + 1),
@@ -647,13 +650,16 @@ exports.updateFormSchema = async (req, res) => {
     // Sort by order
     sanitized.sort((a, b) => (a.order || 0) - (b.order || 0));
 
-    const user = await User.findById(req.user._id);
-    user.leadFormSchema = sanitized;
-    await user.save();
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { leadFormSchema: sanitized },
+      { new: true }
+    );
 
     res.json({
       message: 'Lead form layout saved successfully ✅',
       leadFormSchema: user.leadFormSchema,
+      user,
     });
   } catch (err) {
     console.error('updateFormSchema error:', err);
@@ -720,6 +726,8 @@ exports.getMe = async (req, res) => {
 
     const { calculateSubscriptionLifecycle } = require('../middleware/auth');
     user.subscriptionLifecycle = await calculateSubscriptionLifecycle(user);
+    user.showFollowUpOnCreate = user.showFollowUpOnCreate !== false;
+    user.preferences = user.preferences || { showFollowUpOnCreate: user.showFollowUpOnCreate };
 
     res.json(user);
   } catch (error) {
@@ -732,13 +740,29 @@ exports.getMe = async (req, res) => {
 // @access Private
 exports.updateProfile = async (req, res) => {
   try {
-    const { name, phone, profilePicture, avatarIcon, companyInfo, localization } = req.body;
+    const { name, phone, profilePicture, avatarIcon, companyInfo, localization, showFollowUpOnCreate, preferences } = req.body;
     const user = await User.findById(req.user._id);
 
     if (name) user.name = name.trim();
     if (phone) user.phone = phone.replace(/\D/g, '');
     if (profilePicture !== undefined) user.profilePicture = profilePicture;
     if (avatarIcon !== undefined) user.avatarIcon = avatarIcon;
+
+    if (showFollowUpOnCreate !== undefined) {
+      user.showFollowUpOnCreate = Boolean(showFollowUpOnCreate);
+      if (!user.preferences) user.preferences = {};
+      user.preferences.showFollowUpOnCreate = Boolean(showFollowUpOnCreate);
+    }
+
+    if (preferences) {
+      user.preferences = {
+        ...user.preferences,
+        ...preferences,
+      };
+      if (preferences.showFollowUpOnCreate !== undefined) {
+        user.showFollowUpOnCreate = Boolean(preferences.showFollowUpOnCreate);
+      }
+    }
 
     if (companyInfo) {
       user.companyInfo = {
@@ -833,94 +857,6 @@ exports.applyCoupon = async (req, res) => {
   } catch (error) {
     console.error('applyCoupon error:', error);
     res.status(500).json({ message: error.message || 'Failed to apply coupon' });
-  }
-};
-
-// @desc  Update CRM pipeline stages
-// @route PUT /api/auth/pipeline-stages
-// @access Private
-exports.updatePipelineStages = async (req, res) => {
-  try {
-    const { pipelineStages, customPipelineStages } = req.body;
-    const stages = pipelineStages || customPipelineStages;
-    if (!Array.isArray(stages) || stages.length === 0) {
-      return res.status(400).json({ message: 'pipelineStages must be a non-empty array of strings' });
-    }
-
-    const cleanStages = stages.map(s => String(s).trim()).filter(Boolean);
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      { pipelineStages: cleanStages, customPipelineStages: cleanStages },
-      { new: true }
-    );
-
-    res.json({
-      message: 'Pipeline stages updated successfully',
-      pipelineStages: user.pipelineStages,
-      customPipelineStages: user.customPipelineStages,
-      user,
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to update pipeline stages' });
-  }
-};
-
-// @desc  Update Dynamic Form Schema
-// @route PUT /api/auth/form-schema
-// @access Private
-exports.updateFormSchema = async (req, res) => {
-  try {
-    const { leadFormSchema } = req.body;
-    if (!Array.isArray(leadFormSchema) || leadFormSchema.length === 0) {
-      return res.status(400).json({ message: 'leadFormSchema must be a non-empty array' });
-    }
-
-    // Ensure system fields are not completely removed
-    const hasName = leadFormSchema.some(f => f.fieldId === 'name');
-    const hasPhone = leadFormSchema.some(f => f.fieldId === 'phone');
-    if (!hasName || !hasPhone) {
-      return res.status(400).json({ message: 'Name and Phone are mandatory system fields and cannot be removed' });
-    }
-
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      { leadFormSchema },
-      { new: true }
-    );
-
-    res.json({
-      message: 'Form schema updated successfully',
-      leadFormSchema: user.leadFormSchema,
-      user,
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to update form schema' });
-  }
-};
-
-// @desc  Update Custom Lead Fields (Legacy backward compatibility)
-// @route PUT /api/auth/custom-fields
-// @access Private
-exports.updateCustomFields = async (req, res) => {
-  try {
-    const { customLeadFields, leadFormSchema } = req.body;
-    if (leadFormSchema) {
-      return exports.updateFormSchema(req, res);
-    }
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      { customLeadFields: customLeadFields || [] },
-      { new: true }
-    );
-
-    res.json({
-      message: 'Custom fields updated',
-      customLeadFields: user.customLeadFields,
-      leadFormSchema: user.leadFormSchema,
-      user,
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to update custom fields' });
   }
 };
 

@@ -70,13 +70,22 @@ const connectDB = async () => {
     try { if (fs.existsSync(wtLockFile)) fs.unlinkSync(wtLockFile); } catch {}
 
     if (!global.__mongodInstance) {
-      global.__mongodInstance = await MongoMemoryServer.create({
-        instance: {
-          dbPath: dbPath,
-          storageEngine: 'wiredTiger',
-          dbName: 'mobile-crm',
-        }
-      });
+      try {
+        global.__mongodInstance = await MongoMemoryServer.create({
+          instance: {
+            dbPath: dbPath,
+            storageEngine: 'wiredTiger',
+            dbName: 'mobile-crm',
+          }
+        });
+      } catch (err) {
+        console.warn('WiredTiger persistent instance busy, launching in-memory engine...');
+        global.__mongodInstance = await MongoMemoryServer.create({
+          instance: {
+            dbName: 'mobile-crm',
+          }
+        });
+      }
     }
     mongoUri = global.__mongodInstance.getUri();
     process.env.MONGO_URI = mongoUri;

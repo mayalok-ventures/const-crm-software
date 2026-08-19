@@ -49,32 +49,39 @@ router.post(
   metaWebhookController.receive
 );
 
+const { protect } = require('../middleware/auth');
+
 // ============================================================
 // META ACCOUNT MANAGEMENT
 // ============================================================
 
 router.get(
   '/',
+  protect,
   metaIntegrationController.getIntegrations
 );
 
 router.get(
   '/assets',
+  protect,
   metaIntegrationController.getAssets
 );
 
 router.post(
   '/configure',
+  protect,
   metaIntegrationController.configure
 );
 
 router.post(
   '/test',
+  protect,
   metaIntegrationController.testConnection
 );
 
 router.delete(
   '/:integrationId',
+  protect,
   metaIntegrationController.disconnect
 );
 

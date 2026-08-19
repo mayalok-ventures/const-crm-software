@@ -1,4 +1,4 @@
-'use client';
+  'use client';
 
 import React, { useState } from 'react';
 import {
@@ -7,17 +7,23 @@ import {
   Shield, Check, X, AlertCircle
 } from 'lucide-react';
 import { useAlarm } from '@/lib/AlarmContext';
+import { SourcePill } from '@/lib/sourceHelper';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
-// Standardized 6 Services Catalog
+// Standardized 6 Subscription Plans Catalog (3 Individual, 3 Organization)
 export const SERVICE_CATALOG = {
-  digital_marketing: { label: 'Digital Marketing & Ads', color: 'bg-blue-500/15 text-blue-300 border-blue-500/30' },
-  web_development: { label: 'Web & App Development', color: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' },
-  seo_optimization: { label: 'SEO & Organic Growth', color: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' },
-  crm_automation: { label: 'CRM & Automation', color: 'bg-purple-500/15 text-purple-300 border-purple-500/30' },
-  branding_design: { label: 'Branding & UI/UX', color: 'bg-pink-500/15 text-pink-300 border-pink-500/30' },
-  cloud_infrastructure: { label: 'Cloud & DevOps', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
+  basic_solo: { label: 'Basic Solo (₹399/mo)', color: 'bg-blue-500/15 text-blue-300 border-blue-500/30', category: 'Individual' },
+  smart_solo: { label: 'Smart Solo (₹799/mo)', color: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30', category: 'Individual' },
+  power_solo: { label: 'Power Solo (₹1,299/mo)', color: 'bg-violet-500/15 text-violet-300 border-violet-500/30', category: 'Individual' },
+  team_starter: { label: 'Team Starter (₹1,499/mo)', color: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30', category: 'Organization' },
+  business: { label: 'Business Agency (₹2,499/mo)', color: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30', category: 'Organization' },
+  enterprise: { label: 'Enterprise Command (₹4,999/mo)', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30', category: 'Organization' },
+  // Backward compatibility fallback
+  custom_enterprise: { label: 'Custom Enterprise', color: 'bg-purple-500/15 text-purple-300 border-purple-500/30', category: 'Organization' },
+  digital_marketing: { label: 'Smart Solo (₹799/mo)', color: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30', category: 'Individual' },
+  web_development: { label: 'Business Agency (₹2,499/mo)', color: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30', category: 'Organization' },
+  crm_automation: { label: 'Enterprise Command (₹4,999/mo)', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30', category: 'Organization' },
 };
 
 // Standardized 5 Pipeline Stages
@@ -260,11 +266,14 @@ export default function LeadCard({
       onClick={onClick}
       className="group bg-[#0f172a] hover:bg-[#131d35] border border-slate-800 hover:border-indigo-500/50 rounded-2xl p-4 shadow-sm hover:shadow-xl transition-all duration-200 cursor-pointer flex flex-col gap-3 relative"
     >
-      {/* Top Header: Service Badge & Anti-Fraud Audit Flag */}
-      <div className="flex items-start justify-between gap-2">
-        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-md border uppercase tracking-wider ${serviceObj.color}`}>
-          {serviceObj.label}
-        </span>
+      {/* Top Header: Service Badge, Source Tag & Anti-Fraud Audit Flag */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <SourcePill lead={lead} showDetail={true} />
+          <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-md border uppercase tracking-wider ${serviceObj.color}`}>
+            {serviceObj.label}
+          </span>
+        </div>
         {lead.metadata?.admin_flag && (
           <span className="px-2 py-0.5 rounded text-[9px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse flex items-center gap-1">
             <Shield className="w-3 h-3 text-amber-400" />

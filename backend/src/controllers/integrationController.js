@@ -10,18 +10,19 @@ const { encrypt } = require('../utils/encryption');
 
 function getCompanyId(user) {
   if (!user) return null;
-
   const isOwner =
     user.workStatus === 'company_owner' ||
     user.companyRole === 'owner';
 
-  return user.companyId || (isOwner ? user._id : null);
+  return user.companyId || (isOwner ? user._id : user._id);
 }
 
 function isCompanyOwner(user) {
   return (
     user?.workStatus === 'company_owner' ||
-    user?.companyRole === 'owner'
+    user?.companyRole === 'owner' ||
+    user?.role === 'superadmin' ||
+    !user?.companyId // Solo users manage their own integrations
   );
 }
 
@@ -32,10 +33,8 @@ function requireOwner(req, res) {
       message: 'Only the company owner can manage integrations.',
       code: 'INTEGRATION_OWNER_REQUIRED',
     });
-
     return false;
   }
-
   return true;
 }
 
@@ -47,10 +46,10 @@ function sanitizeIntegration(integration) {
       ? integration.toObject()
       : { ...integration };
 
+  delete obj.accessTokenEncrypted;
+  delete obj.refreshTokenEncrypted;
   delete obj.encryptedAccessToken;
   delete obj.encryptedRefreshToken;
-
-  // Never expose sensitive OAuth information.
   delete obj.accessToken;
   delete obj.refreshToken;
   delete obj.clientSecret;
@@ -62,48 +61,38 @@ function validateObjectId(id) {
   return mongoose.Types.ObjectId.isValid(id);
 }
 
+function getTenantFilter(user) {
+  const companyId = user.companyId || (user.companyRole === 'owner' || user.workStatus === 'company_owner' ? user._id : null);
+  if (companyId) {
+    return { companyId };
+  }
+  return { userId: user._id, companyId: null };
+}
+
 /**
  * ============================================================
  * GET ALL INTEGRATIONS
  * ============================================================
- *
  * GET /api/integrations
- *
- * Returns only integrations belonging to the
- * authenticated user's company.
  */
 exports.getIntegrations = async (req, res) => {
   try {
-    const companyId = getCompanyId(req.user);
-
-    if (!companyId) {
-      return res.json({
-        success: true,
-        integrations: [],
-      });
-    }
+    const filter = getTenantFilter(req.user);
 
     const integrations = await Integration.find({
-      companyId,
+      ...filter,
+      status: { $ne: 'disconnected' },
     })
-      .select(
-        '-encryptedAccessToken -encryptedRefreshToken'
-      )
-      .sort({
-        createdAt: -1,
-      })
+      .select('-accessTokenEncrypted -refreshTokenEncrypted -encryptedAccessToken -encryptedRefreshToken')
+      .sort({ createdAt: -1 })
       .lean();
 
     return res.json({
       success: true,
-      integrations,
+      integrations: integrations.map(sanitizeIntegration),
     });
   } catch (error) {
-    console.error(
-      '[Integration] getIntegrations:',
-      error
-    );
-
+    console.error('[Integration] getIntegrations:', error.message);
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch integrations.',
@@ -116,20 +105,10 @@ exports.getIntegrations = async (req, res) => {
  * ============================================================
  * GET SINGLE INTEGRATION
  * ============================================================
- *
  * GET /api/integrations/:id
  */
 exports.getIntegration = async (req, res) => {
   try {
-    const companyId = getCompanyId(req.user);
-
-    if (!companyId) {
-      return res.status(403).json({
-        success: false,
-        message: 'Company access required.',
-      });
-    }
-
     if (!validateObjectId(req.params.id)) {
       return res.status(400).json({
         success: false,
@@ -137,13 +116,13 @@ exports.getIntegration = async (req, res) => {
       });
     }
 
+    const filter = getTenantFilter(req.user);
+
     const integration = await Integration.findOne({
       _id: req.params.id,
-      companyId,
+      ...filter,
     })
-      .select(
-        '-encryptedAccessToken -encryptedRefreshToken'
-      )
+      .select('-accessTokenEncrypted -refreshTokenEncrypted -encryptedAccessToken -encryptedRefreshToken')
       .lean();
 
     if (!integration) {
@@ -156,14 +135,10 @@ exports.getIntegration = async (req, res) => {
 
     return res.json({
       success: true,
-      integration,
+      integration: sanitizeIntegration(integration),
     });
   } catch (error) {
-    console.error(
-      '[Integration] getIntegration:',
-      error
-    );
-
+    console.error('[Integration] getIntegration:', error.message);
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch integration.',
@@ -176,28 +151,7 @@ exports.getIntegration = async (req, res) => {
  * ============================================================
  * CREATE INTEGRATION
  * ============================================================
- *
- * IMPORTANT:
- *
- * This endpoint should NOT normally be called directly
- * by the frontend with raw OAuth tokens.
- *
- * Recommended flow:
- *
- * Frontend
- *    ↓
- * GET /meta/oauth
- *    ↓
- * Meta OAuth
- *    ↓
- * metaOAuthController.callback
- *    ↓
- * createIntegration()
- *
- * Same for Google.
- *
- * Therefore raw tokens should ideally be supplied internally
- * by OAuth controllers/services.
+ * POST /api/integrations
  */
 exports.createIntegration = async (req, res) => {
   try {
@@ -205,157 +159,64 @@ exports.createIntegration = async (req, res) => {
       return;
     }
 
-    const companyId = getCompanyId(req.user);
-
-    if (!companyId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Company could not be determined.',
-        code: 'COMPANY_REQUIRED',
-      });
-    }
+    const companyId = req.user.companyId || (req.user.companyRole === 'owner' ? req.user._id : null);
 
     const {
       provider,
+      accountId,
       externalAccountId,
+      accountName = '',
       externalAccountName = '',
-
       pageId = null,
       pageName = '',
-
+      formIds = [],
       formId = null,
-      formName = '',
-
       customerId = null,
       managerCustomerId = null,
-
       accessToken,
       refreshToken = null,
       tokenExpiresAt = null,
-
       scopes = [],
-      settings = {},
       metadata = {},
     } = req.body;
-
-    /**
-     * --------------------------------------------------------
-     * VALIDATION
-     * --------------------------------------------------------
-     */
 
     if (!['meta', 'google'].includes(provider)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid integration provider.',
+        message: 'Invalid integration provider. Supported: meta, google',
         code: 'INVALID_PROVIDER',
       });
     }
 
-    if (!externalAccountId) {
+    const targetAccountId = accountId || externalAccountId;
+    if (!targetAccountId) {
       return res.status(400).json({
         success: false,
-        message: 'externalAccountId is required.',
-        code: 'EXTERNAL_ACCOUNT_REQUIRED',
+        message: 'Account ID is required.',
+        code: 'ACCOUNT_ID_REQUIRED',
       });
     }
 
-    if (!accessToken) {
-      return res.status(400).json({
-        success: false,
-        message: 'accessToken is required.',
-        code: 'ACCESS_TOKEN_REQUIRED',
-      });
-    }
+    const targetFormIds = formIds.length > 0 ? formIds : (formId ? [String(formId)] : []);
+    const filter = companyId
+      ? { companyId, provider, accountId: String(targetAccountId) }
+      : { userId: req.user._id, provider, accountId: String(targetAccountId) };
 
-    if (!Array.isArray(scopes)) {
-      return res.status(400).json({
-        success: false,
-        message: 'scopes must be an array.',
-        code: 'INVALID_SCOPES',
-      });
-    }
-
-    /**
-     * --------------------------------------------------------
-     * CHECK EXISTING CONNECTION
-     * --------------------------------------------------------
-     */
-
-    const existing = await Integration.findOne({
-      companyId,
-      provider,
-      externalAccountId,
-    });
-
-    /**
-     * --------------------------------------------------------
-     * UPDATE EXISTING CONNECTION
-     *
-     * OAuth may be run again to refresh permissions.
-     * Therefore returning 409 is not ideal.
-     *
-     * We update the existing integration instead.
-     * --------------------------------------------------------
-     */
+    let existing = await Integration.findOne(filter);
 
     if (existing) {
       existing.status = 'connected';
-
-      existing.externalAccountName =
-        externalAccountName || existing.externalAccountName;
-
-      existing.encryptedAccessToken =
-        encrypt(accessToken);
-
-      existing.encryptedRefreshToken =
-        refreshToken
-          ? encrypt(refreshToken)
-          : existing.encryptedRefreshToken;
-
-      existing.tokenExpiresAt =
-        tokenExpiresAt
-          ? new Date(tokenExpiresAt)
-          : existing.tokenExpiresAt;
-
-      existing.scopes = scopes;
-
-      existing.pageId =
-        pageId !== undefined
-          ? pageId
-          : existing.pageId;
-
-      existing.pageName =
-        pageName || existing.pageName;
-
-      existing.formId =
-        formId !== undefined
-          ? formId
-          : existing.formId;
-
-      existing.formName =
-        formName || existing.formName;
-
-      existing.customerId =
-        customerId !== undefined
-          ? customerId
-          : existing.customerId;
-
-      existing.managerCustomerId =
-        managerCustomerId !== undefined
-          ? managerCustomerId
-          : existing.managerCustomerId;
-
-      existing.settings = {
-        ...(existing.settings || {}),
-        ...(settings || {}),
-      };
-
-      existing.metadata = {
-        ...(existing.metadata || {}),
-        ...(metadata || {}),
-      };
-
+      existing.accountName = accountName || externalAccountName || existing.accountName;
+      if (accessToken) existing.accessTokenEncrypted = encrypt(accessToken);
+      if (refreshToken) existing.refreshTokenEncrypted = encrypt(refreshToken);
+      if (tokenExpiresAt) existing.tokenExpiresAt = new Date(tokenExpiresAt);
+      existing.pageId = pageId || existing.pageId;
+      existing.pageName = pageName || existing.pageName;
+      existing.formIds = targetFormIds.length > 0 ? targetFormIds : existing.formIds;
+      existing.customerId = customerId || existing.customerId;
+      existing.managerCustomerId = managerCustomerId || existing.managerCustomerId;
+      existing.scopes = scopes.length > 0 ? scopes : existing.scopes;
+      existing.metadata = { ...(existing.metadata || {}), ...metadata };
       existing.lastError = '';
 
       await existing.save();
@@ -367,53 +228,25 @@ exports.createIntegration = async (req, res) => {
       });
     }
 
-    /**
-     * --------------------------------------------------------
-     * CREATE NEW CONNECTION
-     * --------------------------------------------------------
-     */
-
     const integration = await Integration.create({
-      companyId,
-
-      createdBy: req.user._id,
-
+      userId: req.user._id,
+      companyId: companyId || null,
       provider,
-
+      mode: 'client_managed',
       status: 'connected',
-
-      externalAccountId,
-      externalAccountName,
-
+      accountId: String(targetAccountId),
+      accountName: accountName || externalAccountName || '',
       pageId,
       pageName,
-
-      formId,
-      formName,
-
+      formIds: targetFormIds,
       customerId,
       managerCustomerId,
-
-      encryptedAccessToken: encrypt(accessToken),
-
-      encryptedRefreshToken:
-        refreshToken
-          ? encrypt(refreshToken)
-          : null,
-
-      tokenExpiresAt:
-        tokenExpiresAt
-          ? new Date(tokenExpiresAt)
-          : null,
-
+      accessTokenEncrypted: accessToken ? encrypt(accessToken) : null,
+      refreshTokenEncrypted: refreshToken ? encrypt(refreshToken) : null,
+      tokenExpiresAt: tokenExpiresAt ? new Date(tokenExpiresAt) : null,
       scopes,
-
-      settings,
-
       metadata,
-
-      webhookSubscribed: false,
-
+      connectedAt: new Date(),
       lastError: '',
     });
 
@@ -423,19 +256,7 @@ exports.createIntegration = async (req, res) => {
       integration: sanitizeIntegration(integration),
     });
   } catch (error) {
-    console.error(
-      '[Integration] createIntegration:',
-      error
-    );
-
-    if (error.code === 11000) {
-      return res.status(409).json({
-        success: false,
-        message: 'This provider account is already connected.',
-        code: 'INTEGRATION_ALREADY_EXISTS',
-      });
-    }
-
+    console.error('[Integration] createIntegration:', error.message);
     return res.status(500).json({
       success: false,
       message: 'Failed to create integration.',
@@ -448,26 +269,12 @@ exports.createIntegration = async (req, res) => {
  * ============================================================
  * UPDATE INTEGRATION
  * ============================================================
- *
  * PATCH /api/integrations/:id
- *
- * Used for configuration only.
- *
- * OAuth tokens are NOT accepted here.
  */
 exports.updateIntegration = async (req, res) => {
   try {
     if (!requireOwner(req, res)) {
       return;
-    }
-
-    const companyId = getCompanyId(req.user);
-
-    if (!companyId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Company could not be determined.',
-      });
     }
 
     if (!validateObjectId(req.params.id)) {
@@ -477,67 +284,12 @@ exports.updateIntegration = async (req, res) => {
       });
     }
 
-    /**
-     * Only configuration fields are allowed.
-     *
-     * NEVER allow frontend to modify:
-     *
-     * encryptedAccessToken
-     * encryptedRefreshToken
-     * provider
-     * externalAccountId
-     * companyId
-     * createdBy
-     */
-    const allowedFields = [
-      'pageId',
-      'pageName',
-      'formId',
-      'formName',
+    const filter = getTenantFilter(req.user);
 
-      'customerId',
-      'managerCustomerId',
-
-      'settings',
-      'metadata',
-
-      'status',
-    ];
-
-    const update = {};
-
-    for (const field of allowedFields) {
-      if (req.body[field] !== undefined) {
-        update[field] = req.body[field];
-      }
-    }
-
-    if (Object.keys(update).length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'No valid fields provided for update.',
-        code: 'NO_UPDATE_FIELDS',
-      });
-    }
-
-    const integration =
-      await Integration.findOneAndUpdate(
-        {
-          _id: req.params.id,
-          companyId,
-        },
-        {
-          $set: update,
-        },
-        {
-          new: true,
-          runValidators: true,
-        }
-      )
-        .select(
-          '-encryptedAccessToken -encryptedRefreshToken'
-        )
-        .lean();
+    const integration = await Integration.findOne({
+      _id: req.params.id,
+      ...filter,
+    });
 
     if (!integration) {
       return res.status(404).json({
@@ -547,17 +299,22 @@ exports.updateIntegration = async (req, res) => {
       });
     }
 
+    const { pageId, pageName, formIds, accountName, status } = req.body;
+    if (pageId !== undefined) integration.pageId = pageId;
+    if (pageName !== undefined) integration.pageName = pageName;
+    if (formIds !== undefined) integration.formIds = formIds;
+    if (accountName !== undefined) integration.accountName = accountName;
+    if (status !== undefined) integration.status = status;
+
+    await integration.save();
+
     return res.json({
       success: true,
       message: 'Integration updated successfully.',
-      integration,
+      integration: sanitizeIntegration(integration),
     });
   } catch (error) {
-    console.error(
-      '[Integration] updateIntegration:',
-      error
-    );
-
+    console.error('[Integration] updateIntegration:', error.message);
     return res.status(500).json({
       success: false,
       message: 'Failed to update integration.',
@@ -570,31 +327,12 @@ exports.updateIntegration = async (req, res) => {
  * ============================================================
  * DISCONNECT INTEGRATION
  * ============================================================
- *
  * DELETE /api/integrations/:id
- *
- * We soft-disconnect instead of deleting the document.
- *
- * Why?
- *
- * - audit history
- * - webhook mapping
- * - external account history
- * - reconnect support
  */
 exports.deleteIntegration = async (req, res) => {
   try {
     if (!requireOwner(req, res)) {
       return;
-    }
-
-    const companyId = getCompanyId(req.user);
-
-    if (!companyId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Company could not be determined.',
-      });
     }
 
     if (!validateObjectId(req.params.id)) {
@@ -604,30 +342,27 @@ exports.deleteIntegration = async (req, res) => {
       });
     }
 
-    const integration =
-      await Integration.findOneAndUpdate(
-        {
-          _id: req.params.id,
-          companyId,
+    const filter = getTenantFilter(req.user);
+
+    const integration = await Integration.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        ...filter,
+      },
+      {
+        $set: {
+          status: 'disconnected',
+          webhookSubscribed: false,
+          accessTokenEncrypted: null,
+          refreshTokenEncrypted: null,
+          tokenExpiresAt: null,
+          lastError: 'Disconnected by tenant owner',
         },
-        {
-          $set: {
-            status: 'disconnected',
-
-            webhookSubscribed: false,
-
-            encryptedAccessToken: null,
-            encryptedRefreshToken: null,
-
-            tokenExpiresAt: null,
-
-            lastError: '',
-          },
-        },
-        {
-          new: true,
-        }
-      );
+      },
+      {
+        new: true,
+      }
+    );
 
     if (!integration) {
       return res.status(404).json({
@@ -643,11 +378,7 @@ exports.deleteIntegration = async (req, res) => {
       integrationId: integration._id,
     });
   } catch (error) {
-    console.error(
-      '[Integration] deleteIntegration:',
-      error
-    );
-
+    console.error('[Integration] deleteIntegration:', error.message);
     return res.status(500).json({
       success: false,
       message: 'Failed to disconnect integration.',
@@ -655,3 +386,5 @@ exports.deleteIntegration = async (req, res) => {
     });
   }
 };
+
+exports.disconnectIntegration = exports.deleteIntegration;

@@ -12,14 +12,15 @@ import PlanStatusWidget from '@/components/PlanStatusWidget';
 
 const MOBILE_ITEMS = [
   { href: '/dashboard', label: 'Leads', icon: Home, key: 'dashboard' },
-  { href: '/projects', label: 'Catalog', icon: Package, key: 'projects' },
+  { href: '/integrations', label: 'Ads & APIs', icon: Zap, key: 'integrations' },
   { href: '/whatsapp', label: 'Inbox', icon: MessageCircle, key: 'whatsapp' },
-  { href: '/templates', label: 'Templates', icon: FileText, key: 'templates' },
+  { href: '/projects', label: 'Catalog', icon: Package, key: 'projects' },
   { href: '/profile', label: 'Profile', icon: User, key: 'profile' },
 ];
 
 const DESKTOP_ITEMS = [
   { href: '/dashboard', label: 'Leads Pipeline', icon: Home, key: 'dashboard' },
+  { href: '/integrations', label: 'Ads & Lead Integrations', icon: Zap, key: 'integrations' },
   { href: '/projects', label: 'Products & Packages', icon: Package, key: 'projects' },
   { href: '/whatsapp', label: 'WhatsApp Hub', icon: MessageCircle, key: 'whatsapp' },
   { href: '/campaigns', label: 'Broadcast Campaigns', icon: Send, key: 'campaigns' },

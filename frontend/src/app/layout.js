@@ -1,4 +1,5 @@
 import { Inter } from 'next/font/google';
+import Script from 'next/script';
 import './globals.css';
 import { Toaster } from 'react-hot-toast';
 import NotificationPoller from '@/components/NotificationPoller';
@@ -50,8 +51,12 @@ export default function RootLayout({ children }) {
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="theme-color" content="#6366f1" />
         <link rel="manifest" href="/manifest.json" />
-        <script src="https://checkout.razorpay.com/v1/checkout.js" async />
-        <script
+      </head>
+      <body className={inter.className}>
+        <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
+        <Script
+          id="pwa-service-worker"
+          strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `
               if ('serviceWorker' in navigator) {
@@ -76,8 +81,6 @@ export default function RootLayout({ children }) {
             `
           }}
         />
-      </head>
-      <body className={inter.className}>
         <AlarmProvider>
           <SecurityWarningBanner />
           <SubscriptionLifecycleBanner />

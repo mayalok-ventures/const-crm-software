@@ -13,7 +13,7 @@ import {
   CheckCircle2, ShieldCheck, Key, Edit2, Plus, Trash2, X, Check,
   Briefcase, IndianRupee, MessageCircle, AlertCircle, Zap, ShieldAlert,
   Lock, Clock, UserPlus, QrCode, Layers, RotateCcw, Sliders, ShieldQuestion,
-  ChevronRight, Crown, Settings, FileText, CheckSquare, Hash, Calendar as CalendarIcon, ListFilter, Globe,
+  ChevronRight, Crown, Settings, FileText, CheckSquare, Hash, Calendar, Calendar as CalendarIcon, ListFilter, Globe,
   ArrowUp, ArrowDown, Eye, EyeOff, Sparkles
 } from 'lucide-react';
 
@@ -151,16 +151,26 @@ const formatPlanName = (p) => {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [user, setUser] = useState(() => getUser());
-  const [loading, setLoading] = useState(() => !getUser());
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('personal'); // 'personal' | 'security' | 'customization' | 'organization'
 
   // Personal Info Form
-  const [profileForm, setProfileForm] = useState(() => {
-    const u = getUser();
-    return { name: u?.name || '', phone: u?.phone || '' };
-  });
+  const [profileForm, setProfileForm] = useState({ name: '', phone: '' });
   const [savingProfile, setSavingProfile] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    const u = getUser();
+    if (!u) {
+      router.replace('/login');
+      return;
+    }
+    setUser(u);
+    setProfileForm({ name: u.name || '', phone: u.phone || '' });
+    fetchProfile();
+  }, []);
 
   // Universal Localization state
   const [localizationForm, setLocalizationForm] = useState({
@@ -188,6 +198,9 @@ export default function ProfilePage() {
   const [editingStageIdx, setEditingStageIdx] = useState(null);
   const [editingStageName, setEditingStageName] = useState('');
   const [savingStages, setSavingStages] = useState(false);
+
+  // Follow-Up on Lead Creation Preference Toggle
+  const [showFollowUpOnCreate, setShowFollowUpOnCreate] = useState(true);
 
   // Fully Customizable Form Engine state
   const [formSchema, setFormSchema] = useState([]);
@@ -267,6 +280,7 @@ export default function ProfilePage() {
       }
 
       const industryDefaults = getIndustryDefaults(data.industryType);
+      setShowFollowUpOnCreate(data.showFollowUpOnCreate !== false && data.preferences?.showFollowUpOnCreate !== false);
 
       if (data.pipelineStages && Array.isArray(data.pipelineStages) && data.pipelineStages.length > 0) {
         setPipelineStages(data.pipelineStages);
@@ -304,6 +318,30 @@ export default function ProfilePage() {
       toast.error('Failed to load profile');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleFollowUpOnCreate = async (e) => {
+    const nextVal = e.target.checked;
+    setShowFollowUpOnCreate(nextVal);
+    try {
+      await api.put('/auth/profile', {
+        showFollowUpOnCreate: nextVal,
+        preferences: { showFollowUpOnCreate: nextVal }
+      });
+      toast.success(nextVal ? 'Follow-up scheduling enabled for new leads ⏰' : 'Follow-up scheduling disabled on lead creation ⚡');
+      try {
+        const u = localStorage.getItem('user');
+        if (u) {
+          const parsed = JSON.parse(u);
+          parsed.showFollowUpOnCreate = nextVal;
+          parsed.preferences = { ...(parsed.preferences || {}), showFollowUpOnCreate: nextVal };
+          localStorage.setItem('user', JSON.stringify(parsed));
+        }
+      } catch {}
+    } catch (err) {
+      toast.error('Failed to update follow-up preference');
+      setShowFollowUpOnCreate(!nextVal);
     }
   };
 
@@ -800,7 +838,7 @@ export default function ProfilePage() {
   const isAgentInCompany = user?.companyRole === 'agent' && user?.companyId;
   const isSoloAgent = user?.workStatus === 'independent_agent' && !user?.companyId;
 
-  if (loading) return (
+  if (!mounted || loading) return (
     <div className="app-shell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh' }}>
       <div className="spinner" />
     </div>
@@ -1241,7 +1279,30 @@ export default function ProfilePage() {
                   whiteSpace: 'nowrap'
                 }}
               >
-                <Sliders size={16} /> CRM Customizations
+                <Sliders size={16} /> CRM Form & Pipelines
+              </button>
+            )}
+
+            {!isSuperAdmin && (
+              <button
+                onClick={() => setActiveTab('triggers')}
+                style={{
+                  padding: '10px 18px',
+                  borderRadius: '10px 10px 0 0',
+                  border: 'none',
+                  background: activeTab === 'triggers' ? 'var(--surface)' : 'transparent',
+                  borderBottom: activeTab === 'triggers' ? '3px solid var(--accent)' : '3px solid transparent',
+                  color: activeTab === 'triggers' ? 'var(--text)' : 'var(--text-muted)',
+                  fontWeight: activeTab === 'triggers' ? 700 : 500,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                <Clock size={16} /> Triggers & Follow-up Rules
               </button>
             )}
 
@@ -1267,6 +1328,28 @@ export default function ProfilePage() {
                 <Building2 size={16} /> Organization / Team
               </button>
             )}
+
+            <Link
+              href="/integrations"
+              style={{
+                padding: '10px 18px',
+                borderRadius: '10px 10px 0 0',
+                border: 'none',
+                background: 'transparent',
+                borderBottom: '3px solid transparent',
+                color: '#2563eb',
+                fontWeight: 600,
+                fontSize: 13,
+                textDecoration: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <Zap size={16} /> Ads & Webhooks ⚡
+            </Link>
           </div>
 
           {/* ─────────────────────────────────────────────────────────────
@@ -2109,6 +2192,108 @@ export default function ProfilePage() {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          )}
+
+          {/* ─────────────────────────────────────────────────────────────
+              TAB: TRIGGERS & FOLLOW-UP RULES (DEDICATED SECTION)
+             ───────────────────────────────────────────────────────────── */}
+          {activeTab === 'triggers' && !isSuperAdmin && (
+            <div className="flex flex-col gap-4 w-full">
+              {/* Card 1: Follow-Up Form Creation Rule */}
+              <div className="card" style={{ padding: '22px 20px', borderLeft: '4px solid var(--accent)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
+                  <div style={{ maxWidth: 680 }}>
+                    <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Calendar size={18} color="var(--accent)" /> Prompt Follow-Up on Lead Creation
+                    </h3>
+                    <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                      Controls whether the initial <strong>Add New Lead</strong> form asks sales reps to schedule an initial follow-up date and time.
+                    </p>
+                    <div style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 600, color: showFollowUpOnCreate ? '#10b981' : '#94a3b8' }}>
+                      {showFollowUpOnCreate ? '🟢 ON: Follow-Up scheduling section is visible on Add Lead form.' : '⚪ OFF: Follow-Up section is hidden on Add Lead form for rapid lead entry.'}
+                    </div>
+                  </div>
+                  <label style={{ position: 'relative', display: 'inline-block', width: 50, height: 26, flexShrink: 0, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={showFollowUpOnCreate}
+                      onChange={handleToggleFollowUpOnCreate}
+                      style={{ opacity: 0, width: 0, height: 0 }}
+                    />
+                    <span style={{
+                      position: 'absolute',
+                      cursor: 'pointer',
+                      top: 0, left: 0, right: 0, bottom: 0,
+                      backgroundColor: showFollowUpOnCreate ? 'var(--accent)' : '#475569',
+                      transition: '.2s',
+                      borderRadius: 26
+                    }}>
+                      <span style={{
+                        position: 'absolute',
+                        height: 20,
+                        width: 20,
+                        left: showFollowUpOnCreate ? 26 : 3,
+                        bottom: 3,
+                        backgroundColor: 'white',
+                        transition: '.2s',
+                        borderRadius: '50%'
+                      }} />
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Card 2: Mandatory Outcome Note Enforcement */}
+              <div className="card" style={{ padding: '22px 20px', borderLeft: '4px solid #10b981' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14 }}>
+                  <div>
+                    <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <CheckCircle2 size={18} color="#10b981" /> Compulsory Follow-Up Outcome Note
+                    </h3>
+                    <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                      When a follow-up alarm rings or when completing a scheduled follow-up from the Lead Card, entering an outcome note is <strong>mandatory</strong>. Sales reps cannot dismiss alarms or close follow-ups without recording their interaction remark (e.g. Call summary, WhatsApp response, Site visit update).
+                    </p>
+                  </div>
+                  <span className="badge" style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', fontWeight: 700, fontSize: 12, padding: '4px 10px', borderRadius: 8, whiteSpace: 'nowrap' }}>
+                    🔒 Strictly Enforced
+                  </span>
+                </div>
+              </div>
+
+              {/* Card 3: Automated Pipeline Stage Transitions */}
+              <div className="card" style={{ padding: '22px 20px', borderLeft: '4px solid #38bdf8' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14 }}>
+                  <div>
+                    <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Zap size={18} color="#38bdf8" /> Automated First-Touch Pipeline Transition
+                    </h3>
+                    <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                      Whenever an agent makes initial contact with a newly generated lead (via <strong>1-Tap Call</strong>, <strong>WhatsApp dispatch</strong>, or <strong>Outcome Note</strong>), the lead automatically advances from Stage 1 (e.g. <em>New Lead</em>) to Stage 2 (e.g. <em>Contacted / Call Done</em>) with atomic audit logging.
+                    </p>
+                  </div>
+                  <span className="badge" style={{ background: 'rgba(56,189,248,0.15)', color: '#38bdf8', fontWeight: 700, fontSize: 12, padding: '4px 10px', borderRadius: 8, whiteSpace: 'nowrap' }}>
+                    ⚡ Active Trigger
+                  </span>
+                </div>
+              </div>
+
+              {/* Card 4: Follow-Up Audible Alarms & Notifications */}
+              <div className="card" style={{ padding: '22px 20px', borderLeft: '4px solid #f59e0b' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14 }}>
+                  <div>
+                    <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <ShieldAlert size={18} color="#f59e0b" /> Audible Due Follow-Up Alarms
+                    </h3>
+                    <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                      Due follow-ups trigger visual notification banners and audible ringing across mobile and desktop. Alarms remain active until the assigned sales rep logs their mandatory interaction note.
+                    </p>
+                  </div>
+                  <span className="badge" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b', fontWeight: 700, fontSize: 12, padding: '4px 10px', borderRadius: 8, whiteSpace: 'nowrap' }}>
+                    🔔 Active Synchronizer
+                  </span>
+                </div>
               </div>
             </div>
           )}

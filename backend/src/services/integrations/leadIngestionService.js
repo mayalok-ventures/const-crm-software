@@ -1,10 +1,15 @@
 const mongoose = require('mongoose');
-
 const Lead = require('../../models/Lead');
 const Integration = require('../../models/Integration');
+const User = require('../../models/User');
+const { normalizePhone } = require('../../utils/phoneNormalizer');
 
 class LeadIngestionService {
-
+  /**
+   * Main lead ingestion pipeline.
+   * Handles validation, tenant resolution, normalization, deduplication,
+   * attribution assignment, and concurrency-safe MongoDB creation.
+   */
   async ingest(data) {
     const {
       provider,
@@ -33,259 +38,224 @@ class LeadIngestionService {
       email,
 
       customData = {},
-
       createdAt,
     } = data;
 
     // ---------------------------------------------------------
-    // Validation
+    // 1. Validation
     // ---------------------------------------------------------
-
     if (!provider) {
-      throw new Error(
-        'Lead provider is required'
-      );
+      throw new Error('Lead provider is required (meta or google)');
     }
 
     if (!integrationId) {
-      throw new Error(
-        'Integration ID is required'
-      );
+      throw new Error('Integration ID is required');
     }
 
     if (!externalLeadId) {
-      throw new Error(
-        'External lead ID is required'
-      );
+      throw new Error('External lead ID is required');
     }
 
     if (!name && !phone && !email) {
-      throw new Error(
-        'Lead must contain at least name, phone or email'
-      );
+      throw new Error('Lead must contain at least name, phone, or email');
     }
 
     // ---------------------------------------------------------
-    // Integration
+    // 2. Integration Verification
     // ---------------------------------------------------------
-
-    const integration = await Integration.findById(
-      integrationId
-    );
+    const integration = await Integration.findById(integrationId);
 
     if (!integration) {
-      throw new Error(
-        'Integration not found'
-      );
+      throw new Error(`Integration not found with ID: ${integrationId}`);
     }
 
-    if (!integration.isActive) {
-      throw new Error(
-        'Integration is inactive'
-      );
+    const isConnected =
+      integration.status === 'connected' ||
+      integration.isActive === true;
+
+    if (!isConnected) {
+      throw new Error(`Integration ${integrationId} is inactive or disconnected`);
+    }
+
+    const companyId = integration.companyId || null;
+    const userId = integration.userId;
+
+    if (!userId && !companyId) {
+      throw new Error('Integration has no associated owner or company');
     }
 
     // ---------------------------------------------------------
-    // Idempotency
+    // 3. Normalization
     // ---------------------------------------------------------
+    const cleanedName = this.cleanString(name) || 'Inbound Webhook Lead';
+    const normalizedPhone = normalizePhone(phone) || (phone ? String(phone).replace(/\D/g, '') : '');
+    const normalizedEmail = this.normalizeEmail(email);
 
-    const existingLead = await Lead.findOne({
-      companyId: integration.companyId || null,
+    // ---------------------------------------------------------
+    // 4. Idempotency Check: Existing External Lead ID
+    // ---------------------------------------------------------
+    const tenantQuery = companyId
+      ? { companyId }
+      : { userId, companyId: null };
 
+    let existingLead = await Lead.findOne({
+      ...tenantQuery,
       'leadSource.provider': provider,
-
-      'leadSource.externalLeadId':
-        externalLeadId,
+      'leadSource.externalLeadId': String(externalLeadId),
     });
 
     if (existingLead) {
-
-      // Optional metadata update
-
-      existingLead.leadSource.accountId =
-        accountId || existingLead.leadSource.accountId;
-
-      existingLead.leadSource.pageId =
-        pageId || existingLead.leadSource.pageId;
-
-      existingLead.leadSource.formId =
-        formId || existingLead.leadSource.formId;
-
-      existingLead.leadSource.formName =
-        formName || existingLead.leadSource.formName;
-
-      existingLead.leadSource.campaignId =
-        campaignId ||
-        existingLead.leadSource.campaignId;
-
-      existingLead.leadSource.campaignName =
-        campaignName ||
-        existingLead.leadSource.campaignName;
-
-      existingLead.leadSource.adSetId =
-        adSetId ||
-        existingLead.leadSource.adSetId;
-
-      existingLead.leadSource.adSetName =
-        adSetName ||
-        existingLead.leadSource.adSetName;
-
-      existingLead.leadSource.adId =
-        adId ||
-        existingLead.leadSource.adId;
-
-      existingLead.leadSource.adName =
-        adName ||
-        existingLead.leadSource.adName;
+      // Update attribution metadata if new details arrived
+      if (formName && !existingLead.leadSource.formName) existingLead.leadSource.formName = formName;
+      if (campaignName && !existingLead.leadSource.campaignName) existingLead.leadSource.campaignName = campaignName;
+      if (adSetName && !existingLead.leadSource.adSetName) existingLead.leadSource.adSetName = adSetName;
+      if (adGroupName && !existingLead.leadSource.adGroupName) existingLead.leadSource.adGroupName = adGroupName;
+      if (adName && !existingLead.leadSource.adName) existingLead.leadSource.adName = adName;
 
       await existingLead.save();
 
       return {
         created: false,
         duplicate: true,
+        reason: 'duplicate_external_lead_id',
         lead: existingLead,
       };
     }
 
     // ---------------------------------------------------------
-    // Determine owner
+    // 5. Deduplication Check: Existing Phone for Same Tenant
     // ---------------------------------------------------------
+    if (normalizedPhone) {
+      const existingPhoneLead = await Lead.findOne({
+        ...tenantQuery,
+        phone: normalizedPhone,
+      });
 
-    const companyId =
-      integration.companyId || null;
+      if (existingPhoneLead) {
+        // Log activity on the existing lead about the new ad submission
+        existingPhoneLead.leadActivities.push({
+          action: 'message_received',
+          performerName: `${provider.toUpperCase()} Lead Ingestion`,
+          details: `Repeat ad submission from campaign: ${campaignName || 'Unknown Campaign'} (Form: ${formName || 'Lead Form'})`,
+          timestamp: new Date(),
+        });
 
-    const userId =
-      integration.userId;
+        // Update campaign attribution if newer
+        if (campaignName) existingPhoneLead.leadSource.campaignName = campaignName;
+        if (formName) existingPhoneLead.leadSource.formName = formName;
 
-    if (!userId && !companyId) {
-      throw new Error(
-        'Integration has no owner'
-      );
+        await existingPhoneLead.save();
+
+        return {
+          created: false,
+          duplicate: true,
+          reason: 'duplicate_phone_number',
+          lead: existingPhoneLead,
+        };
+      }
     }
 
     // ---------------------------------------------------------
-    // Normalize phone
+    // 6. Lead Assignment Rules
     // ---------------------------------------------------------
+    let assignedTo = null;
+    let assignedToName = '';
 
-    const normalizedPhone =
-      this.normalizePhone(phone);
+    // If tenant user has custom pipeline stage, initialize into 1st stage
+    let initialStatus = 'new_lead';
+    try {
+      const ownerUser = await User.findById(userId).select('customPipelineStages');
+      if (ownerUser?.customPipelineStages?.length > 0) {
+        initialStatus = ownerUser.customPipelineStages[0];
+      }
+    } catch {
+      initialStatus = 'new_lead';
+    }
 
     // ---------------------------------------------------------
-    // Create Lead
+    // 7. Create Lead Document
     // ---------------------------------------------------------
-
     const lead = new Lead({
-
       userId,
-
       companyId,
+      assignedTo,
+      assignedToName,
 
-      assignedTo: null,
+      name: cleanedName,
+      phone: normalizedPhone || '0000000000',
+      email: normalizedEmail,
 
-      assignedToName: '',
+      status: initialStatus,
+      source: provider.toLowerCase(),
+      tags: [
+        provider.toLowerCase(),
+        `${provider.toLowerCase()}_ads`,
+        'lead_form',
+      ],
 
-      name:
-        this.cleanString(name) ||
-        'Unknown Lead',
-
-      phone:
-        normalizedPhone ||
-        'unknown',
-
-      email:
-        this.normalizeEmail(email),
-
-      status: 'new',
+      propertyType: formName || `${provider.toUpperCase()} Ad Ingestion`,
+      budget: 'Standard',
 
       customData,
 
-      source: provider,
-
       leadSource: {
-        provider,
-
-        externalLeadId,
-
-        integrationId,
-
-        accountId: accountId || null,
-
-        pageId: pageId || null,
-
+        provider: provider.toLowerCase(),
+        externalLeadId: String(externalLeadId),
+        integrationId: integration._id,
+        accountId: accountId || integration.accountId || null,
+        pageId: pageId || integration.pageId || null,
         formId: formId || null,
-
-        formName:
-          formName || '',
-
-        campaignId:
-          campaignId || null,
-
-        campaignName:
-          campaignName || '',
-
-        adSetId:
-          adSetId || null,
-
-        adSetName:
-          adSetName || '',
-
-        adId:
-          adId || null,
-
-        adName:
-          adName || '',
-
-        importedAt:
-          new Date(),
+        formName: formName || '',
+        campaignId: campaignId || null,
+        campaignName: campaignName || '',
+        adSetId: adSetId || null,
+        adSetName: adSetName || '',
+        adGroupId: adGroupId || null,
+        adGroupName: adGroupName || '',
+        adId: adId || null,
+        adName: adName || '',
+        importedAt: createdAt ? new Date(createdAt) : new Date(),
       },
 
-      followUpDate:
-        this.defaultFollowUpDate(),
+      followUpDate: this.defaultFollowUpDate(),
 
       leadActivities: [
         {
           action: 'lead_created',
-
-          performerName:
-            `${provider} Integration`,
-
-          details:
-            `Lead imported from ${provider}`,
-
-          timestamp:
-            new Date(),
+          performerName: `${provider.toUpperCase()} Ads Ingestion`,
+          details: `Lead imported from ${provider.toUpperCase()} Campaign: ${campaignName || 'Default'} (Form: ${formName || 'Instant Form'})`,
+          timestamp: new Date(),
         },
       ],
     });
 
     // ---------------------------------------------------------
-    // Save
+    // 8. Atomic Concurrency-Safe Save
     // ---------------------------------------------------------
-
     try {
-
       await lead.save();
-
     } catch (error) {
-
-      // Race-condition duplicate handling
-
+      // Catch MongoDB duplicate key race condition (E11000)
       if (error.code === 11000) {
+        const duplicate = await Lead.findOne({
+          ...tenantQuery,
+          $or: [
+            {
+              'leadSource.provider': provider,
+              'leadSource.externalLeadId': String(externalLeadId),
+            },
+            ...(normalizedPhone ? [{ phone: normalizedPhone }] : []),
+          ],
+        });
 
-        const duplicate =
-          await Lead.findOne({
-            companyId,
-            'leadSource.provider':
-              provider,
-            'leadSource.externalLeadId':
-              externalLeadId,
-          });
-
-        return {
-          created: false,
-          duplicate: true,
-          lead: duplicate,
-        };
+        if (duplicate) {
+          return {
+            created: false,
+            duplicate: true,
+            reason: 'concurrency_race_resolved',
+            lead: duplicate,
+          };
+        }
       }
 
       throw error;
@@ -298,51 +268,22 @@ class LeadIngestionService {
     };
   }
 
-  normalizePhone(phone) {
-
-    if (!phone) {
-      return '';
-    }
-
-    return String(phone)
-      .replace(/[^\d+]/g, '')
-      .trim();
-  }
-
   normalizeEmail(email) {
-
-    if (!email) {
-      return undefined;
-    }
-
-    return String(email)
-      .trim()
-      .toLowerCase();
+    if (!email) return undefined;
+    const cleaned = String(email).trim().toLowerCase();
+    return cleaned.includes('@') ? cleaned : undefined;
   }
 
   cleanString(value) {
-
-    if (
-      value === null ||
-      value === undefined
-    ) {
-      return '';
-    }
-
+    if (value === null || value === undefined) return '';
     return String(value).trim();
   }
 
   defaultFollowUpDate() {
-
     const date = new Date();
-
-    date.setDate(
-      date.getDate() + 1
-    );
-
+    date.setDate(date.getDate() + 1);
     return date;
   }
 }
 
-module.exports =
-  new LeadIngestionService();
+module.exports = new LeadIngestionService();

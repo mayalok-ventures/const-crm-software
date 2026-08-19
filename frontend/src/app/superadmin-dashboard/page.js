@@ -23,14 +23,19 @@ const KANBAN_STAGES = [
   { id: 'payment_done', label: 'Payment Done', color: 'border-purple-500/40 bg-purple-500/10 text-purple-300', dot: 'bg-purple-400' },
 ];
 
-// Standardized 6 Services Catalog
+// Standardized 6 Subscription Plans Catalog (3 Individual, 3 Organization)
 const SERVICE_CATALOG = {
-  digital_marketing: { label: 'Digital Marketing & Ads', color: 'bg-blue-500/15 text-blue-300 border-blue-500/30' },
-  web_development: { label: 'Web & App Development', color: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' },
-  seo_optimization: { label: 'SEO & Organic Growth', color: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' },
-  crm_automation: { label: 'CRM & Automation', color: 'bg-purple-500/15 text-purple-300 border-purple-500/30' },
-  branding_design: { label: 'Branding & UI/UX', color: 'bg-pink-500/15 text-pink-300 border-pink-500/30' },
-  cloud_infrastructure: { label: 'Cloud & DevOps', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
+  basic_solo: { label: 'Basic Solo (₹399/mo)', color: 'bg-blue-500/15 text-blue-300 border-blue-500/30' },
+  smart_solo: { label: 'Smart Solo (₹799/mo)', color: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' },
+  power_solo: { label: 'Power Solo (₹1,299/mo)', color: 'bg-violet-500/15 text-violet-300 border-violet-500/30' },
+  team_starter: { label: 'Team Starter (₹1,499/mo)', color: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' },
+  business: { label: 'Business Agency (₹2,499/mo)', color: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' },
+  enterprise: { label: 'Enterprise Command (₹4,999/mo)', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
+  // Backward compatibility fallback
+  custom_enterprise: { label: 'Custom Enterprise', color: 'bg-purple-500/15 text-purple-300 border-purple-500/30' },
+  digital_marketing: { label: 'Smart Solo (₹799/mo)', color: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' },
+  web_development: { label: 'Business Agency (₹2,499/mo)', color: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' },
+  crm_automation: { label: 'Enterprise Command (₹4,999/mo)', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
 };
 
 // Goal Timelines

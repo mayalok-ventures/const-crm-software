@@ -6,40 +6,41 @@ import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import { waLink } from '@/lib/auth';
 import BottomNav from '@/components/BottomNav';
+import { useAlarm } from '@/lib/AlarmContext';
 import {
   Plus, Search, Bell, MessageCircle, Phone, Calendar, Package,
   User, ChevronRight, Filter, X, ShieldAlert, CheckCircle, Volume2, Mic, AlertTriangle, ArrowRight, MapPin, Briefcase,
-  Download, Upload, FileSpreadsheet, FileText, ChevronDown, Check, TrendingUp, DollarSign, Award, BarChart2
+  Download, Upload, FileSpreadsheet, FileText, ChevronDown, Check, TrendingUp, DollarSign, Award, BarChart2,
+  Edit2, Clock, CheckCircle2, RotateCcw, Zap
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { getIndustryDefaults } from '@/lib/industryTemplates';
 import LostReasonModal, { isLostStage, LOST_REASON_OPTIONS } from '@/components/LostReasonModal';
 import PlanStatusWidget from '@/components/PlanStatusWidget';
+import { SourcePill } from '@/lib/sourceHelper';
 
 const STAGE_LABELS = {
-  new: '🆕 New Lead',
-  cold: '❄️ Cold',
-  warm: '🌤️ Warm',
-  hot: '🔥 Hot Lead',
+  new_lead: '🆕 New Lead',
   contacted: '📞 Contacted',
-  site_visit_scheduled: '📅 Meeting / Demo Scheduled',
-  negotiation: '🤝 In Negotiation',
+  not_interested: '❌ Not Interested',
+  converted: '🏆 Converted',
   payment_done: '💳 Payment Done',
-  closed: '🏆 Closed / Won',
-  lost: '❌ Lost / Dropped',
+  // Backward compatibility
+  new: '🆕 New Lead',
+  closed: '🏆 Converted',
+  lost: '❌ Not Interested',
 };
 
 const STATUS_COLORS = {
-  new: 'badge-new',
-  cold: 'badge-tag',
-  warm: 'badge-follow_up',
-  hot: 'badge-danger',
+  new_lead: 'badge-new',
   contacted: 'badge-tag',
-  site_visit_scheduled: 'badge-follow_up',
-  negotiation: 'badge-follow_up',
+  not_interested: 'badge-danger',
+  converted: 'badge-closed',
   payment_done: 'badge-closed',
+  // Backward compatibility
+  new: 'badge-new',
   closed: 'badge-closed',
-  lost: 'badge-tag',
+  lost: 'badge-danger',
 };
 
 function UpgradeModal({ onClose }) {
@@ -537,13 +538,16 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
     api.get('/projects').then(r => setProjects(r.data)).catch(() => {});
   }, []);
 
+  const showFollowUpOnCreate = user?.showFollowUpOnCreate !== false && user?.preferences?.showFollowUpOnCreate !== false;
+
   const rawSchema = (user?.leadFormSchema && Array.isArray(user.leadFormSchema) && user.leadFormSchema.length > 0)
     ? user.leadFormSchema
     : defaults.leadFormSchema;
 
-  // Real-time Conditional Logic Evaluator (dependsOn)
+  // Real-time Conditional Logic Evaluator (dependsOn & showFollowUpOnCreate)
   const isFieldVisible = (field) => {
     if (field.isHidden) return false;
+    if (field.fieldId === 'followUpDate' && !showFollowUpOnCreate) return false;
     if (!field.dependsOn || !field.dependsOn.field) return true;
     const parentVal = values[field.dependsOn.field] || '';
     return String(parentVal || '').trim().toLowerCase() === String(field.dependsOn.value || '').trim().toLowerCase();
@@ -578,7 +582,7 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
     if (!values.name?.trim() || !values.phone?.trim()) {
       return toast.error('Name and Phone are required');
     }
-    if (!values.followUpDate) {
+    if (showFollowUpOnCreate && !values.followUpDate) {
       return toast.error('Next follow-up date is mandatory');
     }
 
@@ -809,6 +813,416 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+// STRICT EDIT LEAD MODAL (Only original form creation fields)
+// ─────────────────────────────────────────────────────────────
+function EditLeadModal({ lead, onClose, onUpdated, user }) {
+  const defaults = getIndustryDefaults(user?.industryType);
+  const rawSchema = (user?.leadFormSchema && Array.isArray(user.leadFormSchema) && user.leadFormSchema.length > 0)
+    ? user.leadFormSchema
+    : defaults.leadFormSchema;
+
+  // Strict Isolation: Only fields present in the creation form, excluding status & followUpDate
+  const isEditField = (f) => !f.isHidden && !['status', 'followUpDate'].includes(f.fieldId);
+  const activeFields = [...rawSchema]
+    .sort((a, b) => (a.order || 0) - (b.order || 0))
+    .filter(isEditField);
+
+  const [values, setValues] = useState(() => {
+    const initial = {
+      name: lead.name || '',
+      phone: lead.phone || '',
+      email: lead.email || '',
+      company: lead.company || '',
+      location: lead.location || '',
+      profession: lead.profession || '',
+      budget: lead.budget || '',
+      propertyType: lead.propertyType || '',
+      project: lead.project || '',
+      projectId: lead.projectId || '',
+      tags: Array.isArray(lead.tags) ? lead.tags.join(', ') : (lead.tags || ''),
+      service_required: lead.service_required || lead.serviceRequired || '',
+      monthly_spend: lead.monthly_spend ?? lead.monthlySpend ?? '',
+      goal_timeline: lead.goal_timeline || lead.goalTimeline || '',
+    };
+    if (lead.customData && typeof lead.customData === 'object') {
+      Object.assign(initial, lead.customData);
+    }
+    return initial;
+  });
+
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    api.get('/projects').then(r => setProjects(r.data)).catch(() => {});
+  }, []);
+
+  const setVal = (fieldId) => (e) => {
+    setValues(v => ({ ...v, [fieldId]: e.target.value }));
+  };
+
+  const handleProjectSelect = (e) => {
+    const pId = e.target.value;
+    if (!pId) {
+      setValues(v => ({ ...v, projectId: '', project: '' }));
+      return;
+    }
+    const selected = projects.find(p => p._id === pId);
+    setValues(v => ({
+      ...v,
+      projectId: pId,
+      project: selected?.name || '',
+      location: v.location || selected?.location || '',
+      budget: v.budget || selected?.basePrice || '',
+    }));
+  };
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    if (!values.name?.trim() || !values.phone?.trim()) {
+      return toast.error('Name and Phone are required');
+    }
+
+    for (const f of activeFields) {
+      if (f.isRequired && !values[f.fieldId]?.toString().trim()) {
+        return toast.error(`${f.label} is required`);
+      }
+    }
+
+    setLoading(true);
+    try {
+      const knownSystem = new Set([
+        'name', 'phone', 'email', 'company', 'tags',
+        'location', 'profession', 'budget', 'areasOfInterest', 'project',
+        'projectId', 'propertyType', 'service_required', 'monthly_spend', 'goal_timeline'
+      ]);
+
+      const payload = {
+        name: values.name.trim(),
+        phone: values.phone.trim(),
+        email: values.email?.trim() || undefined,
+        company: values.company?.trim() || undefined,
+        location: values.location?.trim() || '',
+        profession: values.profession?.trim() || '',
+        budget: values.budget?.trim() || '',
+        propertyType: values.propertyType || '',
+        project: values.project || '',
+        projectId: values.projectId || null,
+        tags: typeof values.tags === 'string' ? values.tags.split(',').map(t => t.trim()).filter(Boolean) : values.tags,
+        service_required: values.service_required || undefined,
+        monthly_spend: values.monthly_spend ? Number(values.monthly_spend) : undefined,
+        goal_timeline: values.goal_timeline || undefined,
+        customData: {},
+      };
+
+      for (const [k, v] of Object.entries(values)) {
+        if (!knownSystem.has(k) && !['status', 'followUpDate'].includes(k)) {
+          payload.customData[k] = v;
+        }
+      }
+
+      const { data } = await api.put(`/leads/${lead._id}`, payload);
+      toast.success('Lead updated successfully ✅');
+      onUpdated(data);
+      onClose();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update lead');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520, width: '92vw', maxHeight: '90dvh', overflowY: 'auto' }}>
+        <div className="modal-header">
+          <div>
+            <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Edit2 size={18} color="var(--accent)" /> Edit Lead Details
+            </h2>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+              Modify original lead creation attributes ({lead.name})
+            </p>
+          </div>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+
+        <form onSubmit={handleUpdate} className="modal-form" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {activeFields.map(field => {
+            const isMandatory = field.isRequired || ['name', 'phone'].includes(field.fieldId);
+            const currentVal = values[field.fieldId] || '';
+
+            if (field.fieldId === 'projectId') {
+              return (
+                <div key={field.fieldId}>
+                  <label className="label">{field.label} {isMandatory && '*'}</label>
+                  <select className="input" value={values.projectId || ''} onChange={handleProjectSelect} required={isMandatory}>
+                    <option value="">-- Select Offering / Package (Optional) --</option>
+                    {projects.map(p => (
+                      <option key={p._id} value={p._id}>{p.name} {p.basePrice ? `(₹${p.basePrice})` : ''}</option>
+                    ))}
+                  </select>
+                </div>
+              );
+            }
+
+            if (field.fieldType === 'dropdown') {
+              return (
+                <div key={field.fieldId}>
+                  <label className="label">{field.label} {isMandatory && '*'}</label>
+                  <select className="input" value={currentVal} onChange={setVal(field.fieldId)} required={isMandatory}>
+                    <option value="">-- Select {field.label} --</option>
+                    {(field.options || []).map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </div>
+              );
+            }
+
+            const inputType = field.fieldType === 'number' ? 'number' : field.fieldType === 'email' ? 'email' : field.fieldType === 'phone' ? 'tel' : field.fieldType === 'date' ? 'date' : 'text';
+
+            return (
+              <div key={field.fieldId}>
+                <label className="label">{field.label} {isMandatory && '*'}</label>
+                <input
+                  className="input"
+                  type={inputType}
+                  placeholder={`Enter ${field.label}...`}
+                  value={currentVal}
+                  onChange={setVal(field.fieldId)}
+                  required={isMandatory}
+                />
+              </div>
+            );
+          })}
+
+          <div className="modal-actions" style={{ marginTop: 8 }}>
+            <button type="button" className="btn btn-ghost" onClick={onClose} style={{ height: 40 }}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={loading} style={{ height: 40 }}>
+              {loading ? <div className="spinner" style={{ width: 16, height: 16 }} /> : 'Save Changes ✅'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// DEDICATED SCHEDULE FOLLOW-UP MODAL (The Follow-Up Hub)
+// ─────────────────────────────────────────────────────────────
+function ScheduleFollowUpModal({ lead, onClose, onUpdated }) {
+  const [followUpDate, setFollowUpDate] = useState(() => {
+    if (lead?.followUpDate) {
+      try {
+        const d = new Date(lead.followUpDate);
+        return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      } catch {
+        return '';
+      }
+    }
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    return new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  });
+  const [scheduleNote, setScheduleNote] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const applyOffset = (hours) => {
+    const target = new Date(Date.now() + hours * 60 * 60 * 1000);
+    setFollowUpDate(new Date(target.getTime() - target.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!followUpDate) {
+      return toast.error('Please select a follow-up date and time');
+    }
+    setLoading(true);
+    try {
+      const { data } = await api.put(`/leads/${lead._id}`, {
+        followUpDate: new Date(followUpDate).toISOString(),
+        followUpNotified: false,
+      });
+
+      if (scheduleNote.trim()) {
+        await api.post(`/leads/${lead._id}/notes`, {
+          text: `📅 Follow-up scheduled for ${format(new Date(followUpDate), 'dd MMM yyyy, h:mm a')}: ${scheduleNote.trim()}`,
+        });
+      }
+
+      toast.success('Follow-up scheduled successfully ⏰');
+      onUpdated(data);
+      onClose();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to schedule follow-up');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 460, width: '92vw' }}>
+        <div className="modal-header">
+          <div>
+            <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Calendar size={18} color="var(--accent)" /> Schedule Follow-Up
+            </h2>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+              Set date & time reminder for <strong>{lead.name}</strong> ({lead.phone})
+            </p>
+          </div>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+
+        <form onSubmit={handleSave} className="modal-form" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Quick Preset Buttons */}
+          <div>
+            <label className="label" style={{ fontSize: 11, marginBottom: 6 }}>Quick Presets</label>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => applyOffset(24)} className="btn btn-ghost btn-sm" style={{ fontSize: 11, padding: '4px 8px', borderRadius: 6, background: 'var(--surface)' }}>
+                +24 Hours
+              </button>
+              <button type="button" onClick={() => applyOffset(48)} className="btn btn-ghost btn-sm" style={{ fontSize: 11, padding: '4px 8px', borderRadius: 6, background: 'var(--surface)' }}>
+                +48 Hours
+              </button>
+              <button type="button" onClick={() => applyOffset(72)} className="btn btn-ghost btn-sm" style={{ fontSize: 11, padding: '4px 8px', borderRadius: 6, background: 'var(--surface)' }}>
+                +3 Days
+              </button>
+              <button type="button" onClick={() => applyOffset(168)} className="btn btn-ghost btn-sm" style={{ fontSize: 11, padding: '4px 8px', borderRadius: 6, background: 'var(--surface)' }}>
+                +1 Week
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Follow-Up Date & Time *</label>
+            <input
+              type="datetime-local"
+              className="input"
+              value={followUpDate}
+              onChange={e => setFollowUpDate(e.target.value)}
+              required
+              style={{ height: 42, fontSize: 13 }}
+            />
+          </div>
+
+          <div>
+            <label className="label">Scheduled Agenda / Notes (Optional)</label>
+            <textarea
+              className="input"
+              placeholder="e.g. Call client back with custom proposal after team review..."
+              value={scheduleNote}
+              onChange={e => setScheduleNote(e.target.value)}
+              rows={2}
+              style={{ padding: '8px 12px', fontSize: 13, resize: 'vertical' }}
+            />
+          </div>
+
+          <div className="modal-actions" style={{ marginTop: 6 }}>
+            <button type="button" className="btn btn-ghost" onClick={onClose} style={{ height: 40 }}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={loading} style={{ height: 40, background: 'var(--accent)' }}>
+              {loading ? <div className="spinner" style={{ width: 16, height: 16 }} /> : 'Set Follow-Up ⏰'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// DEDICATED COMPLETE FOLLOW-UP MODAL (Mandatory Outcome Note)
+// ─────────────────────────────────────────────────────────────
+function CompleteFollowUpModal({ lead, onClose, onCompleted, onPromptScheduleNext }) {
+  const [noteText, setNoteText] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { dismissAlarm } = useAlarm();
+
+  const handleComplete = async (e) => {
+    e.preventDefault();
+    const cleanNote = noteText.trim();
+    if (!cleanNote) {
+      return toast.error('Compulsory: Outcome note is required to complete follow-up and clear alarm.');
+    }
+
+    setLoading(true);
+    try {
+      await api.post(`/leads/${lead._id}/notes`, { text: cleanNote });
+      await api.put(`/leads/${lead._id}`, { followUpNotified: true });
+      dismissAlarm(lead._id);
+      toast.success('Follow-up resolved & outcome note recorded ✅');
+      onCompleted(lead);
+      onClose();
+
+      if (window.confirm('Follow-up marked done! Would you like to schedule the next follow-up now?')) {
+        onPromptScheduleNext(lead);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to record outcome note');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 460, width: '92vw' }}>
+        <div className="modal-header">
+          <div>
+            <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CheckCircle2 size={18} color="#10b981" /> Complete Follow-Up
+            </h2>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+              Record outcome for <strong>{lead.name}</strong> ({lead.phone})
+            </p>
+          </div>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+
+        <form onSubmit={handleComplete} className="modal-form" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ padding: '10px 12px', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 10 }}>
+            <span style={{ fontSize: 11.5, color: '#10b981', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+              🔒 Note is Compulsory to Clear Alarm & Mark Done
+            </span>
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+              Enter what transpired during your call, WhatsApp conversation, or client interaction.
+            </p>
+          </div>
+
+          <div>
+            <label className="label">Interaction / Outcome Note *</label>
+            <textarea
+              className="input"
+              placeholder="e.g. Spoke with client. They requested a 10% discount on Business plan. Scheduling demo for Friday..."
+              value={noteText}
+              onChange={e => setNoteText(e.target.value)}
+              required
+              rows={4}
+              style={{ padding: '10px 12px', fontSize: 13, resize: 'vertical' }}
+              autoFocus
+            />
+          </div>
+
+          <div className="modal-actions" style={{ marginTop: 6 }}>
+            <button type="button" className="btn btn-ghost" onClick={onClose} style={{ height: 40 }}>Cancel</button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={loading || !noteText.trim()}
+              style={{ height: 40, background: '#10b981', borderColor: '#10b981' }}
+            >
+              {loading ? <div className="spinner" style={{ width: 16, height: 16 }} /> : 'Resolve Follow-Up ✅'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [leads, setLeads] = useState([]);
@@ -826,9 +1240,13 @@ export default function DashboardPage() {
   const [showExportLeadsModal, setShowExportLeadsModal] = useState(false);
   const [showExportAnalyticsModal, setShowExportAnalyticsModal] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [editingLead, setEditingLead] = useState(null);
+  const [schedulingFollowUpLead, setSchedulingFollowUpLead] = useState(null);
+  const [completingFollowUpLead, setCompletingFollowUpLead] = useState(null);
   const [unread, setUnread] = useState(0);
   const [user, setUser] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
+  const { dismissAlarm } = useAlarm();
 
   const isCompanyOwner = user?.workStatus === 'company_owner' || user?.companyRole === 'owner';
 
@@ -888,6 +1306,13 @@ export default function DashboardPage() {
 
   const isFreePlan = user?.plan === 'free';
   const leadLimitReached = isFreePlan && (pagination.total >= 10);
+
+  const industryDefaults = getIndustryDefaults(user?.industryType);
+  const availableStatuses = (user?.pipelineStages && Array.isArray(user.pipelineStages) && user.pipelineStages.length > 0)
+    ? user.pipelineStages
+    : ((user?.customPipelineStages && Array.isArray(user.customPipelineStages) && user.customPipelineStages.length > 0)
+      ? user.customPipelineStages
+      : (industryDefaults?.pipelineStages || ['new_lead', 'contacted', 'not_interested', 'converted', 'payment_done']));
 
   if (loadingUser || user?.role === 'superadmin' || user?.isAdmin) {
     return (
@@ -952,6 +1377,10 @@ export default function DashboardPage() {
             >
               <Download size={13} /> Export
             </button>
+
+            <Link href="/integrations" className="btn btn-secondary btn-sm" style={{ gap: 4, borderRadius: 8, flexShrink: 0, color: '#2563eb', borderColor: 'rgba(37,99,235,0.3)' }} title="Meta & Google Ads Integrations">
+              <Zap size={13} /> Ads & APIs
+            </Link>
 
             <button
               onClick={() => setShowExportAnalyticsModal(true)}
@@ -1137,21 +1566,79 @@ export default function DashboardPage() {
                   style={{ textDecoration: 'none', display: 'block', width: '100%', cursor: 'pointer' }}
                 >
                   <div className="lead-card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, width: '100%', minWidth: 0, marginBottom: 4 }}>
-                      <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
-                        <h3 className="lead-name truncate" style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{lead.name}</h3>
+                    {/* Header Row: Lead Name + Source Badge + Stage Dropdown */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, width: '100%', minWidth: 0, marginBottom: 6 }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <h3 className="lead-name truncate" style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+                            {lead.name}
+                          </h3>
+                          <SourcePill lead={lead} showDetail={false} />
+                        </div>
                         <p className="truncate" style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
                           +{lead.phone} {lead.company ? `• ${lead.company}` : ''}
                         </p>
                       </div>
-                      <span className={`badge ${STATUS_COLORS[lead.status] || 'badge-tag'} flex-shrink-0`} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
-                        {STAGE_LABELS[lead.status] || lead.status}
-                      </span>
+
+                      <select
+                        value={lead.status}
+                        onClick={e => e.stopPropagation()}
+                        onChange={async (e) => {
+                          e.stopPropagation();
+                          const newStatus = e.target.value;
+                          const isConverting = ['converted', 'payment_done', 'closed', 'Closed', 'Closed / Won'].includes(newStatus);
+                          let paymentAmount = null;
+                          let paymentMethod = null;
+                          if (isConverting) {
+                            const inputAmt = window.prompt("🏆 Enter Final Closed Deal / Payment Amount (₹):");
+                            if (!inputAmt) return;
+                            paymentAmount = Number(inputAmt);
+                            if (!paymentAmount || isNaN(paymentAmount) || paymentAmount <= 0) {
+                              return toast.error("Payment amount (> 0) is required to convert a lead.");
+                            }
+                            const inputMethod = window.prompt("💳 Enter Payment Method (e.g. bank_transfer, upi, cash, card):", "bank_transfer");
+                            if (!inputMethod || !inputMethod.trim()) {
+                              return toast.error("Payment method is required to convert a lead.");
+                            }
+                            paymentMethod = inputMethod.trim();
+                          }
+                          try {
+                            await api.put(`/leads/${lead._id}`, {
+                              status: newStatus,
+                              paymentAmount,
+                              paymentMethod
+                            });
+                            toast.success(`Lead stage updated to "${STAGE_LABELS[newStatus] || newStatus}" ✅`);
+                            fetchLeads(true);
+                          } catch (err) {
+                            toast.error(err.response?.data?.message || 'Failed to update stage');
+                          }
+                        }}
+                        className={`badge ${STATUS_COLORS[lead.status] || 'badge-tag'} flex-shrink-0`}
+                        style={{
+                          cursor: 'pointer',
+                          padding: '4px 8px',
+                          borderRadius: 8,
+                          border: '1px solid var(--border)',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          outline: 'none',
+                          maxWidth: '140px'
+                        }}
+                      >
+                        {availableStatuses.map(st => (
+                          <option key={st} value={st} style={{ background: '#0f172a', color: '#f8fafc' }}>
+                            {STAGE_LABELS[st] || st}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
+                    {/* Metadata & Attribution Strip */}
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '6px 0', width: '100%', minWidth: 0 }}>
+                      <SourcePill lead={lead} showDetail={true} />
                       {lead.project && (
-                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'var(--surface)', borderRadius: 4, color: 'var(--text-muted)', flexShrink: 0 }}>
+                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'var(--surface)', borderRadius: 4, color: 'var(--text-muted)', border: '1px solid var(--border)', flexShrink: 0 }}>
                           📦 {lead.project}
                         </span>
                       )}
@@ -1170,9 +1657,18 @@ export default function DashboardPage() {
                           📍 {lead.location}
                         </span>
                       )}
-                      {lead.assignedToName && (
+                      {lead.assignedToName ? (
                         <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(99,102,241,0.1)', borderRadius: 4, color: 'var(--accent)', fontWeight: 500, flexShrink: 0 }}>
                           👤 {lead.assignedToName}
+                        </span>
+                      ) : (
+                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(245,158,11,0.15)', borderRadius: 4, color: '#f59e0b', fontWeight: 700, flexShrink: 0 }}>
+                          🌐 Common Pool
+                        </span>
+                      )}
+                      {(lead.serviceRequired || lead.service_required) && (
+                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(16,185,129,0.1)', borderRadius: 4, color: '#10b981', fontWeight: 600, flexShrink: 0 }}>
+                          📦 {lead.service_required?.replace(/_/g, ' ') || 'Smart Solo'}
                         </span>
                       )}
                     </div>
@@ -1184,24 +1680,73 @@ export default function DashboardPage() {
                       </p>
                     )}
 
-                    {/* 1-Tap Quick Action Buttons for Mobile Sales Reps */}
-                    <div className="lead-card-actions" onClick={e => e.stopPropagation()}>
-                      <a
-                        href={`tel:${lead.phone}`}
-                        className="lead-action-btn lead-action-call flex-shrink-0"
-                        onClick={e => e.stopPropagation()}
-                      >
-                        <Phone size={13} className="flex-shrink-0" /> Call
-                      </a>
-                      <a
-                        href={waLink(lead.phone, `Hello ${lead.name}, regarding your inquiry for ${lead.project || 'our services'}...`)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="lead-action-btn lead-action-wa flex-shrink-0"
-                        onClick={e => e.stopPropagation()}
-                      >
-                        <MessageCircle size={13} className="flex-shrink-0" /> WhatsApp
-                      </a>
+                    {/* Mobile-First Responsive Action Grid: Row 1 (Call & WA) + Row 2 (FollowUp, Note, Edit) */}
+                    <div className="lead-card-actions" onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+                        <a
+                          href={`tel:${lead.phone}`}
+                          className="lead-action-btn lead-action-call"
+                          style={{ flex: 1, minWidth: 0, height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, textDecoration: 'none' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            api.post(`/leads/${lead._id}/track-call`).then(() => fetchLeads(true)).catch(() => {});
+                          }}
+                        >
+                          <Phone size={13} className="flex-shrink-0" /> Call
+                        </a>
+                        <a
+                          href={waLink(lead.phone, `Hello ${lead.name}, regarding your inquiry for ${lead.project || 'our subscription plans'}...`)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="lead-action-btn lead-action-wa"
+                          style={{ flex: 1, minWidth: 0, height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, textDecoration: 'none' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            api.post(`/leads/${lead._id}/track-message`).then(() => fetchLeads(true)).catch(() => {});
+                          }}
+                        >
+                          <MessageCircle size={13} className="flex-shrink-0" /> WhatsApp
+                        </a>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+                        <button
+                          type="button"
+                          className="lead-action-btn"
+                          style={{ flex: 1, minWidth: 0, height: 32, fontSize: 11.5, background: 'rgba(59,130,246,0.08)', color: '#2563eb', border: '1px solid rgba(59,130,246,0.25)', borderRadius: 8 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSchedulingFollowUpLead(lead);
+                          }}
+                          title="Schedule or reschedule follow-up"
+                        >
+                          <Calendar size={12} className="flex-shrink-0" /> Follow-Up
+                        </button>
+                        <button
+                          type="button"
+                          className="lead-action-btn"
+                          style={{ flex: 1, minWidth: 0, height: 32, fontSize: 11.5, background: 'rgba(16,185,129,0.08)', color: '#059669', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 8 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCompletingFollowUpLead(lead);
+                          }}
+                          title="Complete follow-up with mandatory outcome note"
+                        >
+                          <CheckCircle size={12} className="flex-shrink-0" /> Note / Done
+                        </button>
+                        <button
+                          type="button"
+                          className="lead-action-btn"
+                          style={{ flex: 1, minWidth: 0, height: 32, fontSize: 11.5, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingLead(lead);
+                          }}
+                          title="Edit original lead creation fields"
+                        >
+                          <Edit2 size={12} className="flex-shrink-0" /> Edit
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1283,6 +1828,32 @@ export default function DashboardPage() {
       )}
 
       {showUpgrade && <UpgradeModal onClose={() => setShowUpgrade(false)} />}
+
+      {editingLead && (
+        <EditLeadModal
+          lead={editingLead}
+          user={user}
+          onClose={() => setEditingLead(null)}
+          onUpdated={() => fetchLeads(true)}
+        />
+      )}
+
+      {schedulingFollowUpLead && (
+        <ScheduleFollowUpModal
+          lead={schedulingFollowUpLead}
+          onClose={() => setSchedulingFollowUpLead(null)}
+          onUpdated={() => fetchLeads(true)}
+        />
+      )}
+
+      {completingFollowUpLead && (
+        <CompleteFollowUpModal
+          lead={completingFollowUpLead}
+          onClose={() => setCompletingFollowUpLead(null)}
+          onCompleted={() => fetchLeads(true)}
+          onPromptScheduleNext={(ld) => setSchedulingFollowUpLead(ld)}
+        />
+      )}
 
       <BottomNav active="dashboard" />
     </div>

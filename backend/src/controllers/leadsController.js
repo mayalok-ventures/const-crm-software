@@ -6,7 +6,7 @@ const PDFDocument = require('pdfkit');
 const csv = require('csv-parser');
 const { Readable } = require('stream');
 
-// Helper to construct query respecting Company Lead Sharing Mode
+// Helper to construct query respecting Company Lead Sharing Mode & Common Pool
 const buildLeadPermissionQuery = async (user) => {
   if (user.role === 'superadmin' || user.isAdmin) {
     // SuperAdmin has universal master access across all platform leads
@@ -17,8 +17,15 @@ const buildLeadPermissionQuery = async (user) => {
   const companyId = isOwner ? user._id : user.companyId;
 
   if (!companyId) {
-    // Solo Independent Agent
-    return { userId: user._id };
+    // Platform Solo / Team Agent: Can access assigned leads, created leads, OR common pool unassigned leads
+    return {
+      $or: [
+        { assignedTo: user._id },
+        { userId: user._id },
+        { assignedTo: null },
+        { assignedTo: { $exists: false } }
+      ]
+    };
   }
 
   // Fetch company settings
@@ -31,16 +38,19 @@ const buildLeadPermissionQuery = async (user) => {
       $or: [
         { companyId },
         { userId: companyId },
-        { userId: user._id }
+        { userId: user._id },
+        { assignedTo: null }
       ]
     };
   }
 
-  // Assigned mode for sub-agents: only assigned to them or created by them
+  // Assigned mode for sub-agents: assigned to them, created by them, OR unassigned in company pool
   return {
     $or: [
       { assignedTo: user._id },
-      { userId: user._id }
+      { userId: user._id },
+      { assignedTo: null, companyId },
+      { assignedTo: { $exists: false }, companyId }
     ]
   };
 };
@@ -203,7 +213,11 @@ exports.createLead = async (req, res) => {
     } = req.body;
 
     if (!name || !phone) return res.status(400).json({ message: 'Name and phone are required' });
-    if (!followUpDate) return res.status(400).json({ message: 'Next follow-up date is mandatory' });
+
+    const isFollowUpMandatory = req.user.showFollowUpOnCreate !== false && req.user.preferences?.showFollowUpOnCreate !== false;
+    if (isFollowUpMandatory && !followUpDate) {
+      return res.status(400).json({ message: 'Next follow-up date is mandatory' });
+    }
 
     const cleanPhone = phone.replace(/\D/g, '');
 
@@ -275,6 +289,8 @@ exports.createLead = async (req, res) => {
       ...extraCustomData,
     };
 
+    const firstStage = (req.user.pipelineStages && req.user.pipelineStages[0]) || (req.user.customPipelineStages && req.user.customPipelineStages[0]) || 'new_lead';
+
     const lead = await Lead.create({
       userId: req.user._id,
       companyId,
@@ -285,7 +301,7 @@ exports.createLead = async (req, res) => {
       email: email ? email.toLowerCase().trim() : undefined,
       company: company || undefined,
       tags: Array.isArray(tags) ? tags : (tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : []),
-      status: status || 'new',
+      status: status || firstStage,
       propertyType: propertyType || '',
       budget: budget || '',
       location: location || '',
@@ -294,7 +310,7 @@ exports.createLead = async (req, res) => {
       projectId: projectId || null,
       siteVisitDate: siteVisitDate ? new Date(siteVisitDate) : null,
       areasOfInterest: Array.isArray(areasOfInterest) ? areasOfInterest : (areasOfInterest ? areasOfInterest.split(',').map(a => a.trim()).filter(Boolean) : []),
-      followUpDate: new Date(followUpDate),
+      followUpDate: followUpDate ? new Date(followUpDate) : null,
       customData: finalCustomData,
       source: source || 'manual',
       utmCampaign: utmCampaign || '',
@@ -337,23 +353,81 @@ exports.updateLead = async (req, res) => {
     const changes = {};
     const activitiesToAdd = [];
 
-    // Enforce Mandatory Closed Deal Amount when moving to Closed/Won
+    // Enforce Mandatory Payment Amount and Payment Method when moving to converted or payment_done
     const incomingStatus = req.body.status !== undefined ? req.body.status : lead.status;
-    const isClosing = incomingStatus === 'closed' || incomingStatus === 'Closed' || incomingStatus === 'Closed / Won';
-    if (isClosing) {
-      const dealAmount = req.body.closedDealAmount !== undefined ? Number(req.body.closedDealAmount) : Number(lead.closedDealAmount);
-      if (!dealAmount || isNaN(dealAmount) || dealAmount <= 0) {
-        return res.status(400).json({ message: 'Deal amount is required to close a lead.' });
+    const isConverting = ['converted', 'payment_done', 'closed', 'Closed', 'Closed / Won'].includes(incomingStatus);
+    if (isConverting) {
+      const rawAmt = req.body.paymentAmount !== undefined ? req.body.paymentAmount : (req.body.payment_amount !== undefined ? req.body.payment_amount : (req.body.closedDealAmount !== undefined ? req.body.closedDealAmount : lead.paid_amount));
+      const rawMethod = req.body.paymentMethod || req.body.payment_method || lead.payment_method;
+
+      const paymentAmount = Number(rawAmt);
+      if (!paymentAmount || isNaN(paymentAmount) || paymentAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          code: 'PAYMENT_AMOUNT_REQUIRED',
+          message: 'paymentAmount is strictly mandatory and must be greater than 0 when moving to converted / payment_done.',
+        });
       }
-      req.body.closedDealAmount = dealAmount;
+
+      if (!rawMethod || !String(rawMethod).trim()) {
+        return res.status(400).json({
+          success: false,
+          code: 'PAYMENT_METHOD_REQUIRED',
+          message: 'paymentMethod is strictly mandatory when moving to converted / payment_done.',
+        });
+      }
+
+      req.body.paid_amount = paymentAmount;
+      req.body.payable_amount = paymentAmount;
+      req.body.closedDealAmount = paymentAmount;
+      req.body.payment_method = String(rawMethod).trim();
+
+      // Atomically create Payment record
+      const Payment = require('../models/Payment');
+      const existingPayment = await Payment.findOne({ lead_id: lead._id, amount: paymentAmount, status: 'completed' });
+      if (!existingPayment) {
+        await Payment.create({
+          lead_id: lead._id,
+          leadId: lead._id,
+          agent_id: lead.assignedTo || req.user._id,
+          agentId: lead.assignedTo || req.user._id,
+          amount: paymentAmount,
+          method: String(rawMethod).trim(),
+          transaction_id: req.body.transaction_id || `TXN-MANUAL-${Date.now()}`,
+          status: 'completed',
+          verified_by_agent: true,
+          verified_at: new Date(),
+        }).catch(err => console.warn('[Payment] Manual payment record warning:', err.message));
+      }
+    }
+
+    // Enforce Mandatory Postpone Remark when delaying/postponing an existing follow-up
+    if (req.body.followUpDate) {
+      const newFollowUpDate = new Date(req.body.followUpDate);
+      if (lead.followUpDate && newFollowUpDate.getTime() > new Date(lead.followUpDate).getTime()) {
+        const postponeRemark = req.body.postponeRemark || req.body.postpone_remark || req.body.remark;
+        if (!postponeRemark || !String(postponeRemark).trim()) {
+          return res.status(400).json({
+            success: false,
+            code: 'POSTPONE_REMARK_REQUIRED',
+            message: 'postponeRemark is strictly required explaining why the follow-up is postponed.',
+          });
+        }
+        lead.notes.push({
+          text: `[Follow-Up Postponed to ${newFollowUpDate.toLocaleString()}]: ${String(postponeRemark).trim()}`,
+          createdBy: req.user._id,
+          authorName: req.user.name || 'Agent',
+          createdAt: new Date(),
+        });
+      }
     }
 
     // Enforce Mandatory Lost Reason when moving to Lost/Dropped
-    const isLost = ['lost', 'dead', 'not converted', 'dropped', 'closed lost'].includes(String(incomingStatus).toLowerCase());
+    const isLost = ['lost', 'dead', 'not converted', 'dropped', 'closed lost', 'not_interested'].includes(String(incomingStatus).toLowerCase());
     if (isLost) {
       const lostReason = req.body.lostReason !== undefined ? req.body.lostReason : lead.lostReason;
       if (!lostReason || !String(lostReason).trim()) {
-        return res.status(400).json({ message: 'Lost reason is required when marking a lead as lost.' });
+        return res.status(400).json({ message: 'Lost reason is required when marking a lead as lost / not interested.' });
       }
     } else if (req.body.status !== undefined && req.body.status !== lead.status) {
       // Clean up stale lost info if moving to an active/won stage
@@ -365,7 +439,8 @@ exports.updateLead = async (req, res) => {
       'name', 'phone', 'email', 'company', 'tags', 'status', 'followUpDate',
       'location', 'profession', 'budget', 'closedDealAmount', 'areasOfInterest', 'project',
       'projectId', 'propertyType', 'siteVisitDate', 'assignedTo', 'customData',
-      'utmCampaign', 'utmMedium', 'utmSource', 'lostReason', 'lostReasonDetail'
+      'utmCampaign', 'utmMedium', 'utmSource', 'lostReason', 'lostReasonDetail',
+      'service_required', 'monthly_spend', 'goal_timeline', 'paid_amount', 'payable_amount', 'payment_method'
     ];
 
     for (const field of allowedFields) {
@@ -494,7 +569,7 @@ exports.deleteLead = async (req, res) => {
   }
 };
 
-// @desc  Add note to lead
+// @desc  Add note to lead (First-Touch auto-assignment & Stage Auto-Transition enabled)
 // @route POST /api/leads/:id/notes
 // @access Private
 exports.addNote = async (req, res) => {
@@ -507,6 +582,30 @@ exports.addNote = async (req, res) => {
 
     if (!lead) return res.status(404).json({ message: 'Lead not found' });
 
+    // First-Touch Assignment: Automatically claim unassigned lead for the interacting agent
+    if (!lead.assignedTo && req.user.role !== 'superadmin') {
+      lead.assignedTo = req.user._id;
+      lead.assignedToName = req.user.name || 'Agent';
+      lead.leadActivities.push({
+        action: 'assigned_agent',
+        performedBy: req.user._id,
+        performerName: req.user.name,
+        details: `Lead claimed and assigned to ${req.user.name} via first-touch note`,
+        timestamp: new Date(),
+      });
+    }
+
+    const beforeStatus = lead.status;
+    const userStages = req.user.pipelineStages || req.user.customPipelineStages || [];
+    const firstStage = userStages[0];
+    const secondStage = userStages[1] || 'contacted';
+
+    if (lead.status === 'new_lead') {
+      lead.status = 'contacted';
+    } else if (['new', 'New Lead', firstStage].includes(lead.status)) {
+      lead.status = secondStage;
+    }
+
     lead.notes.push({
       text: text.trim(),
       createdBy: req.user._id,
@@ -518,18 +617,40 @@ exports.addNote = async (req, res) => {
       action: 'note_added',
       performedBy: req.user._id,
       performerName: req.user.name,
-      details: `Added note: "${text.trim().slice(0, 50)}${text.length > 50 ? '...' : ''}"`,
+      details: beforeStatus !== lead.status
+        ? `Added note: "${text.trim().slice(0, 50)}${text.length > 50 ? '...' : ''}". Stage auto-updated to "${lead.status}"`
+        : `Added note: "${text.trim().slice(0, 50)}${text.length > 50 ? '...' : ''}"`,
       timestamp: new Date(),
     });
 
     await lead.save();
+
+    // Log global activity
+    try {
+      const ActivityLog = require('../models/ActivityLog');
+      await ActivityLog.create({
+        user_id: req.user._id,
+        userId: req.user._id,
+        userName: req.user.name,
+        role: req.user.role || 'agent',
+        action: 'NOTE_ADDED',
+        target_type: 'lead',
+        targetType: 'lead',
+        target_id: String(lead._id),
+        targetId: String(lead._id),
+        details: `Note added to ${lead.name} (${lead.phone}). Stage: ${lead.status}`,
+        before_state: { status: beforeStatus },
+        after_state: { status: lead.status },
+      });
+    } catch (e) {}
+
     res.status(201).json(lead);
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-// @desc  Track sent message
+// @desc  Track sent message (First-Touch auto-assignment & Stage Auto-Transition enabled)
 // @route POST /api/leads/:id/track-message
 // @access Private
 exports.trackMessage = async (req, res) => {
@@ -539,14 +660,32 @@ exports.trackMessage = async (req, res) => {
 
     if (!lead) return res.status(404).json({ message: 'Lead not found' });
 
+    // First-Touch Assignment: Automatically claim unassigned lead for the interacting agent
+    if (!lead.assignedTo && req.user.role !== 'superadmin') {
+      lead.assignedTo = req.user._id;
+      lead.assignedToName = req.user.name || 'Agent';
+      lead.leadActivities.push({
+        action: 'assigned_agent',
+        performedBy: req.user._id,
+        performerName: req.user.name,
+        details: `Lead claimed and assigned to ${req.user.name} via first-touch WhatsApp outreach`,
+        timestamp: new Date(),
+      });
+    }
+
     const beforeStatus = lead.status;
     lead.messageSentCount = (lead.messageSentCount || 0) + 1;
     lead.templateUsageCount = (lead.templateUsageCount || 0) + 1;
     lead.lastContactedAt = new Date();
 
-    // Auto-contact: if still in new_lead stage, automatically transition to contacted
-    if (['new_lead', 'new'].includes(lead.status)) {
+    const userStages = req.user.pipelineStages || req.user.customPipelineStages || [];
+    const firstStage = userStages[0];
+    const secondStage = userStages[1] || 'contacted';
+
+    if (lead.status === 'new_lead') {
       lead.status = 'contacted';
+    } else if (['new', 'New Lead', firstStage].includes(lead.status)) {
+      lead.status = secondStage;
     }
 
     lead.leadActivities.push({
@@ -580,9 +719,148 @@ exports.trackMessage = async (req, res) => {
       // non-blocking
     }
 
-    res.json({ message: 'Message tracked successfully', status: lead.status });
+    res.json({ message: 'Message tracked successfully', status: lead.status, assignedTo: lead.assignedTo, assignedToName: lead.assignedToName });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc  Track call & auto-transition to contacted (First-Touch auto-assignment & Stage Auto-Transition enabled)
+// @route POST /api/leads/:id/track-call
+// @access Private
+exports.trackCall = async (req, res) => {
+  try {
+    const basePermissionQuery = await buildLeadPermissionQuery(req.user);
+    const lead = await Lead.findOne({ _id: req.params.id, ...basePermissionQuery });
+
+    if (!lead) return res.status(404).json({ message: 'Lead not found' });
+
+    // First-Touch Assignment: Automatically claim unassigned lead for the interacting agent
+    if (!lead.assignedTo && req.user.role !== 'superadmin') {
+      lead.assignedTo = req.user._id;
+      lead.assignedToName = req.user.name || 'Agent';
+      lead.leadActivities.push({
+        action: 'assigned_agent',
+        performedBy: req.user._id,
+        performerName: req.user.name,
+        details: `Lead claimed and assigned to ${req.user.name} via first-touch call`,
+        timestamp: new Date(),
+      });
+    }
+
+    const beforeStatus = lead.status;
+    lead.lastContactedAt = new Date();
+
+    const userStages = req.user.pipelineStages || req.user.customPipelineStages || [];
+    const firstStage = userStages[0];
+    const secondStage = userStages[1] || 'contacted';
+
+    if (lead.status === 'new_lead') {
+      lead.status = 'contacted';
+    } else if (['new', 'New Lead', firstStage].includes(lead.status)) {
+      lead.status = secondStage;
+    }
+
+    lead.leadActivities.push({
+      action: 'call_initiated',
+      performedBy: req.user._id,
+      performerName: req.user.name,
+      details: `Call placed by ${req.user.name}. Status: ${lead.status}`,
+      timestamp: new Date(),
+    });
+
+    await lead.save();
+
+    // Log global activity
+    try {
+      const ActivityLog = require('../models/ActivityLog');
+      await ActivityLog.create({
+        user_id: req.user._id,
+        userId: req.user._id,
+        userName: req.user.name,
+        role: req.user.role || 'agent',
+        action: 'CALL_INITIATED',
+        target_type: 'lead',
+        targetType: 'lead',
+        target_id: String(lead._id),
+        targetId: String(lead._id),
+        details: `Called ${lead.name} (${lead.phone}). Stage auto-updated to ${lead.status}`,
+        before_state: { status: beforeStatus },
+        after_state: { status: lead.status },
+      });
+    } catch (e) {
+      // non-blocking
+    }
+
+    res.json({ message: 'Call tracked successfully', status: lead.status, assignedTo: lead.assignedTo, assignedToName: lead.assignedToName });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error tracking call' });
+  }
+};
+
+// @desc  Reassign a lead to another agent
+// @route PUT /api/leads/:id/reassign
+// @access Private
+exports.reassignLead = async (req, res) => {
+  try {
+    const { toAgentId, reason } = req.body;
+    if (!toAgentId) return res.status(400).json({ success: false, message: 'Target agent ID (toAgentId) is required' });
+
+    const basePermissionQuery = await buildLeadPermissionQuery(req.user);
+    const lead = await Lead.findOne({ _id: req.params.id, ...basePermissionQuery });
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found or unauthorized' });
+
+    const targetAgent = await User.findById(toAgentId).select('name email usercode');
+    if (!targetAgent) return res.status(404).json({ success: false, message: 'Target agent not found' });
+
+    const prevAgentName = lead.assignedToName || 'Unassigned (Common Pool)';
+    lead.assignedTo = targetAgent._id;
+    lead.assignedToName = targetAgent.name;
+
+    const reasonText = reason && String(reason).trim() ? ` Reason: "${String(reason).trim()}"` : '';
+    lead.leadActivities.push({
+      action: 'assigned_agent',
+      performedBy: req.user._id,
+      performerName: req.user.name,
+      details: `Reassigned from ${prevAgentName} to ${targetAgent.name} by ${req.user.name}.${reasonText}`,
+      timestamp: new Date(),
+    });
+
+    if (reason && String(reason).trim()) {
+      lead.notes.push({
+        text: `[Lead Reassigned to ${targetAgent.name}]: ${String(reason).trim()}`,
+        createdBy: req.user._id,
+        authorName: req.user.name,
+        createdAt: new Date(),
+      });
+    }
+
+    await lead.save();
+
+    try {
+      const ActivityLog = require('../models/ActivityLog');
+      await ActivityLog.create({
+        user_id: req.user._id,
+        userId: req.user._id,
+        userName: req.user.name,
+        role: req.user.role || 'agent',
+        action: 'LEAD_REASSIGNED',
+        target_type: 'lead',
+        targetType: 'lead',
+        target_id: String(lead._id),
+        targetId: String(lead._id),
+        details: `Reassigned lead ${lead.name} to ${targetAgent.name}.${reasonText}`,
+      });
+    } catch (e) {}
+
+    res.json({
+      success: true,
+      message: `Lead successfully reassigned to ${targetAgent.name}`,
+      lead,
+    });
+  } catch (error) {
+    console.error('reassignLead error:', error);
+    res.status(500).json({ success: false, message: 'Server error reassigning lead' });
   }
 };
 

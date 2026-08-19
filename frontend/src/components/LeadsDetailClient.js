@@ -14,6 +14,7 @@ import {
 import { format } from 'date-fns';
 import { getIndustryDefaults } from '@/lib/industryTemplates';
 import LostReasonModal, { isLostStage, LOST_REASON_OPTIONS } from '@/components/LostReasonModal';
+import { SourcePill, getLeadSourceTag } from '@/lib/sourceHelper';
 
 const STATUS_OPTIONS = [
   'new',
@@ -952,8 +953,11 @@ export default function LeadDetailPage() {
               <ArrowLeft size={22} />
             </button>
             <div style={{ minWidth: 0 }}>
-              <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lead.name}</h1>
-              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>+{lead.phone}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lead.name}</h1>
+                <SourcePill lead={lead} showDetail={true} />
+              </div>
+              <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>+{lead.phone}</p>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -1226,6 +1230,13 @@ export default function LeadDetailPage() {
                           <span className={`badge ${STATUS_COLORS[lead.status] || 'badge-tag'} flex-shrink-0`}>
                             {STAGE_LABELS[lead.status] || lead.status}
                           </span>
+                        </div>
+                      </div>
+
+                      <div style={{ minWidth: 0 }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Lead Origin / Source</span>
+                        <div style={{ marginTop: 2 }}>
+                          <SourcePill lead={lead} showDetail={true} />
                         </div>
                       </div>
 

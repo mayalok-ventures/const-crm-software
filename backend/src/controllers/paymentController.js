@@ -306,14 +306,54 @@ exports.handleRazorpayWebhook = async (req, res) => {
               notes: `Auto-verified via Razorpay Webhook (${paymentId})`,
             });
 
-            // Update Lead state
+            // Update Lead state & map service_required to purchased plan
             lead.paid_amount = (lead.paid_amount || 0) + amountInRupees;
             lead.paidAmount = lead.paid_amount;
             lead.selected_plan_id = planId || lead.selected_plan_id;
             lead.selectedPlanId = lead.selected_plan_id;
+            if (planId) {
+              const pid = String(planId).toLowerCase().trim();
+              const PLAN_MAP = {
+                ind_starter_monthly_v1: 'basic_solo',
+                ind_starter_yearly_v1: 'basic_solo',
+                ind_growth_monthly_v1: 'smart_solo',
+                ind_growth_yearly_v1: 'smart_solo',
+                ind_enterprise_monthly_v1: 'power_solo',
+                ind_enterprise_yearly_v1: 'power_solo',
+                org_starter_monthly_v1: 'team_starter',
+                org_starter_yearly_v1: 'team_starter',
+                org_growth_monthly_v1: 'business',
+                org_growth_yearly_v1: 'business',
+                org_enterprise_monthly_v1: 'enterprise',
+                org_enterprise_yearly_v1: 'enterprise',
+              };
+              const allowedServices = ['basic_solo', 'smart_solo', 'power_solo', 'team_starter', 'business', 'enterprise', 'custom_enterprise', 'starter', 'growth', 'pro', 'free', 'digital_marketing', 'web_development', 'seo_optimization', 'crm_automation', 'branding_design', 'cloud_infrastructure'];
+              lead.service_required = PLAN_MAP[pid] || (allowedServices.includes(pid) ? pid : 'smart_solo');
+            }
             lead.status = 'converted';
             lead.version = (lead.version || 1) + 1;
             await lead.save();
+
+            // Auto-update User profile plan with safe fallback
+            const safePlan = ['basic_solo', 'smart_solo', 'power_solo', 'team_starter', 'business', 'enterprise', 'custom_enterprise', 'starter', 'growth', 'pro', 'free'].includes(planId)
+              ? planId
+              : 'pro';
+            if (userId) {
+              await User.findByIdAndUpdate(userId, {
+                plan: safePlan,
+                'billing.lastPaymentId': paymentId,
+              }).catch(err => console.warn('[Webhook] User plan update notice:', err.message));
+            } else if (lead.email || lead.phone) {
+              const userQuery = [];
+              if (lead.email) userQuery.push({ email: lead.email.toLowerCase() });
+              if (lead.phone) userQuery.push({ phone: lead.phone });
+              if (userQuery.length > 0) {
+                await User.findOneAndUpdate(
+                  { $or: userQuery },
+                  { plan: safePlan, 'billing.lastPaymentId': paymentId }
+                ).catch(err => console.warn('[Webhook] User lead plan update notice:', err.message));
+              }
+            }
 
             // Calculate Agent Incentive if assigned
             if (lead.assignedTo) {

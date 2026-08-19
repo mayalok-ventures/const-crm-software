@@ -60,6 +60,7 @@ const runE2ETests = async () => {
       service_required: 'crm_automation',
       monthly_spend: 150000,
       goal_timeline: 'immediate',
+      source: 'website',
       assignedTo: agentId,
       notes: 'High-value enterprise lead requesting automated WhatsApp & Lead routing.'
     });

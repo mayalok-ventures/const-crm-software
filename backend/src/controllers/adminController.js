@@ -111,13 +111,23 @@ exports.getGlobalMetrics = async (req, res) => {
 // LEADS: CREATE, UPDATE, STATUS & PIPELINE
 // ─────────────────────────────────────────────────────────────
 
-// ─────────────────────────────────────────────────────────────
-// LEADS: CREATE, UPDATE, STATUS, STAGE & PIPELINE
-// ─────────────────────────────────────────────────────────────
-
 const { normalizePhone } = require('../utils/phoneNormalizer');
 
 const VALID_6_SERVICES = [
+  // 3 Individual Plans
+  'basic_solo',
+  'smart_solo',
+  'power_solo',
+  // 3 Organization Plans
+  'team_starter',
+  'business',
+  'enterprise',
+  // Dynamic & Backward Compatibility
+  'custom_enterprise',
+  'starter',
+  'growth',
+  'pro',
+  'free',
   'digital_marketing',
   'web_development',
   'seo_optimization',
@@ -139,7 +149,12 @@ const VALID_5_STAGES = [
 // @access SuperAdmin / Admin
 exports.createAdminLead = async (req, res) => {
   try {
-    const allowedKeys = ['name', 'phone', 'email', 'company', 'service_required', 'monthly_spend', 'goal_timeline', 'source', 'assignedTo', 'notes'];
+    const allowedKeys = [
+      'name', 'phone', 'email', 'company', 'service_required', 'serviceRequired',
+      'monthly_spend', 'monthlySpend', 'goal_timeline', 'goalTimeline', 'source',
+      'assignedTo', 'notes', 'project', 'projectId', 'budget', 'status',
+      'propertyType', 'location', 'tags', 'followUpDate', 'siteVisitDate', 'customData'
+    ];
     const extraKeys = Object.keys(req.body).filter(k => !allowedKeys.includes(k));
     if (extraKeys.length > 0) {
       return res.status(400).json({
@@ -149,7 +164,15 @@ exports.createAdminLead = async (req, res) => {
       });
     }
 
-    const { name, phone, email, company, service_required, monthly_spend, goal_timeline, source = 'agent_manual', assignedTo, notes } = req.body;
+    const {
+      name, phone, email, company,
+      service_required, serviceRequired,
+      monthly_spend, monthlySpend,
+      goal_timeline, goalTimeline,
+      source, assignedTo, notes,
+      project, projectId, budget, status,
+      propertyType, location, tags, followUpDate, siteVisitDate
+    } = req.body;
 
     if (!name || !String(name).trim()) {
       return res.status(400).json({ success: false, message: 'Lead name is mandatory' });
@@ -157,19 +180,22 @@ exports.createAdminLead = async (req, res) => {
     if (!phone || !String(phone).trim()) {
       return res.status(400).json({ success: false, message: 'Lead phone number is mandatory' });
     }
+    if (!source || !String(source).trim()) {
+      return res.status(400).json({ success: false, message: 'Lead source is mandatory' });
+    }
 
     const cleanPhone = normalizePhone(phone);
     if (!cleanPhone || cleanPhone.length < 10) {
       return res.status(400).json({ success: false, message: 'Valid phone number is mandatory (min 10 digits)' });
     }
 
-    const normalizedService = String(service_required || 'digital_marketing').toLowerCase().trim();
-    if (!VALID_6_SERVICES.includes(normalizedService)) {
-      return res.status(400).json({
-        success: false,
-        code: 'INVALID_SERVICE',
-        message: `Invalid service_required: "${service_required}". Must be one of: ${VALID_6_SERVICES.join(', ')}`
-      });
+    const effectiveService = service_required || serviceRequired;
+    let normalizedService = 'smart_solo';
+    if (effectiveService) {
+      const parsedService = String(effectiveService).toLowerCase().trim();
+      if (VALID_6_SERVICES.includes(parsedService) || ['basic_solo', 'smart_solo', 'power_solo', 'team_starter', 'business', 'enterprise'].includes(parsedService)) {
+        normalizedService = parsedService;
+      }
     }
 
     const spendNum = Number(monthly_spend || 0);
@@ -327,11 +353,12 @@ exports.updateAdminLead = async (req, res) => {
 // @access SuperAdmin / Admin
 exports.updateLeadStage = async (req, res) => {
   try {
-    const { stage, version } = req.body;
+    const stage = req.body.stage || req.body.status;
+    const { version } = req.body;
     const lead = await Lead.findById(req.params.id);
     if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
 
-    if (!VALID_5_STAGES.includes(stage)) {
+    if (!stage || !VALID_5_STAGES.includes(stage)) {
       return res.status(400).json({
         success: false,
         message: `Invalid stage: "${stage}". Must be one of: ${VALID_5_STAGES.join(', ')}`
@@ -348,15 +375,61 @@ exports.updateLeadStage = async (req, res) => {
       });
     }
 
-    // Conversion Rule: converted/payment_done requires recorded payment
-    if ((stage === 'converted' || stage === 'payment_done') && (!lead.paid_amount || lead.paid_amount <= 0)) {
-      const existingPayment = await Payment.findOne({ lead_id: lead._id, status: 'completed' });
-      if (!existingPayment) {
-        return res.status(400).json({
-          success: false,
-          code: 'PAYMENT_REQUIRED_FOR_CONVERSION',
-          message: 'Conversion requires a recorded payment. Please use the Convert modal with payment details.',
-        });
+    // Conversion Rule: converted/payment_done requires recorded payment or paymentAmount + paymentMethod in body
+    if (stage === 'converted' || stage === 'payment_done') {
+      const rawAmt = req.body.paymentAmount !== undefined ? req.body.paymentAmount : (req.body.payment_amount !== undefined ? req.body.payment_amount : lead.paid_amount);
+      const rawMethod = req.body.paymentMethod || req.body.payment_method || req.body.method || lead.payment_method;
+
+      if (!lead.paid_amount || lead.paid_amount <= 0) {
+        const amt = Number(rawAmt);
+        if (!amt || isNaN(amt) || amt <= 0 || !rawMethod) {
+          const existingPayment = await Payment.findOne({ lead_id: lead._id, status: 'completed' });
+          if (!existingPayment) {
+            return res.status(400).json({
+              success: false,
+              code: 'PAYMENT_REQUIRED_FOR_CONVERSION',
+              message: 'paymentAmount (> 0) and paymentMethod are strictly mandatory to convert a lead or mark payment_done.',
+            });
+          }
+        } else {
+          // Record payment with duplicate transaction_id idempotency
+          try {
+            await Payment.create({
+              lead_id: lead._id,
+              leadId: lead._id,
+              agent_id: lead.assignedTo || req.user._id,
+              agentId: lead.assignedTo || req.user._id,
+              amount: amt,
+              method: String(rawMethod).trim(),
+              transaction_id: req.body.transaction_id || `TXN-STAGE-${Date.now()}`,
+              status: 'completed',
+              verified_by_agent: true,
+              verified_at: new Date(),
+            });
+          } catch (payErr) {
+            if (payErr.code === 11000 && req.body.transaction_id) {
+              await Payment.findOneAndUpdate(
+                { transaction_id: req.body.transaction_id },
+                {
+                  lead_id: lead._id,
+                  leadId: lead._id,
+                  agent_id: lead.assignedTo || req.user._id,
+                  agentId: lead.assignedTo || req.user._id,
+                  amount: amt,
+                  method: String(rawMethod).trim(),
+                  status: 'completed',
+                  verified_by_agent: true,
+                  verified_at: new Date(),
+                }
+              );
+            } else {
+              throw payErr;
+            }
+          }
+          lead.paid_amount = amt;
+          lead.payable_amount = amt;
+          lead.payment_method = String(rawMethod).trim();
+        }
       }
     }
 
@@ -1820,9 +1893,22 @@ exports.getAbuseLogs = async (req, res) => {
 // @access SuperAdmin
 exports.purgeFakeDataAndCleanSlate = async (req, res) => {
   try {
-    console.log('[Clean Slate] Purging all fake data and test accounts...');
+    console.log('[Clean Slate] Purging all non-admin data, organizations, agents, and leads...');
 
-    // 1. Delete all non-admin users
+    // Load additional models
+    const Campaign = require('../models/Campaign');
+    const CampaignLog = require('../models/CampaignLog');
+    const Group = require('../models/Group');
+    const Project = require('../models/Project');
+    const ChatMessage = require('../models/ChatMessage');
+    const Recording = require('../models/Recording');
+    const Transaction = require('../models/Transaction');
+    const PaymentAttempt = require('../models/PaymentAttempt');
+    const PaymentRequest = require('../models/PaymentRequest');
+    const Integration = require('../models/Integration');
+    const WhatsAppAuth = require('../models/WhatsAppAuth');
+
+    // 1. Delete all non-admin users (tenants, solo users, company owners, organization agents, sub-agents)
     const userDeleteResult = await User.deleteMany({
       email: { $ne: 'admin@crm.com' },
       isAdmin: { $ne: true },
@@ -1832,26 +1918,48 @@ exports.purgeFakeDataAndCleanSlate = async (req, res) => {
     // 2. Delete all leads
     const leadDeleteResult = await Lead.deleteMany({});
 
-    // 3. Delete all payments
-    const paymentDeleteResult = await Payment.deleteMany({});
-
-    // 4. Delete all followups
+    // 3. Delete all followups
     const followUpDeleteResult = await FollowUp.deleteMany({});
 
-    // 5. Delete all offers
+    // 4. Delete all payments, subscriptions, transactions, entitlements
+    const paymentDeleteResult = await Payment.deleteMany({});
+    await PaymentAttempt.deleteMany({});
+    await PaymentRequest.deleteMany({});
+    await Subscription.deleteMany({});
+    await Entitlement.deleteMany({});
+    await Transaction.deleteMany({});
+    await Incentive.deleteMany({});
+
+    // 5. Delete all offers & templates
     const offerDeleteResult = await Offer.deleteMany({});
+    await Template.deleteMany({});
 
-    // 6. Delete all incentives
-    const incentiveDeleteResult = await Incentive.deleteMany({});
-
-    // 7. Delete all activity logs & audit logs
+    // 6. Delete all activity logs, audit logs, abuse logs, notifications
     const activityLogDeleteResult = await ActivityLog.deleteMany({});
-    const auditLogDeleteResult = await AuditLog.deleteMany({});
-    const abuseLogDeleteResult = await AbuseLog.deleteMany({});
-    const notificationDeleteResult = await Notification.deleteMany({});
+    await AuditLog.deleteMany({});
+    await AbuseLog.deleteMany({});
+    await Notification.deleteMany({});
 
-    // 8. Ensure Super Admin account is 100% healthy, reset 2FA, and active
-    let superAdmin = await User.findOne({ email: 'admin@crm.com' });
+    // 7. Delete campaigns, groups, projects, chats, recordings, integrations
+    await Campaign.deleteMany({});
+    await CampaignLog.deleteMany({});
+    await Group.deleteMany({});
+    await Project.deleteMany({});
+    await ChatMessage.deleteMany({});
+    await Recording.deleteMany({});
+    await Integration.deleteMany({});
+    await WAFingerprint.deleteMany({});
+    await WhatsAppAuth.deleteMany({});
+
+    // 8. Ensure Super Admin account is 100% healthy, reset 2FA, reset company/agent bindings, and active
+    let superAdmin = await User.findOne({
+      $or: [
+        { email: 'admin@crm.com' },
+        { role: 'superadmin' },
+        { isAdmin: true }
+      ]
+    });
+
     if (!superAdmin) {
       superAdmin = await User.create({
         name: 'Super Admin',
@@ -1873,6 +1981,18 @@ exports.purgeFakeDataAndCleanSlate = async (req, res) => {
       superAdmin.twoFactorOtpExpires = null;
       superAdmin.role = 'superadmin';
       superAdmin.isAdmin = true;
+      superAdmin.companyId = null;
+      superAdmin.companyRole = null;
+      superAdmin.companyInfo = {};
+      superAdmin.companySettings = {
+        leadSharingMode: 'common_pool',
+        allowAgentLeadCreation: true,
+        allowAgentExports: false,
+        allowAgentBulkDelete: false,
+        require2FAForAgents: false,
+        incentivePerConversion: 0,
+      };
+      superAdmin.assignedAgents = [];
       await superAdmin.save();
     }
 
@@ -1882,19 +2002,17 @@ exports.purgeFakeDataAndCleanSlate = async (req, res) => {
       - Payments deleted: ${paymentDeleteResult.deletedCount}
       - Follow-ups deleted: ${followUpDeleteResult.deletedCount}
       - Offers deleted: ${offerDeleteResult.deletedCount}
-      - Incentives deleted: ${incentiveDeleteResult.deletedCount}
       - Activity Logs deleted: ${activityLogDeleteResult.deletedCount}
     `);
 
     res.json({
-      message: 'Database successfully wiped clean! Super Admin preserved with clean state.',
+      message: 'Database successfully wiped clean! Super Admin preserved in clean state.',
       summary: {
         deletedUsers: userDeleteResult.deletedCount,
         deletedLeads: leadDeleteResult.deletedCount,
         deletedPayments: paymentDeleteResult.deletedCount,
         deletedFollowUps: followUpDeleteResult.deletedCount,
         deletedOffers: offerDeleteResult.deletedCount,
-        deletedIncentives: incentiveDeleteResult.deletedCount,
         deletedActivityLogs: activityLogDeleteResult.deletedCount,
         superAdmin: {
           email: superAdmin.email,

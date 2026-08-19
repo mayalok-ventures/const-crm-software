@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { encrypt, decrypt } = require('../utils/encryption');
 
 const integrationSchema = new mongoose.Schema(
   {
@@ -48,7 +49,7 @@ const integrationSchema = new mongoose.Schema(
       index: true,
     },
 
-    // Provider account information
+    // Provider account information (Meta Ad Account ID or Google Customer ID)
     accountId: {
       type: String,
       default: null,
@@ -61,7 +62,7 @@ const integrationSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // Meta Page
+    // Meta Page / Asset Identifiers
     pageId: {
       type: String,
       default: null,
@@ -80,7 +81,20 @@ const integrationSchema = new mongoose.Schema(
       default: [],
     },
 
-    // OAuth
+    // Google Ads Specific Account Identifiers
+    customerId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    managerCustomerId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    // OAuth Encrypted Credentials (Never stored in plaintext)
     accessTokenEncrypted: {
       type: String,
       default: null,
@@ -103,6 +117,16 @@ const integrationSchema = new mongoose.Schema(
       default: [],
     },
 
+    webhookSubscribed: {
+      type: Boolean,
+      default: false,
+    },
+
+    connectedAt: {
+      type: Date,
+      default: null,
+    },
+
     // Provider-specific data
     metadata: {
       type: mongoose.Schema.Types.Mixed,
@@ -121,14 +145,71 @@ const integrationSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
 
+// Virtual property for backward compatibility with boolean checks (isActive)
+integrationSchema.virtual('isActive')
+  .get(function () {
+    return this.status === 'connected';
+  })
+  .set(function (val) {
+    if (val === true && this.status !== 'connected') {
+      this.status = 'connected';
+    } else if (val === false && this.status === 'connected') {
+      this.status = 'disconnected';
+    }
+  });
+
+// Virtual helper for transparent token encryption/decryption
+integrationSchema.virtual('accessToken')
+  .get(function () {
+    if (!this.accessTokenEncrypted) return null;
+    try {
+      return decrypt(this.accessTokenEncrypted);
+    } catch {
+      return null;
+    }
+  })
+  .set(function (rawToken) {
+    if (!rawToken) {
+      this.accessTokenEncrypted = null;
+    } else {
+      this.accessTokenEncrypted = encrypt(rawToken);
+    }
+  });
+
+integrationSchema.virtual('refreshToken')
+  .get(function () {
+    if (!this.refreshTokenEncrypted) return null;
+    try {
+      return decrypt(this.refreshTokenEncrypted);
+    } catch {
+      return null;
+    }
+  })
+  .set(function (rawToken) {
+    if (!rawToken) {
+      this.refreshTokenEncrypted = null;
+    } else {
+      this.refreshTokenEncrypted = encrypt(rawToken);
+    }
+  });
+
+// Indexes for high-performance tenant queries and duplicate prevention
 integrationSchema.index({
   companyId: 1,
   provider: 1,
 });
 
+integrationSchema.index({
+  userId: 1,
+  provider: 1,
+});
+
+// Unique index per company + provider + account
 integrationSchema.index(
   {
     companyId: 1,
@@ -138,11 +219,31 @@ integrationSchema.index(
   {
     unique: true,
     partialFilterExpression: {
-      accountId: {
-        $type: 'string',
-      },
+      companyId: { $type: 'objectId' },
+      accountId: { $type: 'string' },
     },
   }
 );
+
+// Unique index per solo user + provider + account
+integrationSchema.index(
+  {
+    userId: 1,
+    provider: 1,
+    accountId: 1,
+  },
+  {
+    unique: true,
+    partialFilterExpression: {
+      companyId: { $eq: null },
+      accountId: { $type: 'string' },
+    },
+  }
+);
+
+// Fast lookup indexes for webhooks
+integrationSchema.index({ provider: 1, pageId: 1, status: 1 });
+integrationSchema.index({ provider: 1, accountId: 1, status: 1 });
+integrationSchema.index({ provider: 1, customerId: 1, status: 1 });
 
 module.exports = mongoose.model('Integration', integrationSchema);

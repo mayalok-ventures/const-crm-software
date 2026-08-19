@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CoreSetu SalesCRM — Master System Blueprint & Logic Map</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- D3 and Markmap Core CDNs -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/markmap-view@0.17.2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.17.2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/markmap-toolbar@0.17.2"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/markmap-toolbar@0.17.2/dist/style.css" />
+
+  <style>
+    :root {
+      --bg-primary: #07090e;
+      --bg-secondary: #0d121d;
+      --bg-card: rgba(16, 22, 36, 0.85);
+      --border-color: rgba(30, 41, 59, 0.7);
+      --accent-cyan: #06b6d4;
+      --accent-emerald: #10b981;
+      --accent-indigo: #6366f1;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top Executive HUD Bar */
+    header {
+      background: linear-gradient(180deg, rgba(13, 18, 29, 0.95) 0%, rgba(7, 9, 14, 0.9) 100%);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-color);
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 100;
+      flex-shrink: 0;
+    }
+
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-badge {
+      background: linear-gradient(135deg, #06b6d4, #3b82f6);
+      color: #fff;
+      font-weight: 800;
+      font-size: 13px;
+      padding: 5px 10px;
+      border-radius: 8px;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      box-shadow: 0 0 16px rgba(6, 182, 212, 0.35);
+    }
+
+    .title-group h1 {
+      font-size: 17px;
+      font-weight: 700;
+      background: linear-gradient(90deg, #f8fafc, #cbd5e1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .title-group p {
+      font-size: 11.5px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background-color: var(--accent-emerald);
+      box-shadow: 0 0 8px var(--accent-emerald);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.9); }
+    }
+
+    /* Executive Metrics Strip */
+    .metrics-strip {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .metric-badge {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      border-radius: 8px;
+      padding: 4px 10px;
+      font-size: 11.5px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .metric-badge strong {
+      color: #fff;
+      font-family: 'Fira Code', monospace;
+    }
+
+    /* Toolbar HUD */
+    .toolbar-container {
+      background: rgba(11, 15, 25, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+      padding: 8px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      z-index: 90;
+      flex-shrink: 0;
+    }
+
+    .filter-chips {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+
+    .chip-btn {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid rgba(51, 65, 85, 0.5);
+      color: var(--text-secondary);
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+    }
+
+    .chip-btn:hover, .chip-btn.active {
+      background: rgba(6, 182, 212, 0.15);
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+      box-shadow: 0 0 10px rgba(6, 182, 212, 0.2);
+    }
+
+    .hud-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .search-box {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .search-box input {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(51, 65, 85, 0.8);
+      color: #fff;
+      font-size: 12px;
+      padding: 5px 10px 5px 28px;
+      border-radius: 6px;
+      width: 170px;
+      transition: all 0.2s;
+      outline: none;
+    }
+
+    .search-box input:focus {
+      width: 220px;
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 8px rgba(6, 182, 212, 0.3);
+    }
+
+    .search-box svg {
+      position: absolute;
+      left: 8px;
+      width: 13px;
+      height: 13px;
+      fill: var(--text-muted);
+    }
+
+    .icon-btn {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s ease;
+    }
+
+    .icon-btn:hover {
+      background: rgba(51, 65, 85, 0.8);
+      color: #fff;
+      border-color: var(--text-secondary);
+    }
+
+    /* Main SVG Visualization Canvas */
+    #mindmap-container {
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      position: relative;
+      background: radial-gradient(circle at center, #0f172a 0%, #07090e 100%);
+    }
+
+    svg#mindmap {
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+
+    svg#mindmap:active {
+      cursor: grabbing;
+    }
+
+    /* MindMap Node Styling Customizations */
+    .markmap-foreign {
+      display: inline-block;
+    }
+
+    .markmap-node {
+      cursor: pointer;
+    }
+
+    .markmap-node text {
+      fill: #e2e8f0 !important;
+      font-family: 'Plus Jakarta Sans', sans-serif !important;
+      font-weight: 500;
+    }
+
+    .markmap-node-circle {
+      stroke-width: 2px !important;
+    }
+
+    /* Legend / Floating Help Pill */
+    .floating-legend {
+      position: absolute;
+      bottom: 20px;
+      left: 24px;
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 11.5px;
+      color: var(--text-secondary);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      z-index: 80;
+      pointer-events: none;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .format-pill {
+      font-family: 'Fira Code', monospace;
+      font-size: 11px;
+      color: var(--accent-cyan);
+      background: rgba(6, 182, 212, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(6, 182, 212, 0.25);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Executive Header -->
+  <header>
+    <div class="brand-section">
+      <span class="brand-badge">CEO & Architect Blueprint</span>
+      <div class="title-group">
+        <h1>CoreSetu SalesCRM <span style="font-size: 12px; color: var(--accent-cyan); font-weight: 600;">v4.2 PROD</span></h1>
+        <p>
+          <span class="status-dot"></span>
+          Master System Blueprint, Data Flow & CEO-to-Lead-Developer Architecture Specification
+        </p>
+      </div>
+    </div>
+
+    <div class="metrics-strip">
+      <div class="metric-badge"><span>Architecture:</span> <strong>Multi-Tenant PWA</strong></div>
+      <div class="metric-badge"><span>Gateway:</span> <strong>Baileys Multi-Device</strong></div>
+      <div class="metric-badge"><span>Billing:</span> <strong>Razorpay e-Mandates</strong></div>
+      <div class="metric-badge"><span>Speed:</span> <strong>&lt;100ms SSG</strong></div>
+    </div>
+  </header>
+
+  <!-- Navigation and Filter Controls Toolbar -->
+  <div class="toolbar-container">
+    <div class="filter-chips">
+      <button class="chip-btn active" onclick="jumpToBranch('')">🌐 Full Architecture</button>
+      <button class="chip-btn" onclick="jumpToBranch('1. Account & Multi-Tenancy')">1. Tenancy & Auth</button>
+      <button class="chip-btn" onclick="jumpToBranch('2. Lead Pipeline')">2. Lead Engine</button>
+      <button class="chip-btn" onclick="jumpToBranch('3. Automation & WhatsApp')">3. WhatsApp Hub</button>
+      <button class="chip-btn" onclick="jumpToBranch('4. Billing')">4. Billing & Anti-Fraud</button>
+      <button class="chip-btn" onclick="jumpToBranch('5. SuperAdmin')">5. SuperAdmin</button>
+      <button class="chip-btn" onclick="jumpToBranch('6. Background Workers')">6. Cron & Workers</button>
+    </div>
+
+    <div class="hud-controls">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24"><path d="M21.71 20.29l-5.01-5.01C17.54 13.92 18 12.01 18 10c0-4.41-3.59-8-8-8S2 5.59 2 10s3.59 8 8 8c2.01 0 3.92-.46 5.28-1.3l5.01 5.01c.39.39 1.02.39 1.41 0 .39-.39.39-1.02.01-1.42zM4 10c0-3.31 2.69-6 6-6s6 2.69 6 6-2.69 6-6 6-6-2.69-6-6z"/></svg>
+        <input type="text" id="searchInput" placeholder="Search architecture..." oninput="handleSearch(this.value)" />
+      </div>
+      <button class="icon-btn" onclick="expandAll()"><span>📂</span> Expand All</button>
+      <button class="icon-btn" onclick="collapseToTier(2)"><span>📁</span> Tier 2</button>
+      <button class="icon-btn" onclick="fitView()"><span>🎯</span> Center</button>
+      <button class="icon-btn" onclick="toggleFullscreen()"><span>⛶</span> Fullscreen</button>
+    </div>
+  </div>
+
+  <!-- Interactive Mindmap SVG Canvas -->
+  <div id="mindmap-container">
+    <svg id="mindmap"></svg>
+
+    <!-- Floating Blueprint Format Legend -->
+    <div class="floating-legend">
+      <div class="legend-item">
+        <span class="legend-dot" style="background-color: var(--accent-cyan);"></span>
+        <span>CEO Logic Format:</span>
+        <span class="format-pill">[Component / Trigger] ➔ [System Action] ➔ [Business Reason / Edge Handling]</span>
+      </div>
+      <div class="legend-item">
+        <span class="legend-dot" style="background-color: var(--accent-emerald);"></span>
+        <span>Click any node circle to fold/unfold branches</span>
+      </div>
+      <div class="legend-item">
+        <span class="legend-dot" style="background-color: var(--accent-amber);"></span>
+        <span>Scroll to Zoom • Drag to Pan</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ─────────────────────────────────────────────────────────────────────────
+    // MASTER SYSTEM BLUEPRINT & LOGIC TREE (MARKDOWN SOURCE)
+    // ─────────────────────────────────────────────────────────────────────────
+    const blueprintMarkdown = `
+# 🚀 CoreSetu SalesCRM — Master System Architecture
+
+## 1. Account & Multi-Tenancy Architecture
+### 1.1 Tenancy Partitioning & WorkStatus Immutability
+- **[Signup Form Submission]** ➔ [Assign Immutable Tenancy Mode] ➔ [Lock \`workStatus\` (\`company_owner\` vs \`independent_agent\`) and \`industryType\` permanently; prevents privilege escalation or unauthorized mode hopping post-onboarding]
+- **[Organization Account (Agency)]** ➔ [Company Owner Control Hub] ➔ [Generates unique \`CMP-XXXXXX\` usercode; manages team seats, invites sub-agents, controls company settings, and owns all company data]
+- **[Sub-Agent Membership]** ➔ [Dynamic Lead Permission Scoping] ➔ [Inherits company owner's subscription tier; operates under \`common_pool\` (access all company leads) or \`assigned\` (strictly restricted to assigned leads)]
+- **[Solo Independent Agent]** ➔ [Isolated Single-User Tenancy] ➔ [Generates \`REA-XXXXXX\` usercode; direct billing; independent lead and WhatsApp ownership with no agency sharing]
+- **[Database Index Scoping]** ➔ [Compound Partial Filter Indexes] ➔ [\`{ companyId: 1, phone: 1 }\` unique for organizations vs \`{ userId: 1, phone: 1 }\` unique for solo agents; enables same lead phone across different agencies]
+
+### 1.2 Authentication, TOTP 2FA & Session Tokens
+- **[User Login Identifier]** ➔ [Multi-Key Query Resolution] ➔ [Matches Email (case-insensitive), Normalized E.164 Phone, Username, or Usercode via MongoDB \`$or\` query; frictionless mobile entry]
+- **[Bcrypt Hash Validation]** ➔ [Constant-Time Comparison] ➔ [On failure: increment \`loginAttempts\` + set \`lastFailedLogin\`; trigger rate limiting on burst failures]
+- **[2FA TOTP Authenticator Gate]** ➔ [RFC 6238 Time-Step Protocol] ➔ [If enabled: issue ephemeral 10-min JWT with \`pending2FA: true\`; block all protected endpoints until verified]
+- **[Speakeasy TOTP Verification]** ➔ [Time Window Drift Tolerance (\`window: 2\`)] ➔ [Validates 6-digit TOTP code against stored \`twoFactorSecret\`; allows ±60s clock desynchronization across client phones]
+- **[Session Token Generation]** ➔ [30-Day Cryptographic JWT] ➔ [Signs \`{ id: user._id }\` with \`JWT_SECRET\`; stored in client \`localStorage\`; validated on every API request]
+
+### 1.3 Progressive Abuse Suspension Matrix
+- **[Abuse Detection Hook]** ➔ [\`handleAbuse(req, type, detail)\`] ➔ [Logs violation to MongoDB \`AbuseLog\` with 90-day native TTL index (\`expireAfterSeconds: 7776000\`)]
+- **[Abuse Score >= 3]** ➔ [Tier 1 Suspension Trigger] ➔ [Applies 24-Hour temporary account lockout; displays countdown banner; permits billing recovery routes]
+- **[Abuse Score >= 5]** ➔ [Tier 2 Suspension Trigger] ➔ [Applies 7-Day account lockout; restricts all mutating endpoints]
+- **[Abuse Score >= 8]** ➔ [Tier 4 Permanent Ban] ➔ [Terminates active sessions; forcefully disconnects WhatsApp WebSocket; flags phone for 90-day cooldown]
+
+---
+
+## 2. Lead Pipeline & Data Engine
+### 2.1 Multi-Channel Lead Ingestion
+- **[Manual Fast Add (PWA)]** ➔ [1-Tap Mobile Creation] ➔ [Requires only Name + Phone; automatically normalizes digits and sets next-day follow-up alarm in one touch]
+- **[Bulk CSV / Excel Import]** ➔ [Streaming Batch Ingestion] ➔ [Subject to anti-fraud Daily Import Velocity limits; parses custom columns into \`customData\` key-values]
+- **[Public Project Catalog Links]** ➔ [Shared Landing Page Ingestion] ➔ [Visitors submit contact details directly to linked project brochure; tagged with \`source: 'catalog'\`]
+- **[Auto-Signup Lead Hook]** ➔ [SuperAdmin Lead Ingestion] ➔ [Every new platform registration automatically creates a tracked lead inside SuperAdmin dashboard with initial 24-hr follow-up]
+
+### 2.2 Data Integrity & E.164 Normalization
+- **[Phone Input Sanitization]** ➔ [Regex Normalizer] ➔ [Strips whitespace, parentheses, dashes, leading zeros; prepends tenant \`localization.countryPhoneCode\` if 10 digits]
+- **[Duplicate Prevention Engine]** ➔ [Atomic Pre-Save Validation] ➔ [Blocks creation if normalized digits already exist in tenant scope; returns 400 with duplicate warning]
+- **[Universal SaaS Localization]** ➔ [Multi-Currency & Country Format] ➔ [Configurable Currency Symbol (₹, $, €, AED), Code (INR, USD), and Phone Prefix (91, 1, 971)]
+
+### 2.3 Dynamic Form Schema & Industry Defaults
+- **[Vertical Schema Builder]** ➔ [Zero-Code Custom Fields] ➔ [Supports text, email, phone, dropdown, date, number, dependency rules (\`dependsOn: { field, value }\`)]
+- **[Industry Presets]** ➔ [Pre-Seeded Templates] ➔ [Auto-initializes Agency, Real Estate, Education, Healthcare, or Finance pipeline stages upon registration]
+- **[Kanban Pipeline Transitions]** ➔ [State Machine & Audit Logging] ➔ [Drag-and-drop stage updates append immutable \`leadActivities\` entry with actor ID, old stage, new stage, and timestamp]
+- **[Deal Dimension & Lost Analytics]** ➔ [Revenue Tracking & Win/Loss Tagging] ➔ [Tracks \`closedDealAmount\`, \`budget\`, \`lostReason\` (Budget, Competitor, Unresponsive), and \`lostReasonDetail\` for conversion analytics]
+
+---
+
+## 3. The Automation & WhatsApp Hub
+### 3.1 Headless Baileys Multi-Device Engine
+- **[Connection Request]** ➔ [Acquire In-Memory Mutex Lock (\`pairingCodeLocks[userId]\`)] ➔ [Prevents double-click race conditions and duplicate WebSockets; rejects concurrent attempts]
+- **[Socket Stabilization]** ➔ [WebSocket State Polling] ➔ [Waits up to 7,000ms until \`sock.ws.readyState === 1\` before invoking \`sock.requestPairingCode()\`]
+- **[8-Digit Pairing Code]** ➔ [Native Mobile Pairing] ➔ [Returns 8-digit code for instant WhatsApp Mobile linking; auto-expires in 160 seconds if unentered]
+- **[MongoDB Auth State Adapter]** ➔ [\`useMongoDBAuthState.js\`] ➔ [Serializes crypto keys via \`BufferJSON\`; stores in \`WhatsAppAuth\` collection; survives server/Docker restarts]
+- **[Auto-Healing Heartbeat]** ➔ [45-Second Background Daemon] ➔ [Scans registered credentials; automatically reconnects dropped or idle sockets without user intervention]
+- **[Capped Exponential Backoff]** ➔ [Reconnection Resilience] ➔ [Retries connection drop with delay \`min(3000 * 1.4^attempts, 30000)ms\`; pairing reconnects capped at 5]
+
+### 3.2 Outbound Message Dispatch & Anti-Spam
+- **[1-Tap WhatsApp Action]** ➔ [Outbound Dispatcher] ➔ [Resolves recipient JID \`cleanPhone@s.whatsapp.net\`; formats personalized template parameters]
+- **[Media Source Resolver]** ➔ [Hybrid Buffer / CDN Engine] ➔ [Intelligently reads local \`/uploads/\` buffers or remote Cloudinary URLs for Images, Videos, PDFs, Voice Notes]
+- **[Outbound Message Audit]** ➔ [Audit Logging & Timeline] ➔ [Saves outbound message in \`ChatMessage\`, updates \`Lead.lastContactedAt\`, increments \`lead.messageSentCount\`]
+- **[Anti-Spam 90-Day Cooldown]** ➔ [\`WAFingerprint\` Gate] ➔ [Blocks connection if WhatsApp number was previously linked to defaulted, banned, or chargeback accounts]
+- **[Bulk Send Rate Limiter]** ➔ [100 Messages / 10 Min Cap] ➔ [Throttles bulk outreach bursts; prevents automated WhatsApp account bans and flagging]
+
+### 3.3 Inbound Message Sync & Debounced Notifications
+- **[Inbound WebSocket Hook]** ➔ [\`messages.upsert\` Event] ➔ [Extracts incoming text/media; resolves matching lead by sender phone variants]
+- **[Chat Timeline Sync]** ➔ [Bi-Directional ChatMessage] ➔ [Inserts inbound \`ChatMessage\` record; updates real-time chat modal via Server-Sent Events (SSE)]
+- **[3-Minute Notification Throttle]** ➔ [Debounce Cache Map] ➔ [Prevents notification spam during active customer conversations; alerts assigned agent & company owner]
+
+### 3.4 Audio Follow-up Alarms & Calendar Scheduling
+- **[Follow-Up Alarm Engine]** ➔ [Background Schedule Daemon] ➔ [Scans \`followUpDate <= now\` where \`followUpNotified == false\`; triggers push notifications & audio chime]
+- **[Follow-Up Action Modal]** ➔ [Quick Reschedule & Log] ➔ [Offers 1-tap "Call Done", "Reschedule (+1 Day, +3 Days)", or "Mark Converted"]
+
+---
+
+## 4. Billing, Subscriptions & Anti-Fraud
+### 4.1 Domain Architecture & Razorpay e-Mandates
+- **[Plan Catalog (Immutable)]** ➔ [Tier & Base Entitlement Definition] ➔ [Stores code, pricing in paise, interval, seat price, feature flags, versioning]
+- **[Subscription State Machine]** ➔ [Recurring Lifecycle Relationship] ➔ [\`CREATED\` ➔ \`AUTHENTICATED\` ➔ \`ACTIVE\` ➔ \`GRACE_PERIOD\` ➔ \`PLAN_LOCKED\` ➔ \`CANCELLED\`]
+- **[Concurrency Billing Lock]** ➔ [Double-Tab Mutation Guard] ➔ [Sets \`billingLock: true\` during checkout/upgrade; auto-releases after 5 minutes or webhook arrival]
+
+### 4.2 Idempotent Webhook Processing & HMAC SHA-256
+- **[Raw Body Buffer Capture]** ➔ [Pre-JSON Middleware] ➔ [Captures exact raw byte buffer \`req.rawBody\` required for cryptographic signature match]
+- **[HMAC SHA-256 Signature Verification]** ➔ [Crypto Non-Repudiation Check] ➔ [Hashes \`req.rawBody\` with \`RAZORPAY_WEBHOOK_SECRET\`; rejects spoofed webhooks with 400]
+- **[Deterministic Idempotency Key]** ➔ [Duplicate Webhook Filter] ➔ [Constructs \`wh_{event}_{paymentId/subId}\`; skips processing if key exists in \`PaymentAttempt\` ledger]
+- **[Event Handlers]** ➔ [State Synchronization] ➔ [Handles \`subscription.authenticated\`, \`subscription.charged\`, \`payment.failed\`, \`subscription.halted\`, \`subscription.cancelled\`]
+
+### 4.3 Proration on Upgrades & Scheduled Downgrades
+- **[Immediate Upgrade Proration]** ➔ [Mathematical Value Credit] ➔ [Calculates unused value fraction of active cycle; credits toward new plan; updates Razorpay \`schedule_change_at: 'now'\`]
+- **[End-of-Cycle Downgrade]** ➔ [Scheduled Deferral] ➔ [Sets \`pendingChange\` in MongoDB and \`schedule_change_at: 'cycle_end'\` on Razorpay; preserves tier until period end]
+
+### 4.4 Grace Periods & 403 Hard Lockout
+- **[Payment Failure Ingestion]** ➔ [3-Day Grace Period Activation] ➔ [Sets \`status: 'GRACE_PERIOD'\`, \`gracePeriodEnd = now + 3 days\`; renders pulsating warning banner]
+- **[Grace Period Expiration]** ➔ [Transition to \`PLAN_LOCKED\`] ➔ [Locks outbound WhatsApp messaging, lead exports, and lead additions; allows read-only and billing routes]
+- **[Sub-Agent Inheritance]** ➔ [Dynamic Tenant Gate] ➔ [Sub-agents receive clear notice: "Organization owner must renew subscription to restore access"]
+
+### 4.5 Anti-Churn & Anti-Theft Gating
+- **[90-Day Data Export Gate]** ➔ [Tenure Verification Guard] ➔ [Blocks CSV/Excel exports for annual plan subscribers under 90 days tenure; prevents "churn & clone" data theft]
+- **[Daily Import Velocity Cap]** ➔ [500 Leads / Day Limit] ➔ [Restricts new accounts (<30 days) from ingesting mass scraped databases; resets daily at midnight]
+- **[WhatsApp Number Fingerprinting]** ➔ [90-Day Banned Cooldown] ➔ [Blacklists WhatsApp numbers associated with defaulted or suspended accounts in \`WAFingerprint\`]
+
+---
+
+## 5. SuperAdmin Panel (The Control Center)
+### 5.1 Platform Telemetry & System Monitoring
+- **[Global Metrics Dashboard]** ➔ [Cross-Tenant Analytics Engine] ➔ [Aggregates Total MRR/ARR, Active vs Inactive Tenants, WhatsApp Sockets Connected, Leads Processed]
+- **[AbuseLogs Monitor]** ➔ [Live Threat Intelligence Feed] ➔ [Displays rate limit breaches, failed login attacks, bulk spam attempts with client IP and risk score]
+
+### 5.2 Administrative Overrides & Lifetime Grants
+- **[Manual Plan Override]** ➔ [VIP / Enterprise Provisioning] ➔ [SuperAdmin can manually assign any plan tier, bypass billing, or grant \`isLifetimeFree: true\`]
+- **[Manual Coupon Generator]** ➔ [Dynamic Discount Creator] ➔ [Configures percentage/fixed discounts, usage caps, and expiration timestamps]
+- **[Export Gate Bypass Toggle]** ➔ [Administrative Override] ➔ [Permits trusted enterprise clients early data export access before 90-day automatic tenure lock]
+
+### 5.3 Tenant Impersonation & Support Tools
+- **[Secure Impersonation]** ➔ [Zero-Password Support Login] ➔ [Generates scoped temporary JWT allowing support engineers to view user's exact dashboard for debugging]
+- **[Audit Trail Recording]** ➔ [Non-Repudiation Logging] ➔ [Every administrative action, plan grant, or impersonation event is written to immutable \`AuditLog\`]
+- **[Feature Flag Toggles]** ➔ [Granular Tenant Capabilities] ➔ [Selectively enables/disables Advanced Analytics, Custom Webhooks, Bulk Campaigns, Dedicated Sender IDs]
+
+---
+
+## 6. Background Workers & Infrastructure
+### 6.1 Periodic Cron Daemons & Schedulers
+- **[Follow-Up Alarm Cron]** ➔ [Runs Every 60 Seconds] ➔ [Queries due follow-up timestamps; broadcasts real-time reminders and pushes mobile alerts]
+- **[Subscription Lifecycle Worker]** ➔ [Runs Every Hour] ➔ [Processes scheduled downgrades, enforces grace period expiries, and executes annual plan monthly quota drips]
+- **[WhatsApp Auto-Heal Worker]** ➔ [Runs Every 45 Seconds] ➔ [Verifies in-memory socket health against MongoDB credentials; auto-restores dropped WebSockets]
+- **[MongoDB TTL Cleanup Daemon]** ➔ [Continuous Mongo Background Process] ➔ [Auto-purges \`AbuseLog\` documents older than 90 days and expired 2FA temporary tokens]
+
+### 6.2 Real-Time Event & Communication Pipeline
+- **[Server-Sent Events (SSE) Hub]** ➔ [\`realtime.js\` Broadcaster] ➔ [Streams instant lead assignments, WhatsApp inbound messages, and alarm notifications to browser clients]
+- **[Campaign Queue Worker]** ➔ [Throttled Async Batch Sender] ➔ [Processes bulk campaigns with random 3–8s delays between messages to prevent WhatsApp spam triggers]
+
+### 6.3 Edge Infrastructure, Caching & PWA Layer
+- **[Nginx Reverse Proxy & SSL]** ➔ [High-Throughput Gateway] ➔ [Gzip compression enabled, 50MB body size for media, reverse proxy to Express port 5000, 365d asset caching]
+- **[Next.js SSG Export (\`out/\`)]** ➔ [Sub-100ms Page Loads] ➔ [Pre-rendered static HTML/JS bundles; zero server-side rendering latency on mobile networks]
+- **[Service Worker v4 (\`sw.js\`)]** ➔ [Offline-First Resilience] ➔ [Network-first strategy for dynamic pages; pre-caches core assets; stale-while-revalidate fallback when offline]
+- **[Cloudinary Media CDN]** ➔ [Optimized Asset Delivery] ➔ [Compresses brochures, property images, and voice recordings on upload; serves via global CDN edge]
+`;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // MARKMAP RENDERING ENGINE INITIALIZATION
+    // ─────────────────────────────────────────────────────────────────────────
+    let markmapInstance = null;
+    let markmapRoot = null;
+
+    const initMarkmap = async () => {
+      const { Transformer, Markmap, loadCSS, loadJS } = window.markmap;
+      const transformer = new Transformer();
+      const { root, features } = transformer.transform(blueprintMarkdown);
+      markmapRoot = root;
+
+      if (features.styles) loadCSS(features.styles);
+      if (features.scripts) loadJS(features.scripts, { getMarkmap: () => window.markmap });
+
+      const svg = document.getElementById('mindmap');
+      
+      // Markmap Custom Options: Fully expanded initially
+      markmapInstance = Markmap.create(svg, {
+        duration: 400,
+        maxWidth: 420,
+        initialExpandLevel: -1, // Fully expand all levels initially for complete visibility
+        color: (node) => {
+          const depth = node.state?.depth || 0;
+          const colors = ['#06b6d4', '#10b981', '#6366f1', '#f59e0b', '#ec4899', '#8b5cf6', '#3b82f6'];
+          return colors[depth % colors.length];
+        },
+      }, root);
+
+      setTimeout(() => {
+        markmapInstance.fit();
+      }, 300);
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // INTERACTIVE HUD CONTROLS
+    // ─────────────────────────────────────────────────────────────────────────
+    const expandAll = () => {
+      const toggle = (node) => {
+        if (node.children) {
+          node.state = { ...node.state, fold: 0 };
+          node.children.forEach(toggle);
+        }
+      };
+      toggle(markmapRoot);
+      markmapInstance.setData(markmapRoot);
+      markmapInstance.fit();
+    };
+
+    const collapseToTier = (targetTier) => {
+      const toggle = (node) => {
+        const depth = node.state?.depth || 0;
+        if (node.children) {
+          node.state = { ...node.state, fold: depth >= targetTier ? 1 : 0 };
+          node.children.forEach(toggle);
+        }
+      };
+      toggle(markmapRoot);
+      markmapInstance.setData(markmapRoot);
+      markmapInstance.fit();
+    };
+
+    const fitView = () => {
+      if (markmapInstance) {
+        markmapInstance.fit();
+      }
+    };
+
+    const toggleFullscreen = () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    };
+
+    const jumpToBranch = (branchTitle) => {
+      // Update active chip
+      const buttons = document.querySelectorAll('.chip-btn');
+      buttons.forEach(btn => {
+        if (btn.innerText.includes(branchTitle) || (!branchTitle && btn.innerText.includes('Full'))) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+
+      if (!branchTitle) {
+        expandAll();
+        return;
+      }
+
+      // Find matching branch and fold others
+      const toggle = (node) => {
+        const title = node.content || '';
+        const depth = node.state?.depth || 0;
+
+        if (depth === 1) {
+          const isTarget = title.toLowerCase().includes(branchTitle.toLowerCase());
+          node.state = { ...node.state, fold: isTarget ? 0 : 1 };
+          if (node.children) {
+            node.children.forEach(c => {
+              c.state = { ...c.state, fold: 0 };
+            });
+          }
+        } else if (node.children) {
+          node.children.forEach(toggle);
+        }
+      };
+
+      toggle(markmapRoot);
+      markmapInstance.setData(markmapRoot);
+      setTimeout(() => markmapInstance.fit(), 200);
+    };
+
+    const handleSearch = (query) => {
+      const clean = query.trim().toLowerCase();
+      if (!clean) {
+        expandAll();
+        return;
+      }
+
+      const matchAndExpand = (node) => {
+        const text = (node.content || '').toLowerCase();
+        let hasMatchingDescendant = false;
+
+        if (node.children) {
+          node.children.forEach(child => {
+            const childMatched = matchAndExpand(child);
+            if (childMatched) hasMatchingDescendant = true;
+          });
+        }
+
+        const isMatch = text.includes(clean) || hasMatchingDescendant;
+        if (node.children) {
+          node.state = { ...node.state, fold: isMatch ? 0 : 1 };
+        }
+        return isMatch;
+      };
+
+      matchAndExpand(markmapRoot);
+      markmapInstance.setData(markmapRoot);
+      setTimeout(() => markmapInstance.fit(), 200);
+    };
+
+    // Initialize on DOM Ready
+    window.addEventListener('DOMContentLoaded', () => {
+      initMarkmap();
+    });
+  </script>
+</body>
+</html>

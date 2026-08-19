@@ -201,6 +201,12 @@ const userSchema = new mongoose.Schema({
     countryPhoneCode: { type: String, default: '91' },
   },
 
+  // Tenant / User Preferences
+  showFollowUpOnCreate: { type: Boolean, default: true },
+  preferences: {
+    showFollowUpOnCreate: { type: Boolean, default: true },
+  },
+
   // Two-Factor Authentication (TOTP Authenticator App)
   twoFactorEnabled: { type: Boolean, default: false },
   twoFactorMethod: {
