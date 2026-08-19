@@ -306,80 +306,107 @@ export default function CataloguePage() {
         </div>
 
         {/* ─────────────────────────────────────────────────────────────
-            DUAL-TAB SWITCHER
+            UNIFIED INTERACTIVE TOOLBAR: EXPANDING SEARCH & COLLAPSIBLE TABS
            ───────────────────────────────────────────────────────────── */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3 mb-5">
-          <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200/80 shadow-inner">
-            <button
-              type="button"
-              onClick={() => setActiveTab('my_catalogue')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === 'my_catalogue'
-                  ? 'bg-white text-indigo-600 shadow-sm font-bold border border-slate-200/60'
-                  : 'text-slate-600 hover:text-slate-900'
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 mb-6 shadow-xs transition-all duration-300">
+          <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2.5">
+            
+            {/* DUAL TABS: Dynamically Shrinks when Search is Focused / Active */}
+            <div
+              className={`inline-flex items-center p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 shadow-inner flex-shrink-0 transition-all duration-300 ease-out ${
+                isSearchFocused || searchQuery ? 'w-auto' : 'w-full md:w-auto'
               }`}
             >
-              <Building2 size={15} />
-              <span>My Active Catalogue</span>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeTab === 'my_catalogue' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-200 text-slate-700'}`}>
-                {myCatalogue.length}
-              </span>
-            </button>
+              {/* Tab 1: My Active Catalogue */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('my_catalogue')}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-300 ease-out ${
+                  activeTab === 'my_catalogue'
+                    ? 'bg-white text-indigo-600 shadow-xs font-bold border border-slate-200/60'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                }`}
+                title="My Active Catalogue"
+              >
+                <Building2 size={15} className="flex-shrink-0" />
+                <span
+                  className={`transition-all duration-300 whitespace-nowrap overflow-hidden ${
+                    isSearchFocused || searchQuery
+                      ? 'max-w-0 opacity-0 md:max-w-[48px] md:opacity-100'
+                      : 'max-w-[150px] opacity-100'
+                  }`}
+                >
+                  {isSearchFocused || searchQuery ? 'Active' : 'My Active Catalogue'}
+                </span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0 transition-colors ${
+                    activeTab === 'my_catalogue'
+                      ? 'bg-indigo-50 text-indigo-700'
+                      : 'bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  {myCatalogue.length}
+                </span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('master_explore')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === 'master_explore'
-                  ? 'bg-white text-purple-600 shadow-sm font-bold border border-slate-200/60'
-                  : 'text-slate-600 hover:text-slate-900'
+              {/* Tab 2: Explore Master Repository */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('master_explore')}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-300 ease-out ${
+                  activeTab === 'master_explore'
+                    ? 'bg-white text-purple-600 shadow-xs font-bold border border-slate-200/60'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                }`}
+                title="Explore Master Repository (10,000+ Universities)"
+              >
+                <Globe size={15} className="flex-shrink-0" />
+                <span
+                  className={`transition-all duration-300 whitespace-nowrap overflow-hidden ${
+                    isSearchFocused || searchQuery
+                      ? 'max-w-0 opacity-0 md:max-w-[50px] md:opacity-100'
+                      : 'max-w-[170px] opacity-100'
+                  }`}
+                >
+                  {isSearchFocused || searchQuery ? 'Master' : 'Explore Master'}
+                </span>
+                <span className="bg-purple-100 text-purple-700 border border-purple-200 text-[10px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">
+                  10k+
+                </span>
+              </button>
+            </div>
+
+            {/* EXPANDING SEARCH INPUT: Expands dynamically when focused/active */}
+            <div
+              className={`relative transition-all duration-300 ease-out min-w-0 ${
+                isSearchFocused || searchQuery
+                  ? 'flex-1 w-full'
+                  : 'flex-1 w-full md:w-80'
               }`}
             >
-              <Globe size={15} />
-              <span>Explore Master Repository</span>
-              <span className="bg-purple-100 text-purple-700 border border-purple-200 text-[10px] px-2 py-0.5 rounded-full font-bold">
-                10,000+
-              </span>
-            </button>
-          </div>
-
-          <div className="text-xs text-slate-500 font-medium">
-            {activeTab === 'my_catalogue' ? (
-              <>Showing <strong>{filteredMyCatalogue.length}</strong> active institutions with custom fee packages</>
-            ) : (
-              <>Browsing <strong>{masterPagination.total || masterColleges.length}</strong> verified master institutions</>
-            )}
-          </div>
-        </div>
-
-        {/* ─────────────────────────────────────────────────────────────
-            EXPANDING SEARCH & SMART MULTI-TOKEN CONTROL BAR
-           ───────────────────────────────────────────────────────────── */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-6 shadow-xs transition-all duration-300">
-          <div className="flex flex-col md:flex-row items-center gap-3">
-            {/* Dynamic Expanding Search Input */}
-            <div className={`relative transition-all duration-300 ease-out w-full ${isSearchFocused ? 'md:flex-grow' : 'md:flex-1'}`}>
               <Search
-                size={17}
-                className={`absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors duration-200 ${
+                size={16}
+                className={`absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors duration-200 flex-shrink-0 ${
                   isSearchFocused ? 'text-indigo-600' : 'text-slate-400'
                 }`}
               />
               <input
                 type="text"
                 placeholder={
-                  activeTab === 'my_catalogue'
-                    ? "🔍 Search by College, City, State, Degree, or Course (use commas e.g. Amity, Noida, MBA)..."
-                    : "🔍 Search 10,000+ Universities by Name, City, State, or Course (e.g. VIT, Vellore, CSE)..."
+                  isSearchFocused
+                    ? "🔍 Filter by College, City, State, Course (use commas e.g. Amity, Noida, MBA)..."
+                    : activeTab === 'my_catalogue'
+                    ? "🔍 Search active colleges, courses, degrees, city..."
+                    : "🔍 Search 10,000+ master universities by name, state, course..."
                 }
                 value={searchQuery}
                 onFocus={() => setIsSearchFocused(true)}
                 onBlur={() => setIsSearchFocused(false)}
                 onChange={e => setSearchQuery(e.target.value)}
-                className={`input pl-10 pr-9 py-2.5 text-xs sm:text-sm w-full rounded-xl transition-all duration-200 ${
+                className={`input pl-10 pr-9 py-2 text-xs sm:text-sm w-full rounded-xl transition-all duration-200 ${
                   isSearchFocused
-                    ? 'bg-white border-indigo-500 shadow-md ring-2 ring-indigo-500/20'
-                    : 'bg-slate-50 border-slate-200 focus:bg-white hover:border-slate-300'
+                    ? 'bg-white border-indigo-500 shadow-sm ring-2 ring-indigo-500/20'
+                    : 'bg-slate-50 border-slate-200 hover:border-slate-300 focus:bg-white'
                 }`}
               />
               {searchQuery && (
@@ -394,14 +421,14 @@ export default function CataloguePage() {
               )}
             </div>
 
-            {/* Filter Dropdowns */}
-            <div className="flex items-center gap-2.5 w-full md:w-auto flex-shrink-0">
+            {/* FILTERS: Type & State Dropdowns */}
+            <div className="flex items-center gap-2 flex-shrink-0 w-full md:w-auto">
               <select
                 value={typeFilter}
                 onChange={e => setTypeFilter(e.target.value)}
-                className="input py-2.5 text-xs bg-slate-50 border-slate-200 rounded-xl flex-1 md:w-44 focus:bg-white focus:border-indigo-500"
+                className="input py-2 text-xs bg-slate-50 border-slate-200 rounded-xl flex-1 md:w-38 focus:bg-white focus:border-indigo-500"
               >
-                <option value="all">All Institution Types</option>
+                <option value="all">All Types</option>
                 {INSTITUTION_TYPES.map(t => (
                   <option key={t} value={t}>{t}</option>
                 ))}
@@ -410,7 +437,7 @@ export default function CataloguePage() {
               <select
                 value={stateFilter}
                 onChange={e => setStateFilter(e.target.value)}
-                className="input py-2.5 text-xs bg-slate-50 border-slate-200 rounded-xl flex-1 md:w-40 focus:bg-white focus:border-indigo-500"
+                className="input py-2 text-xs bg-slate-50 border-slate-200 rounded-xl flex-1 md:w-34 focus:bg-white focus:border-indigo-500"
               >
                 <option value="all">All States</option>
                 {allStates.map(st => (
