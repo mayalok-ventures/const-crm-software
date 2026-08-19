@@ -14,6 +14,7 @@ export default function IntegrationsPage() {
   const router = useRouter();
   const [metaIntegrations, setMetaIntegrations] = useState([]);
   const [googleIntegrations, setGoogleIntegrations] = useState([]);
+  const [universalWebhooks, setUniversalWebhooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [testingMeta, setTestingMeta] = useState(false);
   const [testingGoogle, setTestingGoogle] = useState(false);
@@ -28,9 +29,10 @@ export default function IntegrationsPage() {
   const fetchIntegrations = async () => {
     try {
       setLoading(true);
-      const [metaRes, googleRes] = await Promise.allSettled([
+      const [metaRes, googleRes, universalRes] = await Promise.allSettled([
         api.get('/integrations/meta'),
-        api.get('/integrations/google')
+        api.get('/integrations/google'),
+        api.get('/integrations')
       ]);
 
       if (metaRes.status === 'fulfilled' && metaRes.value.data) {
@@ -42,6 +44,9 @@ export default function IntegrationsPage() {
         const payload = googleRes.value.data;
         const list = Array.isArray(payload) ? payload : (payload.data || payload.integrations || []);
         setGoogleIntegrations(list);
+      }
+      if (universalRes.status === 'fulfilled' && universalRes.value.data) {
+        setUniversalWebhooks(universalRes.value.data.universalWebhooks || []);
       }
     } catch {
       // Graceful fallback
@@ -265,6 +270,10 @@ export default function IntegrationsPage() {
   const googleWebhookUrl = `${API_URL}/integrations/google/webhook`;
   const metaVerifyToken = 'crm_meta_webhook_secret_2026';
 
+  const isMetaConnected = metaIntegrations.length > 0 && metaIntegrations.some(i => i.status === 'connected');
+  const isGoogleFullyConnected = googleIntegrations.length > 0 && googleIntegrations.some(i => i.customerId && i.status === 'connected');
+  const isGooglePending = googleIntegrations.length > 0 && !isGoogleFullyConnected;
+
   return (
     <div className="app-shell">
       <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
@@ -377,11 +386,11 @@ export default function IntegrationsPage() {
                     </div>
                   </div>
                   <span className="badge" style={{
-                    background: metaIntegrations.length > 0 ? 'rgba(16,185,129,0.15)' : 'rgba(148,163,184,0.15)',
-                    color: metaIntegrations.length > 0 ? '#10b981' : 'var(--text-muted)',
+                    background: isMetaConnected ? 'rgba(16,185,129,0.15)' : 'rgba(148,163,184,0.15)',
+                    color: isMetaConnected ? '#10b981' : 'var(--text-muted)',
                     fontWeight: 700
                   }}>
-                    {metaIntegrations.length > 0 ? '🟢 Connected' : '⚪ Ready to Connect'}
+                    {isMetaConnected ? '🟢 Connected' : '⚪ Ready to Connect'}
                   </span>
                 </div>
 
@@ -438,21 +447,12 @@ export default function IntegrationsPage() {
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 8, borderTop: '1px solid var(--border)' }}>
                 <button
                   type="button"
-                  onClick={handleTestMetaLead}
-                  disabled={testingMeta}
-                  className="btn btn-secondary btn-sm"
-                  style={{ flex: 1, gap: 5, borderRadius: 8, fontSize: 12 }}
-                >
-                  <Play size={12} color="#2563eb" /> {testingMeta ? 'Simulating...' : 'Test Lead Simulation'}
-                </button>
-                <button
-                  type="button"
                   onClick={handleConnectMeta}
                   disabled={loading}
-                  className="btn btn-primary btn-sm"
-                  style={{ flex: 1, background: '#2563eb', borderColor: '#2563eb', gap: 5, borderRadius: 8, fontSize: 12 }}
+                  className="btn btn-primary btn-sm btn-full"
+                  style={{ flex: 1, background: '#2563eb', borderColor: '#2563eb', gap: 5, borderRadius: 8, fontSize: 12, width: '100%', minHeight: 36 }}
                 >
-                  <ExternalLink size={12} /> Connect Meta
+                  <ExternalLink size={12} /> {isMetaConnected ? 'Reconnect Meta' : 'Connect Meta'}
                 </button>
               </div>
             </div>
@@ -486,11 +486,11 @@ export default function IntegrationsPage() {
                     </div>
                   </div>
                   <span className="badge" style={{
-                    background: googleIntegrations.length > 0 ? 'rgba(16,185,129,0.15)' : 'rgba(148,163,184,0.15)',
-                    color: googleIntegrations.length > 0 ? '#10b981' : 'var(--text-muted)',
+                    background: isGoogleFullyConnected ? 'rgba(16,185,129,0.15)' : isGooglePending ? 'rgba(245,158,11,0.15)' : 'rgba(148,163,184,0.15)',
+                    color: isGoogleFullyConnected ? '#10b981' : isGooglePending ? '#d97706' : 'var(--text-muted)',
                     fontWeight: 700
                   }}>
-                    {googleIntegrations.length > 0 ? '🟢 Connected' : '⚪ Ready to Connect'}
+                    {isGoogleFullyConnected ? '🟢 Connected' : isGooglePending ? '🟡 Pending Setup' : '⚪ Ready to Connect'}
                   </span>
                 </div>
 
@@ -627,21 +627,12 @@ export default function IntegrationsPage() {
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 8, borderTop: '1px solid var(--border)' }}>
                 <button
                   type="button"
-                  onClick={handleTestGoogleLead}
-                  disabled={testingGoogle}
-                  className="btn btn-secondary btn-sm"
-                  style={{ flex: 1, gap: 5, borderRadius: 8, fontSize: 12 }}
-                >
-                  <Play size={12} color="#dc2626" /> {testingGoogle ? 'Simulating...' : 'Test Lead Simulation'}
-                </button>
-                <button
-                  type="button"
                   onClick={handleConnectGoogle}
                   disabled={loading}
-                  className="btn btn-primary btn-sm"
-                  style={{ flex: 1, background: '#dc2626', borderColor: '#dc2626', gap: 5, borderRadius: 8, fontSize: 12 }}
+                  className="btn btn-primary btn-sm btn-full"
+                  style={{ flex: 1, background: '#dc2626', borderColor: '#dc2626', gap: 5, borderRadius: 8, fontSize: 12, width: '100%', minHeight: 36 }}
                 >
-                  <ExternalLink size={12} /> Connect Google
+                  <ExternalLink size={12} /> {isGoogleFullyConnected ? 'Reconnect Google' : 'Connect Google'}
                 </button>
               </div>
             </div>
@@ -705,6 +696,27 @@ export default function IntegrationsPage() {
                     </button>
                   </div>
                 </div>
+
+                {/* Active Custom Webhooks List */}
+                {universalWebhooks.length > 0 && (
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 12, marginBottom: 14 }}>
+                    <span style={{ fontSize: 10.5, textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
+                      Active Custom Ingestions ({universalWebhooks.length})
+                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 150, overflowY: 'auto', paddingRight: 2 }}>
+                      {universalWebhooks.map((w, idx) => (
+                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px' }}>
+                          <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text)' }}>
+                            🔌 {w.name}
+                          </span>
+                          <span className="badge" style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981', fontSize: 10, fontWeight: 700 }}>
+                            {w.count} leads
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 8, borderTop: '1px solid var(--border)' }}>

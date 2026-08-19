@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Integration = require('../models/Integration');
+const Lead = require('../models/Lead');
 const { encrypt } = require('../utils/encryption');
 
 /**
@@ -87,9 +88,35 @@ exports.getIntegrations = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
+    // Query unique custom webhook/API sources from Leads collection
+    const leadSources = await Lead.aggregate([
+      {
+        $match: {
+          ...filter,
+          source: {
+            $nin: ['meta', 'google', 'facebook', 'instagram', 'manual', 'agent_manual', 'other', '']
+          }
+        }
+      },
+      {
+        $group: {
+          _id: '$source',
+          count: { $sum: 1 },
+          lastIngestedAt: { $max: '$createdAt' }
+        }
+      }
+    ]);
+
+    const universalWebhooks = leadSources.map(s => ({
+      name: s._id ? (String(s._id).charAt(0).toUpperCase() + String(s._id).slice(1)) : 'Custom API',
+      count: s.count,
+      lastIngestedAt: s.lastIngestedAt,
+    }));
+
     return res.json({
       success: true,
       integrations: integrations.map(sanitizeIntegration),
+      universalWebhooks,
     });
   } catch (error) {
     console.error('[Integration] getIntegrations:', error.message);
