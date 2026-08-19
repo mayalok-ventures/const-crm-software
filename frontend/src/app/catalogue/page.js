@@ -11,7 +11,7 @@ import {
   CheckCircle2, ArrowRight, Layers, Edit3, Trash2, Check,
   Clock, ShieldCheck, Sparkles, Filter, ChevronDown, ChevronUp,
   DollarSign, UserCheck, ExternalLink, RefreshCw, BookOpen, AlertCircle,
-  PlusCircle, School, Award, ChevronRight
+  PlusCircle, School, Award, ChevronRight, X
 } from 'lucide-react';
 import {
   COMMON_DEGREES,
@@ -21,10 +21,10 @@ import {
 } from '@/lib/commonDegrees';
 
 const ADMISSION_STATUS_LABELS = {
-  admissions_open: { label: '🟢 Open', bg: 'rgba(16, 185, 129, 0.12)', text: '#10b981', border: 'rgba(16, 185, 129, 0.25)' },
-  seats_fast_filling: { label: '🔥 Fast Filling', bg: 'rgba(245, 158, 11, 0.12)', text: '#f59e0b', border: 'rgba(245, 158, 11, 0.25)' },
-  merit_closed_mgmt_open: { label: '⚡ Mgmt Open', bg: 'rgba(139, 92, 246, 0.12)', text: '#8b5cf6', border: 'rgba(139, 92, 246, 0.25)' },
-  admissions_closed: { label: '🔴 Closed', bg: 'rgba(239, 68, 68, 0.12)', text: '#ef4444', border: 'rgba(239, 68, 68, 0.25)' },
+  admissions_open: { label: '🟢 Open', bg: '#ecfdf5', text: '#059669', border: '#a7f3d0' },
+  seats_fast_filling: { label: '🔥 Fast Filling', bg: '#fffbeb', text: '#d97706', border: '#fde68a' },
+  merit_closed_mgmt_open: { label: '⚡ Mgmt Open', bg: '#f5f3ff', text: '#7c3aed', border: '#ddd6fe' },
+  admissions_closed: { label: '🔴 Closed', bg: '#fef2f2', text: '#dc2626', border: '#fecaca' },
 };
 
 export default function CataloguePage() {
@@ -77,7 +77,6 @@ export default function CataloguePage() {
       const items = res.data?.catalogue || [];
       setMyCatalogue(items);
       if (items.length === 0) {
-        // If user has no active items yet, switch to explore tab to encourage 1-click import
         setActiveTab('master_explore');
       }
     } catch (err) {
@@ -207,7 +206,6 @@ export default function CataloguePage() {
         ],
       });
 
-      // Navigate straight to detail view to customize fees
       if (res.data?.catalogueItem?._id) {
         router.push(`/colleges/${res.data.catalogueItem._id}`);
       } else {
@@ -252,24 +250,25 @@ export default function CataloguePage() {
 
   return (
     <div className="app-shell pb-24">
-      {/* ─────────────────────────────────────────────────────────────
-          TOP APP BAR & HEADER
-         ───────────────────────────────────────────────────────────── */}
-      <div className="header-nav sticky top-0 z-30 bg-slate-950/95 backdrop-blur-md border-b border-slate-800/80 px-4 py-3.5">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+        
+        {/* ─────────────────────────────────────────────────────────────
+            PAGE HEADER & ACTIONS
+           ───────────────────────────────────────────────────────────── */}
+        <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/30 flex-shrink-0">
-              <GraduationCap size={22} />
+            <div className="w-11 h-11 rounded-xl bg-indigo-600/10 border border-indigo-600/20 flex items-center justify-center text-indigo-600 shadow-sm flex-shrink-0">
+              <GraduationCap size={24} />
             </div>
             <div>
-              <h1 className="text-base sm:text-lg font-black text-white m-0 tracking-tight flex items-center gap-2">
-                Colleges & Course Catalogue
-                <span className="badge bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 text-[10px] px-2 py-0.5 rounded-full font-bold">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="page-title text-xl font-bold text-slate-900 m-0">Colleges & Course Catalogue</h1>
+                <span className="badge bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-semibold px-2.5 py-0.5 rounded-full">
                   Education Suite
                 </span>
-              </h1>
-              <p className="text-xs text-slate-400 m-0">
-                Institutional tie-ups, custom student fee packages, and 10,000+ university repository.
+              </div>
+              <p className="text-xs text-slate-500 m-0 mt-0.5">
+                Manage partner tie-ups, customized student fees, and 10,000+ university repository
               </p>
             </div>
           </div>
@@ -278,32 +277,30 @@ export default function CataloguePage() {
             <button
               type="button"
               onClick={() => setShowAddCustomModal(true)}
-              className="btn btn-primary btn-sm flex items-center gap-2 text-xs py-2 px-4 rounded-xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:opacity-95 shadow-lg shadow-indigo-600/30 transition transform hover:-translate-y-0.5"
+              className="btn btn-primary btn-sm flex items-center gap-2 text-xs py-2 px-4 rounded-xl font-semibold shadow-sm"
             >
-              <PlusCircle size={15} /> Add Custom Institution
+              <PlusCircle size={16} /> Add Custom Partner
             </button>
           </div>
         </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
         {/* ─────────────────────────────────────────────────────────────
             DUAL-TAB SWITCHER
            ───────────────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between gap-4 border-b border-slate-800 pb-3 flex-wrap">
-          <div className="flex items-center gap-2 bg-slate-900/90 p-1 rounded-xl border border-slate-800 shadow-inner">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3 mb-5">
+          <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200/80 shadow-inner">
             <button
               type="button"
               onClick={() => setActiveTab('my_catalogue')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-extrabold transition ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === 'my_catalogue'
-                  ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-white text-indigo-600 shadow-sm font-bold border border-slate-200/60'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Building2 size={15} />
               <span>My Active Catalogue</span>
-              <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full ml-0.5">
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeTab === 'my_catalogue' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-200 text-slate-700'}`}>
                 {myCatalogue.length}
               </span>
             </button>
@@ -311,49 +308,49 @@ export default function CataloguePage() {
             <button
               type="button"
               onClick={() => setActiveTab('master_explore')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-extrabold transition ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === 'master_explore'
-                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/30'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-white text-purple-600 shadow-sm font-bold border border-slate-200/60'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Globe size={15} />
               <span>Explore Master Repository</span>
-              <span className="bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] px-2 py-0.5 rounded-full ml-0.5 font-bold">
+              <span className="bg-purple-100 text-purple-700 border border-purple-200 text-[10px] px-2 py-0.5 rounded-full font-bold">
                 10,000+
               </span>
             </button>
           </div>
 
-          <span className="text-xs text-slate-400 font-medium">
+          <div className="text-xs text-slate-500 font-medium">
             {activeTab === 'my_catalogue' ? (
-              <>Showing <strong>{filteredMyCatalogue.length}</strong> active institutions with configured fee structures</>
+              <>Showing <strong>{filteredMyCatalogue.length}</strong> active institutions with custom fee packages</>
             ) : (
               <>Browsing <strong>{masterPagination.total || masterColleges.length}</strong> verified master institutions</>
             )}
-          </span>
+          </div>
         </div>
 
         {/* ─────────────────────────────────────────────────────────────
             SEARCH & FILTER CONTROL BAR
            ───────────────────────────────────────────────────────────── */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 my-5 shadow-lg flex flex-col md:flex-row items-center gap-3">
+        <div className="bg-white border border-slate-200 rounded-xl p-3.5 mb-6 shadow-sm flex flex-col md:flex-row items-center gap-3">
           <div className="relative flex-1 w-full">
             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder={activeTab === 'my_catalogue' ? "Search your active colleges, courses, degrees, or cities..." : "Search 10,000+ universities by name, short code, city, or accreditation..."}
+              placeholder={activeTab === 'my_catalogue' ? "Search active colleges, courses, degrees, city..." : "Search 10,000+ universities by name, short code, city, or accreditation..."}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="input pl-10 pr-4 py-2.5 text-xs sm:text-sm w-full bg-slate-950/90 border-slate-800 rounded-xl focus:border-indigo-500"
+              className="input pl-10 pr-8 py-2 text-xs sm:text-sm w-full bg-slate-50 border-slate-200 rounded-lg focus:bg-white focus:border-indigo-500"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm font-bold"
               >
-                &times; Clear
+                &times;
               </button>
             )}
           </div>
@@ -362,7 +359,7 @@ export default function CataloguePage() {
             <select
               value={typeFilter}
               onChange={e => setTypeFilter(e.target.value)}
-              className="input py-2.5 text-xs bg-slate-950/90 border-slate-800 rounded-xl flex-1 md:w-44"
+              className="input py-2 text-xs bg-slate-50 border-slate-200 rounded-lg flex-1 md:w-44 focus:bg-white"
             >
               <option value="all">All Institution Types</option>
               {INSTITUTION_TYPES.map(t => (
@@ -373,7 +370,7 @@ export default function CataloguePage() {
             <select
               value={stateFilter}
               onChange={e => setStateFilter(e.target.value)}
-              className="input py-2.5 text-xs bg-slate-950/90 border-slate-800 rounded-xl flex-1 md:w-40"
+              className="input py-2 text-xs bg-slate-50 border-slate-200 rounded-lg flex-1 md:w-40 focus:bg-white"
             >
               <option value="all">All States</option>
               {allStates.map(st => (
@@ -391,13 +388,15 @@ export default function CataloguePage() {
             {loading ? (
               <div className="py-16 text-center">
                 <div className="spinner mx-auto" />
-                <p className="text-xs text-slate-400 mt-2">Loading active catalogue...</p>
+                <p className="text-xs text-slate-500 mt-2">Loading active catalogue...</p>
               </div>
             ) : filteredMyCatalogue.length === 0 ? (
-              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center my-6">
-                <School size={48} className="mx-auto text-slate-600 mb-3" />
-                <h3 className="text-lg font-black text-white">No Institutions in Your Active Catalogue</h3>
-                <p className="text-xs text-slate-400 max-w-md mx-auto mt-1 mb-6">
+              <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center my-6 shadow-sm">
+                <div className="w-16 h-16 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto mb-4">
+                  <School size={32} />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">No Institutions in Your Active Catalogue</h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-6 leading-relaxed">
                   {myCatalogue.length === 0
                     ? "Start building your catalogue by exploring the 10,000+ Master Repository with 1-Click Import or manually creating a custom partner institution."
                     : "No colleges match your active search filters. Try clearing your search or location filters."}
@@ -416,7 +415,7 @@ export default function CataloguePage() {
                     onClick={() => setShowAddCustomModal(true)}
                     className="btn btn-secondary btn-sm flex items-center gap-2"
                   >
-                    <PlusCircle size={14} /> Add Custom Institution
+                    <PlusCircle size={14} /> Add Custom Partner
                   </button>
                 </div>
               </div>
@@ -433,24 +432,22 @@ export default function CataloguePage() {
                   return (
                     <div
                       key={col._id}
-                      className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between hover:border-indigo-500/40 transition shadow-lg relative group overflow-hidden"
+                      className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between hover:border-indigo-400 hover:shadow-md transition shadow-sm relative group overflow-hidden"
                     >
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-600/5 rounded-full blur-2xl pointer-events-none group-hover:bg-indigo-600/10 transition" />
-
                       <div>
                         {/* Header Row */}
                         <div className="flex items-start justify-between gap-3 mb-3">
-                          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-black text-base flex-shrink-0 shadow-inner">
+                          <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-extrabold text-base flex-shrink-0 shadow-sm">
                             {col.masterCollegeId?.shortCode || name.substring(0, 2).toUpperCase()}
                           </div>
 
                           <div className="flex items-center gap-1.5 flex-shrink-0">
                             {col.isCustomInstitution ? (
-                              <span className="badge bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                              <span className="badge bg-purple-50 text-purple-700 border border-purple-200 text-[11px] px-2.5 py-0.5 rounded-full font-bold">
                                 ✨ Custom Partner
                               </span>
                             ) : (
-                              <span className="badge bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                              <span className="badge bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] px-2.5 py-0.5 rounded-full font-bold">
                                 🏛️ Verified Tie-Up
                               </span>
                             )}
@@ -458,12 +455,12 @@ export default function CataloguePage() {
                         </div>
 
                         {/* Title & Location */}
-                        <h3 className="text-base font-black text-white m-0 tracking-tight leading-snug group-hover:text-indigo-300 transition">
+                        <h3 className="text-base font-bold text-slate-900 m-0 tracking-tight leading-snug group-hover:text-indigo-600 transition">
                           {name}
                         </h3>
-                        <p className="text-xs text-slate-400 m-0 mt-1 flex items-center gap-1">
-                          <MapPin size={12} className="text-indigo-400 flex-shrink-0" />
-                          {loc || 'Location on file'} • <span className="text-slate-300 font-medium">{type}</span>
+                        <p className="text-xs text-slate-500 m-0 mt-1 flex items-center gap-1">
+                          <MapPin size={13} className="text-indigo-500 flex-shrink-0" />
+                          <span>{loc || 'Location on file'}</span> • <span className="text-slate-700 font-medium">{type}</span>
                         </p>
 
                         {/* Accreditations Badges */}
@@ -486,7 +483,7 @@ export default function CataloguePage() {
                               );
                             })}
                             {accreditations.length > 3 && (
-                              <span className="text-[10px] text-slate-400 font-bold px-1">
+                              <span className="text-[10px] text-slate-500 font-semibold px-1">
                                 +{accreditations.length - 3} more
                               </span>
                             )}
@@ -494,19 +491,19 @@ export default function CataloguePage() {
                         )}
 
                         {/* Degree Programs Summary */}
-                        <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 my-3.5 space-y-1.5">
+                        <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 my-3.5 space-y-1.5">
                           <div className="flex items-center justify-between text-xs">
-                            <span className="text-slate-400 font-medium">Configured Streams:</span>
-                            <span className="text-emerald-400 font-black">{courses.length} Specializations</span>
+                            <span className="text-slate-500 font-medium">Configured Streams:</span>
+                            <span className="text-indigo-600 font-bold">{courses.length} Specializations</span>
                           </div>
                           <div className="flex items-center gap-1.5 flex-wrap pt-1">
                             {uniqueDegrees.slice(0, 4).map(deg => (
-                              <span key={deg} className="bg-slate-900 border border-slate-800 text-slate-300 text-[10px] px-2 py-0.5 rounded-md font-semibold">
+                              <span key={deg} className="bg-white border border-slate-200 text-slate-700 text-[10px] px-2 py-0.5 rounded-md font-medium shadow-2xs">
                                 🎓 {deg}
                               </span>
                             ))}
                             {uniqueDegrees.length > 4 && (
-                              <span className="text-[10px] text-slate-500 font-bold">
+                              <span className="text-[10px] text-slate-500 font-semibold">
                                 +{uniqueDegrees.length - 4} degrees
                               </span>
                             )}
@@ -515,11 +512,11 @@ export default function CataloguePage() {
                       </div>
 
                       {/* Footer Actions */}
-                      <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-800/80 mt-1">
+                      <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100 mt-1">
                         <button
                           type="button"
                           onClick={() => handleDeleteCatalogueItem(col._id, name)}
-                          className="p-2 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                          className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
                           title="Remove from catalogue"
                         >
                           <Trash2 size={15} />
@@ -528,7 +525,7 @@ export default function CataloguePage() {
                         <button
                           type="button"
                           onClick={() => router.push(`/colleges/${col._id}`)}
-                          className="btn btn-primary btn-sm flex-1 flex items-center justify-center gap-1.5 text-xs py-2 rounded-xl font-bold bg-slate-800 hover:bg-indigo-600 text-white border-slate-700 hover:border-indigo-500 transition"
+                          className="btn btn-primary btn-sm flex-1 flex items-center justify-center gap-1.5 text-xs py-2 rounded-xl font-bold transition"
                         >
                           <span>Drill Down & Customize</span>
                           <ChevronRight size={14} />
@@ -550,21 +547,23 @@ export default function CataloguePage() {
             {masterLoading ? (
               <div className="py-16 text-center">
                 <div className="spinner mx-auto" />
-                <p className="text-xs text-slate-400 mt-2">Searching master repository...</p>
+                <p className="text-xs text-slate-500 mt-2">Searching master repository...</p>
               </div>
             ) : masterColleges.length === 0 ? (
-              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center my-6">
-                <Globe size={48} className="mx-auto text-slate-600 mb-3" />
-                <h3 className="text-lg font-black text-white">No Universities Found</h3>
-                <p className="text-xs text-slate-400 max-w-md mx-auto mt-1 mb-6">
-                  No matching institutions found in the master database. You can manually create this institution with 1 click.
+              <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center my-6 shadow-sm">
+                <div className="w-16 h-16 rounded-2xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600 mx-auto mb-4">
+                  <Globe size={32} />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">No Universities Found</h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-6 leading-relaxed">
+                  No matching institutions found in the master database. You can manually create this partner institution with 1 click.
                 </p>
                 <button
                   type="button"
                   onClick={() => setShowAddCustomModal(true)}
                   className="btn btn-primary btn-sm flex items-center gap-2 mx-auto"
                 >
-                  <PlusCircle size={15} /> Add Custom Institution
+                  <PlusCircle size={15} /> Add Custom Partner
                 </button>
               </div>
             ) : (
@@ -579,34 +578,32 @@ export default function CataloguePage() {
                     return (
                       <div
                         key={col._id}
-                        className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between hover:border-purple-500/40 transition shadow-lg relative group overflow-hidden"
+                        className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between hover:border-purple-300 hover:shadow-md transition shadow-sm relative group overflow-hidden"
                       >
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-purple-600/5 rounded-full blur-2xl pointer-events-none group-hover:bg-purple-600/10 transition" />
-
                         <div>
                           {/* Top Row */}
                           <div className="flex items-start justify-between gap-3 mb-3">
-                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500/20 to-indigo-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300 font-black text-base flex-shrink-0 shadow-inner">
+                            <div className="w-12 h-12 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-700 font-extrabold text-base flex-shrink-0 shadow-sm">
                               {col.shortCode || col.name.substring(0, 2).toUpperCase()}
                             </div>
 
                             {isImported ? (
-                              <span className="badge bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
-                                <Check size={11} /> In Active Catalogue
+                              <span className="badge bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                <Check size={12} /> In Active Catalogue
                               </span>
                             ) : (
-                              <span className="badge bg-slate-800 text-slate-400 border border-slate-700 text-[10px] px-2 py-0.5 rounded-full font-medium">
+                              <span className="badge bg-slate-100 text-slate-600 border border-slate-200 text-[11px] px-2 py-0.5 rounded-full font-medium">
                                 🌐 Master Verified
                               </span>
                             )}
                           </div>
 
-                          <h3 className="text-base font-black text-white m-0 tracking-tight leading-snug group-hover:text-purple-300 transition">
+                          <h3 className="text-base font-bold text-slate-900 m-0 tracking-tight leading-snug group-hover:text-purple-600 transition">
                             {col.name}
                           </h3>
-                          <p className="text-xs text-slate-400 m-0 mt-1 flex items-center gap-1">
-                            <MapPin size={12} className="text-purple-400 flex-shrink-0" />
-                            {loc} • <span className="text-slate-300 font-medium">{col.type}</span>
+                          <p className="text-xs text-slate-500 m-0 mt-1 flex items-center gap-1">
+                            <MapPin size={13} className="text-purple-500 flex-shrink-0" />
+                            <span>{loc}</span> • <span className="text-slate-700 font-medium">{col.type}</span>
                           </p>
 
                           {/* Accreditations */}
@@ -632,19 +629,19 @@ export default function CataloguePage() {
                           )}
 
                           {/* Programs Overview */}
-                          <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 my-3.5 space-y-1.5">
+                          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 my-3.5 space-y-1.5">
                             <div className="flex items-center justify-between text-xs">
-                              <span className="text-slate-400 font-medium">Available Programs:</span>
-                              <span className="text-indigo-300 font-bold">{courses.length} Degrees</span>
+                              <span className="text-slate-500 font-medium">Available Programs:</span>
+                              <span className="text-indigo-600 font-bold">{courses.length} Degrees</span>
                             </div>
                             <div className="flex items-center gap-1.5 flex-wrap pt-1">
                               {courses.slice(0, 4).map(c => (
-                                <span key={c._id || c.degreeName} className="bg-slate-900 border border-slate-800 text-slate-300 text-[10px] px-2 py-0.5 rounded-md font-semibold">
+                                <span key={c._id || c.degreeName} className="bg-white border border-slate-200 text-slate-700 text-[10px] px-2 py-0.5 rounded-md font-medium shadow-2xs">
                                   🎓 {c.degreeName}
                                 </span>
                               ))}
                               {courses.length > 4 && (
-                                <span className="text-[10px] text-slate-500 font-bold">
+                                <span className="text-[10px] text-slate-500 font-semibold">
                                   +{courses.length - 4} more
                                 </span>
                               )}
@@ -653,12 +650,12 @@ export default function CataloguePage() {
                         </div>
 
                         {/* Footer Actions */}
-                        <div className="pt-3 border-t border-slate-800/80 mt-1 flex items-center gap-2">
+                        <div className="pt-3 border-t border-slate-100 mt-1 flex items-center gap-2">
                           {isImported ? (
                             <button
                               type="button"
                               onClick={() => router.push(`/colleges/${col.tenantCatalogueId || col._id}`)}
-                              className="btn btn-secondary btn-sm w-full flex items-center justify-center gap-1.5 text-xs py-2 rounded-xl font-bold text-emerald-400 border-emerald-500/30"
+                              className="btn btn-secondary btn-sm w-full flex items-center justify-center gap-1.5 text-xs py-2 rounded-xl font-bold text-emerald-700 border-emerald-300 hover:bg-emerald-50"
                             >
                               <span>View in My Active Catalogue</span>
                               <ChevronRight size={14} />
@@ -668,7 +665,7 @@ export default function CataloguePage() {
                               type="button"
                               onClick={() => handleImportCollege(col)}
                               disabled={importingId === col._id}
-                              className="btn btn-primary btn-sm w-full flex items-center justify-center gap-1.5 text-xs py-2 rounded-xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-95 shadow-md shadow-emerald-600/30 transition"
+                              className="btn btn-primary btn-sm w-full flex items-center justify-center gap-1.5 text-xs py-2 rounded-xl font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition"
                             >
                               {importingId === col._id ? (
                                 <div className="spinner w-4 h-4" />
@@ -697,7 +694,7 @@ export default function CataloguePage() {
                     >
                       ← Previous Page
                     </button>
-                    <span className="text-xs text-slate-400 font-bold">
+                    <span className="text-xs text-slate-600 font-semibold">
                       Page {masterPagination.page} of {masterPagination.pages}
                     </span>
                     <button
@@ -717,26 +714,26 @@ export default function CataloguePage() {
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
-          PHASE 3 MODAL: ADD CUSTOM INSTITUTION BUILDER
+          MODAL: ADD CUSTOM INSTITUTION BUILDER
          ───────────────────────────────────────────────────────────── */}
       {showAddCustomModal && (
         <div className="modal-overlay" onClick={() => setShowAddCustomModal(false)}>
-          <div className="modal-sheet max-w-2xl" onClick={e => e.stopPropagation()}>
+          <div className="modal-sheet max-w-2xl bg-white" onClick={e => e.stopPropagation()}>
             <div className="modal-handle" />
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md">
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-sm">
                   <School size={18} />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white m-0">Add Custom Partner Institution</h3>
-                  <p className="text-xs text-slate-400 m-0">Create an institution not found in the master database.</p>
+                  <h3 className="text-base font-bold text-slate-900 m-0">Add Custom Partner Institution</h3>
+                  <p className="text-xs text-slate-500 m-0">Create an institution not found in the master database.</p>
                 </div>
               </div>
-              <button onClick={() => setShowAddCustomModal(false)} className="text-slate-400 hover:text-white">&times;</button>
+              <button onClick={() => setShowAddCustomModal(false)} className="text-slate-400 hover:text-slate-700 text-lg">&times;</button>
             </div>
 
-            <form onSubmit={handleCreateCustomInstitution} className="space-y-4">
+            <form onSubmit={handleCreateCustomInstitution} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
               <div>
                 <label className="label">Institution / College Name *</label>
                 <input
@@ -813,7 +810,7 @@ export default function CataloguePage() {
               {/* Accreditations Multi-select Pills */}
               <div>
                 <label className="label">Accreditations & Government Approvals</label>
-                <div className="flex flex-wrap gap-1.5 p-3 bg-slate-950/70 border border-slate-800 rounded-xl">
+                <div className="flex flex-wrap gap-1.5 p-3 bg-slate-50 border border-slate-200 rounded-xl">
                   {ACCREDITATION_TAGS.map(tag => {
                     const isSelected = customForm.accreditation.includes(tag);
                     return (
@@ -828,10 +825,10 @@ export default function CataloguePage() {
                               : [...f.accreditation, tag]
                           }));
                         }}
-                        className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition ${
+                        className={`text-xs px-2.5 py-1 rounded-lg border font-semibold transition ${
                           isSelected
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm'
-                            : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-2xs'
+                            : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
                         }`}
                       >
                         {isSelected ? '✓ ' : '+ '}{tag}
@@ -844,13 +841,13 @@ export default function CataloguePage() {
               {/* Pre-populate Standard Degrees */}
               <div>
                 <label className="label">Pre-Populate Common Degrees & Streams (Ready for Fee Entry)</label>
-                <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-3 bg-slate-950/70 border border-slate-800 rounded-xl">
+                <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-3 bg-slate-50 border border-slate-200 rounded-xl">
                   {COMMON_DEGREES.map(d => {
                     const isChecked = customForm.selectedDegrees.includes(d.degreeName);
                     return (
                       <label
                         key={d.degreeName}
-                        className="flex items-center gap-2 text-xs text-slate-300 hover:text-white p-1 rounded hover:bg-slate-900 cursor-pointer"
+                        className="flex items-center gap-2 text-xs text-slate-700 hover:text-slate-900 p-1.5 rounded hover:bg-white cursor-pointer transition"
                       >
                         <input
                           type="checkbox"
@@ -883,7 +880,7 @@ export default function CataloguePage() {
                 />
               </div>
 
-              <div className="modal-actions pt-2 flex justify-end gap-2">
+              <div className="modal-actions pt-2 flex justify-end gap-2 border-t border-slate-100">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowAddCustomModal(false)}>Cancel</button>
                 <button type="submit" disabled={submittingCustom} className="btn btn-primary">
                   {submittingCustom ? 'Creating Institution...' : 'Create & Configure Fees 🚀'}
