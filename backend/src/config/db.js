@@ -47,16 +47,35 @@ const connectDB = async () => {
         const conn = await mongoose.connect(mongoUri, {
           maxPoolSize: 50,
           minPoolSize: 5,
-          serverSelectionTimeoutMS: 2000,
+          serverSelectionTimeoutMS: 15000,
           socketTimeoutMS: 45000,
         });
-        console.log(`MongoDB Connected: ${conn.connection.host}`);
+        console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
         attachConnectionListeners(mongoUri);
         await seedAdminUser();
         return;
       } catch (e) {
-        console.log(`Direct MongoDB connection failed. Initializing resilient embedded MongoDB...`);
+        console.log(`Direct MongoDB connection failed (${e.message}). Initializing resilient embedded MongoDB...`);
       }
+    }
+
+    let defaultLocalUri = 'mongodb://127.0.0.1:27017/mobile-crm';
+
+    // First, test if a local MongoDB is already running on port 27017
+    try {
+      const conn = await mongoose.connect(defaultLocalUri, {
+        maxPoolSize: 50,
+        minPoolSize: 5,
+        serverSelectionTimeoutMS: 1500,
+        socketTimeoutMS: 45000,
+      });
+      console.log(`✅ Local MongoDB Connected: ${conn.connection.host} (${defaultLocalUri})`);
+      process.env.MONGO_URI = defaultLocalUri;
+      attachConnectionListeners(defaultLocalUri);
+      await seedAdminUser();
+      return;
+    } catch (localErr) {
+      // Port 27017 not yet active, spawn embedded instance
     }
 
     const { MongoMemoryServer } = require('mongodb-memory-server');
@@ -73,21 +92,32 @@ const connectDB = async () => {
       try {
         global.__mongodInstance = await MongoMemoryServer.create({
           instance: {
+            port: 27017,
             dbPath: dbPath,
             storageEngine: 'wiredTiger',
             dbName: 'mobile-crm',
           }
         });
       } catch (err) {
-        console.warn('WiredTiger persistent instance busy, launching in-memory engine...');
-        global.__mongodInstance = await MongoMemoryServer.create({
-          instance: {
-            dbName: 'mobile-crm',
-          }
-        });
+        console.warn('WiredTiger persistent instance busy or unavailable, launching in-memory engine on port 27017...');
+        try {
+          global.__mongodInstance = await MongoMemoryServer.create({
+            instance: {
+              port: 27017,
+              dbName: 'mobile-crm',
+            }
+          });
+        } catch (e2) {
+          console.warn('Port 27017 busy, launching on dynamic port...');
+          global.__mongodInstance = await MongoMemoryServer.create({
+            instance: {
+              dbName: 'mobile-crm',
+            }
+          });
+        }
       }
     }
-    mongoUri = global.__mongodInstance.getUri();
+    mongoUri = global.__mongodInstance ? global.__mongodInstance.getUri() : defaultLocalUri;
     process.env.MONGO_URI = mongoUri;
 
     const conn = await mongoose.connect(mongoUri, {
@@ -96,7 +126,7 @@ const connectDB = async () => {
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
     });
-    console.log(`Embedded MongoDB Connected: ${conn.connection.host} (${mongoUri})`);
+    console.log(`✅ Resilient MongoDB Connected: ${conn.connection.host} (${mongoUri})`);
     attachConnectionListeners(mongoUri);
     await seedAdminUser();
   } catch (error) {

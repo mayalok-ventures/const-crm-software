@@ -337,7 +337,7 @@ leadSchema.index(
     unique: true,
     partialFilterExpression: {
       companyId: { $exists: true, $type: 'objectId' },
-      'leadSource.externalLeadId': { $type: 'string' },
+      'leadSource.externalLeadId': { $gt: '' },
     },
   }
 );
@@ -347,7 +347,7 @@ leadSchema.index(
     unique: true,
     partialFilterExpression: {
       companyId: { $eq: null },
-      'leadSource.externalLeadId': { $type: 'string' },
+      'leadSource.externalLeadId': { $gt: '' },
     },
   }
 );

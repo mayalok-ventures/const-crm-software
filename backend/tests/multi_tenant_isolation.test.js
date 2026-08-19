@@ -29,6 +29,7 @@ async function runMultiTenantIsolationTests() {
   };
 
   const timestamp = Date.now();
+  const randPhone = () => '9' + Math.floor(100000000 + Math.random() * 900000000);
 
   try {
     // ─────────────────────────────────────────────────────────────
@@ -39,8 +40,8 @@ async function runMultiTenantIsolationTests() {
     // 1. Single User Alice
     const resAlice = await axios.post(`${API_URL}/auth/register`, {
       name: `Alice Solo_${timestamp}`,
-      email: `alice_${timestamp}@solo.com`,
-      phone: `9100${String(timestamp).slice(-6)}1`,
+      email: `alice_${timestamp}_${Math.random().toString(36).slice(2, 6)}@solo.com`,
+      phone: randPhone(),
       password: 'Password@123',
       workStatus: 'independent_agent',
       companyRole: 'solo',
@@ -51,8 +52,8 @@ async function runMultiTenantIsolationTests() {
     // 2. Single User Bob
     const resBob = await axios.post(`${API_URL}/auth/register`, {
       name: `Bob Solo_${timestamp}`,
-      email: `bob_${timestamp}@solo.com`,
-      phone: `9100${String(timestamp).slice(-6)}2`,
+      email: `bob_${timestamp}_${Math.random().toString(36).slice(2, 6)}@solo.com`,
+      phone: randPhone(),
       password: 'Password@123',
       workStatus: 'independent_agent',
       companyRole: 'solo',
@@ -63,8 +64,8 @@ async function runMultiTenantIsolationTests() {
     // 3. Organization Owner (MegaCorp)
     const resMegaCorp = await axios.post(`${API_URL}/auth/register`, {
       name: `MegaCorp Owner_${timestamp}`,
-      email: `owner_${timestamp}@megacorp.com`,
-      phone: `9100${String(timestamp).slice(-6)}3`,
+      email: `owner_${timestamp}_${Math.random().toString(36).slice(2, 6)}@megacorp.com`,
+      phone: randPhone(),
       password: 'Password@123',
       workStatus: 'company_owner',
       companyRole: 'owner',
@@ -74,17 +75,17 @@ async function runMultiTenantIsolationTests() {
     const userMegaCorp = resMegaCorp.data;
 
     // 4. Organization Agent (Dave under MegaCorp)
+    const daveEmail = `dave_${timestamp}_${Math.random().toString(36).slice(2, 6)}@megacorp.com`;
     const resDave = await axios.post(
       `${API_URL}/company/agents`,
       {
         name: `Dave Agent_${timestamp}`,
-        email: `dave_${timestamp}@megacorp.com`,
-        phone: `9100${String(timestamp).slice(-6)}4`,
+        email: daveEmail,
+        phone: randPhone(),
         password: 'Password@123',
       },
       { headers: { Authorization: `Bearer ${tokenMegaCorp}` } }
     );
-    const daveEmail = `dave_${timestamp}@megacorp.com`;
     const resDaveLogin = await axios.post(`${API_URL}/auth/login`, {
       identifier: daveEmail,
       email: daveEmail,
@@ -110,24 +111,30 @@ async function runMultiTenantIsolationTests() {
     console.log('\n▶️  Step 2: Testing RULE 1 (Independent/Single Users Isolation)...');
 
     // Alice creates Lead A1 and A2
+    const pA1 = randPhone();
+    const pA2 = randPhone();
+    const pB1 = randPhone();
+    console.log(`  -> Creating Lead A1 with phone ${pA1}`);
     const resA1 = await axios.post(
       `${API_URL}/leads`,
-      { name: `Lead A1 (${userAlice.name})`, phone: `9188${String(timestamp).slice(-6)}1`, source: 'manual' },
+      { name: `Lead A1 (${userAlice.name})`, phone: pA1, source: 'manual' },
       { headers: { Authorization: `Bearer ${tokenAlice}` } }
     );
     const leadA1 = resA1.data;
 
+    console.log(`  -> Creating Lead A2 with phone ${pA2}`);
     const resA2 = await axios.post(
       `${API_URL}/leads`,
-      { name: `Lead A2 (${userAlice.name})`, phone: `9188${String(timestamp).slice(-6)}2`, source: 'manual' },
+      { name: `Lead A2 (${userAlice.name})`, phone: pA2, source: 'manual' },
       { headers: { Authorization: `Bearer ${tokenAlice}` } }
     );
     const leadA2 = resA2.data;
 
     // Bob creates Lead B1
+    console.log(`  -> Creating Lead B1 with phone ${pB1}`);
     const resB1 = await axios.post(
       `${API_URL}/leads`,
-      { name: `Lead B1 (${userBob.name})`, phone: `9188${String(timestamp).slice(-6)}3`, source: 'manual' },
+      { name: `Lead B1 (${userBob.name})`, phone: pB1, source: 'manual' },
       { headers: { Authorization: `Bearer ${tokenBob}` } }
     );
     const leadB1 = resB1.data;
@@ -152,7 +159,7 @@ async function runMultiTenantIsolationTests() {
     // MegaCorp Owner creates Lead Org1
     const resOrg1 = await axios.post(
       `${API_URL}/leads`,
-      { name: `Org Lead 1 (${userMegaCorp.name})`, phone: `9188${String(timestamp).slice(-6)}4`, source: 'manual' },
+      { name: `Org Lead 1 (${userMegaCorp.name})`, phone: randPhone(), source: 'manual' },
       { headers: { Authorization: `Bearer ${tokenMegaCorp}` } }
     );
     const leadOrg1 = resOrg1.data;
@@ -160,7 +167,7 @@ async function runMultiTenantIsolationTests() {
     // Sub-Agent Dave creates Lead Org2
     const resOrg2 = await axios.post(
       `${API_URL}/leads`,
-      { name: `Org Lead 2 by Dave (${userDave.name})`, phone: `9188${String(timestamp).slice(-6)}5`, source: 'manual' },
+      { name: `Org Lead 2 by Dave (${userDave.name})`, phone: randPhone(), source: 'manual' },
       { headers: { Authorization: `Bearer ${tokenDave}` } }
     );
     const leadOrg2 = resOrg2.data;
@@ -186,7 +193,7 @@ async function runMultiTenantIsolationTests() {
     // SuperAdmin creates internal lead Admin1
     const resAdmin1 = await axios.post(
       `${API_URL}/leads`,
-      { name: `Internal Admin Lead_${timestamp}`, phone: `9188${String(timestamp).slice(-6)}6`, source: 'manual' },
+      { name: `Internal Admin Lead_${timestamp}`, phone: randPhone(), source: 'manual' },
       { headers: { Authorization: `Bearer ${tokenAdmin}` } }
     );
     const leadAdmin1 = resAdmin1.data;
