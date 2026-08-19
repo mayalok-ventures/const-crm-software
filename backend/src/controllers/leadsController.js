@@ -214,10 +214,7 @@ exports.createLead = async (req, res) => {
 
     if (!name || !phone) return res.status(400).json({ message: 'Name and phone are required' });
 
-    const isFollowUpMandatory = req.user.showFollowUpOnCreate !== false && req.user.preferences?.showFollowUpOnCreate !== false;
-    if (isFollowUpMandatory && !followUpDate) {
-      return res.status(400).json({ message: 'Next follow-up date is mandatory' });
-    }
+    const parsedFollowUpDate = (followUpDate && String(followUpDate).trim() !== '') ? new Date(followUpDate) : null;
 
     const cleanPhone = phone.replace(/\D/g, '');
 
@@ -310,7 +307,8 @@ exports.createLead = async (req, res) => {
       projectId: projectId || null,
       siteVisitDate: siteVisitDate ? new Date(siteVisitDate) : null,
       areasOfInterest: Array.isArray(areasOfInterest) ? areasOfInterest : (areasOfInterest ? areasOfInterest.split(',').map(a => a.trim()).filter(Boolean) : []),
-      followUpDate: followUpDate ? new Date(followUpDate) : null,
+      followUpDate: parsedFollowUpDate,
+      followUpNotified: parsedFollowUpDate ? false : true,
       customData: finalCustomData,
       source: source || 'manual',
       utmCampaign: utmCampaign || '',

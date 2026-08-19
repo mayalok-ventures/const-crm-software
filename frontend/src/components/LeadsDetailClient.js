@@ -15,6 +15,7 @@ import { format } from 'date-fns';
 import { getIndustryDefaults } from '@/lib/industryTemplates';
 import LostReasonModal, { isLostStage, LOST_REASON_OPTIONS } from '@/components/LostReasonModal';
 import { SourcePill, getLeadSourceTag } from '@/lib/sourceHelper';
+import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
 
 const STATUS_OPTIONS = [
   'new',
@@ -1176,7 +1177,7 @@ export default function LeadDetailPage() {
 
                       if (field.fieldType === 'date') {
                         const isDateTime = field.fieldId === 'followUpDate' || field.fieldId === 'siteVisitDate';
-                        const dateFormatted = currentVal ? new Date(currentVal).toISOString().slice(0, isDateTime ? 16 : 10) : '';
+                        const dateFormatted = currentVal ? (isDateTime ? toLocalDatetimeString(currentVal) : String(currentVal).slice(0, 10)) : '';
 
                         return (
                           <div key={field.fieldId}>
@@ -1186,7 +1187,7 @@ export default function LeadDetailPage() {
                               type={isDateTime ? 'datetime-local' : 'date'}
                               value={dateFormatted}
                               onChange={e => {
-                                const val = e.target.value || null;
+                                const val = e.target.value ? (isDateTime ? fromLocalDatetimeStringToISO(e.target.value) : e.target.value) : null;
                                 if (isSystem) {
                                   setForm(f => ({ ...f, [field.fieldId]: val }));
                                 } else {

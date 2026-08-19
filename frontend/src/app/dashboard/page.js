@@ -18,6 +18,7 @@ import { getIndustryDefaults } from '@/lib/industryTemplates';
 import LostReasonModal, { isLostStage, LOST_REASON_OPTIONS } from '@/components/LostReasonModal';
 import PlanStatusWidget from '@/components/PlanStatusWidget';
 import { SourcePill } from '@/lib/sourceHelper';
+import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
 
 const STAGE_LABELS = {
   new_lead: '🆕 New Lead',
@@ -538,7 +539,20 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
     api.get('/projects').then(r => setProjects(r.data)).catch(() => {});
   }, []);
 
-  const showFollowUpOnCreate = user?.showFollowUpOnCreate !== false && user?.preferences?.showFollowUpOnCreate !== false;
+  const userShowFollowUp = (() => {
+    if (user?.showFollowUpOnCreate !== undefined) return user.showFollowUpOnCreate;
+    if (user?.preferences?.showFollowUpOnCreate !== undefined) return user.preferences.showFollowUpOnCreate;
+    try {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.showFollowUpOnCreate !== undefined) return parsed.showFollowUpOnCreate;
+        if (parsed.preferences?.showFollowUpOnCreate !== undefined) return parsed.preferences.showFollowUpOnCreate;
+      }
+    } catch {}
+    return true;
+  })();
+  const showFollowUpOnCreate = userShowFollowUp !== false;
 
   const rawSchema = (user?.leadFormSchema && Array.isArray(user.leadFormSchema) && user.leadFormSchema.length > 0)
     ? user.leadFormSchema
@@ -591,8 +605,9 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
       return toast.error('Please select a Lost Reason for this lost stage');
     }
 
-    // Check active mandatory fields
+    // Check active mandatory fields (excluding followUpDate which is governed by showFollowUpOnCreate)
     for (const f of activeFields) {
+      if (f.fieldId === 'followUpDate') continue;
       if (f.isRequired && !values[f.fieldId]?.toString().trim()) {
         return toast.error(`${f.label} is required`);
       }
@@ -614,11 +629,11 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
         email: values.email ? values.email.toLowerCase().trim() : undefined,
         tags: values.tags ? (Array.isArray(values.tags) ? values.tags : values.tags.split(',').map(t => t.trim()).filter(Boolean)) : [],
         status: values.status || 'new',
-        followUpDate: values.followUpDate,
+        followUpDate: (showFollowUpOnCreate && values.followUpDate) ? fromLocalDatetimeStringToISO(values.followUpDate) : undefined,
         location: values.location || '',
         budget: values.budget || '',
         propertyType: values.propertyType || '',
-        siteVisitDate: values.siteVisitDate || undefined,
+        siteVisitDate: values.siteVisitDate ? fromLocalDatetimeStringToISO(values.siteVisitDate) : undefined,
         projectId: values.projectId || undefined,
         project: values.project || undefined,
         source: values.source || undefined,
@@ -1016,22 +1031,17 @@ function EditLeadModal({ lead, onClose, onUpdated, user }) {
 function ScheduleFollowUpModal({ lead, onClose, onUpdated }) {
   const [followUpDate, setFollowUpDate] = useState(() => {
     if (lead?.followUpDate) {
-      try {
-        const d = new Date(lead.followUpDate);
-        return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-      } catch {
-        return '';
-      }
+      return toLocalDatetimeString(lead.followUpDate);
     }
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    return new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    return toLocalDatetimeString(tomorrow);
   });
   const [scheduleNote, setScheduleNote] = useState('');
   const [loading, setLoading] = useState(false);
 
   const applyOffset = (hours) => {
     const target = new Date(Date.now() + hours * 60 * 60 * 1000);
-    setFollowUpDate(new Date(target.getTime() - target.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+    setFollowUpDate(toLocalDatetimeString(target));
   };
 
   const handleSave = async (e) => {
@@ -1041,14 +1051,15 @@ function ScheduleFollowUpModal({ lead, onClose, onUpdated }) {
     }
     setLoading(true);
     try {
+      const isoDate = fromLocalDatetimeStringToISO(followUpDate);
       const { data } = await api.put(`/leads/${lead._id}`, {
-        followUpDate: new Date(followUpDate).toISOString(),
+        followUpDate: isoDate,
         followUpNotified: false,
       });
 
       if (scheduleNote.trim()) {
         await api.post(`/leads/${lead._id}/notes`, {
-          text: `📅 Follow-up scheduled for ${format(new Date(followUpDate), 'dd MMM yyyy, h:mm a')}: ${scheduleNote.trim()}`,
+          text: `📅 Follow-up scheduled for ${formatDisplayDateTime(isoDate)}: ${scheduleNote.trim()}`,
         });
       }
 

@@ -5,9 +5,9 @@ import {
   Phone, Mail, Briefcase, Calendar, Clock, DollarSign,
   Edit, CheckCircle, AlertTriangle, MessageSquare, ArrowRight,
   Shield, Check, X, AlertCircle
-} from 'lucide-react';
 import { useAlarm } from '@/lib/AlarmContext';
 import { SourcePill } from '@/lib/sourceHelper';
+import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
@@ -78,7 +78,8 @@ export default function LeadCard({
 
   const [completeForm, setCompleteForm] = useState({
     note: '',
-    promptNextFollowUp: true,
+    next_followup_at: '',
+    next_followup_note: '',
   });
 
   const [convertForm, setConvertForm] = useState({
@@ -108,14 +109,14 @@ export default function LeadCard({
       if (!res.ok) {
         if (data.code === 'PAYMENT_REQUIRED_FOR_CONVERSION') {
           setShowConvertModal(true);
-        } else {
-          alert(data.message || 'Failed to update stage');
+          return;
         }
+        setErrorMessage(data.message || 'Failed to update stage');
         return;
       }
       onLeadUpdated(data.lead);
     } catch (e) {
-      alert('Error updating stage');
+      setErrorMessage('Network error updating stage');
     } finally {
       setSubmitting(false);
     }
@@ -153,7 +154,7 @@ export default function LeadCard({
     }
   };
 
-  // 3. Schedule Follow-Up
+  // 3. Schedule Follow-Up (Timezone Safe)
   const handleScheduleFollowUp = async (e) => {
     e.preventDefault();
     if (!followUpForm.scheduled_at || !followUpForm.note?.trim()) {
@@ -162,10 +163,14 @@ export default function LeadCard({
     }
     try {
       setSubmitting(true);
+      const isoDate = fromLocalDatetimeStringToISO(followUpForm.scheduled_at);
       const res = await fetch(`${API_BASE}/admin/leads/${lead._id}/followups`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(followUpForm),
+        body: JSON.stringify({
+          scheduled_at: isoDate,
+          note: followUpForm.note.trim(),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -182,7 +187,7 @@ export default function LeadCard({
     }
   };
 
-  // 4. Complete Follow-Up Flow (STRICT RULE: Note is Mandatory to dismiss alarm)
+  // 4. Complete Follow-Up Flow (STRICT RULE: Mandatory Note + Instant Silence + Optional Next Follow-Up)
   const handleCompleteFollowUp = async (e) => {
     e.preventDefault();
     const outcomeNote = completeForm.note?.trim();
@@ -214,17 +219,24 @@ export default function LeadCard({
         }
       }
 
+      // Schedule subsequent follow-up seamlessly if provided
+      if (completeForm.next_followup_at) {
+        const isoNextDate = fromLocalDatetimeStringToISO(completeForm.next_followup_at);
+        await fetch(`${API_BASE}/admin/leads/${lead._id}/followups`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            scheduled_at: isoNextDate,
+            note: completeForm.next_followup_note?.trim() || `Next step after: ${outcomeNote}`,
+          }),
+        });
+      }
+
       // STRICT RULE: Alarm is cleared only upon successful note save
       dismissAlarm(lead._id);
       setShowCompleteModal(false);
-      setCompleteForm({ note: '', promptNextFollowUp: true });
+      setCompleteForm({ note: '', next_followup_at: '', next_followup_note: '' });
       onLeadUpdated(lead);
-
-      // Prompt next follow-up
-      if (window.confirm('Follow-up marked complete! Would you like to schedule the subsequent follow-up now?')) {
-        setFollowUpForm({ scheduled_at: '', note: '' });
-        setShowFollowUpModal(true);
-      }
     } catch (e) {
       setErrorMessage('Error completing follow-up');
     } finally {
@@ -327,13 +339,14 @@ export default function LeadCard({
           <div className="flex items-center gap-2 truncate">
             <Clock className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
             <span className="truncate font-semibold text-[11px]">
-              Due: {new Date(openFollowUp.scheduled_at || openFollowUp.scheduledAt).toLocaleDateString()}
+              Due: {formatDisplayDateTime(openFollowUp.scheduled_at || openFollowUp.scheduledAt)}
             </span>
           </div>
           <button
             onClick={(e) => {
               e.stopPropagation();
               setErrorMessage('');
+              setCompleteForm({ note: '', next_followup_at: '', next_followup_note: '' });
               setShowCompleteModal(true);
             }}
             className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 rounded-lg text-[10px] font-bold shrink-0 transition"
@@ -346,6 +359,10 @@ export default function LeadCard({
           onClick={(e) => {
             e.stopPropagation();
             setErrorMessage('');
+            setFollowUpForm({
+              scheduled_at: toLocalDatetimeString(new Date(Date.now() + 24 * 60 * 60 * 1000)),
+              note: '',
+            });
             setShowFollowUpModal(true);
           }}
           className="w-full py-2 bg-slate-900/90 hover:bg-slate-800 border border-dashed border-slate-700 hover:border-indigo-500 text-slate-400 hover:text-indigo-300 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition"
@@ -358,82 +375,59 @@ export default function LeadCard({
       {/* Bottom Action Footer & Stage Selector */}
       <div className="flex items-center justify-between pt-2.5 border-t border-slate-800/80 mt-1" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-1.5">
-          <a
-            href={`https://wa.me/${String(lead.phone).replace(/\D/g, '')}`}
-            target="_blank"
-            rel="noreferrer"
-            title="WhatsApp Chat"
-            className="p-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-xl transition"
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-          </a>
-          <a
-            href={`tel:${lead.phone}`}
-            title="Call"
-            className="p-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-xl transition"
-          >
-            <Phone className="w-3.5 h-3.5" />
-          </a>
+          <span className={`w-2 h-2 rounded-full ${stageObj.dot}`} />
+          <span className="text-[11px] font-bold text-slate-300">{stageObj.label}</span>
+        </div>
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               setErrorMessage('');
               setShowEditModal(true);
             }}
-            title="Edit 7 Basic Fields"
-            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition"
+            className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition"
+            title="Edit Lead"
           >
             <Edit className="w-3.5 h-3.5" />
           </button>
-          {lead.status !== 'converted' && lead.status !== 'payment_done' && (
-            <button
-              onClick={() => {
-                setErrorMessage('');
-                setShowConvertModal(true);
-              }}
-              title="Convert Lead"
-              className="px-2.5 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-600/30 flex items-center gap-1 transition"
-            >
-              <DollarSign className="w-3.5 h-3.5" />
-              <span>Convert</span>
-            </button>
-          )}
+          <select
+            value={lead.status}
+            onChange={(e) => handleStageChange(e.target.value)}
+            disabled={submitting}
+            className="bg-slate-900 border border-slate-700 text-slate-200 text-[11px] font-bold py-1 px-2 rounded-lg focus:outline-none focus:border-indigo-500 cursor-pointer"
+          >
+            {KANBAN_STAGES.map((st) => (
+              <option key={st.id} value={st.id}>{st.label}</option>
+            ))}
+          </select>
         </div>
-
-        {/* Inline Stage Dropdown */}
-        <select
-          value={lead.status}
-          onChange={(e) => handleStageChange(e.target.value)}
-          disabled={submitting}
-          className="text-xs font-semibold bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-indigo-500"
-        >
-          {KANBAN_STAGES.map((s) => (
-            <option key={s.id} value={s.id}>➔ {s.label}</option>
-          ))}
-        </select>
       </div>
 
-      {/* ── MODAL 1: EDIT LEAD (7 Basic Fields) ── */}
+      {/* ── MODAL 1: EDIT LEAD ── */}
       {showEditModal && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
-          <div className="bg-[#0b1120] border border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl animate-fade-in text-left">
-            <h3 className="text-base font-bold text-white mb-1">Edit Basic Lead Details</h3>
-            <p className="text-xs text-slate-400 mb-4">Modify the 7 core fields entered during creation.</p>
+          <div className="bg-[#0b1120] border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl animate-fade-in text-left">
+            <h3 className="text-base font-bold text-white mb-1 flex items-center gap-2">
+              <Edit className="w-5 h-5 text-indigo-400" />
+              Edit Lead Details
+            </h3>
+            <p className="text-xs text-slate-400 mb-4">Edit core details for {lead.name}.</p>
             {errorMessage && (
               <div className="p-3 bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs rounded-xl mb-3 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{errorMessage}</span>
               </div>
             )}
-            <form onSubmit={handleSaveEdit} className="space-y-3.5">
+            <form onSubmit={handleSaveEdit} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Name *</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Lead Name *</label>
                   <input
                     type="text"
                     required
                     value={editForm.name}
                     onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:border-indigo-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -443,11 +437,10 @@ export default function LeadCard({
                     required
                     value={editForm.phone}
                     onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:border-indigo-500 focus:outline-none"
                   />
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">Email</label>
@@ -455,7 +448,7 @@ export default function LeadCard({
                     type="email"
                     value={editForm.email}
                     onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:border-indigo-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -464,18 +457,17 @@ export default function LeadCard({
                     type="text"
                     value={editForm.company}
                     onChange={(e) => setEditForm({ ...editForm, company: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:border-indigo-500 focus:outline-none"
                   />
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">Service Required</label>
                   <select
                     value={editForm.serviceRequired}
                     onChange={(e) => setEditForm({ ...editForm, serviceRequired: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:border-indigo-500 focus:outline-none"
                   >
                     {Object.entries(SERVICE_CATALOG).map(([k, v]) => (
                       <option key={k} value={k}>{v.label}</option>
@@ -486,39 +478,24 @@ export default function LeadCard({
                   <label className="block text-xs font-semibold text-slate-300 mb-1">Monthly Spend (₹)</label>
                   <input
                     type="number"
-                    min="0"
                     value={editForm.monthlySpend}
                     onChange={(e) => setEditForm({ ...editForm, monthlySpend: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:border-indigo-500 focus:outline-none"
                   />
                 </div>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Goal Timeline</label>
-                <select
-                  value={editForm.goalTimeline}
-                  onChange={(e) => setEditForm({ ...editForm, goalTimeline: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white"
-                >
-                  {TIMELINE_OPTIONS.map((t) => (
-                    <option key={t.id} value={t.id}>{t.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center gap-3 pt-3">
+              <div className="flex items-center gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold"
+                  className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold"
+                  className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold"
                 >
                   {submitting ? 'Saving...' : 'Save Changes'}
                 </button>
@@ -545,7 +522,7 @@ export default function LeadCard({
             )}
             <form onSubmit={handleScheduleFollowUp} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Target Date & Time *</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Target Date & Time (Local Time) *</label>
                 <input
                   type="datetime-local"
                   required
@@ -586,7 +563,7 @@ export default function LeadCard({
         </div>
       )}
 
-      {/* ── MODAL 3: COMPLETE FOLLOW-UP (Mandatory Outcome Note Enforced) ── */}
+      {/* ── MODAL 3: COMPLETE FOLLOW-UP (Mandatory Outcome Note + Optional Next Follow-Up) ── */}
       {showCompleteModal && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
           <div className="bg-[#0b1120] border border-emerald-500/30 rounded-2xl w-full max-w-md p-6 shadow-2xl animate-fade-in text-left">
@@ -594,8 +571,8 @@ export default function LeadCard({
               <CheckCircle className="w-5 h-5 text-emerald-400" />
               Complete Follow-Up & Stop Alarm
             </h3>
-            <p className="text-xs text-slate-400 mb-4">
-              STRICT ENFORCEMENT: A detailed outcome note is mandatory to resolve this follow-up and stop audio/visual alerts.
+            <p className="text-xs text-slate-400 mb-3">
+              Record outcome note to resolve this follow-up and stop audio/visual alerts.
             </p>
             {errorMessage && (
               <div className="p-3 bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs rounded-xl mb-3 flex items-center gap-2">
@@ -603,19 +580,68 @@ export default function LeadCard({
                 <span>{errorMessage}</span>
               </div>
             )}
-            <form onSubmit={handleCompleteFollowUp} className="space-y-4">
+            <form onSubmit={handleCompleteFollowUp} className="space-y-3.5">
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">Mandatory Outcome Note *</label>
                 <textarea
                   required
                   rows={3}
-                  placeholder="e.g. Call connected with decision maker. Discussed deliverables; client requested invoice."
+                  placeholder="e.g. Discussed pricing and deliverables with client. Sent proposal on WhatsApp."
                   value={completeForm.note}
                   onChange={(e) => setCompleteForm({ ...completeForm, note: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:border-emerald-500 focus:outline-none"
                 />
               </div>
-              <div className="flex items-center gap-3 pt-2">
+
+              {/* Optional Next Follow-Up Section */}
+              <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+                    Set Next Follow-Up (Optional)
+                  </label>
+                  {completeForm.next_followup_at && (
+                    <button
+                      type="button"
+                      onClick={() => setCompleteForm({ ...completeForm, next_followup_at: '' })}
+                      className="text-[10px] text-slate-400 hover:text-rose-400"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                
+                {/* Quick Presets */}
+                <div className="flex gap-1.5 flex-wrap">
+                  {[
+                    { label: '+24h', hours: 24 },
+                    { label: '+48h', hours: 48 },
+                    { label: '+3d', hours: 72 },
+                    { label: '+1w', hours: 168 },
+                  ].map(p => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => {
+                        const target = new Date(Date.now() + p.hours * 60 * 60 * 1000);
+                        setCompleteForm({ ...completeForm, next_followup_at: toLocalDatetimeString(target) });
+                      }}
+                      className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] font-medium transition"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+
+                <input
+                  type="datetime-local"
+                  value={completeForm.next_followup_at}
+                  onChange={(e) => setCompleteForm({ ...completeForm, next_followup_at: e.target.value })}
+                  className="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white focus:border-indigo-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-1">
                 <button
                   type="button"
                   onClick={() => setShowCompleteModal(false)}
@@ -628,7 +654,7 @@ export default function LeadCard({
                   disabled={submitting}
                   className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/30"
                 >
-                  {submitting ? 'Resolving...' : 'Save Note & Resolve Alarm'}
+                  {submitting ? 'Saving...' : 'Save Note & Silence Alarm'}
                 </button>
               </div>
             </form>

@@ -162,7 +162,7 @@ const leadSchema = new mongoose.Schema({
   },
 
   notes: [noteSchema],
-  followUpDate: { type: Date, default: () => new Date(Date.now() + 24 * 60 * 60 * 1000) },
+  followUpDate: { type: Date, default: null },
   followUpNotified: { type: Boolean, default: false },
   lastContactedAt: { type: Date, default: null },
   

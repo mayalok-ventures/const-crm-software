@@ -650,15 +650,26 @@ exports.updateFormSchema = async (req, res) => {
     // Sort by order
     sanitized.sort((a, b) => (a.order || 0) - (b.order || 0));
 
+    const updateFields = { leadFormSchema: sanitized };
+    if (req.body.showFollowUpOnCreate !== undefined) {
+      updateFields.showFollowUpOnCreate = Boolean(req.body.showFollowUpOnCreate);
+      updateFields['preferences.showFollowUpOnCreate'] = Boolean(req.body.showFollowUpOnCreate);
+    } else if (req.body.preferences?.showFollowUpOnCreate !== undefined) {
+      updateFields.showFollowUpOnCreate = Boolean(req.body.preferences.showFollowUpOnCreate);
+      updateFields['preferences.showFollowUpOnCreate'] = Boolean(req.body.preferences.showFollowUpOnCreate);
+    }
+
     const user = await User.findByIdAndUpdate(
       req.user._id,
-      { leadFormSchema: sanitized },
+      { $set: updateFields },
       { new: true }
     );
 
     res.json({
       message: 'Lead form layout saved successfully ✅',
       leadFormSchema: user.leadFormSchema,
+      showFollowUpOnCreate: user.showFollowUpOnCreate !== false,
+      preferences: user.preferences,
       user,
     });
   } catch (err) {

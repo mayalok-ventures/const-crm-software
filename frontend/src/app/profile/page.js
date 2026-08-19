@@ -200,7 +200,19 @@ export default function ProfilePage() {
   const [savingStages, setSavingStages] = useState(false);
 
   // Follow-Up on Lead Creation Preference Toggle
-  const [showFollowUpOnCreate, setShowFollowUpOnCreate] = useState(true);
+  const [showFollowUpOnCreate, setShowFollowUpOnCreate] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const u = localStorage.getItem('user');
+        if (u) {
+          const parsed = JSON.parse(u);
+          if (parsed.showFollowUpOnCreate !== undefined) return parsed.showFollowUpOnCreate !== false;
+          if (parsed.preferences?.showFollowUpOnCreate !== undefined) return parsed.preferences.showFollowUpOnCreate !== false;
+        }
+      } catch {}
+    }
+    return true;
+  });
 
   // Fully Customizable Form Engine state
   const [formSchema, setFormSchema] = useState([]);
@@ -329,6 +341,21 @@ export default function ProfilePage() {
         showFollowUpOnCreate: nextVal,
         preferences: { showFollowUpOnCreate: nextVal }
       });
+      // Synchronize in schema if present
+      if (formSchema && Array.isArray(formSchema)) {
+        const updatedSchema = formSchema.map(f => {
+          if (f.fieldId === 'followUpDate') {
+            return { ...f, isHidden: !nextVal, isRequired: false };
+          }
+          return f;
+        });
+        setFormSchema(updatedSchema);
+        await api.put('/auth/form-schema', {
+          schema: updatedSchema,
+          showFollowUpOnCreate: nextVal,
+          preferences: { showFollowUpOnCreate: nextVal }
+        });
+      }
       toast.success(nextVal ? 'Follow-up scheduling enabled for new leads ⏰' : 'Follow-up scheduling disabled on lead creation ⚡');
       try {
         const u = localStorage.getItem('user');
@@ -596,7 +623,7 @@ export default function ProfilePage() {
       ...editingFieldData,
       label: editingFieldData.label.trim(),
       options: parsedOptions,
-      isRequired: isMandatory || editingFieldData.fieldId === 'followUpDate' ? true : Boolean(editingFieldData.isRequired),
+      isRequired: isMandatory ? true : (editingFieldData.fieldId === 'followUpDate' ? false : Boolean(editingFieldData.isRequired)),
       isHidden: isMandatory ? false : Boolean(editingFieldData.isHidden),
       dependsOn,
     };
@@ -666,13 +693,23 @@ export default function ProfilePage() {
   const handleSaveFormSchema = async () => {
     setSavingSchema(true);
     try {
-      const { data } = await api.put('/auth/form-schema', { schema: formSchema });
+      const { data } = await api.put('/auth/form-schema', {
+        schema: formSchema,
+        showFollowUpOnCreate,
+        preferences: { showFollowUpOnCreate }
+      });
+      await api.put('/auth/profile', {
+        showFollowUpOnCreate,
+        preferences: { showFollowUpOnCreate }
+      });
       toast.success(data.message || 'Customizable form layout saved ✅');
       try {
         const u = localStorage.getItem('user');
         if (u) {
           const parsed = JSON.parse(u);
           parsed.leadFormSchema = data.leadFormSchema || formSchema;
+          parsed.showFollowUpOnCreate = showFollowUpOnCreate;
+          parsed.preferences = { ...(parsed.preferences || {}), showFollowUpOnCreate };
           localStorage.setItem('user', JSON.stringify(parsed));
         }
       } catch {}
@@ -1902,6 +1939,69 @@ export default function ProfilePage() {
                       <Check size={14} /> {savingSchema ? 'Saving...' : 'Save Form Layout ✅'}
                     </button>
                   </div>
+                </div>
+
+                {/* Prominent Follow-Up Form Toggle inside Form Engine */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '14px 16px',
+                  background: showFollowUpOnCreate ? 'rgba(16,185,129,0.06)' : 'rgba(100,116,139,0.06)',
+                  border: showFollowUpOnCreate ? '1px solid rgba(16,185,129,0.25)' : '1px dashed var(--border)',
+                  borderRadius: 12,
+                  marginBottom: 16,
+                  flexWrap: 'wrap',
+                  gap: 12,
+                }}>
+                  <div style={{ maxWidth: 640 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <Calendar size={16} color={showFollowUpOnCreate ? '#10b981' : 'var(--text-muted)'} />
+                      <strong style={{ fontSize: 13, color: 'var(--text)' }}>
+                        Prompt Follow-Up on Lead Creation
+                      </strong>
+                      <span style={{
+                        fontSize: 10.5,
+                        padding: '1px 7px',
+                        borderRadius: 6,
+                        fontWeight: 700,
+                        background: showFollowUpOnCreate ? 'rgba(16,185,129,0.15)' : 'rgba(100,116,139,0.15)',
+                        color: showFollowUpOnCreate ? '#10b981' : '#94a3b8'
+                      }}>
+                        {showFollowUpOnCreate ? 'ENABLED' : 'DISABLED'}
+                      </span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+                      When enabled, the <strong>Add New Lead</strong> form asks for date & time scheduling. When disabled, the follow-up section is completely hidden for rapid lead entry.
+                    </p>
+                  </div>
+                  <label style={{ position: 'relative', display: 'inline-block', width: 50, height: 26, flexShrink: 0, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={showFollowUpOnCreate}
+                      onChange={handleToggleFollowUpOnCreate}
+                      style={{ opacity: 0, width: 0, height: 0 }}
+                    />
+                    <span style={{
+                      position: 'absolute',
+                      cursor: 'pointer',
+                      top: 0, left: 0, right: 0, bottom: 0,
+                      backgroundColor: showFollowUpOnCreate ? '#10b981' : '#475569',
+                      transition: '.2s',
+                      borderRadius: 26
+                    }}>
+                      <span style={{
+                        position: 'absolute',
+                        height: 20,
+                        width: 20,
+                        left: showFollowUpOnCreate ? 26 : 3,
+                        bottom: 3,
+                        backgroundColor: 'white',
+                        transition: '.2s',
+                        borderRadius: '50%'
+                      }} />
+                    </span>
+                  </label>
                 </div>
 
                 {/* Field List */}
