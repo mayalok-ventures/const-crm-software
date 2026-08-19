@@ -306,198 +306,209 @@ export default function CataloguePage() {
         </div>
 
         {/* ─────────────────────────────────────────────────────────────
-            UNIFIED INTERACTIVE TOOLBAR: EXPANDING SEARCH & COLLAPSIBLE TABS
+            DUAL-TAB SWITCHER
            ───────────────────────────────────────────────────────────── */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 mb-6 shadow-xs transition-all duration-300">
-          <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2.5">
-            
-            {/* DUAL TABS: Dynamically Shrinks when Search is Focused / Active */}
-            <div
-              className={`inline-flex items-center p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 shadow-inner flex-shrink-0 transition-all duration-300 ease-out ${
-                isSearchFocused || searchQuery ? 'w-auto' : 'w-full md:w-auto'
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3 mb-5">
+          <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200/80 shadow-inner">
+            <button
+              type="button"
+              onClick={() => setActiveTab('my_catalogue')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'my_catalogue'
+                  ? 'bg-white text-indigo-600 shadow-sm font-bold border border-slate-200/60'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              {/* Tab 1: My Active Catalogue */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('my_catalogue')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-300 ease-out ${
-                  activeTab === 'my_catalogue'
-                    ? 'bg-white text-indigo-600 shadow-xs font-bold border border-slate-200/60'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-                }`}
-                title="My Active Catalogue"
-              >
-                <Building2 size={15} className="flex-shrink-0" />
-                <span
-                  className={`transition-all duration-300 whitespace-nowrap overflow-hidden ${
-                    isSearchFocused || searchQuery
-                      ? 'max-w-0 opacity-0 md:max-w-[48px] md:opacity-100'
-                      : 'max-w-[150px] opacity-100'
-                  }`}
-                >
-                  {isSearchFocused || searchQuery ? 'Active' : 'My Active Catalogue'}
-                </span>
-                <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0 transition-colors ${
-                    activeTab === 'my_catalogue'
-                      ? 'bg-indigo-50 text-indigo-700'
-                      : 'bg-slate-200 text-slate-700'
-                  }`}
-                >
-                  {myCatalogue.length}
-                </span>
-              </button>
+              <Building2 size={15} />
+              <span>My Active Catalogue</span>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeTab === 'my_catalogue' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-200 text-slate-700'}`}>
+                {myCatalogue.length}
+              </span>
+            </button>
 
-              {/* Tab 2: Explore Master Repository */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('master_explore')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-300 ease-out ${
-                  activeTab === 'master_explore'
-                    ? 'bg-white text-purple-600 shadow-xs font-bold border border-slate-200/60'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-                }`}
-                title="Explore Master Repository (10,000+ Universities)"
-              >
-                <Globe size={15} className="flex-shrink-0" />
-                <span
-                  className={`transition-all duration-300 whitespace-nowrap overflow-hidden ${
-                    isSearchFocused || searchQuery
-                      ? 'max-w-0 opacity-0 md:max-w-[50px] md:opacity-100'
-                      : 'max-w-[170px] opacity-100'
-                  }`}
-                >
-                  {isSearchFocused || searchQuery ? 'Master' : 'Explore Master'}
-                </span>
-                <span className="bg-purple-100 text-purple-700 border border-purple-200 text-[10px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">
-                  10k+
-                </span>
-              </button>
-            </div>
-
-            {/* EXPANDING SEARCH INPUT: Expands dynamically when focused/active */}
-            <div
-              className={`relative transition-all duration-300 ease-out min-w-0 ${
-                isSearchFocused || searchQuery
-                  ? 'flex-1 w-full'
-                  : 'flex-1 w-full md:w-80'
+            <button
+              type="button"
+              onClick={() => setActiveTab('master_explore')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'master_explore'
+                  ? 'bg-white text-purple-600 shadow-sm font-bold border border-slate-200/60'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Search
-                size={16}
-                className={`absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors duration-200 flex-shrink-0 ${
-                  isSearchFocused ? 'text-indigo-600' : 'text-slate-400'
-                }`}
-              />
-              <input
-                type="text"
-                placeholder={
-                  isSearchFocused
-                    ? "🔍 Filter by College, City, State, Course (use commas e.g. Amity, Noida, MBA)..."
-                    : activeTab === 'my_catalogue'
-                    ? "🔍 Search active colleges, courses, degrees, city..."
-                    : "🔍 Search 10,000+ master universities by name, state, course..."
-                }
-                value={searchQuery}
-                onFocus={() => setIsSearchFocused(true)}
-                onBlur={() => setIsSearchFocused(false)}
-                onChange={e => setSearchQuery(e.target.value)}
-                className={`input pl-10 pr-9 py-2 text-xs sm:text-sm w-full rounded-xl transition-all duration-200 ${
-                  isSearchFocused
-                    ? 'bg-white border-indigo-500 shadow-sm ring-2 ring-indigo-500/20'
-                    : 'bg-slate-50 border-slate-200 hover:border-slate-300 focus:bg-white'
-                }`}
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 w-5 h-5 flex items-center justify-center rounded-full hover:bg-slate-100 text-sm font-bold transition"
-                  title="Clear search"
-                >
-                  &times;
-                </button>
-              )}
-            </div>
-
-            {/* FILTERS: Type & State Dropdowns */}
-            <div className="flex items-center gap-2 flex-shrink-0 w-full md:w-auto">
-              <select
-                value={typeFilter}
-                onChange={e => setTypeFilter(e.target.value)}
-                className="input py-2 text-xs bg-slate-50 border-slate-200 rounded-xl flex-1 md:w-38 focus:bg-white focus:border-indigo-500"
-              >
-                <option value="all">All Types</option>
-                {INSTITUTION_TYPES.map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-
-              <select
-                value={stateFilter}
-                onChange={e => setStateFilter(e.target.value)}
-                className="input py-2 text-xs bg-slate-50 border-slate-200 rounded-xl flex-1 md:w-34 focus:bg-white focus:border-indigo-500"
-              >
-                <option value="all">All States</option>
-                {allStates.map(st => (
-                  <option key={st} value={st}>{st}</option>
-                ))}
-              </select>
-            </div>
+              <Globe size={15} />
+              <span>Explore Master Repository</span>
+              <span className="bg-purple-100 text-purple-700 border border-purple-200 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                10,000+
+              </span>
+            </button>
           </div>
 
-          {/* Active Search Token Badges & Quick Refinement Hints */}
-          {searchTokens.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t border-slate-100 animate-fade-in">
-              <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
-                <Filter size={12} className="text-indigo-500" /> Active Search Criteria ({searchTokens.length}):
-              </span>
-              {searchTokens.map((tok, idx) => (
-                <span
-                  key={idx}
-                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs"
-                >
-                  <span>{idx === 0 ? '🏛️' : idx === 1 ? '📍' : '🎓'} {tok}</span>
+          <div className="text-xs text-slate-500 font-medium">
+            {activeTab === 'my_catalogue' ? (
+              <>Showing <strong>{filteredMyCatalogue.length}</strong> active institutions with custom fee packages</>
+            ) : (
+              <>Browsing <strong>{masterPagination.total || masterColleges.length}</strong> verified master institutions</>
+            )}
+          </div>
+        </div>
+
+        {/* ─────────────────────────────────────────────────────────────
+            EXPANDING SEARCH & SMART MULTI-TOKEN CONTROL BAR
+           ───────────────────────────────────────────────────────────── */}
+        <div className={`bg-white border rounded-2xl p-3.5 sm:p-4 mb-6 shadow-xs transition-all duration-300 ${
+          isSearchFocused || searchQuery
+            ? 'border-indigo-300 shadow-md ring-2 ring-indigo-500/10'
+            : 'border-slate-200'
+        }`}>
+          <div className="flex flex-col gap-3">
+            {/* Top Row: Expanding Search Input & Filters */}
+            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
+              {/* Dynamic Expanding Search Input */}
+              <div className={`relative transition-all duration-300 ease-in-out w-full ${
+                isSearchFocused || searchQuery
+                  ? 'md:flex-1'
+                  : 'md:w-96 md:flex-initial'
+              }`}>
+                <Search
+                  size={18}
+                  className={`absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors duration-200 pointer-events-none ${
+                    isSearchFocused || searchQuery ? 'text-indigo-600' : 'text-slate-400'
+                  }`}
+                />
+                <input
+                  type="text"
+                  placeholder={
+                    activeTab === 'my_catalogue'
+                      ? "Search by College, City, State, Degree, Course (e.g. Amity, Noida, MBA)..."
+                      : "Search 10,000+ Universities by Name, City, or Course (e.g. VIT, Vellore, CSE)..."
+                  }
+                  value={searchQuery}
+                  onFocus={() => setIsSearchFocused(true)}
+                  onBlur={() => {
+                    // Small timeout to allow chip clicks to register before hiding
+                    setTimeout(() => setIsSearchFocused(false), 200);
+                  }}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className={`input pl-10 pr-10 py-2.5 sm:py-3 text-xs sm:text-sm w-full rounded-xl transition-all duration-200 ${
+                    isSearchFocused || searchQuery
+                      ? 'bg-white border-indigo-500 shadow-sm ring-1 ring-indigo-500'
+                      : 'bg-slate-50 border-slate-200 hover:border-slate-300 focus:bg-white'
+                  }`}
+                />
+                {searchQuery && (
                   <button
                     type="button"
-                    onClick={() => {
-                      const newTokens = searchTokens.filter((_, i) => i !== idx);
-                      setSearchQuery(newTokens.join(', '));
-                    }}
-                    className="hover:text-indigo-900 ml-1 text-slate-400 hover:text-slate-600 font-bold"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 w-6 h-6 flex items-center justify-center rounded-full hover:bg-slate-100 text-base font-bold transition"
+                    title="Clear search query"
                   >
                     &times;
                   </button>
-                </span>
-              ))}
-              <span className="text-[11px] text-slate-400 italic">
-                (Matching all criteria simultaneously)
-              </span>
-            </div>
-          )}
+                )}
+              </div>
 
-          {/* Quick Search Suggestions when focused & query empty */}
-          {isSearchFocused && searchTokens.length === 0 && (
-            <div className="flex items-center gap-2 flex-wrap mt-3 pt-2.5 border-t border-slate-100 text-xs text-slate-500">
-              <span className="font-medium flex items-center gap-1 text-indigo-600">
-                <Sparkles size={12} /> Try multi-token filters:
-              </span>
-              {['Amity, Noida, MBA', 'VIT, Vellore, B.Tech', 'BITS, Pilani, M.Tech', 'Oxford, UK, MBA'].map((hint) => (
-                <button
-                  key={hint}
-                  type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    setSearchQuery(hint);
-                  }}
-                  className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 text-[11px] font-medium border border-slate-200/80 transition"
+              {/* Filter Dropdowns */}
+              <div className="grid grid-cols-2 sm:flex items-center gap-2 sm:gap-2.5 w-full md:w-auto flex-shrink-0">
+                <select
+                  value={typeFilter}
+                  onChange={e => setTypeFilter(e.target.value)}
+                  className="input py-2.5 sm:py-2.5 text-xs bg-slate-50 border-slate-200 rounded-xl w-full sm:w-44 focus:bg-white focus:border-indigo-500 truncate"
                 >
-                  {hint}
-                </button>
-              ))}
+                  <option value="all">All Types</option>
+                  {INSTITUTION_TYPES.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={stateFilter}
+                  onChange={e => setStateFilter(e.target.value)}
+                  className="input py-2.5 sm:py-2.5 text-xs bg-slate-50 border-slate-200 rounded-xl w-full sm:w-40 focus:bg-white focus:border-indigo-500 truncate"
+                >
+                  <option value="all">All States</option>
+                  {allStates.map(st => (
+                    <option key={st} value={st}>{st}</option>
+                  ))}
+                </select>
+
+                {(typeFilter !== 'all' || stateFilter !== 'all' || searchQuery) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setTypeFilter('all');
+                      setStateFilter('all');
+                    }}
+                    className="col-span-2 sm:col-span-1 p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 text-xs font-semibold flex items-center justify-center gap-1 border border-slate-200 transition"
+                    title="Reset all filters"
+                  >
+                    <X size={14} /> <span className="sm:hidden">Reset</span>
+                  </button>
+                )}
+              </div>
             </div>
-          )}
+
+            {/* Active Search Token Badges & Quick Refinement Hints */}
+            {searchTokens.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap pt-2.5 border-t border-slate-100 animate-fade-in">
+                <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
+                  <Filter size={12} className="text-indigo-500" /> Active Filters ({searchTokens.length}):
+                </span>
+                {searchTokens.map((tok, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs"
+                  >
+                    <span>{idx === 0 ? '🏛️' : idx === 1 ? '📍' : '🎓'} {tok}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newTokens = searchTokens.filter((_, i) => i !== idx);
+                        setSearchQuery(newTokens.join(', '));
+                      }}
+                      className="hover:text-indigo-950 text-indigo-400 hover:text-indigo-700 font-bold ml-0.5"
+                    >
+                      &times;
+                    </button>
+                  </span>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="text-[11px] text-rose-600 hover:text-rose-700 font-semibold underline ml-1"
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
+
+            {/* Quick Search Suggestions when focused & query empty */}
+            {isSearchFocused && searchTokens.length === 0 && (
+              <div className="flex items-center gap-2 flex-wrap pt-2.5 border-t border-slate-100 text-xs text-slate-500">
+                <span className="font-semibold flex items-center gap-1 text-indigo-600 flex-shrink-0">
+                  <Sparkles size={13} /> Quick Multi-Filters:
+                </span>
+                {[
+                  { label: '🏛️ Amity, 📍 Noida, 🎓 MBA', query: 'Amity, Noida, MBA' },
+                  { label: '🏛️ VIT, 📍 Vellore, 🎓 B.Tech', query: 'VIT, Vellore, B.Tech' },
+                  { label: '🏛️ BITS, 📍 Pilani, 🎓 M.Tech', query: 'BITS, Pilani, M.Tech' },
+                  { label: '🏛️ Oxford, 📍 UK, 🎓 MBA', query: 'Oxford, UK, MBA' },
+                ].map((item) => (
+                  <button
+                    key={item.query}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setSearchQuery(item.query);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 text-slate-700 text-[11px] font-medium border border-slate-200/90 transition shadow-2xs"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ─────────────────────────────────────────────────────────────

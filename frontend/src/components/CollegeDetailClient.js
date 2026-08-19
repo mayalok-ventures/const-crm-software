@@ -770,40 +770,40 @@ export default function CollegeDetailClient() {
               return (
                 <div
                   key={deg.degreeName || dIdx}
-                  className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:border-slate-300 transition-all duration-200"
+                  className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs hover:border-slate-300 transition-all duration-200"
                 >
                   {/* DEGREE ACCORDION HEADER */}
                   <div
                     onClick={() => toggleDegreeExpand(deg.degreeName)}
-                    className="p-4 sm:p-5 flex items-center justify-between gap-4 cursor-pointer select-none bg-slate-50/70 hover:bg-slate-100/60 transition"
+                    className="p-3.5 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer select-none bg-slate-50/80 hover:bg-slate-100/80 transition"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-start sm:items-center gap-2.5 sm:gap-3 min-w-0">
                       <button
                         type="button"
-                        className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-600 flex items-center justify-center flex-shrink-0 shadow-2xs transition"
+                        className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white border border-slate-200 text-slate-600 flex items-center justify-center flex-shrink-0 shadow-2xs transition mt-0.5 sm:mt-0"
                       >
-                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                       </button>
 
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="text-sm sm:text-base font-bold text-slate-900 m-0">
+                        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                          <h4 className="text-sm sm:text-base font-bold text-slate-900 m-0 tracking-tight">
                             {deg.degreeName}
                           </h4>
-                          <span className="badge bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] px-2.5 py-0.5 rounded-full font-bold">
+                          <span className="badge bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] sm:text-[11px] px-2 py-0.5 rounded-full font-bold">
                             {deg.level}
                           </span>
-                          <span className="badge bg-slate-100 text-slate-700 border border-slate-200 text-[11px] px-2.5 py-0.5 rounded-full font-medium">
+                          <span className="badge bg-slate-100 text-slate-700 border border-slate-200 text-[10px] sm:text-[11px] px-2 py-0.5 rounded-full font-medium">
                             ⏱️ {deg.durationYears} Years
                           </span>
                         </div>
-                        <p className="text-xs text-slate-500 m-0 mt-0.5 font-medium">
+                        <p className="text-[11px] sm:text-xs text-slate-500 m-0 mt-0.5 font-medium">
                           {streamsCount} Specialization {streamsCount === 1 ? 'Stream' : 'Streams'} Configured
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end pl-9 md:pl-0" onClick={e => e.stopPropagation()}>
                       {isMyCatalogueItem && (
                         <>
                           <button
@@ -837,8 +837,8 @@ export default function CollegeDetailClient() {
 
                   {/* SPECIALIZATIONS CARDS (INSIDE DEGREE) */}
                   {isExpanded && (
-                    <div className="p-4 sm:p-5 pt-0 border-t border-slate-100 bg-white">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div className="p-3.5 sm:p-5 pt-0 border-t border-slate-100 bg-white">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mt-3 sm:mt-4">
                         {deg.streams.map((course, cIdx) => {
                           const fee = course.customFeeStructure || {};
                           const tieUp = course.customTieUpDetails || {};
@@ -848,11 +848,11 @@ export default function CollegeDetailClient() {
                           return (
                             <div
                               key={course._id || cIdx}
-                              className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col justify-between gap-3 shadow-2xs hover:border-indigo-300 hover:shadow-xs transition"
+                              className="bg-white border border-slate-200 rounded-xl p-3.5 sm:p-4 flex flex-col justify-between gap-3 shadow-2xs hover:border-indigo-300 hover:shadow-xs transition"
                             >
                               <div>
                                 {/* Stream Header Row */}
-                                <div className="flex items-start justify-between gap-2 mb-2">
+                                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-2">
                                   <div>
                                     <div className="flex items-center gap-2 flex-wrap">
                                       <h5 className="text-sm font-bold text-slate-900 m-0 tracking-tight">
@@ -880,46 +880,46 @@ export default function CollegeDetailClient() {
                                       color: admStatus.text,
                                       borderColor: admStatus.border,
                                     }}
-                                    className="px-2 py-0.5 rounded-md text-[10px] font-bold border flex-shrink-0"
+                                    className="px-2 py-0.5 rounded-md text-[10px] font-bold border flex-shrink-0 self-start sm:self-auto"
                                   >
                                     {admStatus.label}
                                   </span>
                                 </div>
 
                                 {/* Fee Structure Grid */}
-                                <div className="bg-slate-50 border border-slate-200/80 rounded-lg p-3 grid grid-cols-2 gap-2.5 my-2.5">
+                                <div className="bg-slate-50 border border-slate-200/80 rounded-lg p-2.5 sm:p-3 grid grid-cols-2 gap-2 sm:gap-2.5 my-2.5">
                                   <div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Annual Tuition</span>
-                                    <span className="text-xs sm:text-sm font-bold text-emerald-600">
+                                    <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Annual Tuition</span>
+                                    <span className="text-xs sm:text-sm font-bold text-emerald-600 truncate block">
                                       ₹{Number(fee.annualTuitionFee || 0).toLocaleString('en-IN')} <span className="text-[10px] font-normal text-slate-500">/ yr</span>
                                     </span>
                                   </div>
                                   <div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Full Package Fee</span>
-                                    <span className="text-xs sm:text-sm font-bold text-slate-900">
+                                    <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Full Package Fee</span>
+                                    <span className="text-xs sm:text-sm font-bold text-slate-900 truncate block">
                                       ₹{Number(fee.packageFee || 0).toLocaleString('en-IN')}
                                     </span>
                                   </div>
                                   <div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Hostel (Per Year)</span>
-                                    <span className="text-xs font-semibold text-slate-700">
+                                    <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Hostel (Per Year)</span>
+                                    <span className="text-xs font-semibold text-slate-700 truncate block">
                                       ₹{Number(fee.hostelFeePerYear || 0).toLocaleString('en-IN')}
                                     </span>
                                   </div>
                                   <div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">One-Time Fee</span>
-                                    <span className="text-xs font-semibold text-slate-700">
+                                    <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wider block">One-Time Fee</span>
+                                    <span className="text-xs font-semibold text-slate-700 truncate block">
                                       ₹{Number(fee.oneTimeAdmissionFee || 0).toLocaleString('en-IN')}
                                     </span>
                                   </div>
                                 </div>
 
                                 {/* Commercial Tie-Up Banner */}
-                                <div className="flex items-center justify-between gap-2 text-xs py-1.5 px-2.5 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-700 mb-1">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs py-1.5 px-2.5 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-700 mb-1">
                                   <span className="font-semibold flex items-center gap-1">
                                     {mouStatus.label}
                                   </span>
-                                  <span className="font-bold text-amber-700 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded text-[11px]">
+                                  <span className="font-bold text-amber-700 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded text-[11px] self-start sm:self-auto">
                                     💰 Commission: {tieUp.commissionRate || 10}%
                                   </span>
                                 </div>
