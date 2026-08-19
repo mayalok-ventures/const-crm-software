@@ -10,8 +10,11 @@ const googleIntegrationController = require('../controllers/integrations/googleI
 // GOOGLE OAUTH
 // ============================================================
 
+const { protect } = require('../middleware/auth');
+
 router.get(
   '/oauth',
+  protect,
   googleOAuthController.startOAuth
 );
 
@@ -36,8 +39,6 @@ router.post(
   }),
   googleWebhookController.receive
 );
-
-const { protect } = require('../middleware/auth');
 
 // ============================================================
 // GOOGLE ACCOUNT MANAGEMENT
