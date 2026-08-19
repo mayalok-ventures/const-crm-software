@@ -14,6 +14,8 @@ import {
 import { format } from 'date-fns';
 import { getIndustryDefaults } from '@/lib/industryTemplates';
 import LostReasonModal, { isLostStage, LOST_REASON_OPTIONS } from '@/components/LostReasonModal';
+import FollowUpSchedulerModal from '@/components/FollowUpSchedulerModal';
+import FollowUpCompleteModal from '@/components/FollowUpCompleteModal';
 import { SourcePill, getLeadSourceTag } from '@/lib/sourceHelper';
 import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
 
@@ -744,9 +746,8 @@ export default function LeadDetailPage() {
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [showLostModal, setShowLostModal] = useState(false);
   const [pendingLostStage, setPendingLostStage] = useState('');
-  const [showEditFollowUpModal, setShowEditFollowUpModal] = useState(false);
-  const [editFollowUpDate, setEditFollowUpDate] = useState('');
-  const [editFollowUpNote, setEditFollowUpNote] = useState('');
+  const [showSchedulerModal, setShowSchedulerModal] = useState(false);
+  const [showCompleteFollowUpModal, setShowCompleteFollowUpModal] = useState(false);
   const [chatRefreshKey, setChatRefreshKey] = useState(0);
   const [noteText, setNoteText] = useState('');
   const [addingNote, setAddingNote] = useState(false);
@@ -1297,25 +1298,58 @@ export default function LeadDetailPage() {
                         </div>
                       )}
 
-                      {lead.followUpDate && (
-                        <div style={{ minWidth: 0, overflow: 'hidden', gridColumn: '1/-1', padding: '10px 14px', background: 'rgba(99,102,241,0.08)', borderRadius: 10, border: '1px solid rgba(99,102,241,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                          <div>
-                            <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 700, textTransform: 'uppercase' }}>⏰ Next Action / Follow-Up</span>
-                            <p style={{ margin: '2px 0 0', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
-                              📅 {format(new Date(lead.followUpDate), 'dd MMM yyyy, h:mm a')}
-                            </p>
+                      {/* Follow-Up Action Card */}
+                      {lead.followUpDate ? (
+                        <div style={{ minWidth: 0, overflow: 'hidden', gridColumn: '1/-1', padding: '12px 14px', background: 'rgba(99,102,241,0.08)', borderRadius: 12, border: '1px solid rgba(99,102,241,0.25)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 800, textTransform: 'uppercase' }}>⏰ Next Scheduled Follow-Up</span>
+                                {Boolean((lead.followUpDelayCount || lead.activeFollowUp?.delayCount || 0) > 0) && (
+                                  <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', background: 'rgba(245,158,11,0.2)', color: '#d97706', borderRadius: 6, border: '1px solid rgba(245,158,11,0.3)' }}>
+                                    Delay: {lead.followUpDelayCount || lead.activeFollowUp?.delayCount} / 2 Used
+                                  </span>
+                                )}
+                              </div>
+                              <p style={{ margin: '3px 0 0', fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+                                📅 {format(new Date(lead.followUpDate), 'dd MMM yyyy, h:mm a')}
+                              </p>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                type="button"
+                                onClick={() => setShowSchedulerModal(true)}
+                                className="btn btn-ghost btn-sm"
+                                style={{ padding: '6px 10px', fontSize: 11, color: 'var(--accent)', gap: 4, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontWeight: 600 }}
+                              >
+                                <Calendar size={13} /> Reschedule
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setShowCompleteFollowUpModal(true)}
+                                className="btn btn-primary btn-sm"
+                                style={{ padding: '6px 12px', fontSize: 11, background: '#16a34a', borderColor: '#16a34a', color: 'white', gap: 4, borderRadius: 8, fontWeight: 700 }}
+                              >
+                                <Check size={13} /> Note & Silence Alarm
+                              </button>
+                            </div>
                           </div>
+
+                          {lead.followUpNote && (
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)', background: 'var(--surface)', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                              <strong style={{ color: 'var(--text)', fontWeight: 600 }}>Agenda:</strong> {lead.followUpNote}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ gridColumn: '1/-1' }}>
                           <button
                             type="button"
-                            onClick={() => {
-                              setEditFollowUpDate(toLocalDatetimeString(lead.followUpDate));
-                              setEditFollowUpNote('');
-                              setShowEditFollowUpModal(true);
-                            }}
+                            onClick={() => setShowSchedulerModal(true)}
                             className="btn btn-ghost btn-sm"
-                            style={{ padding: '4px 10px', fontSize: 11, color: 'var(--accent)', gap: 4, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8 }}
+                            style={{ width: '100%', padding: '10px', background: 'rgba(99,102,241,0.06)', border: '1px dashed rgba(99,102,241,0.3)', color: 'var(--accent)', borderRadius: 10, fontWeight: 700, fontSize: 12, justifyContent: 'center', gap: 6 }}
                           >
-                            <Edit2 size={12} /> Edit Follow-Up
+                            <Calendar size={14} /> + Schedule Follow-Up ⏰
                           </button>
                         </div>
                       )}
@@ -1515,69 +1549,30 @@ export default function LeadDetailPage() {
         />
       )}
 
-      {showEditFollowUpModal && (
-        <div className="modal-overlay" onClick={() => setShowEditFollowUpModal(false)} style={{ zIndex: 9999 }}>
-          <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
-            <div className="modal-handle" />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Calendar size={18} color="var(--accent)" /> Modify Scheduled Follow-Up
-              </h2>
-              <button onClick={() => setShowEditFollowUpModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={20} /></button>
-            </div>
+      {/* ── FOLLOW-UP SCHEDULER MODAL (Quick Presets & Mandatory Note) ── */}
+      {showSchedulerModal && (
+        <FollowUpSchedulerModal
+          lead={lead}
+          isOpen={showSchedulerModal}
+          onClose={() => setShowSchedulerModal(false)}
+          onSuccess={(updatedLead) => {
+            setLead(updatedLead);
+            setForm(updatedLead);
+          }}
+        />
+      )}
 
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              try {
-                const isoDate = fromLocalDatetimeStringToISO(editFollowUpDate);
-                const { data } = await api.put(`/leads/${id}`, {
-                  followUpDate: isoDate,
-                  followUpNotified: false,
-                });
-                if (editFollowUpNote.trim()) {
-                  await api.post(`/leads/${id}/notes`, {
-                    text: `📅 Follow-up rescheduled for ${formatDisplayDateTime(isoDate)}: ${editFollowUpNote.trim()}`
-                  });
-                }
-                setLead(data);
-                setForm(data);
-                toast.success('Follow-up updated successfully ⏰');
-                setShowEditFollowUpModal(false);
-              } catch (err) {
-                toast.error(err.response?.data?.message || 'Failed to update follow-up');
-              }
-            }}>
-              <div style={{ marginBottom: 12 }}>
-                <label className="label">Follow-Up Date & Time *</label>
-                <input
-                  type="datetime-local"
-                  className="input"
-                  value={editFollowUpDate}
-                  onChange={e => setEditFollowUpDate(e.target.value)}
-                  required
-                  style={{ height: 42, fontSize: 13 }}
-                />
-              </div>
-
-              <div style={{ marginBottom: 16 }}>
-                <label className="label">Scheduled Agenda / Note (Optional)</label>
-                <textarea
-                  className="input"
-                  placeholder="e.g. Call client back with revised quota & documents..."
-                  value={editFollowUpNote}
-                  onChange={e => setEditFollowUpNote(e.target.value)}
-                  rows={2}
-                  style={{ padding: '8px 12px', fontSize: 13, resize: 'vertical' }}
-                />
-              </div>
-
-              <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button type="button" className="btn btn-ghost" onClick={() => setShowEditFollowUpModal(false)} style={{ height: 40 }}>Cancel</button>
-                <button type="submit" className="btn btn-primary" style={{ height: 40, background: 'var(--accent)' }}>Save Follow-Up ⏰</button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {/* ── FOLLOW-UP COMPLETION MODAL (Mandatory Outcome Note, Silence Alarm, Next Follow-Up) ── */}
+      {showCompleteFollowUpModal && (
+        <FollowUpCompleteModal
+          lead={lead}
+          isOpen={showCompleteFollowUpModal}
+          onClose={() => setShowCompleteFollowUpModal(false)}
+          onSuccess={(updatedLead) => {
+            setLead(updatedLead);
+            setForm(updatedLead);
+          }}
+        />
       )}
     </div>
   );

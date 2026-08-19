@@ -187,7 +187,28 @@ const leadSchema = new mongoose.Schema({
   },
 
   notes: [noteSchema],
+  // Comprehensive Follow-Up & Alarm State
+  activeFollowUp: {
+    scheduledAt: { type: Date, default: null },
+    note: { type: String, default: '', trim: true },
+    status: { type: String, enum: ['none', 'scheduled', 'due', 'completed'], default: 'none' },
+    delayCount: { type: Number, default: 0, min: 0, max: 2 },
+    delayHistory: [{
+      delayedAt: { type: Date, default: Date.now },
+      delayedUntil: { type: Date, required: true },
+      delayMinutes: { type: Number, required: true },
+      reason: { type: String, default: '' },
+      performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    }],
+    lastRungAt: { type: Date, default: null },
+    completedAt: { type: Date, default: null },
+    completionNote: { type: String, default: '', trim: true },
+    completedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  },
   followUpDate: { type: Date, default: null },
+  followUpNote: { type: String, default: '', trim: true },
+  followUpStatus: { type: String, enum: ['none', 'scheduled', 'due', 'completed'], default: 'none' },
+  followUpDelayCount: { type: Number, default: 0, min: 0, max: 2 },
   followUpNotified: { type: Boolean, default: false },
   lastContactedAt: { type: Date, default: null },
   
@@ -321,6 +342,8 @@ leadSchema.index({ assignedTo: 1 });
 leadSchema.index({ userId: 1, status: 1 });
 leadSchema.index({ companyId: 1, status: 1 });
 leadSchema.index({ userId: 1, followUpDate: 1 });
+leadSchema.index({ followUpDate: 1, status: 1 });
+leadSchema.index({ 'activeFollowUp.status': 1, 'activeFollowUp.scheduledAt': 1 });
 // Multi-tenant phone uniqueness: unique within the company when linked, or unique per solo user when unlinked
 leadSchema.index(
   { companyId: 1, phone: 1 },

@@ -4,37 +4,51 @@ const Notification = require('../models/Notification');
 const { processSubscriptionLifecycle } = require('../services/subscriptionWorker');
 const { runTestPrepFeeAlertsCron } = require('../services/automationHandlers');
 
-// Run every minute — check for due follow-ups
+// Run every minute — check for due follow-ups & dispatch due notifications
 const startFollowUpCron = () => {
   cron.schedule('* * * * *', async () => {
     try {
       const now = new Date();
       const leads = await Lead.find({
-        followUpDate: { $lte: now },
+        followUpDate: { $lte: now, $ne: null },
         followUpNotified: false,
-        status: { $ne: 'closed' },
+        status: {
+          $nin: [
+            'closed', 'lost', 'Closed', 'Lost',
+            'Closed / Won', 'Lost / Dropped', 'payment_done',
+            'converted', 'not_interested'
+          ]
+        },
       }).limit(100).lean();
 
       if (leads.length === 0) return;
 
       const notifications = leads.map((lead) => ({
-        userId: lead.userId,
+        userId: lead.assignedTo || lead.userId,
         leadId: lead._id,
         leadName: lead.name,
-        message: `⏰ Follow-up due for ${lead.name} (${lead.phone})`,
+        title: `⏰ Urgent Follow-Up Due: ${lead.name}`,
+        message: `⏰ Follow-up due for ${lead.name} (${lead.phone})${lead.followUpNote ? ' — Agenda: ' + lead.followUpNote : ''}`,
         type: 'follow_up',
         isRead: false,
       }));
 
       await Notification.insertMany(notifications, { ordered: false });
 
-      // Mark as notified
+      // Mark as notified and set activeFollowUp.status to 'due'
       const ids = leads.map((l) => l._id);
-      await Lead.updateMany({ _id: { $in: ids } }, { followUpNotified: true });
+      await Lead.updateMany(
+        { _id: { $in: ids } },
+        {
+          followUpNotified: true,
+          followUpStatus: 'due',
+          'activeFollowUp.status': 'due',
+        }
+      );
 
-      console.log(`[Cron] Created ${notifications.length} follow-up notifications`);
+      console.log(`[Cron] Processed ${notifications.length} due follow-up alarms`);
     } catch (err) {
-      console.error('[Cron] Follow-up error:', err.message);
+      console.error('[Cron] Follow-up alarm error:', err.message);
     }
   });
 

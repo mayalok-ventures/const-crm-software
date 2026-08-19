@@ -15,6 +15,7 @@ const testFiles = [
   'tests/tenant_workflow_phases.test.js',
   'tests/crm_admin.test.js',
   'tests/e2e_lead_lifecycle.test.js',
+  'tests/followup_workflow.test.js',
 ];
 
 async function runTest(file) {

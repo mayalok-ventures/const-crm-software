@@ -6,6 +6,7 @@ const {
   addNote, deleteLead, getTodayFollowUps, getDueFollowUps, getTags, trackMessage, trackCall,
   reassignLead, exportLeads, importLeads, toggleLeadOrgSharing,
   addChildInquiry, updateChildInquiry, deleteChildInquiry,
+  scheduleFollowUp, delayFollowUp, completeFollowUp,
 } = require('../controllers/leadsController');
 const { protect, checkPlanExpiry } = require('../middleware/auth');
 const { enforceExportGating } = require('../middleware/antiFraud');
@@ -22,9 +23,16 @@ router.use(protect);
 router.get('/export', enforceExportGating, exportLeads);
 router.post('/import', checkPlanExpiry, upload.single('file'), importLeads);
 
-// Lead Standard Routes
+// Follow-Up & Alarm Endpoints
 router.get('/follow-ups/today', getTodayFollowUps);
 router.get('/follow-ups/due', getDueFollowUps);
+router.post('/:id/follow-up', checkPlanExpiry, scheduleFollowUp);
+router.post('/:id/follow-up/delay', checkPlanExpiry, delayFollowUp);
+router.post('/:id/follow-up/complete', checkPlanExpiry, completeFollowUp);
+// Aliases for backward compatibility
+router.post('/:id/followups', checkPlanExpiry, scheduleFollowUp);
+router.post('/:id/followups/delay', checkPlanExpiry, delayFollowUp);
+router.post('/:id/followups/complete', checkPlanExpiry, completeFollowUp);
 router.get('/tags', getTags);
 router.post('/:id/track-message', checkPlanExpiry, trackMessage);
 router.post('/:id/track-call', checkPlanExpiry, trackCall);

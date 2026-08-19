@@ -664,28 +664,56 @@ exports.scheduleFollowUp = async (req, res) => {
     const lead = await Lead.findById(req.params.id);
     if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
 
+    const parsedDate = new Date(targetDate);
+
     const followUp = await FollowUp.create({
       lead_id: lead._id,
       leadId: lead._id,
       agent_id: lead.assignedTo || req.user._id,
       agentId: lead.assignedTo || req.user._id,
-      scheduled_at: new Date(targetDate),
-      scheduledAt: new Date(targetDate),
+      scheduled_at: parsedDate,
+      scheduledAt: parsedDate,
       note: note.trim(),
+      delay_count: 0,
+      delayCount: 0,
       status: 'open',
       createdBy: req.user._id,
       creatorName: req.user.name,
     });
 
-    // Update lead follow-up date and add to notes
-    lead.followUpDate = new Date(targetDate);
+    // Update lead follow-up state (reset delay count)
+    lead.activeFollowUp = {
+      scheduledAt: parsedDate,
+      note: note.trim(),
+      status: 'scheduled',
+      delayCount: 0,
+      delayHistory: [],
+      lastRungAt: null,
+      completedAt: null,
+      completionNote: '',
+      completedBy: null,
+    };
+    lead.followUpDate = parsedDate;
+    lead.followUpNote = note.trim();
+    lead.followUpStatus = 'scheduled';
+    lead.followUpDelayCount = 0;
     lead.followUpNotified = false;
+
     lead.notes.push({
-      text: `[Follow-Up Scheduled for ${new Date(targetDate).toLocaleString()}]: ${note.trim()}`,
+      text: `[Follow-Up Scheduled for ${parsedDate.toLocaleString()}]: ${note.trim()}`,
       createdBy: req.user._id,
       authorName: req.user.name,
       createdAt: new Date(),
     });
+
+    lead.leadActivities.push({
+      action: 'followup_scheduled',
+      performedBy: req.user._id,
+      performerName: req.user.name,
+      details: `Follow-up scheduled for ${parsedDate.toLocaleString()}: "${note.trim()}"`,
+      timestamp: new Date(),
+    });
+
     await lead.save();
 
     await logActivity({
@@ -696,24 +724,27 @@ exports.scheduleFollowUp = async (req, res) => {
       targetType: 'lead',
       targetId: lead._id,
       afterState: followUp.toObject(),
-      details: `Scheduled follow-up for "${lead.name}" at ${new Date(targetDate).toLocaleString()}: ${note.trim()}`,
+      details: `Scheduled follow-up for "${lead.name}" at ${parsedDate.toLocaleString()}: ${note.trim()}`,
     });
 
-    res.status(201).json({ success: true, message: 'Follow-up scheduled successfully', followUp });
+    res.status(201).json({ success: true, message: 'Follow-up scheduled successfully', followUp, lead });
   } catch (error) {
     console.error('scheduleFollowUp error:', error);
     res.status(500).json({ success: false, message: error.message || 'Failed to schedule follow-up' });
   }
 };
 
-// @desc  Postpone follow-up (Mandatory Postpone Remark)
+// @desc  Postpone follow-up (Mandatory Postpone Remark & Max 2 Delays strictly enforced)
 // @route PATCH /api/admin/followups/:id/postpone
 // @access SuperAdmin / Admin
 exports.postponeFollowUp = async (req, res) => {
   try {
-    const { new_date, postpone_remark, scheduled_at, postponeRemark } = req.body;
-    const nextDate = new_date || scheduled_at;
-    const remark = postpone_remark || postponeRemark;
+    const { new_date, postpone_remark, scheduled_at, postponeRemark, delayMinutes } = req.body;
+    let nextDate = new_date || scheduled_at;
+    if (!nextDate && delayMinutes) {
+      nextDate = new Date(Date.now() + Number(delayMinutes) * 60 * 1000);
+    }
+    const remark = postpone_remark || postponeRemark || (delayMinutes ? `Delayed by ${delayMinutes} mins` : '');
 
     if (!nextDate) {
       return res.status(400).json({ success: false, message: 'New postponed date/time is mandatory' });
@@ -725,26 +756,82 @@ exports.postponeFollowUp = async (req, res) => {
     const followUp = await FollowUp.findById(req.params.id);
     if (!followUp) return res.status(404).json({ success: false, message: 'Follow-up record not found' });
 
+    const lead = await Lead.findById(followUp.lead_id || followUp.leadId);
+    const currentDelays = followUp.delay_count ?? followUp.delayCount ?? lead?.followUpDelayCount ?? 0;
+
+    if (currentDelays >= 2) {
+      return res.status(400).json({
+        success: false,
+        code: 'MAX_DELAYS_REACHED',
+        message: 'Maximum 2 delays reached. You must add an outcome note to complete this follow-up and silence the alarm.',
+        currentDelays,
+      });
+    }
+
+    const newDelayCount = currentDelays + 1;
+    const parsedNextDate = new Date(nextDate);
     const beforeState = followUp.toObject();
 
     followUp.status = 'postponed';
     followUp.postpone_remark = remark.trim();
     followUp.postponeRemark = remark.trim();
-    followUp.scheduled_at = new Date(nextDate);
-    followUp.scheduledAt = new Date(nextDate);
+    followUp.scheduled_at = parsedNextDate;
+    followUp.scheduledAt = parsedNextDate;
+    followUp.delay_count = newDelayCount;
+    followUp.delayCount = newDelayCount;
+    followUp.delay_history.push({
+      delayed_at: new Date(),
+      delayed_until: parsedNextDate,
+      delay_minutes: delayMinutes ? Number(delayMinutes) : Math.round((parsedNextDate.getTime() - Date.now()) / 60000),
+      reason: remark.trim(),
+      performed_by: req.user._id,
+    });
     await followUp.save();
 
     // Update lead follow-up date
-    const lead = await Lead.findById(followUp.lead_id || followUp.leadId);
     if (lead) {
-      lead.followUpDate = new Date(nextDate);
+      if (!lead.activeFollowUp) {
+        lead.activeFollowUp = {
+          scheduledAt: parsedNextDate,
+          note: followUp.note || 'Follow-Up',
+          status: 'scheduled',
+          delayCount: newDelayCount,
+          delayHistory: [],
+        };
+      } else {
+        lead.activeFollowUp.scheduledAt = parsedNextDate;
+        lead.activeFollowUp.delayCount = newDelayCount;
+        lead.activeFollowUp.status = 'scheduled';
+      }
+
+      lead.activeFollowUp.delayHistory.push({
+        delayedAt: new Date(),
+        delayedUntil: parsedNextDate,
+        delayMinutes: delayMinutes ? Number(delayMinutes) : Math.round((parsedNextDate.getTime() - Date.now()) / 60000),
+        reason: remark.trim(),
+        performedBy: req.user._id,
+      });
+
+      lead.followUpDate = parsedNextDate;
+      lead.followUpDelayCount = newDelayCount;
+      lead.followUpStatus = 'scheduled';
       lead.followUpNotified = false;
+
       lead.notes.push({
-        text: `[Follow-Up Postponed to ${new Date(nextDate).toLocaleString()}]: ${remark.trim()}`,
+        text: `[Follow-Up Postponed to ${parsedNextDate.toLocaleString()} (Delay ${newDelayCount}/2)]: ${remark.trim()}`,
         createdBy: req.user._id,
         authorName: req.user.name,
         createdAt: new Date(),
       });
+
+      lead.leadActivities.push({
+        action: 'followup_postponed',
+        performedBy: req.user._id,
+        performerName: req.user.name,
+        details: `Follow-up delayed (Delay ${newDelayCount}/2) to ${parsedNextDate.toLocaleString()}: "${remark.trim()}"`,
+        timestamp: new Date(),
+      });
+
       await lead.save();
     }
 
@@ -759,10 +846,17 @@ exports.postponeFollowUp = async (req, res) => {
       targetId: followUp._id,
       beforeState,
       afterState,
-      details: `Postponed follow-up to ${new Date(nextDate).toLocaleString()}. Remark: ${remark.trim()}`,
+      details: `Postponed follow-up to ${parsedNextDate.toLocaleString()} (Delay ${newDelayCount}/2). Remark: ${remark.trim()}`,
     });
 
-    res.json({ success: true, message: 'Follow-up postponed successfully', followUp });
+    res.json({
+      success: true,
+      message: `Follow-up postponed successfully (${newDelayCount}/2 delays used)`,
+      followUp,
+      lead,
+      delayCount: newDelayCount,
+      remainingDelays: 2 - newDelayCount,
+    });
   } catch (error) {
     console.error('postponeFollowUp error:', error);
     res.status(500).json({ success: false, message: error.message || 'Failed to postpone follow-up' });
@@ -788,8 +882,9 @@ exports.updateFollowUp = async (req, res) => {
     const beforeState = followUp.toObject();
 
     if (targetDate) {
-      followUp.scheduled_at = new Date(targetDate);
-      followUp.scheduledAt = new Date(targetDate);
+      const parsedDate = new Date(targetDate);
+      followUp.scheduled_at = parsedDate;
+      followUp.scheduledAt = parsedDate;
     }
     if (targetNote) {
       followUp.note = targetNote;
@@ -799,10 +894,16 @@ exports.updateFollowUp = async (req, res) => {
     const lead = await Lead.findById(followUp.lead_id || followUp.leadId);
     if (lead) {
       if (targetDate) {
-        lead.followUpDate = new Date(targetDate);
+        const parsedDate = new Date(targetDate);
+        lead.followUpDate = parsedDate;
         lead.followUpNotified = false;
+        if (lead.activeFollowUp) {
+          lead.activeFollowUp.scheduledAt = parsedDate;
+        }
       }
       if (targetNote) {
+        if (lead.activeFollowUp) lead.activeFollowUp.note = targetNote;
+        lead.followUpNote = targetNote;
         lead.notes.push({
           text: `[Follow-Up Updated to ${new Date(followUp.scheduled_at).toLocaleString()}]: ${targetNote}`,
           createdBy: req.user._id,
@@ -832,12 +933,12 @@ exports.updateFollowUp = async (req, res) => {
   }
 };
 
-// @desc  Complete follow-up (Mandatory Note Required)
+// @desc  Complete follow-up (Mandatory Note Required, Silences Alarm, Optionally Schedules Next Follow-up)
 // @route PATCH /api/admin/followups/:id/complete
 // @access SuperAdmin / Admin
 exports.completeFollowUp = async (req, res) => {
   try {
-    const { note, completion_note, completionNote } = req.body;
+    const { note, completion_note, completionNote, next_followup_at, nextFollowUpAt, next_followup_note, nextFollowUpNote, nextFollowUp } = req.body;
     const finalNote = (note || completion_note || completionNote || '').trim();
 
     if (!finalNote) {
@@ -862,14 +963,96 @@ exports.completeFollowUp = async (req, res) => {
 
     // Append completion note to lead and clear notification flag
     const lead = await Lead.findById(followUp.lead_id || followUp.leadId);
+    let nextScheduledMsg = '';
     if (lead) {
-      lead.followUpNotified = true;
+      if (!lead.activeFollowUp) {
+        lead.activeFollowUp = {
+          scheduledAt: followUp.scheduled_at,
+          note: followUp.note,
+          status: 'completed',
+          delayCount: followUp.delay_count || 0,
+          completedAt: new Date(),
+          completionNote: finalNote,
+          completedBy: req.user._id,
+        };
+      } else {
+        lead.activeFollowUp.status = 'completed';
+        lead.activeFollowUp.completedAt = new Date();
+        lead.activeFollowUp.completionNote = finalNote;
+        lead.activeFollowUp.completedBy = req.user._id;
+      }
+
       lead.notes.push({
         text: `[Follow-Up Completed by ${req.user.name}]: ${finalNote}`,
         createdBy: req.user._id,
         authorName: req.user.name,
         createdAt: new Date(),
       });
+
+      lead.leadActivities.push({
+        action: 'followup_completed',
+        performedBy: req.user._id,
+        performerName: req.user.name,
+        details: `Follow-up completed & alarm silenced. Outcome: "${finalNote}"`,
+        timestamp: new Date(),
+      });
+
+      // Next Follow-Up Handling
+      const rawNextDate = next_followup_at || nextFollowUpAt || nextFollowUp?.scheduledAt || nextFollowUp?.scheduled_at;
+      if (rawNextDate) {
+        const nextDate = new Date(rawNextDate);
+        if (!isNaN(nextDate.getTime())) {
+          const nextAgenda = (next_followup_note || nextFollowUpNote || nextFollowUp?.note || '').trim() || `Next step after: ${finalNote}`;
+
+          lead.activeFollowUp = {
+            scheduledAt: nextDate,
+            note: nextAgenda,
+            status: 'scheduled',
+            delayCount: 0,
+            delayHistory: [],
+            lastRungAt: null,
+            completedAt: null,
+            completionNote: '',
+            completedBy: null,
+          };
+          lead.followUpDate = nextDate;
+          lead.followUpNote = nextAgenda;
+          lead.followUpStatus = 'scheduled';
+          lead.followUpDelayCount = 0;
+          lead.followUpNotified = false;
+
+          lead.leadActivities.push({
+            action: 'followup_scheduled',
+            performedBy: req.user._id,
+            performerName: req.user.name,
+            details: `Next follow-up scheduled for ${nextDate.toLocaleString()}: "${nextAgenda}"`,
+            timestamp: new Date(),
+          });
+
+          await FollowUp.create({
+            lead_id: lead._id,
+            leadId: lead._id,
+            agent_id: lead.assignedTo || req.user._id,
+            agentId: lead.assignedTo || req.user._id,
+            scheduled_at: nextDate,
+            scheduledAt: nextDate,
+            note: nextAgenda,
+            delay_count: 0,
+            status: 'open',
+            createdBy: req.user._id,
+            creatorName: req.user.name,
+          });
+
+          nextScheduledMsg = ` Next follow-up scheduled for ${nextDate.toLocaleDateString()}.`;
+        }
+      } else {
+        lead.followUpDate = null;
+        lead.followUpNote = '';
+        lead.followUpStatus = 'completed';
+        lead.followUpDelayCount = 0;
+        lead.followUpNotified = true;
+      }
+
       await lead.save();
     }
 
@@ -887,7 +1070,7 @@ exports.completeFollowUp = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Follow-up marked as completed successfully! You can now schedule the next follow-up.',
+      message: `Follow-up completed & alarm silenced successfully!${nextScheduledMsg}`,
       followUp,
       lead,
     });

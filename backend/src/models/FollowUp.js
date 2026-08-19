@@ -60,9 +60,28 @@ const followUpSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  delay_count: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 2,
+  },
+  delayCount: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 2,
+  },
+  delay_history: [{
+    delayed_at: { type: Date, default: Date.now },
+    delayed_until: { type: Date, required: true },
+    delay_minutes: { type: Number, required: true },
+    reason: { type: String, default: '' },
+    performed_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  }],
   status: {
     type: String,
-    enum: ['open', 'done', 'postponed'],
+    enum: ['open', 'done', 'postponed', 'scheduled', 'completed'],
     default: 'open',
   },
   createdBy: {

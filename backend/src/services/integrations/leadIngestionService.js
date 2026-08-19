@@ -206,10 +206,12 @@ class LeadIngestionService {
       status: initialStatus,
       source: provider.toLowerCase(),
       tags: [
-        provider.toLowerCase(),
-        `${provider.toLowerCase()}_ads`,
-        'lead_form',
-      ],
+        'Ads Lead',
+        `${provider.toUpperCase()} Ads`,
+        formName ? `Form: ${formName}` : null,
+        campaignName ? `Campaign: ${campaignName}` : null,
+        'Inbound Lead',
+      ].filter(Boolean),
 
       propertyType: formName || `${provider.toUpperCase()} Ad Ingestion`,
       budget: 'Standard',

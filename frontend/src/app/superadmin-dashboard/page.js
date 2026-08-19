@@ -1875,7 +1875,47 @@ export default function SuperAdminDashboard() {
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#0b1120] border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl animate-fade-in">
             <h3 className="text-base font-bold text-white mb-1">Schedule Follow-Up</h3>
-            <p className="text-xs text-slate-400 mb-4">Set target date & mandatory note for {targetLead.name}.</p>
+            <p className="text-xs text-slate-400 mb-3">Set target date & mandatory note for {targetLead.name}.</p>
+            
+            {/* Quick Presets */}
+            <div className="mb-4">
+              <label className="block text-[11px] font-semibold text-slate-400 mb-1.5">Quick Date & Time Presets</label>
+              <div className="grid grid-cols-3 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date(Date.now() + 15 * 60 * 1000);
+                    setFollowUpForm(prev => ({ ...prev, scheduled_at: toLocalDatetimeString(d.toISOString()) }));
+                  }}
+                  className="py-1 px-2 rounded-lg bg-slate-900 hover:bg-indigo-950 text-indigo-300 border border-slate-800 text-[11px] font-medium transition"
+                >
+                  ⚡ +15 Mins
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date(Date.now() + 60 * 60 * 1000);
+                    setFollowUpForm(prev => ({ ...prev, scheduled_at: toLocalDatetimeString(d.toISOString()) }));
+                  }}
+                  className="py-1 px-2 rounded-lg bg-slate-900 hover:bg-indigo-950 text-indigo-300 border border-slate-800 text-[11px] font-medium transition"
+                >
+                  ⏳ +1 Hour
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() + 1);
+                    d.setHours(10, 0, 0, 0);
+                    setFollowUpForm(prev => ({ ...prev, scheduled_at: toLocalDatetimeString(d.toISOString()) }));
+                  }}
+                  className="py-1 px-2 rounded-lg bg-slate-900 hover:bg-indigo-950 text-indigo-300 border border-slate-800 text-[11px] font-medium transition"
+                >
+                  🌅 Tomorrow 10 AM
+                </button>
+              </div>
+            </div>
+
             <form onSubmit={handleScheduleFollowUp} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">Scheduled Date & Time *</label>
@@ -1970,53 +2010,108 @@ export default function SuperAdminDashboard() {
       )}
 
       {/* ── MODAL: POSTPONE FOLLOW-UP ── */}
-      {showPostponeModal && targetFollowUp && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0b1120] border border-amber-500/30 rounded-2xl w-full max-w-md p-6 shadow-2xl animate-fade-in">
-            <h3 className="text-base font-bold text-white mb-1">Postpone Follow-Up</h3>
-            <p className="text-xs text-slate-400 mb-4">A postpone remark is strictly required explaining the reason.</p>
-            <form onSubmit={handlePostponeFollowUp} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">New Postponed Date & Time *</label>
-                <input
-                  type="datetime-local"
-                  required
-                  value={postponeForm.new_date}
-                  onChange={(e) => setPostponeForm({ ...postponeForm, new_date: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                />
+      {showPostponeModal && targetFollowUp && (() => {
+        const delaysUsed = targetFollowUp.delay_count ?? targetFollowUp.delayCount ?? 0;
+        const isDelayBlocked = delaysUsed >= 2;
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-[#0b1120] border border-amber-500/30 rounded-2xl w-full max-w-md p-6 shadow-2xl animate-fade-in">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="text-base font-bold text-white">Postpone Follow-Up</h3>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isDelayBlocked ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}`}>
+                  Delays: {delaysUsed} / 2 Used
+                </span>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Mandatory Postpone Remark *</label>
-                <textarea
-                  required
-                  rows={3}
-                  placeholder="e.g. Client requested callback on Monday morning after travel"
-                  value={postponeForm.postpone_remark}
-                  onChange={(e) => setPostponeForm({ ...postponeForm, postpone_remark: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                />
-              </div>
-              <div className="flex items-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowPostponeModal(false)}
-                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={actionLoading}
-                  className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-amber-600/30"
-                >
-                  {actionLoading ? 'Saving...' : 'Confirm Postpone'}
-                </button>
-              </div>
-            </form>
+              <p className="text-xs text-slate-400 mb-3">
+                {isDelayBlocked 
+                  ? 'Maximum 2 delays reached. You must add an outcome note to complete this follow-up.'
+                  : 'A postpone remark is strictly required explaining the reason (Max 2 delays allowed).'
+                }
+              </p>
+
+              {isDelayBlocked ? (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPostponeModal(false);
+                      handleOpenCompleteFollowUp(targetFollowUp, targetLead);
+                    }}
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold"
+                  >
+                    Switch to Complete Follow-Up Form
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handlePostponeFollowUp} className="space-y-4">
+                  {/* Quick Delay Presets */}
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-400 mb-1.5">Quick Delay Presets</label>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[15, 30, 45, 60].map(m => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => {
+                            const d = new Date(Date.now() + m * 60 * 1000);
+                            setPostponeForm(prev => ({
+                              ...prev,
+                              new_date: toLocalDatetimeString(d.toISOString()),
+                              postpone_remark: `Delayed by ${m} minutes`,
+                            }));
+                          }}
+                          className="py-1 px-1.5 rounded-lg bg-slate-900 hover:bg-amber-950 text-amber-300 border border-slate-800 text-[11px] font-medium transition text-center"
+                        >
+                          +{m}m
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">New Postponed Date & Time *</label>
+                    <input
+                      type="datetime-local"
+                      required
+                      value={postponeForm.new_date}
+                      onChange={(e) => setPostponeForm({ ...postponeForm, new_date: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">Mandatory Postpone Remark *</label>
+                    <textarea
+                      required
+                      rows={3}
+                      placeholder="e.g. Client requested callback on Monday morning after travel"
+                      value={postponeForm.postpone_remark}
+                      onChange={(e) => setPostponeForm({ ...postponeForm, postpone_remark: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowPostponeModal(false)}
+                      className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={actionLoading}
+                      className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-amber-600/30"
+                    >
+                      {actionLoading ? 'Saving...' : 'Confirm Postpone'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── MODAL: CONVERT DEAL WITH PLANS OR CUSTOM PRICING ── */}
       {showConvertModal && targetLead && (
