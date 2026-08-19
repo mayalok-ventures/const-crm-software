@@ -20,6 +20,7 @@ const { protect } = require('../middleware/auth');
 const { authLimiter } = require('../middleware/rateLimiter');
 
 router.post('/register', authLimiter, register);
+router.post('/signup', authLimiter, register); // Alias route
 router.post('/login', authLimiter, login);
 router.post('/verify-2fa', authLimiter, verify2FA);
 router.post('/reset-2fa-emergency', authLimiter, reset2FAEmergency);

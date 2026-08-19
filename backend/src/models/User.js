@@ -69,6 +69,16 @@ const userSchema = new mongoose.Schema({
     ref: 'User',
     default: null,
   },
+  // Single User to Organization Collaboration (Rule 4)
+  connectedCompanyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+  shareLeadsWithCompany: {
+    type: Boolean,
+    default: false,
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

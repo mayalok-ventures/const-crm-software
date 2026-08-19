@@ -181,12 +181,13 @@ exports.register = async (req, res) => {
 // @access Public
 exports.login = async (req, res) => {
   try {
-    const { identifier, password } = req.body;
-    if (!identifier || !password) {
+    const rawIdentifier = req.body.identifier || req.body.email || req.body.phone || req.body.username;
+    const { password } = req.body;
+    if (!rawIdentifier || !password) {
       return res.status(400).json({ message: 'Identifier (email/phone/username) and password are required' });
     }
 
-    const cleanInput = identifier.trim();
+    const cleanInput = String(rawIdentifier).trim();
     const isEmail = cleanInput.includes('@');
     const isDigitsOnly = /^\d+$/.test(cleanInput.replace(/\D/g, '')) && cleanInput.length >= 7;
 

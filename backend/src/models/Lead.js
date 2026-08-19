@@ -60,6 +60,11 @@ const leadSchema = new mongoose.Schema({
   // Organization / Company Association
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 
+  // Single User to Organization Collaboration (Rule 4)
+  sharedWithCompanyId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  isSharedFromSingleUser: { type: Boolean, default: false },
+  sharedByUserName: { type: String, default: '' },
+
   // Assigned Agent (Under assigned lead sharing mode)
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   assignedToName: { type: String, default: '' },

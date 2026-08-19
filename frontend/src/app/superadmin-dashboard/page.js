@@ -1043,6 +1043,12 @@ export default function SuperAdminDashboard() {
                   </div>
 
                   <div className="mt-4 space-y-1.5 text-xs text-slate-400">
+                    {agent.organizationTag && (
+                      <div className="mb-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10.5px] font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                        <Briefcase className="w-3 h-3 text-indigo-400" />
+                        <span>{agent.organizationTag}</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2">
                       <Phone className="w-3.5 h-3.5 text-slate-500" />
                       <span>{agent.phone || 'No phone'}</span>

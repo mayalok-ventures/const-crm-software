@@ -4,7 +4,7 @@ const multer = require('multer');
 const {
   getLeads, getLead, createLead, updateLead,
   addNote, deleteLead, getTodayFollowUps, getDueFollowUps, getTags, trackMessage, trackCall,
-  reassignLead, exportLeads, importLeads
+  reassignLead, exportLeads, importLeads, toggleLeadOrgSharing
 } = require('../controllers/leadsController');
 const { protect, checkPlanExpiry } = require('../middleware/auth');
 const { enforceExportGating } = require('../middleware/antiFraud');
@@ -28,6 +28,7 @@ router.get('/tags', getTags);
 router.post('/:id/track-message', checkPlanExpiry, trackMessage);
 router.post('/:id/track-call', checkPlanExpiry, trackCall);
 router.put('/:id/reassign', checkPlanExpiry, reassignLead);
+router.put('/:id/share-organization', checkPlanExpiry, toggleLeadOrgSharing);
 router.route('/').get(getLeads).post(checkPlanExpiry, createLead);
 router.route('/:id').get(getLead).put(checkPlanExpiry, updateLead).delete(deleteLead);
 router.post('/:id/notes', checkPlanExpiry, addNote);
