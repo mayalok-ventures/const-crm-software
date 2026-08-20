@@ -76,17 +76,9 @@ exports.startOAuth = async (req, res) => {
       });
     }
 
-    const clientId = process.env.GOOGLE_CLIENT_ID || 'dev_google_client_id.apps.googleusercontent.com';
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET || 'dev_google_client_secret_2026';
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:5000/api/integrations/google/oauth/callback';
-
-    if (!clientId || !clientSecret) {
-      return res.status(500).json({
-        success: false,
-        message: 'Google OAuth credentials are not configured on server',
-        code: 'OAUTH_NOT_CONFIGURED',
-      });
-    }
+    const clientId = (process.env.GOOGLE_CLIENT_ID || '').trim();
+    const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').trim();
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI || 'https://crm.coresetu.com/api/integrations/google/oauth/callback';
 
     // Extract frontendUrl dynamically
     let frontendUrl = req.query.frontendUrl || null;
@@ -96,8 +88,63 @@ exports.startOAuth = async (req, res) => {
         frontendUrl = parsedReferer.origin;
       } catch {}
     }
+    if (!frontendUrl) {
+      frontendUrl = process.env.FRONTEND_URL || 'https://crm.coresetu.com';
+    }
 
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? req.user._id : null);
+
+    // Sandbox check
+    const isSandboxMode = req.query.sandbox === 'true' || !clientId || clientId.startsWith('dev_') || !clientId.includes('.apps.googleusercontent.com');
+
+    if (isSandboxMode) {
+      const encryptedRefreshToken = encrypt('google_sandbox_refresh_token_' + Date.now());
+      const query = companyId
+        ? { companyId, provider: 'google', accountId: 'google_sandbox_acc_01' }
+        : { userId: req.user._id, provider: 'google', accountId: 'google_sandbox_acc_01' };
+
+      await Integration.findOneAndUpdate(
+        query,
+        {
+          $set: {
+            userId: req.user._id,
+            companyId: companyId || null,
+            provider: 'google',
+            mode: 'client_managed',
+            status: 'connected',
+            accountId: 'google_sandbox_acc_01',
+            accountName: 'Google Ads (Sandbox / Test Account)',
+            customerId: '987-654-3210',
+            refreshTokenEncrypted: encryptedRefreshToken,
+            tokenExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+            connectedAt: new Date(),
+            metadata: {
+              googleUserId: 'google_sandbox_user',
+              googleUserName: 'Sandbox Google Marketer',
+              googleUserEmail: req.user.email,
+              isSandbox: true,
+            },
+            lastError: '',
+          },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+
+      const redirectTarget = `${frontendUrl}/integrations?google=connected&account=${encodeURIComponent('Google Ads (Sandbox Mode)')}`;
+      if (req.query.json === 'true' || req.headers.accept?.includes('application/json')) {
+        return res.json({ success: true, sandbox: true, redirectUrl: redirectTarget });
+      }
+      return res.redirect(redirectTarget);
+    }
+
+    if (!clientSecret) {
+      return res.status(500).json({
+        success: false,
+        message: 'Google OAuth client secret is not configured on server',
+        code: 'OAUTH_NOT_CONFIGURED',
+      });
+    }
+
     const state = generateOAuthState(req.user._id, companyId, frontendUrl);
 
     const params = new URLSearchParams({

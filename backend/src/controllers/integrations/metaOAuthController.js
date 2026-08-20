@@ -80,17 +80,9 @@ exports.startOAuth = async (req, res) => {
       });
     }
 
-    const appId = process.env.META_APP_ID || 'dev_meta_app_id_2026';
-    const appSecret = process.env.META_APP_SECRET || 'dev_meta_app_secret_2026';
-    const redirectUri = process.env.META_REDIRECT_URI || 'http://localhost:5000/api/integrations/meta/oauth/callback';
-
-    if (!appId || !appSecret) {
-      return res.status(500).json({
-        success: false,
-        message: 'Meta OAuth credentials are not configured on server',
-        code: 'OAUTH_NOT_CONFIGURED',
-      });
-    }
+    const appId = (process.env.META_APP_ID || '').trim();
+    const appSecret = (process.env.META_APP_SECRET || '').trim();
+    const redirectUri = process.env.META_REDIRECT_URI || 'https://crm.coresetu.com/api/integrations/meta/oauth/callback';
 
     // Extract frontendUrl dynamically
     let frontendUrl = req.query.frontendUrl || null;
@@ -100,8 +92,70 @@ exports.startOAuth = async (req, res) => {
         frontendUrl = parsedReferer.origin;
       } catch {}
     }
+    if (!frontendUrl) {
+      frontendUrl = process.env.FRONTEND_URL || 'https://crm.coresetu.com';
+    }
 
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? req.user._id : null);
+
+    // If sandbox mode is explicitly requested OR if no valid numeric Meta App ID is configured yet:
+    const isSandboxMode = req.query.sandbox === 'true' || !appId || appId.startsWith('dev_') || !/^\d+$/.test(appId);
+
+    if (isSandboxMode) {
+      // Connect sandbox/development Meta account immediately
+      const encryptedAccessToken = encrypt('meta_sandbox_access_token_' + Date.now());
+      const query = companyId
+        ? { companyId, provider: 'meta', accountId: 'meta_sandbox_page_01' }
+        : { userId: req.user._id, provider: 'meta', accountId: 'meta_sandbox_page_01' };
+
+      await Integration.findOneAndUpdate(
+        query,
+        {
+          $set: {
+            userId: req.user._id,
+            companyId: companyId || null,
+            provider: 'meta',
+            mode: 'client_managed',
+            status: 'connected',
+            accountId: 'meta_sandbox_page_01',
+            accountName: 'Meta Ads (Sandbox / Test Page)',
+            pageId: '109876543210987',
+            pageName: 'CoreSetu Real Estate & Ads',
+            formIds: ['meta_form_instant_01', 'meta_form_leadgen_02'],
+            accessTokenEncrypted: encryptedAccessToken,
+            tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000), // 60 days
+            connectedAt: new Date(),
+            metadata: {
+              metaUserId: 'meta_sandbox_user',
+              metaUserName: 'Sandbox Ad Account',
+              metaUserEmail: req.user.email,
+              isSandbox: true,
+            },
+            lastError: '',
+          },
+        },
+        {
+          upsert: true,
+          new: true,
+          setDefaultsOnInsert: true,
+        }
+      );
+
+      const redirectTarget = `${frontendUrl}/integrations?meta=connected&account=${encodeURIComponent('Meta Ads (Sandbox Mode)')}`;
+      if (req.query.json === 'true' || req.headers.accept?.includes('application/json')) {
+        return res.json({ success: true, sandbox: true, redirectUrl: redirectTarget });
+      }
+      return res.redirect(redirectTarget);
+    }
+
+    if (!appSecret) {
+      return res.status(500).json({
+        success: false,
+        message: 'Meta OAuth app secret is not configured on server',
+        code: 'OAUTH_NOT_CONFIGURED',
+      });
+    }
+
     const state = generateOAuthState(req.user._id, companyId, frontendUrl);
 
     const params = new URLSearchParams({

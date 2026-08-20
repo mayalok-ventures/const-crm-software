@@ -416,6 +416,38 @@ export default function IntegrationsPage() {
                     </button>
                   </div>
                 </div>
+
+                {/* Meta Connected Accounts List */}
+                {metaIntegrations.map(integration => (
+                  <div key={integration._id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 12, marginBottom: 14 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {integration.accountName || integration.pageName || `Meta Page (${integration.pageId || integration.accountId})`}
+                        </p>
+                        <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                          Page ID: {integration.pageId || integration.accountId || 'Sandbox Connected'}
+                        </p>
+                        {integration.connectedAt && (
+                          <p style={{ margin: '4px 0 0', fontSize: 10, color: 'var(--text-muted)' }}>
+                            Connected: {new Date(integration.connectedAt).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                        <button
+                          type="button"
+                          onClick={() => handleDisconnectMeta(integration._id)}
+                          className="btn btn-ghost btn-sm"
+                          style={{ color: '#dc2626', padding: '4px 8px', minHeight: 0, height: 28 }}
+                          title="Disconnect Meta"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 8, borderTop: '1px solid var(--border)' }}>
@@ -426,7 +458,7 @@ export default function IntegrationsPage() {
                   className="btn btn-primary btn-sm btn-full"
                   style={{ flex: 1, background: '#2563eb', borderColor: '#2563eb', gap: 5, borderRadius: 8, fontSize: 12, width: '100%', minHeight: 36 }}
                 >
-                  <ExternalLink size={12} /> {isMetaConnected ? 'Reconnect Meta' : 'Connect Meta'}
+                  <ExternalLink size={12} /> {isMetaConnected ? 'Reconnect Meta Account' : 'Connect Meta Account'}
                 </button>
               </div>
             </div>
