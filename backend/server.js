@@ -92,9 +92,13 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 const { handleSubscriptionWebhook } = require('./src/controllers/subscriptionController');
 app.post('/api/webhooks/razorpay', handleSubscriptionWebhook);
 
-// Rate limiting
+// Rate limiting (Exempting admin and all external webhook endpoints)
 app.use('/api', (req, res, next) => {
-  if (req.path.startsWith('/admin') || req.path.startsWith('/webhooks')) {
+  if (
+    req.path.startsWith('/admin') ||
+    req.path.startsWith('/webhooks') ||
+    req.path.includes('/webhook')
+  ) {
     return next();
   }
   apiLimiter(req, res, next);
