@@ -1466,10 +1466,10 @@ export default function DashboardPage() {
                 <span style={{ fontSize: 20 }}>👑</span>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 800, color: '#f59e0b', letterSpacing: '0.02em' }}>
-                    SUPERADMIN ROOT ACCESS ACTIVE
+                    ADMIN ACCESS ACTIVE
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    You have full platform privilege. Switch to the dedicated Admin Panel anytime.
+                    You have full platform admin control. Open the Admin Panel anytime.
                   </div>
                 </div>
               </div>

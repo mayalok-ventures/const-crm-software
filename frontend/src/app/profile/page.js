@@ -918,7 +918,7 @@ export default function ProfilePage() {
                     transition: 'transform 0.15s ease',
                   }}
                   className={!isSuperAdmin ? 'hover:scale-105' : ''}
-                  title={isSuperAdmin ? 'Super Administrator' : 'Click to customize profile icon (10 styles)'}
+                  title={isSuperAdmin ? 'Administrator' : 'Click to customize profile icon (10 styles)'}
                 >
                   {isSuperAdmin ? (
                     <div style={{
@@ -972,7 +972,7 @@ export default function ProfilePage() {
                       borderRadius: 8,
                       padding: '3px 8px'
                     }}>
-                      {isSuperAdmin ? '👑 Super Admin' : (isCompanyOwner ? '🏢 Organization Owner' : (isAgentInCompany ? '💼 Team Member' : '👤 Solo Representative'))}
+                      {isSuperAdmin ? '👑 Admin' : (isCompanyOwner ? '🏢 Organization Owner' : (isAgentInCompany ? '💼 Team Member' : '👤 Solo Representative'))}
                     </span>
                   </div>
 
@@ -1013,7 +1013,7 @@ export default function ProfilePage() {
                     className="btn btn-primary"
                     style={{ background: '#f59e0b', borderColor: '#f59e0b', color: '#000', fontWeight: 800, gap: 6, borderRadius: 10 }}
                   >
-                    <Crown size={16} /> Open SuperAdmin Command Center
+                    <Crown size={16} /> Open Admin Panel
                   </Link>
                 ) : (
                   user?.usercode && (

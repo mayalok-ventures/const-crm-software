@@ -34,13 +34,13 @@ const DESKTOP_ITEMS = [
 export default function BottomNav({ active }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isAdminUser, setIsAdminUser] = useState(false);
   const [isEducation, setIsEducation] = useState(false);
 
   useEffect(() => {
     const user = getUser();
-    if (user && (user.role === 'superadmin' || user.isAdmin)) {
-      setIsSuperAdmin(true);
+    if (user && (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin || user.email === 'admin@crm.com')) {
+      setIsAdminUser(true);
     }
     if (String(user?.industryType || '').trim().toLowerCase() === 'education') {
       setIsEducation(true);
@@ -82,8 +82,8 @@ export default function BottomNav({ active }) {
 
   return (
     <>
-      {/* Mobile Bottom Navigation (Visible only on mobile screens < 768px) */}
-      <nav className="bottom-nav md:hidden">
+      {/* Mobile Bottom Navigation (Visible only on small screens < 768px) */}
+      <nav className="bottom-nav flex md:hidden">
         {mobileItems.map(({ href, label, icon: Icon, key }) => {
           const activeState = isLinkActive(key, href);
           return (
@@ -97,7 +97,7 @@ export default function BottomNav({ active }) {
             </Link>
           );
         })}
-        {isSuperAdmin && (
+        {isAdminUser && (
           <Link
             href="/admin"
             className={`bottom-nav-link ${isLinkActive('admin', '/admin') ? 'active' : ''}`}
@@ -138,7 +138,7 @@ export default function BottomNav({ active }) {
 
         {/* Menu Navigation Links */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {isSuperAdmin && (
+          {isAdminUser && (
             <Link
               href="/admin"
               className={`sidebar-nav-link ${isLinkActive('admin', '/admin') ? 'active' : ''}`}
@@ -151,7 +151,7 @@ export default function BottomNav({ active }) {
               }}
             >
               <Crown size={18} color="#f59e0b" />
-              <span>SuperAdmin Panel</span>
+              <span>Admin Panel</span>
             </Link>
           )}
 
