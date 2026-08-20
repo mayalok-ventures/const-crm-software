@@ -1009,7 +1009,7 @@ export default function ProfilePage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 {isSuperAdmin ? (
                   <Link
-                    href="/superadmin-dashboard"
+                    href="/admin"
                     className="btn btn-primary"
                     style={{ background: '#f59e0b', borderColor: '#f59e0b', color: '#000', fontWeight: 800, gap: 6, borderRadius: 10 }}
                   >

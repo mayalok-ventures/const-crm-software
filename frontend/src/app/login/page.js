@@ -52,7 +52,7 @@ export default function LoginPage() {
       setAuth(data, data.token);
       toast.success(`Welcome back, ${data.name}! 👋`);
       if (data.role === 'superadmin' || data.isAdmin) {
-        router.replace('/superadmin-dashboard');
+        router.replace('/admin');
       } else {
         router.replace('/dashboard');
       }
@@ -84,7 +84,7 @@ export default function LoginPage() {
       setAuth(data, data.token);
       toast.success(`Security check passed! Welcome, ${data.name}! 🚀`);
       if (data.role === 'superadmin' || data.isAdmin) {
-        router.replace('/superadmin-dashboard');
+        router.replace('/admin');
       } else {
         router.replace('/dashboard');
       }
@@ -106,7 +106,7 @@ export default function LoginPage() {
       setAuth(data, data.token);
       toast.success('2FA successfully removed! Welcome back! 🎉');
       if (data.role === 'superadmin' || data.isAdmin) {
-        router.replace('/superadmin-dashboard');
+        router.replace('/admin');
       } else {
         router.replace('/dashboard');
       }

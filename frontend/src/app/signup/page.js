@@ -128,7 +128,7 @@ export default function SignupPage() {
       toast.success(`Account registered! Welcome, ${data.name} 🎉`);
 
       if (data.role === 'superadmin' || data.isAdmin) {
-        router.replace('/superadmin-dashboard');
+        router.replace('/admin');
       } else {
         router.replace('/dashboard');
       }

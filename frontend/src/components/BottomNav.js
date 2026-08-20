@@ -99,8 +99,8 @@ export default function BottomNav({ active }) {
         })}
         {isSuperAdmin && (
           <Link
-            href="/superadmin-dashboard"
-            className={`bottom-nav-link ${isLinkActive('superadmin', '/superadmin-dashboard') ? 'active' : ''}`}
+            href="/admin"
+            className={`bottom-nav-link ${isLinkActive('admin', '/admin') ? 'active' : ''}`}
             style={{ color: '#f59e0b' }}
           >
             <Crown size={20} />
@@ -140,8 +140,8 @@ export default function BottomNav({ active }) {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {isSuperAdmin && (
             <Link
-              href="/superadmin-dashboard"
-              className={`sidebar-nav-link ${isLinkActive('superadmin', '/superadmin-dashboard') ? 'active' : ''}`}
+              href="/admin"
+              className={`sidebar-nav-link ${isLinkActive('admin', '/admin') ? 'active' : ''}`}
               style={{
                 color: '#f59e0b',
                 background: 'rgba(245, 158, 11, 0.12)',

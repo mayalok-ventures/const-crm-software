@@ -1279,16 +1279,13 @@ export default function DashboardPage() {
   const { dismissAlarm } = useAlarm();
 
   const isCompanyOwner = user?.workStatus === 'company_owner' || user?.companyRole === 'owner';
+  const isSuperAdmin = user?.role === 'superadmin' || user?.isAdmin;
 
   useEffect(() => {
     try {
       const u = localStorage.getItem('user');
       if (u) {
         const parsed = JSON.parse(u);
-        if (parsed?.role === 'superadmin' || parsed?.isAdmin) {
-          router.replace('/superadmin-dashboard');
-          return;
-        }
         setUser(parsed);
       } else {
         router.replace('/login');
@@ -1451,6 +1448,49 @@ export default function DashboardPage() {
         </div>
 
         <div className="page-content">
+          {/* SuperAdmin Quick Switcher Banner */}
+          {isSuperAdmin && (
+            <div style={{
+              background: 'linear-gradient(90deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.06) 100%)',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              borderRadius: 14,
+              padding: '12px 16px',
+              marginBottom: 16,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 12,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 20 }}>👑</span>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#f59e0b', letterSpacing: '0.02em' }}>
+                    SUPERADMIN ROOT ACCESS ACTIVE
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    You have full platform privilege. Switch to the dedicated Admin Panel anytime.
+                  </div>
+                </div>
+              </div>
+              <Link
+                href="/admin"
+                className="btn btn-primary"
+                style={{
+                  background: '#f59e0b',
+                  borderColor: '#f59e0b',
+                  color: '#000',
+                  fontWeight: 800,
+                  fontSize: 12,
+                  padding: '6px 14px',
+                  borderRadius: 8,
+                }}
+              >
+                Open Admin Panel ⚡
+              </Link>
+            </div>
+          )}
+
           {/* Master Revenue & Performance KPI Banner */}
           <div style={{
             background: 'linear-gradient(135deg, rgba(79,70,229,0.1) 0%, rgba(34,197,94,0.1) 100%)',
