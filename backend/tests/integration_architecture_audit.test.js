@@ -182,6 +182,7 @@ async function runSuite() {
   console.log('\n--- SECTION 4: Integration Model Lifecycle & Encryption ---');
   let integrationA, integrationB;
   {
+    await Integration.syncIndexes();
     integrationA = await Integration.create({
       userId: companyAOwner._id,
       companyId: companyAOwner._id,

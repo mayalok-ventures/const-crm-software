@@ -161,24 +161,34 @@ exports.getTodayFollowUps = async (req, res) => {
 exports.getDueFollowUps = async (req, res) => {
   try {
     const basePermissionQuery = await buildLeadPermissionQuery(req.user);
-    const now = new Date();
+    const now = new Date(Date.now() + 60000); // 1-minute buffer for clock differences
 
-    const leads = await Lead.find({
-      ...basePermissionQuery,
-      followUpDate: { $lte: now, $ne: null },
-      status: {
-        $nin: [
-          'closed', 'lost', 'Closed', 'Lost',
-          'Closed / Won', 'Lost / Dropped', 'payment_done',
-          'converted', 'not_interested'
-        ]
-      },
-    })
-    .populate('projectId', 'name location')
-    .populate('assignedTo', 'name usercode email')
-    .sort({ followUpDate: 1 })
-    .limit(100)
-    .lean();
+    const query = {
+      $and: [
+        basePermissionQuery,
+        {
+          $or: [
+            { followUpDate: { $lte: now, $ne: null } },
+            { 'activeFollowUp.scheduledAt': { $lte: now, $ne: null } },
+          ],
+        },
+        {
+          status: {
+            $nin: [
+              'closed', 'lost', 'Closed', 'Lost',
+              'Closed / Won', 'Lost / Dropped', 'payment_done',
+              'converted', 'not_interested'
+            ],
+          },
+        },
+      ],
+    };
+
+    const leads = await Lead.find(query)
+      .populate('projectId', 'name location')
+      .populate('assignedTo', 'name usercode email')
+      .sort({ updatedAt: -1, followUpDate: -1 })
+      .lean();
 
     res.json(leads);
   } catch (error) {
