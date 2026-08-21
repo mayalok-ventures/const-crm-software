@@ -61,12 +61,13 @@ export default function IntegrationsPage() {
       const params = new URLSearchParams(window.location.search);
       
       const googleStatus = params.get('google');
-      if (googleStatus === 'connected') {
+      const integrationStatus = params.get('integration');
+      if (integrationStatus === 'google_success' || googleStatus === 'connected') {
         toast.success(`Google Ads account connected! 🔴`);
         const cleanUrl = window.location.pathname;
         window.history.replaceState({}, document.title, cleanUrl);
         fetchIntegrations();
-      } else if (googleStatus === 'error') {
+      } else if (integrationStatus === 'google_error' || googleStatus === 'error') {
         const errorMsg = params.get('message') || 'Connection failed';
         toast.error(`Google connection failed: ${errorMsg}`);
         const cleanUrl = window.location.pathname;
@@ -75,12 +76,12 @@ export default function IntegrationsPage() {
       }
 
       const metaStatus = params.get('meta');
-      if (metaStatus === 'connected') {
+      if (integrationStatus === 'meta_success' || metaStatus === 'connected') {
         toast.success(`Meta Ads account connected! 🔵`);
         const cleanUrl = window.location.pathname;
         window.history.replaceState({}, document.title, cleanUrl);
         fetchIntegrations();
-      } else if (metaStatus === 'error') {
+      } else if (integrationStatus === 'meta_error' || metaStatus === 'error') {
         const errorMsg = params.get('message') || 'Connection failed';
         toast.error(`Meta connection failed: ${errorMsg}`);
         const cleanUrl = window.location.pathname;
@@ -161,15 +162,26 @@ export default function IntegrationsPage() {
   const handleConnectGoogle = (e) => {
     e.preventDefault();
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-    const frontendUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-    window.location.href = `${API_URL}/integrations/google/oauth?token=${encodeURIComponent(token)}&frontendUrl=${encodeURIComponent(frontendUrl)}`;
+    if (!token) {
+      toast.error('Please log in to connect Google Ads');
+      router.push('/login');
+      return;
+    }
+    const backendBase = API_URL || 'https://api.coresetu.com/api';
+    window.location.href = `${backendBase}/integrations/google/oauth?token=${encodeURIComponent(token)}`;
   };
 
   const handleConnectMeta = (e) => {
     e.preventDefault();
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-    const frontendUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-    window.location.href = `${API_URL}/integrations/meta/oauth?token=${encodeURIComponent(token)}&frontendUrl=${encodeURIComponent(frontendUrl)}`;
+    if (!token) {
+      toast.error('Please log in to connect Meta Ads');
+      router.push('/login');
+      return;
+    }
+    // Direct user to AWS backend endpoint which constructs the Meta OAuth URL with its server redirect_uri
+    const backendBase = API_URL || 'https://api.coresetu.com/api';
+    window.location.href = `${backendBase}/integrations/meta/oauth?token=${encodeURIComponent(token)}`;
   };
 
   const handleFetchAccounts = async (integrationId) => {

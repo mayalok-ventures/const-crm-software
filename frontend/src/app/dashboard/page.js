@@ -1294,6 +1294,30 @@ export default function DashboardPage() {
     } catch {} finally {
       setLoadingUser(false);
     }
+    // Handle integration callback query parameters
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const integration = params.get('integration');
+      if (integration === 'meta_success') {
+        toast.success('Meta Ads account connected successfully! 🔵');
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+      } else if (integration === 'meta_error') {
+        const errorMsg = params.get('message') || 'Connection failed';
+        toast.error(`Meta Ads connection failed: ${errorMsg}`);
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+      } else if (integration === 'google_success') {
+        toast.success('Google Ads account connected successfully! 🔴');
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+      } else if (integration === 'google_error') {
+        const errorMsg = params.get('message') || 'Connection failed';
+        toast.error(`Google Ads connection failed: ${errorMsg}`);
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+    }
     api.get('/projects').then(r => setProjects(r.data)).catch(() => {});
   }, [router]);
 

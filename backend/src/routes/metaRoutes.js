@@ -18,6 +18,12 @@ router.get(
 );
 
 router.get(
+  '/connect',
+  protect,
+  metaOAuthController.startOAuth
+);
+
+router.get(
   '/oauth/callback',
   metaOAuthController.callback
 );

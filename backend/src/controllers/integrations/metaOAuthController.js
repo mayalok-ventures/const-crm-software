@@ -3,12 +3,12 @@ const axios = require('axios');
 const Integration = require('../../models/Integration');
 const { encrypt } = require('../../utils/encryption');
 
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v20.0';
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v23.0';
 const META_APP_ID = process.env.META_APP_ID;
 const META_APP_SECRET = process.env.META_APP_SECRET;
 const META_REDIRECT_URI =
   process.env.META_REDIRECT_URI ||
-  'http://localhost:5000/api/integrations/meta/oauth/callback';
+  'https://api.coresetu.com/api/integrations/meta/oauth/callback';
 
 const META_SCOPES = [
   'pages_show_list',
@@ -193,7 +193,7 @@ exports.startOAuth = async (req, res) => {
  * GET /api/integrations/meta/oauth/callback
  */
 exports.callback = async (req, res) => {
-  let resolvedFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  let resolvedFrontendUrl = process.env.FRONTEND_URL || 'https://crm.coresetu.com';
   try {
     const { code, state, error, error_description } = req.query;
 
@@ -206,24 +206,16 @@ exports.callback = async (req, res) => {
 
     if (error) {
       console.warn('Meta OAuth denied by user:', error_description || error);
-      return res.redirect(`${resolvedFrontendUrl}/integrations?meta=error&message=${encodeURIComponent(error_description || 'Authorization denied')}`);
+      return res.redirect(`${resolvedFrontendUrl}/dashboard?integration=meta_error&message=${encodeURIComponent(error_description || 'Authorization denied')}`);
     }
 
     if (!code || !state) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing OAuth authorization code or state',
-        code: 'INVALID_CALLBACK_PARAMS',
-      });
+      return res.redirect(`${resolvedFrontendUrl}/dashboard?integration=meta_error&message=${encodeURIComponent('Missing OAuth authorization code or state')}`);
     }
 
     const stateData = verifyOAuthState(state);
     if (!stateData) {
-      return res.status(400).json({
-        success: false,
-        message: 'OAuth state signature is invalid or expired. Please re-authenticate.',
-        code: 'INVALID_OAUTH_STATE',
-      });
+      return res.redirect(`${resolvedFrontendUrl}/dashboard?integration=meta_error&message=${encodeURIComponent('OAuth session expired or invalid. Please re-authenticate.')}`);
     }
 
     // 1. Exchange authorization code for short-lived access token
@@ -314,9 +306,10 @@ exports.callback = async (req, res) => {
       }
     );
 
-    return res.redirect(`${resolvedFrontendUrl}/integrations?meta=connected&account=${encodeURIComponent(metaUser.name || metaUser.id)}`);
+    // 302 Redirect user back to frontend dashboard with success query param
+    return res.redirect(`${resolvedFrontendUrl}/dashboard?integration=meta_success`);
   } catch (error) {
     console.error('Meta OAuth callback processing error:', error.response?.data || error.message);
-    return res.redirect(`${resolvedFrontendUrl}/integrations?meta=error&message=${encodeURIComponent(error.message || 'Meta connection failed')}`);
+    return res.redirect(`${resolvedFrontendUrl}/dashboard?integration=meta_error&message=${encodeURIComponent(error.message || 'Meta connection failed')}`);
   }
 };
