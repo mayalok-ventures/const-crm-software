@@ -146,22 +146,25 @@ async function handleLead({
   createdTime,
 }) {
   if (!leadgenId) {
+    console.warn('[Meta Webhook] Received leadgen change event without leadgen_id, skipping.');
     return;
   }
 
-  // Find active integration for this Meta page or form
+  console.log(`[Meta Webhook] Processing leadgen event:`, { leadgenId, pageId, formId, adId, campaignId });
+
+  // Find active integration for this Meta page, form, or connected account
   const integration = await Integration.findOne({
     provider: 'meta',
     $or: [
       { pageId: String(pageId) },
       { formIds: String(formId) },
-      { accountId: { $exists: true } },
+      { accountId: { $exists: true, $ne: null } },
     ],
     status: 'connected',
   }).select('+accessTokenEncrypted');
 
   if (!integration) {
-    console.warn(`No active connected integration found for Meta page ${pageId}`);
+    console.warn(`[Meta Webhook] No active connected integration found in MongoDB for Meta pageId: "${pageId}", formId: "${formId}", leadgenId: "${leadgenId}"`);
     return;
   }
 
@@ -170,8 +173,13 @@ async function handleLead({
     try {
       accessToken = decrypt(integration.accessTokenEncrypted);
     } catch (e) {
-      console.error('Failed to decrypt Meta access token:', e.message);
+      console.error(`[Meta Webhook] Failed to decrypt Meta access token for integration ${integration._id}:`, e.message);
     }
+  }
+
+  if (!accessToken && !String(leadgenId).startsWith('meta_test_')) {
+    console.error(`[Meta Webhook] Integration ${integration._id} has no valid decrypted access token for leadgenId ${leadgenId}`);
+    return;
   }
 
   // Fetch lead details from Meta Graph API (or parse simulated payload)
@@ -189,31 +197,48 @@ async function handleLead({
     try {
       leadData = await fetchMetaLead(leadgenId, accessToken);
     } catch (error) {
-      console.error(`Error fetching Meta leadgen ${leadgenId}:`, error.message);
+      console.error(`[Meta Webhook] Error fetching Meta leadgen ${leadgenId} from Graph API:`, {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        errorData: error.response?.data,
+        message: error.message,
+      });
       return;
     }
   }
 
-  await leadIngestionService.ingest({
-    provider: 'meta',
-    integrationId: integration._id,
-    externalLeadId: String(leadgenId),
-    accountId: integration.accountId,
-    pageId: pageId || integration.pageId,
-    formId: formId || null,
-    formName: leadData.formName || '',
-    adId: adId || leadData.adId || null,
-    adName: leadData.adName || '',
-    adSetId: adsetId || leadData.adSetId || null,
-    adSetName: leadData.adSetName || '',
-    campaignId: campaignId || leadData.campaignId || null,
-    campaignName: leadData.campaignName || '',
-    name: leadData.name,
-    phone: leadData.phone,
-    email: leadData.email,
-    customData: leadData.customData || {},
-    createdAt: createdTime ? new Date(createdTime * 1000) : new Date(),
-  });
+  try {
+    const ingestResult = await leadIngestionService.ingest({
+      provider: 'meta',
+      integrationId: integration._id,
+      externalLeadId: String(leadgenId),
+      accountId: integration.accountId,
+      pageId: pageId || integration.pageId,
+      formId: formId || null,
+      formName: leadData.formName || '',
+      adId: adId || leadData.adId || null,
+      adName: leadData.adName || '',
+      adSetId: adsetId || leadData.adSetId || null,
+      adSetName: leadData.adSetName || '',
+      campaignId: campaignId || leadData.campaignId || null,
+      campaignName: leadData.campaignName || '',
+      name: leadData.name,
+      phone: leadData.phone,
+      email: leadData.email,
+      customData: leadData.customData || {},
+      createdAt: createdTime ? new Date(createdTime * 1000) : new Date(),
+    });
+
+    console.log(`[Meta Webhook] Successfully processed leadgen ${leadgenId}:`, {
+      created: ingestResult.created,
+      duplicate: ingestResult.duplicate,
+      leadId: ingestResult.lead?._id,
+      name: ingestResult.lead?.name,
+      phone: ingestResult.lead?.phone,
+    });
+  } catch (ingestError) {
+    console.error(`[Meta Webhook] Failed to ingest lead into CRM database:`, ingestError.message);
+  }
 }
 
 async function fetchMetaLead(leadgenId, accessToken) {
@@ -233,6 +258,7 @@ async function fetchMetaLead(leadgenId, accessToken) {
   ].join(',');
 
   const url = `https://graph.facebook.com/${version}/${leadgenId}`;
+  console.log(`[Meta Webhook] Fetching lead details from Graph API: ${url}`);
   const response = await axios.get(url, {
     params: {
       fields,
@@ -244,22 +270,49 @@ async function fetchMetaLead(leadgenId, accessToken) {
   const data = response.data;
   const fieldsMap = {};
 
+  // Case-insensitive normalization: Convert all field names to lowercased trimmed strings
   for (const field of data.field_data || []) {
-    fieldsMap[field.name] = field.values?.[0] || '';
+    const rawKey = String(field.name || '').trim().toLowerCase();
+    const val = field.values?.[0] || '';
+    fieldsMap[rawKey] = val;
+  }
+
+  // Extract Name with multi-field fallback (supporting full_name, name, first_name + last_name)
+  let extractedName =
+    fieldsMap.full_name ||
+    fieldsMap.name ||
+    (fieldsMap.first_name ? `${fieldsMap.first_name} ${fieldsMap.last_name || ''}`.trim() : '') ||
+    fieldsMap.firstname ||
+    fieldsMap['your name'] ||
+    fieldsMap['contact name'] ||
+    '';
+
+  // Extract Phone with multi-field fallback
+  const extractedPhone =
+    fieldsMap.phone_number ||
+    fieldsMap.phone ||
+    fieldsMap.mobile ||
+    fieldsMap.mobile_number ||
+    fieldsMap['phone number'] ||
+    fieldsMap['contact number'] ||
+    '';
+
+  // Extract Email with multi-field fallback
+  const extractedEmail =
+    fieldsMap.email ||
+    fieldsMap['e-mail'] ||
+    fieldsMap['email address'] ||
+    '';
+
+  // Fallback Name if missing but phone or email is available
+  if (!extractedName && (extractedPhone || extractedEmail)) {
+    extractedName = 'Meta Lead (No Name Provided)';
   }
 
   return {
-    name:
-      fieldsMap.full_name ||
-      fieldsMap.name ||
-      fieldsMap.first_name ||
-      '',
-    phone:
-      fieldsMap.phone_number ||
-      fieldsMap.phone ||
-      fieldsMap.mobile ||
-      '',
-    email: fieldsMap.email || '',
+    name: extractedName,
+    phone: extractedPhone,
+    email: extractedEmail,
     campaignId: data.campaign_id || null,
     campaignName: data.campaign_name || '',
     adSetId: data.adset_id || null,
