@@ -154,8 +154,17 @@ const protect = async (req, res, next) => {
 };
 
 const adminOnly = (req, res, next) => {
-  if (!req.user || (!req.user.isAdmin && req.user.role !== 'superadmin')) {
+  if (!req.user || (!req.user.isAdmin && req.user.role !== 'superadmin' && req.user.role !== 'admin')) {
     return res.status(403).json({ message: 'Admin access required' });
+  }
+  next();
+};
+
+const managerOrAdminOnly = (req, res, next) => {
+  const role = req.user?.role;
+  const isPrivileged = req.user?.isAdmin || role === 'superadmin' || role === 'admin' || role === 'manager';
+  if (!req.user || !isPrivileged) {
+    return res.status(403).json({ message: 'Manager or Admin access required' });
   }
   next();
 };
@@ -223,6 +232,7 @@ module.exports = {
   protect,
   optionalAuth,
   adminOnly,
+  managerOrAdminOnly,
   checkPlanExpiry,
   calculateSubscriptionLifecycle,
   generateToken,

@@ -1,43 +1,105 @@
 const mongoose = require('mongoose');
 
-// IMPORTANT — CAMPAIGN MODEL:
-// This is the source of truth for campaign execution state.
-// The campaign worker (services/campaignWorker.js) polls this collection every 5s.
-// Status transitions:
-//   queued → running (worker picks it up)
-//   running → paused (user pauses OR WA disconnects)
-//   running → completed (all leads processed)
-//   running → failed (unrecoverable error)
-//   paused → queued (user resumes → worker re-picks)
-//   any → cancelled (user cancels)
-//
-// RESTART RECOVERY:
-// On server start, campaignWorker resets all 'running' → 'queued'.
-// This re-queues any campaigns that were interrupted by a crash.
-// lastSentIndex tells the worker where to resume from.
-const campaignSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', required: true },
-  name: { type: String, required: true, trim: true },
-  template: { type: String, required: true },
-  status: {
-    type: String,
-    enum: ['queued', 'running', 'paused', 'completed', 'failed', 'cancelled'],
-    default: 'queued',
+/**
+ * Campaign Schema
+ * Ingests and tracks advertising spend, platform attribution, and ROI/ROAS across Meta, Google, and other ad networks.
+ */
+const campaignSchema = new mongoose.Schema(
+  {
+    campaignName: {
+      type: String,
+      required: [true, 'Campaign name is required'],
+      trim: true,
+    },
+    platform: {
+      type: String,
+      required: [true, 'Ad platform is required'],
+      enum: {
+        values: ['META', 'GOOGLE', 'OTHER'],
+        message: '{VALUE} is not a supported ad platform',
+      },
+      uppercase: true,
+      index: true,
+    },
+    campaignId: {
+      type: String,
+      default: '',
+      trim: true,
+      index: true,
+    },
+    budget: {
+      type: Number,
+      default: 0,
+      min: [0, 'Budget cannot be negative'],
+    },
+    amountSpent: {
+      type: Number,
+      default: 0,
+      min: [0, 'Amount spent cannot be negative'],
+    },
+    startDate: {
+      type: Date,
+      default: Date.now,
+    },
+    endDate: {
+      type: Date,
+      default: null,
+      validate: {
+        validator: function (val) {
+          return !val || !this.startDate || val >= this.startDate;
+        },
+        message: 'endDate must be equal to or after startDate',
+      },
+    },
+    status: {
+      type: String,
+      required: true,
+      enum: {
+        values: ['DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED', 'ARCHIVED'],
+        message: '{VALUE} is not a valid campaign status',
+      },
+      default: 'DRAFT',
+      uppercase: true,
+      index: true,
+    },
+    leadsGenerated: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    revenueGenerated: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    utmSource: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    utmMedium: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    utmCampaign: {
+      type: String,
+      default: '',
+      trim: true,
+      index: true,
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
   },
-  totalLeads: { type: Number, default: 0 },
-  sentCount: { type: Number, default: 0 },
-  failedCount: { type: Number, default: 0 },
-  lastSentIndex: { type: Number, default: -1 },
-  startedAt: { type: Date, default: null },
-  completedAt: { type: Date, default: null },
-  pausedAt: { type: Date, default: null },
-}, { timestamps: true });
+  {
+    timestamps: true,
+  }
+);
 
-// Index for worker polling (status: queued)
-campaignSchema.index({ status: 1 });
-// Index for user campaign list
-campaignSchema.index({ userId: 1, createdAt: -1 });
-campaignSchema.index({ userId: 1, status: 1 });
+// Compound Index for ROI Reporting
+campaignSchema.index({ platform: 1, status: 1, createdAt: -1 });
 
-module.exports = mongoose.model('Campaign', campaignSchema);
+module.exports = mongoose.models.Campaign || mongoose.model('Campaign', campaignSchema);

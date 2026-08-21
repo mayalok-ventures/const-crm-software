@@ -81,9 +81,24 @@ const leadSchema = new mongoose.Schema({
   isSharedFromSingleUser: { type: Boolean, default: false },
   sharedByUserName: { type: String, default: '' },
 
-  // Assigned Agent (Under assigned lead sharing mode)
+  // Assigned Agent & Manager Hierarchy
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   assignedToName: { type: String, default: '' },
+  assignedManager: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  assignedManagerName: { type: String, default: '' },
+
+  // Distribution Engine Metadata
+  distributionRuleId: { type: mongoose.Schema.Types.ObjectId, ref: 'LeadDistributionRule', default: null },
+  distributionStrategy: { type: String, default: 'manual' },
+  visibilityMode: { type: String, enum: ['shared', 'isolated'], default: 'shared' },
+
+  // Primary Source Classification (Phase 4: Source A - Manual, Source B - User Signup, Source C - Ads)
+  primarySource: {
+    type: String,
+    enum: ['SOURCE_A_MANUAL', 'SOURCE_B_SIGNUP', 'SOURCE_C_ADS', 'manual', 'signup', 'ads', 'webhook'],
+    default: 'SOURCE_A_MANUAL',
+    index: true,
+  },
 
   // Linked Project / Package Offering Pre-set
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },

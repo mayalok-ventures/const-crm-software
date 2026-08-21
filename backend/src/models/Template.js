@@ -1,54 +1,75 @@
 const mongoose = require('mongoose');
 
-const fileSchema = new mongoose.Schema({
-  filename: { type: String, required: true },
-  originalName: { type: String, required: true },
-  size: { type: Number, required: true },
-  mimetype: { type: String, required: true },
-  url: { type: String, required: true }
-}, { _id: false });
-
-const templateSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  agent_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
-  agentId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
-  admin_owned: { type: Boolean, default: true },
-  adminOwned: { type: Boolean, default: true },
-  
-  title: { type: String, required: true, trim: true },
-  name: { type: String, trim: true },
-  text: { type: String, default: '' },
-  
-  type: {
-    type: String,
-    enum: ['welcome', 'initial', 'followup', 'brochure', 'offer', 'follow_up', 'site_visit', 'promotional', 'greeting'],
-    default: 'followup',
+/**
+ * Template Schema
+ * Standardized message scripting repository supporting WhatsApp, Email, and SMS with dynamic variables.
+ */
+const templateSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: [true, 'Template name is required'],
+      trim: true,
+      index: true,
+    },
+    channel: {
+      type: String,
+      required: [true, 'Communication channel is required'],
+      enum: {
+        values: ['WHATSAPP', 'EMAIL', 'SMS'],
+        message: '{VALUE} is not a valid channel. Must be WHATSAPP, EMAIL, or SMS',
+      },
+      uppercase: true,
+      index: true,
+    },
+    content: {
+      type: String,
+      required: [true, 'Template content text is required'],
+      trim: true,
+    },
+    category: {
+      type: String,
+      default: 'GENERAL',
+      trim: true,
+      uppercase: true,
+      index: true,
+    },
+    variables: {
+      type: [String],
+      default: [],
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
+    mediaUrl: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: [true, 'Author user ID is required'],
+    },
   },
-  
-  content: {
-    type: mongoose.Schema.Types.Mixed,
-    default: {},
-  },
-  
-  imageFile: { type: fileSchema, default: null },
-  videoFile: { type: fileSchema, default: null },
-  docFile: { type: fileSchema, default: null },
-  tags: [{ type: String }],
-  usageCount: { type: Number, default: 0 },
-}, { timestamps: true });
+  {
+    timestamps: true,
+  }
+);
 
+// Pre-save hook: Automatically extract dynamic {{variable}} tags from content
 templateSchema.pre('save', function (next) {
-  if (this.title && !this.name) this.name = this.title;
-  if (this.name && !this.title) this.title = this.name;
-  if (this.admin_owned !== undefined && this.adminOwned === undefined) this.adminOwned = this.admin_owned;
-  if (this.adminOwned !== undefined && this.admin_owned === undefined) this.admin_owned = this.adminOwned;
-  if (this.agent_id && !this.agentId) this.agentId = this.agent_id;
-  if (this.agentId && !this.agent_id) this.agent_id = this.agentId;
+  if (this.content) {
+    const matches = this.content.match(/{{\s*([a-zA-Z0-9_]+)\s*}}/g);
+    if (matches) {
+      this.variables = [...new Set(matches.map(m => m.replace(/[{}]/g, '').trim()))];
+    }
+  }
   next();
 });
 
-templateSchema.index({ userId: 1 });
-templateSchema.index({ agentId: 1 });
-templateSchema.index({ userId: 1, createdAt: -1 });
+templateSchema.index({ channel: 1, isActive: 1, category: 1 });
 
 module.exports = mongoose.models.Template || mongoose.model('Template', templateSchema);
