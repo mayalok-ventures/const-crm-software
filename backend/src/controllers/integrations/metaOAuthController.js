@@ -265,46 +265,159 @@ exports.callback = async (req, res) => {
           fields: 'id,name,email',
           access_token: accessToken,
         },
+        timeout: 10000,
       }
     );
 
     const metaUser = meResponse.data;
+    console.log('[Meta OAuth] Connected Meta User:', { id: metaUser.id, name: metaUser.name });
 
-    // 4. Securely store integration in MongoDB with token encryption
-    const encryptedAccessToken = encrypt(accessToken);
-
-    const query = stateData.companyId
-      ? { companyId: stateData.companyId, provider: 'meta', accountId: metaUser.id }
-      : { userId: stateData.userId, provider: 'meta', accountId: metaUser.id };
-
-    await Integration.findOneAndUpdate(
-      query,
-      {
-        $set: {
-          userId: stateData.userId,
-          companyId: stateData.companyId || null,
-          provider: 'meta',
-          mode: 'client_managed',
-          status: 'connected',
-          accountId: metaUser.id,
-          accountName: metaUser.name || 'Meta Ad Account',
-          accessTokenEncrypted: encryptedAccessToken,
-          tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000), // 60 days
-          connectedAt: new Date(),
-          metadata: {
-            metaUserId: metaUser.id,
-            metaUserName: metaUser.name || '',
-            metaUserEmail: metaUser.email || '',
+    // 4. Fetch all Facebook Pages the user granted access to
+    let userPages = [];
+    try {
+      const pagesResponse = await axios.get(
+        `https://graph.facebook.com/${META_GRAPH_VERSION}/me/accounts`,
+        {
+          params: {
+            fields: 'id,name,access_token,category,tasks',
+            access_token: accessToken,
           },
-          lastError: '',
-        },
-      },
-      {
-        upsert: true,
-        new: true,
-        setDefaultsOnInsert: true,
+          timeout: 10000,
+        }
+      );
+      userPages = pagesResponse.data?.data || [];
+      console.log(`[Meta OAuth] Retrieved ${userPages.length} Facebook Page(s) for user ${metaUser.name}:`,
+        userPages.map((p) => ({ id: p.id, name: p.name }))
+      );
+    } catch (pageErr) {
+      console.warn('[Meta OAuth] Could not fetch user pages from /me/accounts:', pageErr.response?.data || pageErr.message);
+    }
+
+    const encryptedUserToken = encrypt(accessToken);
+
+    // 5. Save/Update integration per Page (or fallback if no pages found)
+    if (userPages.length > 0) {
+      for (const page of userPages) {
+        const pageId = String(page.id);
+        const pageName = page.name || 'Facebook Page';
+        const pageAccessToken = page.access_token || accessToken;
+        const encryptedPageToken = encrypt(pageAccessToken);
+
+        // 5a. Automatically subscribe CRM app to leadgen webhooks for this page
+        try {
+          await axios.post(
+            `https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/subscribed_apps`,
+            null,
+            {
+              params: {
+                subscribed_fields: 'leadgen',
+                access_token: pageAccessToken,
+              },
+              timeout: 8000,
+            }
+          );
+          console.log(`[Meta OAuth] Successfully subscribed App to Page: "${pageName}" (ID: ${pageId})`);
+        } catch (subErr) {
+          console.warn(`[Meta OAuth] Subscribed apps notice for Page ${pageId} (${pageName}):`, subErr.response?.data || subErr.message);
+        }
+
+        // 5b. Fetch instant leadgen forms for this page to pre-index form IDs
+        let formIds = [];
+        let formNames = [];
+        try {
+          const formsResponse = await axios.get(
+            `https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/leadgen_forms`,
+            {
+              params: {
+                fields: 'id,name,status',
+                access_token: pageAccessToken,
+              },
+              timeout: 8000,
+            }
+          );
+          const forms = formsResponse.data?.data || [];
+          formIds = forms.map((f) => String(f.id));
+          formNames = forms.map((f) => f.name || '');
+        } catch (formErr) {
+          console.warn(`[Meta OAuth] Forms fetch notice for Page ${pageId}:`, formErr.message);
+        }
+
+        // 5c. Upsert Integration document keyed by Page ID
+        const pageQuery = stateData.companyId
+          ? { companyId: stateData.companyId, provider: 'meta', pageId }
+          : { userId: stateData.userId, provider: 'meta', pageId };
+
+        await Integration.findOneAndUpdate(
+          pageQuery,
+          {
+            $set: {
+              userId: stateData.userId,
+              companyId: stateData.companyId || null,
+              provider: 'meta',
+              mode: 'client_managed',
+              status: 'connected',
+              accountId: metaUser.id,
+              accountName: metaUser.name || 'Meta User Account',
+              pageId,
+              pageName,
+              formIds,
+              formNames,
+              accessTokenEncrypted: encryptedPageToken,
+              tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000), // 60 days
+              connectedAt: new Date(),
+              metadata: {
+                metaUserId: metaUser.id,
+                metaUserName: metaUser.name || '',
+                metaUserEmail: metaUser.email || '',
+                category: page.category || '',
+                tasks: page.tasks || [],
+                userAccessTokenEncrypted: encryptedUserToken,
+              },
+              lastError: '',
+            },
+          },
+          {
+            upsert: true,
+            new: true,
+            setDefaultsOnInsert: true,
+          }
+        );
       }
-    );
+    } else {
+      // Fallback: Save User profile record if no pages were returned
+      const userQuery = stateData.companyId
+        ? { companyId: stateData.companyId, provider: 'meta', accountId: metaUser.id }
+        : { userId: stateData.userId, provider: 'meta', accountId: metaUser.id };
+
+      await Integration.findOneAndUpdate(
+        userQuery,
+        {
+          $set: {
+            userId: stateData.userId,
+            companyId: stateData.companyId || null,
+            provider: 'meta',
+            mode: 'client_managed',
+            status: 'connected',
+            accountId: metaUser.id,
+            accountName: metaUser.name || 'Meta Ad Account',
+            accessTokenEncrypted: encryptedUserToken,
+            tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+            connectedAt: new Date(),
+            metadata: {
+              metaUserId: metaUser.id,
+              metaUserName: metaUser.name || '',
+              metaUserEmail: metaUser.email || '',
+            },
+            lastError: '',
+          },
+        },
+        {
+          upsert: true,
+          new: true,
+          setDefaultsOnInsert: true,
+        }
+      );
+    }
 
     // 302 Redirect user back to frontend dashboard with success query param
     return res.redirect(`${resolvedFrontendUrl}/dashboard?integration=meta_success`);
