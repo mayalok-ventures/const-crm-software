@@ -8,13 +8,6 @@ const notificationSchema = new mongoose.Schema({
   message: { type: String, required: true },
   type: {
     type: String,
-    enum: [
-      'follow_up', 'reminder', 'system', 'admin_alert', 'system_alert',
-      'wa_reply', 'platform_signup', 'leave_request', 'leave_approved',
-      'leave_rejected', 'agent_left', 'agent_joined', 'agent_removed',
-      'document_verification', 'fee_reminder', 'abandoned_cart',
-      'stall_locked', 'event_pass'
-    ],
     default: 'follow_up',
   },
   isRead: { type: Boolean, default: false },

@@ -5,6 +5,10 @@
  * ============================================================================
  */
 
+process.env.META_APP_ID = '247732357239872';
+process.env.META_APP_SECRET = 'test_secret_1234567890abcdef';
+process.env.META_REDIRECT_URI = 'http://localhost:5000/api/integrations/meta/oauth/callback';
+
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const crypto = require('crypto');

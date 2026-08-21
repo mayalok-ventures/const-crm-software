@@ -12,6 +12,7 @@ const testFiles = [
   'tests/hybrid_catalogue.test.js',
   'tests/education_subprofile.test.js',
   'tests/multi_tenant_isolation.test.js',
+  'tests/agency_team_management.test.js',
   'tests/integration_architecture_audit.test.js',
   'tests/tenant_workflow_phases.test.js',
   'tests/crm_admin.test.js',

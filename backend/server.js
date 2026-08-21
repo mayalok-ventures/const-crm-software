@@ -28,6 +28,7 @@ const waSession = require('./src/services/waSession');
 const campaignWorker = require('./src/services/campaignWorker');
 const integrationRoutes = require('./src/routes/integrationRoutes');
 const catalogueRoutes = require('./src/routes/catalogue');
+const agencyRoutes = require('./src/routes/agency');
 
 const app = express();
 
@@ -129,6 +130,7 @@ app.use('/api/projects', projectsRoutes);
 app.use('/api', shareRoutes);
 app.use('/api/integrations', integrationRoutes);
 app.use('/api/catalogue', catalogueRoutes);
+app.use('/api/agency', agencyRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
@@ -144,6 +146,7 @@ app.use((err, req, res, next) => {
 
 const { seedSuperAdmin } = require('./src/utils/seedSuperAdmin');
 const { seedPlans } = require('./src/utils/seedPlans');
+const { runAgencyRolesMigration } = require('./src/utils/seedAgencyRoles');
 
 // Start server after DB is ready
 connectDB().then(async () => {
@@ -152,6 +155,9 @@ connectDB().then(async () => {
 
   // Seed standard subscription plans if not exists
   await seedPlans();
+
+  // Run agency roles & permissions migration
+  await runAgencyRolesMigration().catch(err => console.error('[Migration Error]:', err.message));
 
   // Start cron jobs
   startFollowUpCron();

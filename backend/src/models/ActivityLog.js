@@ -66,6 +66,33 @@ const activityLogSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  eventType: {
+    type: String,
+    trim: true,
+    index: true,
+  },
+  tenantId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+    index: true,
+  },
+  actorUserId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+    index: true,
+  },
+  visibility: {
+    type: String,
+    enum: ['GLOBAL', 'TEAM', 'PRIVATE', 'SYSTEM'],
+    default: 'PRIVATE',
+    index: true,
+  },
+  metadata: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
 }, { timestamps: true });
 
 activityLogSchema.pre('save', function (next) {
@@ -85,5 +112,8 @@ activityLogSchema.pre('save', function (next) {
 activityLogSchema.index({ target_id: 1, createdAt: -1 });
 activityLogSchema.index({ user_id: 1, createdAt: -1 });
 activityLogSchema.index({ action: 1 });
+activityLogSchema.index({ tenantId: 1, createdAt: -1 });
+activityLogSchema.index({ tenantId: 1, eventType: 1, createdAt: -1 });
+activityLogSchema.index({ tenantId: 1, visibility: 1, createdAt: -1 });
 
 module.exports = mongoose.models.ActivityLog || mongoose.model('ActivityLog', activityLogSchema);

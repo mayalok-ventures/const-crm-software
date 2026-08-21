@@ -789,6 +789,10 @@ exports.updateLead = async (req, res) => {
           verified_at: new Date(),
         }).catch(err => console.warn('[Payment] Manual payment record warning:', err.message));
       }
+
+      // Trigger split incentive calculation dynamically on WON status conversion
+      const { triggerWonIncentiveCalculation } = require('./agencyController');
+      triggerWonIncentiveCalculation(lead._id, lead.companyId).catch(err => console.error('[Incentive Calculation Hook Error]:', err.message));
     }
 
     // Enforce Mandatory Postpone Remark when delaying/postponing an existing follow-up
