@@ -372,51 +372,6 @@ export default function IntegrationsPage() {
                   Receive instant lead notifications from Facebook & Instagram ad campaigns. Inbound prospects land directly with <strong style={{ color: '#2563eb' }}>🔵 Meta Ads</strong> pill tags, ad set name, and form answers.
                 </p>
 
-                {/* Webhook Details for Manual Setup */}
-                <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 12, marginBottom: 14 }}>
-                  <span style={{ fontSize: 10.5, textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
-                    Meta Webhook Callback URL
-                  </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                    <input
-                      className="input"
-                      readOnly
-                      value={metaWebhookUrl}
-                      style={{ fontSize: 11, height: 32, fontFamily: 'monospace' }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(metaWebhookUrl, 'meta_url')}
-                      className="btn btn-ghost btn-sm"
-                      style={{ height: 32, padding: '0 8px' }}
-                      title="Copy URL"
-                    >
-                      {copiedKey === 'meta_url' ? <Check size={13} color="#10b981" /> : <Copy size={13} />}
-                    </button>
-                  </div>
-
-                  <span style={{ fontSize: 10.5, textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
-                    Verify Token
-                  </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <input
-                      className="input"
-                      readOnly
-                      value={metaVerifyToken}
-                      style={{ fontSize: 11, height: 32, fontFamily: 'monospace' }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(metaVerifyToken, 'meta_token')}
-                      className="btn btn-ghost btn-sm"
-                      style={{ height: 32, padding: '0 8px' }}
-                      title="Copy Token"
-                    >
-                      {copiedKey === 'meta_token' ? <Check size={13} color="#10b981" /> : <Copy size={13} />}
-                    </button>
-                  </div>
-                </div>
-
                 {/* Meta Connected Accounts List */}
                 {metaIntegrations.map(integration => (
                   <div key={integration._id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 12, marginBottom: 14 }}>
@@ -451,15 +406,21 @@ export default function IntegrationsPage() {
               </div>
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 8, borderTop: '1px solid var(--border)' }}>
-                <button
-                  type="button"
-                  onClick={handleConnectMeta}
-                  disabled={loading}
-                  className="btn btn-primary btn-sm btn-full"
-                  style={{ flex: 1, background: '#2563eb', borderColor: '#2563eb', gap: 5, borderRadius: 8, fontSize: 12, width: '100%', minHeight: 36 }}
-                >
-                  <ExternalLink size={12} /> {isMetaConnected ? 'Reconnect Meta Account' : 'Connect Meta Account'}
-                </button>
+                {!isMetaConnected ? (
+                  <button
+                    type="button"
+                    onClick={handleConnectMeta}
+                    disabled={loading}
+                    className="btn btn-primary btn-sm btn-full"
+                    style={{ flex: 1, background: '#2563eb', borderColor: '#2563eb', gap: 5, borderRadius: 8, fontSize: 12, width: '100%', minHeight: 36 }}
+                  >
+                    <ExternalLink size={12} /> Connect Meta Account
+                  </button>
+                ) : (
+                  <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 12px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, color: '#10b981', fontWeight: 700, fontSize: 13 }}>
+                    ✅ Meta Connected
+                  </div>
+                )}
               </div>
             </div>
 
@@ -604,30 +565,6 @@ export default function IntegrationsPage() {
                     </div>
                   </div>
                 )}
-
-                {/* Webhook Details for Google Ads Lead Extension */}
-                <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 12, marginBottom: 14 }}>
-                  <span style={{ fontSize: 10.5, textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
-                    Google Lead Form Webhook URL
-                  </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <input
-                      className="input"
-                      readOnly
-                      value={googleWebhookUrl}
-                      style={{ fontSize: 11, height: 32, fontFamily: 'monospace' }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(googleWebhookUrl, 'google_url')}
-                      className="btn btn-ghost btn-sm"
-                      style={{ height: 32, padding: '0 8px' }}
-                      title="Copy URL"
-                    >
-                      {copiedKey === 'google_url' ? <Check size={13} color="#10b981" /> : <Copy size={13} />}
-                    </button>
-                  </div>
-                </div>
               </div>
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 8, borderTop: '1px solid var(--border)' }}>
