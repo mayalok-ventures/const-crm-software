@@ -3,7 +3,7 @@ const axios = require('axios');
 const Integration = require('../../models/Integration');
 const { encrypt } = require('../../utils/encryption');
 
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v23.0';
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v20.0';
 const META_APP_ID = process.env.META_APP_ID;
 const META_APP_SECRET = process.env.META_APP_SECRET;
 const META_REDIRECT_URI =
@@ -80,9 +80,9 @@ exports.startOAuth = async (req, res) => {
       });
     }
 
-    const appId = (process.env.META_APP_ID || '').trim();
-    const appSecret = (process.env.META_APP_SECRET || '').trim();
-    const redirectUri = process.env.META_REDIRECT_URI || 'https://crm.coresetu.com/api/integrations/meta/oauth/callback';
+    const appId = META_APP_ID;
+    const appSecret = (META_APP_SECRET || '').trim();
+    const redirectUri = META_REDIRECT_URI;
 
     // Extract frontendUrl dynamically
     let frontendUrl = req.query.frontendUrl || null;
@@ -90,7 +90,7 @@ exports.startOAuth = async (req, res) => {
       try {
         const parsedReferer = new URL(req.headers.referer);
         frontendUrl = parsedReferer.origin;
-      } catch {}
+      } catch { }
     }
     if (!frontendUrl) {
       frontendUrl = process.env.FRONTEND_URL || 'https://crm.coresetu.com';
@@ -167,6 +167,9 @@ exports.startOAuth = async (req, res) => {
     });
 
     const authorizationUrl = `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth?${params}`;
+    console.log('====== META OAUTH REDIRECT URL ======');
+    console.log(authorizationUrl);
+    console.log('=====================================');
 
     // If client requested JSON URL or frontend redirect
     if (req.query.json === 'true' || req.headers.accept?.includes('application/json')) {

@@ -78,6 +78,12 @@ app.use('/api', (req, res, next) => {
   apiLimiter(req, res, next);
 });
 
+// Request logger
+app.use((req, res, next) => {
+  console.log(`[REQUEST] ${req.method} ${req.originalUrl}`);
+  next();
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/notifications', notificationsRoutes);
