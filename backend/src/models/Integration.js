@@ -7,34 +7,118 @@ const mongoose = require('mongoose');
  */
 const integrationSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      index: true,
+      default: null,
+    },
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      index: true,
+      default: null,
+    },
     provider: {
       type: String,
       required: [true, 'Integration provider is required'],
-      enum: {
-        values: ['META', 'GOOGLE', 'WHATSAPP', 'WEBHOOK'],
-        message: '{VALUE} is not a recognized integration provider',
-      },
-      uppercase: true,
-      unique: true,
+      lowercase: true,
+      trim: true,
       index: true,
+    },
+    mode: {
+      type: String,
+      default: 'client_managed',
+      lowercase: true,
+      trim: true,
     },
     status: {
       type: String,
-      required: true,
-      enum: {
-        values: ['CONNECTED', 'DISCONNECTED', 'ERROR'],
-        message: '{VALUE} is not a valid integration status',
-      },
-      default: 'DISCONNECTED',
-      uppercase: true,
+      default: 'connected',
+      lowercase: true,
+      trim: true,
       index: true,
+    },
+    accountId: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+    accountName: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    pageId: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+    pageName: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    formIds: {
+      type: [String],
+      default: [],
+    },
+    formNames: {
+      type: [String],
+      default: [],
+    },
+    customerId: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+    adAccountId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    adAccountName: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    accessTokenEncrypted: {
+      type: String,
+      default: null,
+      select: false,
+    },
+    refreshTokenEncrypted: {
+      type: String,
+      default: null,
+      select: false,
     },
     encryptedCredentials: {
       type: String,
-      required: [true, 'Encrypted credentials string is required. Raw secrets are strictly prohibited.'],
-      trim: true,
+      default: null,
+      select: false,
+    },
+    tokenExpiresAt: {
+      type: Date,
+      default: null,
+    },
+    connectedAt: {
+      type: Date,
+      default: Date.now,
     },
     webhookUrl: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    webhookSecret: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    verifyToken: {
       type: String,
       default: null,
       trim: true,
@@ -45,7 +129,7 @@ const integrationSchema = new mongoose.Schema(
     },
     lastError: {
       type: String,
-      default: null,
+      default: '',
     },
     metadata: {
       type: mongoose.Schema.Types.Mixed,
@@ -59,9 +143,16 @@ const integrationSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    strict: false, // Ensures future dynamic provider fields do not fail upsert operations
   }
 );
 
+// Compound Indexes for fast multi-tenant queries
+integrationSchema.index({ companyId: 1, provider: 1 });
+integrationSchema.index({ userId: 1, provider: 1 });
 integrationSchema.index({ provider: 1, status: 1 });
+integrationSchema.index({ provider: 1, pageId: 1, status: 1 });
+integrationSchema.index({ provider: 1, accountId: 1, status: 1 });
+integrationSchema.index({ provider: 1, customerId: 1, status: 1 });
 
 module.exports = mongoose.models.Integration || mongoose.model('Integration', integrationSchema);
