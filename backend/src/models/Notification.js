@@ -11,6 +11,7 @@ const notificationSchema = new mongoose.Schema({
     default: 'follow_up',
   },
   isRead: { type: Boolean, default: false },
+  transferRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'LeadTransferRequest' },
 }, { timestamps: true });
 
 notificationSchema.index({ userId: 1, isRead: 1 });

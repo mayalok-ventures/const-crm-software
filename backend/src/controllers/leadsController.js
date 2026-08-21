@@ -69,7 +69,22 @@ exports.getLeads = async (req, res) => {
     if (status) query.status = status;
     if (tag) query.tags = tag;
     if (projectId) query.projectId = projectId;
-    if (assignedTo) query.assignedTo = assignedTo;
+    if (assignedTo) {
+      query.$and.push({
+        $or: [
+          { assignedTo: assignedTo },
+          { currentOwnerId: assignedTo }
+        ]
+      });
+    }
+    if (req.query.unclaimed === 'true') {
+      query.$and.push({
+        $or: [
+          { assignedTo: null },
+          { currentOwnerId: null }
+        ]
+      });
+    }
     if (search && search.trim()) {
       const safeSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       query.$and.push({

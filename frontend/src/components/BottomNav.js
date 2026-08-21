@@ -6,7 +6,8 @@ import Image from 'next/image';
 import { getUser } from '@/lib/auth';
 import {
   Home, FileText, Users, BarChart2, User, MessageCircle,
-  Package, Send, Zap, Shield, Crown, GraduationCap
+  Package, Send, Zap, Shield, Crown, GraduationCap,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import PlanStatusWidget from '@/components/PlanStatusWidget';
 
@@ -35,12 +36,42 @@ export default function BottomNav({ active }) {
   const router = useRouter();
   const pathname = usePathname();
   const [isAdminUser, setIsAdminUser] = useState(false);
+  const [isAgencyAdmin, setIsAgencyAdmin] = useState(false);
   const [isEducation, setIsEducation] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('sidebar-collapsed');
+      if (saved) setIsCollapsed(JSON.parse(saved));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      if (isCollapsed) {
+        document.body.classList.add('sidebar-collapsed');
+      } else {
+        document.body.classList.remove('sidebar-collapsed');
+      }
+    }
+  }, [isCollapsed]);
+
+  const toggleCollapse = () => {
+    const next = !isCollapsed;
+    setIsCollapsed(next);
+    try {
+      localStorage.setItem('sidebar-collapsed', JSON.stringify(next));
+    } catch {}
+  };
 
   useEffect(() => {
     const user = getUser();
     if (user && (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin || user.email === 'admin@crm.com')) {
       setIsAdminUser(true);
+    }
+    if (user && (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin || user.email === 'admin@crm.com' || user.companyRole === 'owner' || user.companyRole === 'manager' || user.workStatus === 'company_owner')) {
+      setIsAgencyAdmin(true);
     }
     if (String(user?.industryType || '').trim().toLowerCase() === 'education') {
       setIsEducation(true);
@@ -112,7 +143,7 @@ export default function BottomNav({ active }) {
       {/* Desktop Sidebar Navigation (Visible only on desktop screens >= 768px) */}
       <aside className="sidebar-nav hidden md:flex">
         {/* Brand Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, paddingLeft: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: isCollapsed ? 'center' : 'space-between', marginBottom: 20, paddingLeft: isCollapsed ? 0 : 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Image
               src="/logo.png"
@@ -122,19 +153,42 @@ export default function BottomNav({ active }) {
               style={{ borderRadius: 10, objectFit: 'contain', boxShadow: '0 4px 14px rgba(79, 70, 229, 0.3)' }}
               priority
             />
-            <div>
-              <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', display: 'block', lineHeight: 1.15 }}>
-                SalesCRM
-              </span>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>Universal Sales Engine</span>
-            </div>
+            {!isCollapsed && (
+              <div>
+                <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', display: 'block', lineHeight: 1.15 }}>
+                  SalesCRM
+                </span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>Universal Sales Engine</span>
+              </div>
+            )}
           </div>
+          {!isCollapsed && (
+            <button
+              onClick={toggleCollapse}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}
+              title="Collapse Sidebar"
+            >
+              <ChevronLeft size={18} />
+            </button>
+          )}
         </div>
 
+        {isCollapsed && (
+          <button
+            onClick={toggleCollapse}
+            style={{ display: 'flex', justifyContent: 'center', width: '100%', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '8px 0', marginBottom: 16 }}
+            title="Expand Sidebar"
+          >
+            <ChevronRight size={20} />
+          </button>
+        )}
+
         {/* Dynamic Plan / Upgrade Widget in Sidebar */}
-        <div style={{ marginBottom: 16, padding: '0 4px' }}>
-          <PlanStatusWidget style={{ width: '100%', justifyContent: 'center' }} />
-        </div>
+        {!isCollapsed && (
+          <div style={{ marginBottom: 16, padding: '0 4px' }}>
+            <PlanStatusWidget style={{ width: '100%', justifyContent: 'center' }} />
+          </div>
+        )}
 
         {/* Menu Navigation Links */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -148,10 +202,33 @@ export default function BottomNav({ active }) {
                 border: '1px solid rgba(245, 158, 11, 0.25)',
                 fontWeight: 700,
                 marginBottom: 6,
+                justifyContent: isCollapsed ? 'center' : 'flex-start',
+                padding: isCollapsed ? '10px 0' : '10px 14px'
               }}
+              title="Admin Panel"
             >
               <Crown size={18} color="#f59e0b" />
-              <span>Admin Panel</span>
+              {!isCollapsed && <span>Admin Panel</span>}
+            </Link>
+          )}
+
+          {isAgencyAdmin && (
+            <Link
+              href="/agency"
+              className={`sidebar-nav-link ${isLinkActive('agency', '/agency') ? 'active' : ''}`}
+              style={{
+                color: 'var(--accent)',
+                background: 'rgba(79, 70, 229, 0.08)',
+                border: '1px solid rgba(79, 70, 229, 0.15)',
+                fontWeight: 600,
+                marginBottom: 6,
+                justifyContent: isCollapsed ? 'center' : 'flex-start',
+                padding: isCollapsed ? '10px 0' : '10px 14px'
+              }}
+              title="Agency Control"
+            >
+              <Shield size={18} color="var(--accent)" />
+              {!isCollapsed && <span>Agency Control</span>}
             </Link>
           )}
 
@@ -162,46 +239,55 @@ export default function BottomNav({ active }) {
                 key={key}
                 href={href}
                 className={`sidebar-nav-link ${activeState ? 'active' : ''}`}
+                style={{
+                  justifyContent: isCollapsed ? 'center' : 'flex-start',
+                  padding: isCollapsed ? '10px 0' : '10px 14px'
+                }}
+                title={label}
               >
                 <Icon size={18} color={activeState ? 'var(--accent)' : 'currentColor'} />
-                <span>{label}</span>
+                {!isCollapsed && <span>{label}</span>}
               </Link>
             );
           })}
         </div>
 
         {/* Legal links in sidebar */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          padding: '8px 8px 4px',
-          fontSize: 11,
-          color: 'var(--text-muted)',
-          marginTop: 'auto'
-        }}>
-          <Link href="/privacy" style={{ color: 'var(--text-muted)', textDecoration: 'none', transition: 'color 0.15s' }} className="hover:text-white">
-            Privacy Policy
-          </Link>
-          <span>•</span>
-          <Link href="/terms" style={{ color: 'var(--text-muted)', textDecoration: 'none', transition: 'color 0.15s' }} className="hover:text-white">
-            Terms
-          </Link>
-        </div>
+        {!isCollapsed && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '8px 8px 4px',
+            fontSize: 11,
+            color: 'var(--text-muted)',
+            marginTop: 'auto'
+          }}>
+            <Link href="/privacy" style={{ color: 'var(--text-muted)', textDecoration: 'none', transition: 'color 0.15s' }} className="hover:text-white">
+              Privacy Policy
+            </Link>
+            <span>•</span>
+            <Link href="/terms" style={{ color: 'var(--text-muted)', textDecoration: 'none', transition: 'color 0.15s' }} className="hover:text-white">
+              Terms
+            </Link>
+          </div>
+        )}
 
         {/* Footer version badge */}
-        <div style={{
-          fontSize: 11,
-          color: 'var(--text-muted)',
-          padding: '8px 8px 0',
-          borderTop: '1px solid var(--border)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}>
-          <span>v2.2.0 • SaaS Edition</span>
-          <span style={{ fontSize: 9, background: 'rgba(16, 185, 129, 0.1)', color: 'var(--green)', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>PRO</span>
-        </div>
+        {!isCollapsed && (
+          <div style={{
+            fontSize: 11,
+            color: 'var(--text-muted)',
+            padding: '8px 8px 0',
+            borderTop: '1px solid var(--border)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+            <span>v2.2.0 • SaaS Edition</span>
+            <span style={{ fontSize: 9, background: 'rgba(16, 185, 129, 0.1)', color: 'var(--green)', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>PRO</span>
+          </div>
+        )}
       </aside>
     </>
   );

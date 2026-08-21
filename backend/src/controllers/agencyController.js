@@ -502,6 +502,7 @@ exports.requestTransfer = async (req, res) => {
       title: '🔄 Lead Transfer Request',
       message: `${req.user.name} wants to transfer lead ${lead.name} to you. Reason: ${reason}`,
       type: 'transfer_request',
+      transferRequestId: request._id,
     });
 
     await logActivity({
@@ -1020,4 +1021,62 @@ exports.getDashboard = async (req, res) => {
 // Hook trigger for split calculation on WON
 exports.triggerWonIncentiveCalculation = async (leadId, tenantId) => {
   return await calculateIncentives(leadId, tenantId);
+};
+
+exports.updateAgent = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+    const { roleId, managerId, employeeStatus } = req.body;
+
+    const agent = await User.findOne({ _id: agentId, companyId: req.tenantId });
+    if (!agent) {
+      return res.status(404).json({ message: 'Agent not found under this tenant' });
+    }
+
+    if (roleId !== undefined) {
+      if (roleId) {
+        const roleExists = await Role.findOne({ _id: roleId, tenantId: req.tenantId });
+        if (!roleExists) return res.status(400).json({ message: 'Invalid custom role' });
+        agent.roleId = roleId;
+      } else {
+        agent.roleId = null;
+      }
+    }
+
+    if (managerId !== undefined) {
+      if (managerId) {
+        const managerExists = await User.findOne({ _id: managerId, companyId: req.tenantId });
+        if (!managerExists) return res.status(400).json({ message: 'Invalid manager assignment' });
+        agent.managerId = managerId;
+      } else {
+        agent.managerId = null;
+      }
+    }
+
+    if (employeeStatus !== undefined) {
+      agent.employeeStatus = employeeStatus;
+      if (employeeStatus === 'terminated' || employeeStatus === 'inactive') {
+        agent.deactivatedAt = new Date();
+      } else {
+        agent.deactivatedAt = null;
+      }
+    }
+
+    await agent.save();
+
+    await logAudit({
+      actorId: req.user._id,
+      actorRole: req.user.role,
+      targetUserId: agent._id,
+      targetCompanyId: req.tenantId,
+      action: 'OWNER_CHANGED_ROLE',
+      beforeState: {},
+      afterState: agent.toObject(),
+      reason: `Updated agent configuration`,
+    });
+
+    res.json({ success: true, agent });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };

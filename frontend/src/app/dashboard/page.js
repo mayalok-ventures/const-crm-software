@@ -1263,6 +1263,7 @@ export default function DashboardPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [projectFilter, setProjectFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
+  const [ownerFilter, setOwnerFilter] = useState(''); // '' | 'unclaimed' | 'me'
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({});
   const [showAdd, setShowAdd] = useState(false);
@@ -1312,6 +1313,11 @@ export default function DashboardPage() {
       if (statusFilter) params.status = statusFilter;
       if (projectFilter) params.projectId = projectFilter;
       if (sourceFilter) params.source = sourceFilter;
+      if (ownerFilter === 'unclaimed') {
+        params.unclaimed = 'true';
+      } else if (ownerFilter === 'me' && user?._id) {
+        params.assignedTo = user._id;
+      }
       const { data } = await api.get('/leads', { params });
       setLeads(data.leads);
       setPagination(data.pagination);
@@ -1320,7 +1326,7 @@ export default function DashboardPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [search, statusFilter, projectFilter, sourceFilter, page]);
+  }, [search, statusFilter, projectFilter, sourceFilter, ownerFilter, page, user]);
 
   useEffect(() => {
     fetchLeads(false);
@@ -1593,6 +1599,17 @@ export default function DashboardPage() {
               />
               {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}><X size={16} /></button>}
             </div>
+
+            <select
+              value={ownerFilter}
+              onChange={e => { setOwnerFilter(e.target.value); setPage(1); }}
+              className="input"
+              style={{ flex: '1 1 140px', minWidth: 130, height: 42, fontSize: 12, borderRadius: 10 }}
+            >
+              <option value="">All Pipeline Leads</option>
+              <option value="me">Owned by Me</option>
+              <option value="unclaimed">Unclaimed Pool</option>
+            </select>
 
             <select
               value={sourceFilter}

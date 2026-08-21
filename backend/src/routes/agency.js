@@ -28,6 +28,11 @@ router.delete(
   requirePermission(PERMISSIONS.ROLE_DELETE),
   agencyController.deleteRole
 );
+router.patch(
+  '/agents/:agentId',
+  requirePermission(PERMISSIONS.ROLE_CREATE),
+  agencyController.updateAgent
+);
 
 // 2. Lead Claims
 router.post(

@@ -757,6 +757,76 @@ export default function LeadDetailPage() {
   const [currentUser, setCurrentUser] = useState(null);
   const [mobileTab, setMobileTab] = useState('details');
 
+  // Agency Control Systems State & Handlers
+  const [claiming, setClaiming] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [showForceTransferModal, setShowForceTransferModal] = useState(false);
+  const [agentsList, setAgentsList] = useState([]);
+  const [selectedAgentId, setSelectedAgentId] = useState('');
+  const [transferReason, setTransferReason] = useState('');
+
+  const loadCompanyAgents = async () => {
+    try {
+      const res = await api.get('/company/agents');
+      setAgentsList(res.data?.agents || []);
+    } catch {}
+  };
+
+  const handleClaimLead = async () => {
+    setClaiming(true);
+    try {
+      const res = await api.post(`/agency/leads/${id}/claim`);
+      toast.success(res.data?.message || 'Lead claimed successfully! 🎉');
+      const leadRes = await api.get(`/leads/${id}`);
+      setLead(leadRes.data);
+      setForm(leadRes.data);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to claim lead');
+    } finally {
+      setClaiming(false);
+    }
+  };
+
+  const handleRequestTransfer = async (e) => {
+    e.preventDefault();
+    if (!selectedAgentId) return toast.error('Please select recipient agent');
+    try {
+      await api.post(`/agency/leads/${id}/transfer-request`, {
+        requestedToUserId: selectedAgentId,
+        reason: transferReason
+      });
+      toast.success('Lead transfer request submitted successfully!');
+      setShowTransferModal(false);
+      setTransferReason('');
+      setSelectedAgentId('');
+      const leadRes = await api.get(`/leads/${id}`);
+      setLead(leadRes.data);
+      setForm(leadRes.data);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to request transfer');
+    }
+  };
+
+  const handleForceTransfer = async (e) => {
+    e.preventDefault();
+    if (!selectedAgentId) return toast.error('Please select target agent');
+    try {
+      await api.post(`/agency/leads/${id}/force-transfer`, {
+        targetUserId: selectedAgentId,
+        reason: transferReason
+      });
+      toast.success('Lead forcefully transferred successfully!');
+      setShowForceTransferModal(false);
+      setTransferReason('');
+      setSelectedAgentId('');
+      const leadRes = await api.get(`/leads/${id}`);
+      setLead(leadRes.data);
+      setForm(leadRes.data);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to force transfer lead');
+    }
+  };
+
   useEffect(() => {
     if (!leadId) {
       const resolved = getActualId();
@@ -989,6 +1059,148 @@ export default function LeadDetailPage() {
         </div>
 
         <div className="page-content">
+          {/* Agency Lead Ownership Actions Card */}
+          {lead && (
+            <div className="card" style={{ padding: 14, marginBottom: 14, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                <div>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block' }}>Lead Handling Ownership</span>
+                  <strong style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {lead.currentOwnerId ? (
+                      <>👤 Claimed by: <span style={{ color: 'var(--accent)' }}>{lead.assignedToName || 'Teammate'}</span></>
+                    ) : (
+                      <>📢 Unclaimed (Available in pool)</>
+                    )}
+                  </strong>
+                </div>
+
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {/* 1. Claim Lead (unclaimed) */}
+                  {(!lead.currentOwnerId || lead.ownershipStatus === 'unclaimed') && (
+                    <button
+                      onClick={handleClaimLead}
+                      disabled={claiming}
+                      className="btn btn-primary btn-sm"
+                      style={{ gap: 4 }}
+                    >
+                      🙋 {claiming ? 'Claiming...' : 'Claim Lead'}
+                    </button>
+                  )}
+
+                  {/* 2. Request Transfer (claimed by current user) */}
+                  {lead.currentOwnerId && String(lead.currentOwnerId._id || lead.currentOwnerId) === String(currentUser?._id) && (
+                    <button
+                      onClick={() => {
+                        loadCompanyAgents();
+                        setShowTransferModal(true);
+                      }}
+                      className="btn btn-secondary btn-sm"
+                      style={{ gap: 4 }}
+                    >
+                      🔄 Request Transfer
+                    </button>
+                  )}
+
+                  {/* 3. Force Transfer (Managers / Owners only) */}
+                  {(currentUser?.companyRole === 'owner' || currentUser?.workStatus === 'company_owner' || currentUser?.role === 'admin' || currentUser?.role === 'superadmin') && (
+                    <button
+                      onClick={() => {
+                        loadCompanyAgents();
+                        setShowForceTransferModal(true);
+                      }}
+                      className="btn btn-ghost btn-sm"
+                      style={{ gap: 4, color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)', background: 'rgba(245,158,11,0.06)' }}
+                    >
+                      ⚡ Force Transfer
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Transfer Lead Modal */}
+          {showTransferModal && (
+            <div className="modal-overlay" onClick={() => setShowTransferModal(false)}>
+              <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+                <h3 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700 }}>🔄 Request Lead Transfer</h3>
+                <form onSubmit={handleRequestTransfer} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Select Recipient Agent</label>
+                    <select
+                      value={selectedAgentId}
+                      onChange={e => setSelectedAgentId(e.target.value)}
+                      className="form-control"
+                      style={{ width: '100%' }}
+                      required
+                    >
+                      <option value="">-- Choose Agent --</option>
+                      {agentsList.filter(a => a._id !== currentUser?._id).map(a => (
+                        <option key={a._id} value={a._id}>{a.name} ({a.roleId?.name || 'Agent'})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Reason for Transfer</label>
+                    <textarea
+                      placeholder="e.g. Client requested representative in their local territory."
+                      value={transferReason}
+                      onChange={e => setTransferReason(e.target.value)}
+                      className="form-control"
+                      style={{ width: '100%', height: 75, resize: 'none' }}
+                      required
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                    <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }}>Send Transfer Request</button>
+                    <button type="button" onClick={() => setShowTransferModal(false)} className="btn btn-ghost">Cancel</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Force Transfer Modal */}
+          {showForceTransferModal && (
+            <div className="modal-overlay" onClick={() => setShowForceTransferModal(false)}>
+              <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+                <h3 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700, color: '#f59e0b' }}>⚡ Force Lead Transfer</h3>
+                <form onSubmit={handleForceTransfer} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Select Target Agent</label>
+                    <select
+                      value={selectedAgentId}
+                      onChange={e => setSelectedAgentId(e.target.value)}
+                      className="form-control"
+                      style={{ width: '100%' }}
+                      required
+                    >
+                      <option value="">-- Choose Agent --</option>
+                      {agentsList.map(a => (
+                        <option key={a._id} value={a._id}>{a.name} ({a.roleId?.name || 'Agent'})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Override Reason</label>
+                    <textarea
+                      placeholder="e.g. Reassigning lead based on workload or performance override."
+                      value={transferReason}
+                      onChange={e => setTransferReason(e.target.value)}
+                      className="form-control"
+                      style={{ width: '100%', height: 75, resize: 'none' }}
+                      required
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                    <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center', background: '#f59e0b', borderColor: '#f59e0b' }}>Force Transfer Now</button>
+                    <button type="button" onClick={() => setShowForceTransferModal(false)} className="btn btn-ghost">Cancel</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
           {/* Quick Action Top Bar */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14, width: '100%' }}>
             <a href={`tel:${lead.phone}`} className="btn btn-secondary btn-sm" style={{ flex: '1 1 130px', minWidth: 110, gap: 6, justifyContent: 'center', flexShrink: 0 }}>
