@@ -30,6 +30,10 @@
 /privacy/* /privacy/index.html 200
 /terms /terms/index.html 200
 /terms/* /terms/index.html 200
+/data-deletion /data-deletion/index.html 200
+/data-deletion/* /data-deletion/index.html 200
+/data-deletion-instructions /data-deletion/index.html 200
+/data-deletion-instructions/* /data-deletion/index.html 200
 /login /login/index.html 200
 /signup /signup/index.html 200
 /* /index.html 200
