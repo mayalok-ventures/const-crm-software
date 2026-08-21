@@ -342,10 +342,10 @@ exports.callback = async (req, res) => {
           console.warn(`[Meta OAuth] Forms fetch notice for Page ${pageId}:`, formErr.message);
         }
 
-        // 5c. Upsert Integration document keyed by Page ID
+        // 5c. Upsert Integration document keyed by Page ID (preventing collision on unique compound index)
         const pageQuery = stateData.companyId
-          ? { companyId: stateData.companyId, provider: 'meta', pageId }
-          : { userId: stateData.userId, provider: 'meta', pageId };
+          ? { companyId: stateData.companyId, provider: 'meta', accountId: pageId }
+          : { userId: stateData.userId, provider: 'meta', accountId: pageId };
 
         await Integration.findOneAndUpdate(
           pageQuery,
@@ -356,8 +356,8 @@ exports.callback = async (req, res) => {
               provider: 'meta',
               mode: 'client_managed',
               status: 'connected',
-              accountId: metaUser.id,
-              accountName: metaUser.name || 'Meta User Account',
+              accountId: pageId, // Set to actual Page ID to guarantee unique index compliance
+              accountName: pageName, // Set to Page Name
               pageId,
               pageName,
               formIds,
@@ -400,6 +400,10 @@ exports.callback = async (req, res) => {
             status: 'connected',
             accountId: metaUser.id,
             accountName: metaUser.name || 'Meta Ad Account',
+            pageId: null,
+            pageName: null,
+            formIds: [],
+            formNames: [],
             accessTokenEncrypted: encryptedUserToken,
             tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
             connectedAt: new Date(),
