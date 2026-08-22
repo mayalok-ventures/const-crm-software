@@ -1,75 +1,114 @@
 const mongoose = require('mongoose');
 
-const activityLogSchema = new mongoose.Schema({
-  actor: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'Actor ID is required'],
+const activityLogSchema = new mongoose.Schema(
+  {
+    actor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    actorRole: {
+      type: String,
+      enum: ['admin', 'superadmin', 'manager', 'agent', 'system', 'developer'],
+      default: 'admin',
+    },
+    action: {
+      type: String,
+      required: [true, 'Action is required'],
+    },
+    entityType: {
+      type: String,
+      default: 'General',
+    },
+    entityId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+    eventType: {
+      type: String,
+      trim: true,
+      index: true,
+    },
+    tenantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      index: true,
+    },
+    actorUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      index: true,
+    },
+    visibility: {
+      type: String,
+      enum: ['GLOBAL', 'TEAM', 'PRIVATE', 'SYSTEM'],
+      default: 'PRIVATE',
+      index: true,
+    },
+    target_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+    target_type: {
+      type: String,
+      default: null,
+    },
+    targetId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+    targetType: {
+      type: String,
+      default: null,
+    },
+    user_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    before_state: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    beforeState: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    after_state: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    afterState: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    metadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    ipAddress: {
+      type: String,
+      default: '127.0.0.1',
+      trim: true,
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now,
+      immutable: true,
+    },
   },
-  actorRole: {
-    type: String,
-    enum: ['admin', 'superadmin', 'manager', 'agent', 'system'],
-    default: 'admin',
-    required: true,
-  },
-  action: {
-    type: String,
-    enum: ['CREATE', 'UPDATE', 'DELETE', 'ASSIGN', 'STATUS_CHANGE'],
-    required: [true, 'Action enum is required'],
-  },
-  entityType: {
-    type: String,
-    enum: ['User', 'Lead', 'Pipeline', 'Form', 'DistributionRule'],
-    required: [true, 'Entity type is required'],
-  },
-  entityId: {
-    type: mongoose.Schema.Types.ObjectId,
-    required: [true, 'Entity ID is required'],
-  },
-  metadata: {
-    oldValue: { type: mongoose.Schema.Types.Mixed, default: null },
-    newValue: { type: mongoose.Schema.Types.Mixed, default: null },
-    details: { type: String, default: '' },
-  },
-  ipAddress: {
-    type: String,
-    default: '127.0.0.1',
-    trim: true,
-  },
-  timestamp: {
-    type: Date,
-    default: Date.now,
-    immutable: true,
-  },
-<<<<<<< HEAD
-  eventType: {
-    type: String,
-    trim: true,
-    index: true,
-  },
-  tenantId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    default: null,
-    index: true,
-  },
-  actorUserId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    default: null,
-    index: true,
-  },
-  visibility: {
-    type: String,
-    enum: ['GLOBAL', 'TEAM', 'PRIVATE', 'SYSTEM'],
-    default: 'PRIVATE',
-    index: true,
-  },
-  metadata: {
-    type: mongoose.Schema.Types.Mixed,
-    default: {},
-  },
-}, { timestamps: true });
+  {
+    timestamps: true,
+    strict: false,
+  }
+);
 
 activityLogSchema.pre('save', function (next) {
   if (this.user_id && !this.userId) this.userId = this.user_id;
@@ -82,52 +121,28 @@ activityLogSchema.pre('save', function (next) {
   if (this.beforeState !== undefined && this.before_state === undefined) this.before_state = this.beforeState;
   if (this.after_state !== undefined && this.afterState === undefined) this.afterState = this.after_state;
   if (this.afterState !== undefined && this.after_state === undefined) this.after_state = this.afterState;
+  if (this.actor && !this.actorUserId) this.actorUserId = this.actor;
+  if (this.actorUserId && !this.actor) this.actor = this.actorUserId;
   next();
 });
 
-activityLogSchema.index({ target_id: 1, createdAt: -1 });
-activityLogSchema.index({ user_id: 1, createdAt: -1 });
-activityLogSchema.index({ action: 1 });
-activityLogSchema.index({ tenantId: 1, createdAt: -1 });
-activityLogSchema.index({ tenantId: 1, eventType: 1, createdAt: -1 });
-activityLogSchema.index({ tenantId: 1, visibility: 1, createdAt: -1 });
-=======
-}, {
-  timestamps: true,
-  strict: true,
-});
-
 // ─────────────────────────────────────────────────────────────
-// APPEND-ONLY ENFORCEMENT: Block any Mutation or Deletion
-// ─────────────────────────────────────────────────────────────
-const blockMutation = function (next) {
-  const err = new Error('ActivityLog is an APPEND-ONLY immutable audit trail. Modifications and deletions are strictly prohibited.');
-  err.status = 403;
-  next(err);
-};
-
-activityLogSchema.pre('updateOne', blockMutation);
-activityLogSchema.pre('updateMany', blockMutation);
-activityLogSchema.pre('findOneAndUpdate', blockMutation);
-activityLogSchema.pre('findByIdAndUpdate', blockMutation);
-activityLogSchema.pre('deleteOne', blockMutation);
-activityLogSchema.pre('deleteMany', blockMutation);
-activityLogSchema.pre('findOneAndDelete', blockMutation);
-activityLogSchema.pre('findByIdAndDelete', blockMutation);
-
-// ─────────────────────────────────────────────────────────────
-// STATIC HELPER: Standardized 1-Line Audit Logger
+// STATIC HELPER: Standardized Audit Logger
 // ─────────────────────────────────────────────────────────────
 activityLogSchema.statics.record = async function ({
   actor,
   actorRole = 'admin',
   action,
-  entityType,
-  entityId,
+  entityType = 'General',
+  entityId = null,
   oldValue = null,
   newValue = null,
   details = '',
   ipAddress = '127.0.0.1',
+  tenantId = null,
+  eventType = null,
+  visibility = 'PRIVATE',
+  metadata = {},
 }) {
   try {
     return await this.create({
@@ -136,8 +151,11 @@ activityLogSchema.statics.record = async function ({
       action,
       entityType,
       entityId,
-      metadata: { oldValue, newValue, details },
+      metadata: { ...metadata, oldValue, newValue, details },
       ipAddress,
+      tenantId,
+      eventType: eventType || action,
+      visibility,
       timestamp: new Date(),
     });
   } catch (err) {
@@ -150,7 +168,11 @@ activityLogSchema.statics.record = async function ({
 activityLogSchema.index({ entityType: 1, entityId: 1, createdAt: -1 });
 activityLogSchema.index({ actor: 1, createdAt: -1 });
 activityLogSchema.index({ action: 1, createdAt: -1 });
+activityLogSchema.index({ tenantId: 1, createdAt: -1 });
+activityLogSchema.index({ tenantId: 1, eventType: 1, createdAt: -1 });
+activityLogSchema.index({ tenantId: 1, visibility: 1, createdAt: -1 });
+activityLogSchema.index({ target_id: 1, createdAt: -1 });
+activityLogSchema.index({ user_id: 1, createdAt: -1 });
 activityLogSchema.index({ timestamp: -1 });
->>>>>>> main
 
 module.exports = mongoose.models.ActivityLog || mongoose.model('ActivityLog', activityLogSchema);
