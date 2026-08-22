@@ -20,27 +20,32 @@ exports.verify = async (req, res) => {
     const token = String(req.query['hub.verify_token'] || '').trim();
     const challenge = req.query['hub.challenge'];
 
+    console.log('\n[Meta Webhook Verification Request Received]');
+    console.log('Query Params:', JSON.stringify(req.query, null, 2));
+
     // Dynamic resolution of verify token from environment (supports both standard naming conventions)
     const expectedToken = (
-      process.env.META_VERIFY_TOKEN ||
       process.env.META_WEBHOOK_VERIFY_TOKEN ||
+      process.env.META_VERIFY_TOKEN ||
       'crm_meta_webhook_secret_2026'
     ).trim();
 
-    if (mode === 'subscribe' && token === expectedToken) {
-      // Must return raw challenge with status 200 to complete Meta verification
-      return res.status(200).send(challenge);
+    if (mode === 'subscribe' && token === expectedToken && challenge) {
+      console.log('✅ Webhook Verification PASSED! Returning challenge:', challenge);
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      return res.status(200).send(String(challenge));
     }
 
-    console.warn('[Meta Webhook] Verification rejected: token or mode mismatch', {
+    console.warn('❌ [Meta Webhook Verification FAILED] Mismatch detected:', {
       receivedMode: mode,
       receivedToken: token ? `${token.slice(0, 4)}***` : 'EMPTY',
       expectedToken: `${expectedToken.slice(0, 4)}***`,
+      hasChallenge: !!challenge,
     });
-    return res.sendStatus(403);
+    return res.status(403).send('Verification token mismatch');
   } catch (error) {
-    console.error('[Meta Webhook] Verify error:', error.message);
-    return res.sendStatus(500);
+    console.error('❌ [Meta Webhook Verify Error]:', error.message);
+    return res.status(500).send('Internal Server Error');
   }
 };
 
