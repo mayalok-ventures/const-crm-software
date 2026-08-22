@@ -69,7 +69,22 @@ exports.getLeads = async (req, res) => {
     if (status) query.status = status;
     if (tag) query.tags = tag;
     if (projectId) query.projectId = projectId;
-    if (assignedTo) query.assignedTo = assignedTo;
+    if (assignedTo) {
+      query.$and.push({
+        $or: [
+          { assignedTo: assignedTo },
+          { currentOwnerId: assignedTo }
+        ]
+      });
+    }
+    if (req.query.unclaimed === 'true') {
+      query.$and.push({
+        $or: [
+          { assignedTo: null },
+          { currentOwnerId: null }
+        ]
+      });
+    }
     if (search && search.trim()) {
       const safeSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       query.$and.push({
@@ -789,6 +804,10 @@ exports.updateLead = async (req, res) => {
           verified_at: new Date(),
         }).catch(err => console.warn('[Payment] Manual payment record warning:', err.message));
       }
+
+      // Trigger split incentive calculation dynamically on WON status conversion
+      const { triggerWonIncentiveCalculation } = require('./agencyController');
+      triggerWonIncentiveCalculation(lead._id, lead.companyId).catch(err => console.error('[Incentive Calculation Hook Error]:', err.message));
     }
 
     // Enforce Mandatory Postpone Remark when delaying/postponing an existing follow-up

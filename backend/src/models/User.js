@@ -221,6 +221,34 @@ const userSchema = new mongoose.Schema({
 
   shareToken: { type: String, default: null },
   shareTokenEnabled: { type: Boolean, default: false },
+
+  // Agency & Team Management Fields
+  roleId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Role',
+    default: null,
+    index: true,
+  },
+  managerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+    index: true,
+  },
+  employeeStatus: {
+    type: String,
+    enum: ['active', 'inactive', 'terminated', 'suspended'],
+    default: 'active',
+    index: true,
+  },
+  joinedAt: {
+    type: Date,
+    default: Date.now,
+  },
+  deactivatedAt: {
+    type: Date,
+    default: null,
+  },
 }, { timestamps: true });
 
 // Validate at least one of email or phone

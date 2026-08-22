@@ -33,25 +33,9 @@ const auditLogSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
-    // Action Identifier
     action: {
       type: String,
       required: true,
-      enum: [
-        'SUPERADMIN_SUBSCRIPTION_OVERRIDE',
-        'SUPERADMIN_LIFETIME_GRANT',
-        'SUPERADMIN_EXPORT_GATE_BYPASS',
-        'SUPERADMIN_MANUAL_COUPON',
-        'FRAUD_IMPORT_VELOCITY_TRIGGERED',
-        'FRAUD_EXPORT_GATE_PREVENTED',
-        'FRAUD_WA_FINGERPRINT_BANNED',
-        'SUBSCRIPTION_PRORATION_APPLIED',
-        'SUBSCRIPTION_DOWNGRADE_SCHEDULED',
-        'SUBSCRIPTION_RENEWAL_FAILED',
-        'SUBSCRIPTION_LOCKED',
-        'SUBSCRIPTION_ARCHIVED',
-        'ACCOUNT_TYPE_MIGRATION',
-      ],
       index: true,
     },
     // State snapshots for non-repudiation

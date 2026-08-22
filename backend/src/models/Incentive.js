@@ -62,6 +62,39 @@ const incentiveSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Lead',
   }],
+  tenantId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+    index: true,
+  },
+  status: {
+    type: String,
+    enum: ['PENDING', 'APPROVED', 'REJECTED', 'PAID', 'CANCELLED'],
+    default: 'PENDING',
+    index: true,
+  },
+  policySnapshot: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null,
+  },
+  modificationHistory: [{
+    modifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    modifiedAt: { type: Date, default: Date.now },
+    oldValue: { type: Number },
+    newValue: { type: Number },
+    reason: { type: String, required: true },
+  }],
+  leadId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Lead',
+    default: null,
+    index: true,
+  },
+  incentiveVersion: {
+    type: Number,
+    default: 1,
+  },
 }, { timestamps: true });
 
 incentiveSchema.pre('save', function (next) {
@@ -75,9 +108,18 @@ incentiveSchema.pre('save', function (next) {
   if (this.incentiveAmount !== undefined && this.incentive_amount === undefined) this.incentive_amount = this.incentiveAmount;
   if (this.deals_count !== undefined && this.dealsCount === undefined) this.dealsCount = this.deals_count;
   if (this.dealsCount !== undefined && this.deals_count === undefined) this.deals_count = this.dealsCount;
+  
+  // Backward compatibility check for leadId & lead_ids
+  if (this.leadId && (!this.lead_ids || this.lead_ids.length === 0)) {
+    this.lead_ids = [this.leadId];
+  } else if (this.lead_ids && this.lead_ids.length > 0 && !this.leadId) {
+    this.leadId = this.lead_ids[0];
+  }
+  
   next();
 });
 
 incentiveSchema.index({ agent_id: 1, createdAt: -1 });
+incentiveSchema.index({ tenantId: 1, leadId: 1, incentiveVersion: 1, agent_id: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.models.Incentive || mongoose.model('Incentive', incentiveSchema);

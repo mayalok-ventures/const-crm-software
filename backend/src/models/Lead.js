@@ -294,6 +294,22 @@ const leadSchema = new mongoose.Schema({
     default: '',
     trim: true,
   },
+  currentOwnerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+    index: true,
+  },
+  claimedAt: {
+    type: Date,
+    default: null,
+  },
+  ownershipStatus: {
+    type: String,
+    enum: ['unclaimed', 'claimed', 'assigned', 'transferred', 'released'],
+    default: 'unclaimed',
+    index: true,
+  },
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
