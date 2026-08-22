@@ -33,6 +33,32 @@ export default function LoginPage() {
     return '';
   });
 
+  const handleWipeLocalBrowserStorage = async () => {
+    if (!confirm('This will wipe all local CRM cookies, localStorage, and cached data from this browser. Proceed?')) return;
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
+      if (window.indexedDB && window.indexedDB.databases) {
+        const dbs = await window.indexedDB.databases();
+        dbs.forEach((db) => {
+          if (db.name) window.indexedDB.deleteDatabase(db.name);
+        });
+      }
+      toast.success('All local browser storage wiped clean! 🧹');
+      setTimeout(() => {
+        window.location.href = '/login';
+      }, 500);
+    } catch (e) {
+      console.error('Storage clear error:', e);
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = '/login';
+    }
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     if (!identifier || !password) return toast.error('Please fill all fields');
@@ -228,6 +254,26 @@ export default function LoginPage() {
               <Link href="/signup" style={{ color: 'var(--accent)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
                 Create Agency Account
               </Link>
+            </div>
+
+            <div style={{ textAlign: 'center', marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+              <button
+                type="button"
+                onClick={handleWipeLocalBrowserStorage}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#94a3b8',
+                  fontSize: 11,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <span>🧹 Reset / Wipe Local Browser Storage</span>
+              </button>
             </div>
           </form>
         ) : (

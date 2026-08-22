@@ -136,35 +136,8 @@ const connectDB = async () => {
 };
 
 const seedAdminUser = async () => {
-  const User = require('../models/User');
-  const adminEmail = 'admin@crm.com';
-  const adminExists = await User.findOne({ email: adminEmail });
-  if (!adminExists) {
-    console.log('Seeding Super Admin user...');
-    const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@123';
-    await User.create({
-      name: 'Super Admin',
-      email: adminEmail,
-      password: adminPassword,
-      username: 'ADMIN77',
-      isAdmin: true,
-      role: 'superadmin',
-      plan: 'pro',
-      twoFactorEnabled: false,
-      twoFactorSecret: null,
-      twoFactorRecoveryCodes: [],
-    });
-    console.log('Super Admin user seeded successfully!');
-  } else {
-    // Explicitly reset 2FA on admin user as requested
-    adminExists.twoFactorEnabled = false;
-    adminExists.twoFactorSecret = null;
-    adminExists.twoFactorRecoveryCodes = [];
-    adminExists.twoFactorOtp = null;
-    adminExists.twoFactorOtpExpires = null;
-    await adminExists.save();
-    console.log('🔒 Super Admin 2FA explicitly cleared for direct password login.');
-  }
+  const { seedSuperAdmin } = require('../utils/seedSuperAdmin');
+  await seedSuperAdmin();
 };
 
 module.exports = connectDB;

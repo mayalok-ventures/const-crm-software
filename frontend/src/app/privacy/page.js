@@ -435,6 +435,10 @@ export default function PrivacyPolicyPage() {
             <Link href="/terms" className="text-slate-400 hover:text-slate-200">
               Terms of Service
             </Link>
+            <span>•</span>
+            <Link href="/data-deletion" className="text-slate-400 hover:text-slate-200">
+              Data Deletion Instructions
+            </Link>
           </div>
           <p>© {new Date().getFullYear()} CoreSetu Technologies. All rights reserved.</p>
         </div>

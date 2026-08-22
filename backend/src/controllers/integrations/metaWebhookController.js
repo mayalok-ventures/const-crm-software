@@ -48,32 +48,43 @@ exports.verify = async (req, res) => {
  * POST /api/integrations/meta/webhook
  */
 exports.receive = async (req, res) => {
+  console.log('\n================== [META WEBHOOK RECEIVED DEBUG] ==================');
+  console.log('[DEBUG 1] Headers:', JSON.stringify(req.headers, null, 2));
+  console.log('[DEBUG 1] Signature Header:', req.headers['x-hub-signature-256']);
+  console.log('[DEBUG 1] Body Object:', JSON.stringify(req.body, null, 2));
+
   try {
     // 1. Signature Verification
     if (!verifySignature(req)) {
-      console.warn('Invalid Meta webhook signature');
+      console.warn('❌ [DEBUG WARN] Invalid Meta webhook signature verification failed');
       return res.sendStatus(401);
     }
 
     const body = req.body;
 
     // 2. Immediate 200 OK acknowledgment to prevent Meta retry storms
+    console.log('[DEBUG 2] Acknowledging 200 OK to Meta instantly');
     res.status(200).json({ success: true });
 
     // 3. Asynchronous processing
     setImmediate(async () => {
       try {
         if (body?.object !== 'page') {
+          console.log(`[DEBUG 3] Object is not "page" (got "${body?.object}"), skipping.`);
           return;
         }
 
         for (const entry of body.entry || []) {
+          console.log(`[DEBUG 3] Processing entry id: ${entry.id}, time: ${entry.time}`);
           for (const change of entry.changes || []) {
             if (change.field !== 'leadgen') {
+              console.log(`[DEBUG 3] Change field is "${change.field}" (not "leadgen"), skipping.`);
               continue;
             }
 
             const value = change.value || {};
+            console.log('[DEBUG 4] Found leadgen change payload value:', JSON.stringify(value, null, 2));
+
             await handleLead({
               pageId: value.page_id || entry.id,
               formId: value.form_id,
@@ -85,12 +96,16 @@ exports.receive = async (req, res) => {
             });
           }
         }
+        console.log('================== [META WEBHOOK PROCESSING COMPLETE] ==================\n');
       } catch (error) {
-        console.error('Meta async webhook processing error:', error.message);
+        console.error('\n❌ [CRITICAL ASYNC WEBHOOK ERROR]:', {
+          message: error.message,
+          stack: error.stack,
+        });
       }
     });
   } catch (error) {
-    console.error('Meta webhook error:', error.message);
+    console.error('❌ [META WEBHOOK SYNC ERROR]:', error.message, error.stack);
     return res.sendStatus(500);
   }
 };
@@ -101,14 +116,17 @@ function verifySignature(req) {
   // If no signature is provided and secret is strictly configured in production, reject
   if (!signature) {
     if (process.env.NODE_ENV === 'production') {
+      console.warn('[DEBUG SIGNATURE] No signature provided in production environment');
       return false;
     }
     // Allow local test simulations without signature in development/test
+    console.log('[DEBUG SIGNATURE] No signature provided, allowed in non-production mode');
     return true;
   }
 
   const [algorithm, hash] = signature.split('=');
   if (algorithm !== 'sha256' || !hash) {
+    console.warn('[DEBUG SIGNATURE] Algorithm mismatch or malformed signature:', signature);
     return false;
   }
 
@@ -127,11 +145,15 @@ function verifySignature(req) {
     const expectedBuf = Buffer.from(expected, 'hex');
 
     if (hashBuf.length !== expectedBuf.length) {
+      console.warn('[DEBUG SIGNATURE] Signature buffer length mismatch');
       return false;
     }
 
-    return crypto.timingSafeEqual(hashBuf, expectedBuf);
-  } catch {
+    const isValid = crypto.timingSafeEqual(hashBuf, expectedBuf);
+    console.log('[DEBUG SIGNATURE] Signature verification result:', isValid ? 'VALID ✅' : 'INVALID ❌');
+    return isValid;
+  } catch (e) {
+    console.error('[DEBUG SIGNATURE ERROR]:', e.message);
     return false;
   }
 }
@@ -146,74 +168,125 @@ async function handleLead({
   createdTime,
 }) {
   if (!leadgenId) {
+    console.warn('[DEBUG HANDLE_LEAD] Received change event without leadgen_id, skipping.');
     return;
   }
 
-  // Find active integration for this Meta page or form
-  const integration = await Integration.findOne({
+  console.log(`\n---> [DEBUG HANDLE_LEAD START] leadgenId: "${leadgenId}", pageId: "${pageId}", formId: "${formId}"`);
+
+  // Find active integration for this Meta page, form, or connected account
+  const integrationQuery = {
     provider: 'meta',
     $or: [
       { pageId: String(pageId) },
+      { accountId: String(pageId) },
       { formIds: String(formId) },
-      { accountId: { $exists: true } },
+      { accountId: { $exists: true, $ne: null } },
     ],
     status: 'connected',
-  }).select('+accessTokenEncrypted');
+  };
+
+  console.log('[DEBUG HANDLE_LEAD] Querying MongoDB Integration with:', JSON.stringify(integrationQuery, null, 2));
+
+  const integration = await Integration.findOne(integrationQuery).select('+accessTokenEncrypted');
 
   if (!integration) {
-    console.warn(`No active connected integration found for Meta page ${pageId}`);
+    console.warn(`❌ [DEBUG HANDLE_LEAD ERROR] No active connected integration found in MongoDB for pageId: "${pageId}", formId: "${formId}"`);
     return;
   }
+
+  console.log('[DEBUG HANDLE_LEAD] Found Integration document in DB:', {
+    _id: integration._id,
+    provider: integration.provider,
+    pageId: integration.pageId,
+    accountId: integration.accountId,
+    accountName: integration.accountName,
+    companyId: integration.companyId,
+    userId: integration.userId,
+    status: integration.status,
+    hasAccessToken: !!integration.accessTokenEncrypted,
+  });
 
   let accessToken = null;
   if (integration.accessTokenEncrypted) {
     try {
       accessToken = decrypt(integration.accessTokenEncrypted);
+      console.log('[DEBUG HANDLE_LEAD] Successfully decrypted access token:', `${accessToken.slice(0, 15)}...`);
     } catch (e) {
-      console.error('Failed to decrypt Meta access token:', e.message);
+      console.error(`❌ [DEBUG HANDLE_LEAD ERROR] Failed to decrypt access token for integration ${integration._id}:`, e.message);
     }
+  }
+
+  if (!accessToken && !String(leadgenId).startsWith('meta_test_')) {
+    console.error(`❌ [DEBUG HANDLE_LEAD ERROR] Integration ${integration._id} has no valid decrypted access token for leadgenId ${leadgenId}`);
+    return;
   }
 
   // Fetch lead details from Meta Graph API (or parse simulated payload)
   let leadData;
   if (String(leadgenId).startsWith('meta_test_') || !accessToken) {
+    console.log('[DEBUG HANDLE_LEAD] Using simulated test payload for meta_test leadgen ID');
     leadData = {
-      name: 'Meta Ads Lead',
+      name: 'Meta Ads Test Lead',
       phone: '919876543210',
       email: 'meta.lead@ad-response.com',
-      campaignName: 'Meta Campaign',
+      campaignName: 'Meta Test Campaign',
       formName: 'Instant Lead Form',
       customData: {},
     };
   } else {
     try {
+      console.log(`[DEBUG HANDLE_LEAD] Fetching lead details from Meta Graph API for leadgenId: ${leadgenId}...`);
       leadData = await fetchMetaLead(leadgenId, accessToken);
+      console.log('[DEBUG HANDLE_LEAD] Successfully fetched and parsed lead data from Meta:', JSON.stringify(leadData, null, 2));
     } catch (error) {
-      console.error(`Error fetching Meta leadgen ${leadgenId}:`, error.message);
+      console.error(`\n❌❌❌ [DEBUG HANDLE_LEAD GRAPH API ERROR] ❌❌❌`);
+      console.error('Leadgen ID:', leadgenId);
+      console.error('Status:', error.response?.status);
+      console.error('Status Text:', error.response?.statusText);
+      console.error('Response Data:', JSON.stringify(error.response?.data || {}, null, 2));
+      console.error('Error Message:', error.message);
+      console.error('Stack Trace:\n', error.stack);
+      console.error('=====================================================\n');
       return;
     }
   }
 
-  await leadIngestionService.ingest({
-    provider: 'meta',
-    integrationId: integration._id,
-    externalLeadId: String(leadgenId),
-    accountId: integration.accountId,
-    pageId: pageId || integration.pageId,
-    formId: formId || null,
-    formName: leadData.formName || '',
-    adId: adId || leadData.adId || null,
-    adName: leadData.adName || '',
-    adSetId: adsetId || leadData.adSetId || null,
-    adSetName: leadData.adSetName || '',
-    campaignId: campaignId || leadData.campaignId || null,
-    campaignName: leadData.campaignName || '',
-    name: leadData.name,
-    phone: leadData.phone,
-    email: leadData.email,
-    customData: leadData.customData || {},
-    createdAt: createdTime ? new Date(createdTime * 1000) : new Date(),
-  });
+  try {
+    const ingestPayload = {
+      provider: 'meta',
+      integrationId: integration._id,
+      externalLeadId: String(leadgenId),
+      accountId: integration.accountId,
+      pageId: pageId || integration.pageId,
+      formId: formId || null,
+      formName: leadData.formName || '',
+      adId: adId || leadData.adId || null,
+      adName: leadData.adName || '',
+      adSetId: adsetId || leadData.adSetId || null,
+      adSetName: leadData.adSetName || '',
+      campaignId: campaignId || leadData.campaignId || null,
+      campaignName: leadData.campaignName || '',
+      name: leadData.name,
+      phone: leadData.phone,
+      email: leadData.email,
+      customData: leadData.customData || {},
+      createdAt: createdTime ? new Date(createdTime * 1000) : new Date(),
+    };
+
+    console.log('[DEBUG HANDLE_LEAD] Calling leadIngestionService.ingest() with payload:', JSON.stringify(ingestPayload, null, 2));
+
+    const ingestResult = await leadIngestionService.ingest(ingestPayload);
+
+    console.log(`\n✅✅✅ [DEBUG HANDLE_LEAD INGESTION SUCCESS] ✅✅✅`);
+    console.log('Ingestion Result:', JSON.stringify(ingestResult, null, 2));
+    console.log('===================================================\n');
+  } catch (ingestError) {
+    console.error(`\n❌❌❌ [DEBUG HANDLE_LEAD INGESTION ERROR] ❌❌❌`);
+    console.error('Failed to ingest lead into CRM database:', ingestError.message);
+    console.error('Ingest Error Stack:\n', ingestError.stack);
+    console.error('===================================================\n');
+  }
 }
 
 async function fetchMetaLead(leadgenId, accessToken) {
@@ -233,6 +306,7 @@ async function fetchMetaLead(leadgenId, accessToken) {
   ].join(',');
 
   const url = `https://graph.facebook.com/${version}/${leadgenId}`;
+  console.log(`[DEBUG fetchMetaLead] GET Request URL: ${url}`);
   const response = await axios.get(url, {
     params: {
       fields,
@@ -242,24 +316,53 @@ async function fetchMetaLead(leadgenId, accessToken) {
   });
 
   const data = response.data;
+  console.log('[DEBUG fetchMetaLead] Raw Graph API Response:', JSON.stringify(data, null, 2));
+
   const fieldsMap = {};
 
+  // Case-insensitive normalization: Convert all field names to lowercased trimmed strings
   for (const field of data.field_data || []) {
-    fieldsMap[field.name] = field.values?.[0] || '';
+    const rawKey = String(field.name || '').trim().toLowerCase();
+    const val = field.values?.[0] || '';
+    fieldsMap[rawKey] = val;
+  }
+
+  // Extract Name with multi-field fallback (supporting full_name, name, first_name + last_name)
+  let extractedName =
+    fieldsMap.full_name ||
+    fieldsMap.name ||
+    (fieldsMap.first_name ? `${fieldsMap.first_name} ${fieldsMap.last_name || ''}`.trim() : '') ||
+    fieldsMap.firstname ||
+    fieldsMap['your name'] ||
+    fieldsMap['contact name'] ||
+    '';
+
+  // Extract Phone with multi-field fallback
+  const extractedPhone =
+    fieldsMap.phone_number ||
+    fieldsMap.phone ||
+    fieldsMap.mobile ||
+    fieldsMap.mobile_number ||
+    fieldsMap['phone number'] ||
+    fieldsMap['contact number'] ||
+    '';
+
+  // Extract Email with multi-field fallback
+  const extractedEmail =
+    fieldsMap.email ||
+    fieldsMap['e-mail'] ||
+    fieldsMap['email address'] ||
+    '';
+
+  // Fallback Name if missing but phone or email is available
+  if (!extractedName && (extractedPhone || extractedEmail)) {
+    extractedName = 'Meta Lead (No Name Provided)';
   }
 
   return {
-    name:
-      fieldsMap.full_name ||
-      fieldsMap.name ||
-      fieldsMap.first_name ||
-      '',
-    phone:
-      fieldsMap.phone_number ||
-      fieldsMap.phone ||
-      fieldsMap.mobile ||
-      '',
-    email: fieldsMap.email || '',
+    name: extractedName,
+    phone: extractedPhone,
+    email: extractedEmail,
     campaignId: data.campaign_id || null,
     campaignName: data.campaign_name || '',
     adSetId: data.adset_id || null,

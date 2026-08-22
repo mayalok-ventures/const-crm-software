@@ -16,6 +16,7 @@ out/
 
 # Archive and test artifacts
 *.tar.gz
+*.bundle
 playwright-report/
 test-results/
 scratch/

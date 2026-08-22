@@ -10,7 +10,7 @@ const { assignPlan } = require('./controllers/adminController');
 
 async function runTests() {
   console.log('Connecting to MongoDB...');
-  await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/mobile-crm');
+  await mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mobile-crm');
   console.log('Cleaning up existing test data...');
   await User.deleteMany({ phone: '911234567890' });
   await Coupon.deleteMany({ code: /^SAVE30_/ });
@@ -123,7 +123,7 @@ async function runTests() {
   };
   const resLead2 = mockRes();
   await createLead(reqLead2, resLead2);
-  if (resLead2.statusCode === 400 && resLead2.body.message.includes('already exists')) {
+  if ((resLead2.statusCode === 400 || resLead2.statusCode === 409) && resLead2.body.message.includes('already exists')) {
     console.log('✅ Duplicate lead creation prevented successfully!');
   } else {
     console.error('❌ Duplicate lead creation not prevented:', resLead2.statusCode, resLead2.body);

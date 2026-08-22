@@ -3,12 +3,12 @@ const axios = require('axios');
 const Integration = require('../../models/Integration');
 const { encrypt } = require('../../utils/encryption');
 
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v20.0';
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v23.0';
 const META_APP_ID = process.env.META_APP_ID;
 const META_APP_SECRET = process.env.META_APP_SECRET;
 const META_REDIRECT_URI =
   process.env.META_REDIRECT_URI ||
-  'http://localhost:5000/api/integrations/meta/oauth/callback';
+  'https://api.coresetu.com/api/integrations/meta/oauth/callback';
 
 const META_SCOPES = [
   'pages_show_list',
@@ -193,40 +193,41 @@ exports.startOAuth = async (req, res) => {
  * GET /api/integrations/meta/oauth/callback
  */
 exports.callback = async (req, res) => {
-  let resolvedFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  let resolvedFrontendUrl = process.env.FRONTEND_URL || 'https://crm.coresetu.com';
+  console.log('\n================== [META OAUTH CALLBACK DEBUG START] ==================');
+  console.log('[DEBUG 1] Incoming Query Params:', JSON.stringify(req.query, null, 2));
+  console.log('[DEBUG 1] META_REDIRECT_URI Configured:', META_REDIRECT_URI);
+  console.log('[DEBUG 1] META_APP_ID Configured:', META_APP_ID);
+
   try {
     const { code, state, error, error_description } = req.query;
 
     if (state) {
       const stateData = verifyOAuthState(state);
+      console.log('[DEBUG 2] Verified State Data:', JSON.stringify(stateData, null, 2));
       if (stateData && stateData.frontendUrl) {
         resolvedFrontendUrl = stateData.frontendUrl;
       }
     }
 
     if (error) {
-      console.warn('Meta OAuth denied by user:', error_description || error);
-      return res.redirect(`${resolvedFrontendUrl}/integrations?meta=error&message=${encodeURIComponent(error_description || 'Authorization denied')}`);
+      console.warn('❌ [DEBUG ERROR] Meta OAuth denied by user:', error_description || error);
+      return res.redirect(`${resolvedFrontendUrl}/dashboard?integration=meta_error&message=${encodeURIComponent(error_description || 'Authorization denied')}`);
     }
 
     if (!code || !state) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing OAuth authorization code or state',
-        code: 'INVALID_CALLBACK_PARAMS',
-      });
+      console.warn('❌ [DEBUG ERROR] Missing OAuth code or state');
+      return res.redirect(`${resolvedFrontendUrl}/dashboard?integration=meta_error&message=${encodeURIComponent('Missing OAuth authorization code or state')}`);
     }
 
     const stateData = verifyOAuthState(state);
     if (!stateData) {
-      return res.status(400).json({
-        success: false,
-        message: 'OAuth state signature is invalid or expired. Please re-authenticate.',
-        code: 'INVALID_OAUTH_STATE',
-      });
+      console.warn('❌ [DEBUG ERROR] OAuth state verification failed or expired');
+      return res.redirect(`${resolvedFrontendUrl}/dashboard?integration=meta_error&message=${encodeURIComponent('OAuth session expired or invalid. Please re-authenticate.')}`);
     }
 
     // 1. Exchange authorization code for short-lived access token
+    console.log('[DEBUG 3] Requesting Access Token from Graph API with redirect_uri:', META_REDIRECT_URI);
     const tokenResponse = await axios.get(
       `https://graph.facebook.com/${META_GRAPH_VERSION}/oauth/access_token`,
       {
@@ -240,6 +241,7 @@ exports.callback = async (req, res) => {
     );
 
     const shortLivedToken = tokenResponse.data.access_token;
+    console.log('[DEBUG 3] Short-lived token received:', shortLivedToken ? `${shortLivedToken.slice(0, 15)}...` : 'NONE');
     if (!shortLivedToken) {
       throw new Error('Meta did not return an access token');
     }
@@ -260,9 +262,10 @@ exports.callback = async (req, res) => {
       );
       if (longTokenResponse.data.access_token) {
         accessToken = longTokenResponse.data.access_token;
+        console.log('[DEBUG 4] Long-lived token received:', `${accessToken.slice(0, 15)}...`);
       }
     } catch (e) {
-      console.warn('Meta long-lived token exchange warning, falling back to short token:', e.message);
+      console.warn('⚠️ [DEBUG WARN] Meta long-lived token exchange warning, falling back to short token:', e.message);
     }
 
     // 3. Fetch current Meta user profile
@@ -273,50 +276,197 @@ exports.callback = async (req, res) => {
           fields: 'id,name,email',
           access_token: accessToken,
         },
+        timeout: 10000,
       }
     );
 
     const metaUser = meResponse.data;
+    console.log('[DEBUG 5] Connected Meta User (/me):', JSON.stringify(metaUser, null, 2));
 
-    // 4. Securely store integration in MongoDB with token encryption
-    const encryptedAccessToken = encrypt(accessToken);
+    // 4. Fetch all Facebook Pages the user granted access to
+    let userPages = [];
+    try {
+      const pagesResponse = await axios.get(
+        `https://graph.facebook.com/${META_GRAPH_VERSION}/me/accounts`,
+        {
+          params: {
+            fields: 'id,name,access_token,category,tasks',
+            access_token: accessToken,
+          },
+          timeout: 10000,
+        }
+      );
+      userPages = pagesResponse.data?.data || [];
+      console.log(`[DEBUG 6] Retrieved ${userPages.length} Facebook Page(s) from /me/accounts:`,
+        JSON.stringify(userPages.map((p) => ({ id: p.id, name: p.name, category: p.category, hasToken: !!p.access_token })), null, 2)
+      );
+    } catch (pageErr) {
+      console.warn('⚠️ [DEBUG WARN] Could not fetch user pages from /me/accounts:', pageErr.response?.data || pageErr.message);
+    }
 
-    const query = stateData.companyId
-      ? { companyId: stateData.companyId, provider: 'meta', accountId: metaUser.id }
-      : { userId: stateData.userId, provider: 'meta', accountId: metaUser.id };
+    const encryptedUserToken = encrypt(accessToken);
 
-    await Integration.findOneAndUpdate(
-      query,
-      {
-        $set: {
+    // 5. Save/Update integration per Page (or fallback if no pages found)
+    if (userPages.length > 0) {
+      console.log(`[DEBUG 7] Iterating through ${userPages.length} pages to save in MongoDB...`);
+      for (const page of userPages) {
+        const pageId = String(page.id);
+        const pageName = page.name || 'Facebook Page';
+        const pageAccessToken = page.access_token || accessToken;
+        const encryptedPageToken = encrypt(pageAccessToken);
+
+        console.log(`\n  --> [PAGE PROCESSING] ID: ${pageId} | Name: "${pageName}"`);
+
+        // 5a. Automatically subscribe CRM app to leadgen webhooks for this page
+        try {
+          const subRes = await axios.post(
+            `https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/subscribed_apps`,
+            null,
+            {
+              params: {
+                subscribed_fields: 'leadgen',
+                access_token: pageAccessToken,
+              },
+              timeout: 8000,
+            }
+          );
+          console.log(`      [WEBHOOK SUB] Subscribed App to Page "${pageName}" (${pageId}):`, subRes.data);
+        } catch (subErr) {
+          console.warn(`      ⚠️ [WEBHOOK SUB WARN] Subscribed apps for Page ${pageId}:`, subErr.response?.data || subErr.message);
+        }
+
+        // 5b. Fetch instant leadgen forms for this page to pre-index form IDs
+        let formIds = [];
+        let formNames = [];
+        try {
+          const formsResponse = await axios.get(
+            `https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/leadgen_forms`,
+            {
+              params: {
+                fields: 'id,name,status',
+                access_token: pageAccessToken,
+              },
+              timeout: 8000,
+            }
+          );
+          const forms = formsResponse.data?.data || [];
+          formIds = forms.map((f) => String(f.id));
+          formNames = forms.map((f) => f.name || '');
+          console.log(`      [FORMS] Found ${forms.length} leadgen form(s) for Page ${pageId}:`, formIds);
+        } catch (formErr) {
+          console.warn(`      ⚠️ [FORMS WARN] Forms fetch notice for Page ${pageId}:`, formErr.message);
+        }
+
+        // 5c. Upsert Integration document keyed by Page ID (preventing collision on unique compound index)
+        const pageQuery = stateData.companyId
+          ? { companyId: stateData.companyId, provider: 'meta', accountId: pageId }
+          : { userId: stateData.userId, provider: 'meta', accountId: pageId };
+
+        const updatePayload = {
           userId: stateData.userId,
           companyId: stateData.companyId || null,
           provider: 'meta',
           mode: 'client_managed',
           status: 'connected',
-          accountId: metaUser.id,
-          accountName: metaUser.name || 'Meta Ad Account',
-          accessTokenEncrypted: encryptedAccessToken,
+          accountId: pageId, // Set to actual Page ID to guarantee unique index compliance
+          accountName: pageName, // Set to Page Name
+          pageId,
+          pageName,
+          formIds,
+          formNames,
+          accessTokenEncrypted: encryptedPageToken,
           tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000), // 60 days
           connectedAt: new Date(),
           metadata: {
             metaUserId: metaUser.id,
             metaUserName: metaUser.name || '',
             metaUserEmail: metaUser.email || '',
+            category: page.category || '',
+            tasks: page.tasks || [],
+            userAccessTokenEncrypted: encryptedUserToken,
           },
           lastError: '',
-        },
-      },
-      {
-        upsert: true,
-        new: true,
-        setDefaultsOnInsert: true,
-      }
-    );
+        };
 
-    return res.redirect(`${resolvedFrontendUrl}/integrations?meta=connected&account=${encodeURIComponent(metaUser.name || metaUser.id)}`);
+        console.log('      [MONGO UPSERT QUERY]:', JSON.stringify(pageQuery, null, 2));
+        console.log('      [MONGO UPSERT SET]:', JSON.stringify({
+          userId: updatePayload.userId,
+          companyId: updatePayload.companyId,
+          provider: updatePayload.provider,
+          accountId: updatePayload.accountId,
+          accountName: updatePayload.accountName,
+          pageId: updatePayload.pageId,
+          formIds: updatePayload.formIds,
+        }, null, 2));
+
+        const savedDoc = await Integration.findOneAndUpdate(
+          pageQuery,
+          { $set: updatePayload },
+          {
+            upsert: true,
+            new: true,
+            setDefaultsOnInsert: true,
+          }
+        );
+
+        console.log(`      ✅ [MONGO UPSERT SUCCESS] Doc ID: ${savedDoc._id} | AccountId: ${savedDoc.accountId} | PageId: ${savedDoc.pageId}`);
+      }
+    } else {
+      console.log('[DEBUG 7] No pages found in /me/accounts, saving user fallback record...');
+      const userQuery = stateData.companyId
+        ? { companyId: stateData.companyId, provider: 'meta', accountId: metaUser.id }
+        : { userId: stateData.userId, provider: 'meta', accountId: metaUser.id };
+
+      const fallbackPayload = {
+        userId: stateData.userId,
+        companyId: stateData.companyId || null,
+        provider: 'meta',
+        mode: 'client_managed',
+        status: 'connected',
+        accountId: metaUser.id,
+        accountName: metaUser.name || 'Meta Ad Account',
+        pageId: null,
+        pageName: null,
+        formIds: [],
+        formNames: [],
+        accessTokenEncrypted: encryptedUserToken,
+        tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+        connectedAt: new Date(),
+        metadata: {
+          metaUserId: metaUser.id,
+          metaUserName: metaUser.name || '',
+          metaUserEmail: metaUser.email || '',
+        },
+        lastError: '',
+      };
+
+      console.log('      [MONGO FALLBACK QUERY]:', JSON.stringify(userQuery, null, 2));
+      const savedDoc = await Integration.findOneAndUpdate(
+        userQuery,
+        { $set: fallbackPayload },
+        {
+          upsert: true,
+          new: true,
+          setDefaultsOnInsert: true,
+        }
+      );
+      console.log(`      ✅ [MONGO FALLBACK SUCCESS] Doc ID: ${savedDoc._id}`);
+    }
+
+    console.log('[DEBUG 8] OAuth flow completed successfully, redirecting to frontend dashboard...');
+    console.log('================== [META OAUTH CALLBACK DEBUG END] ==================\n');
+
+    // 302 Redirect user back to frontend dashboard with success query param
+    return res.redirect(`${resolvedFrontendUrl}/dashboard?integration=meta_success`);
   } catch (error) {
-    console.error('Meta OAuth callback processing error:', error.response?.data || error.message);
-    return res.redirect(`${resolvedFrontendUrl}/integrations?meta=error&message=${encodeURIComponent(error.message || 'Meta connection failed')}`);
+    console.error('\n❌❌❌ [CRITICAL META OAUTH CALLBACK ERROR DETECTED] ❌❌❌');
+    console.error('Error Message:', error.message);
+    console.error('Error Code:', error.code);
+    console.error('Error Status:', error.response?.status);
+    console.error('Error Response Data:', JSON.stringify(error.response?.data || {}, null, 2));
+    console.error('Error Stack Trace:\n', error.stack);
+    console.error('===================================================================\n');
+
+    return res.redirect(`${resolvedFrontendUrl}/dashboard?integration=meta_error&message=${encodeURIComponent(error.message || 'Meta connection failed')}`);
   }
 };

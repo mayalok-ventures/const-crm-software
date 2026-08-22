@@ -29,7 +29,7 @@ const userSchema = new mongoose.Schema({
     immutable: true,
   },
 
-  // Organization / Agent Usercode (e.g. CMP-849201 for Company, REA-102934 for Agent)
+  // Organization / Agent Usercode (e.g. CMP-849201 for Admin/Company, AGT-102934 for Agent)
   usercode: {
     type: String,
     uppercase: true,
@@ -44,225 +44,153 @@ const userSchema = new mongoose.Schema({
   // Chosen Profile Avatar Icon (1 of 10 presets)
   avatarIcon: { type: String, default: 'avatar-1' },
 
-  // Role hierarchy
+  // ─────────────────────────────────────────────────────────────
+  // ROLE & HIERARCHY MODEL (Single Admin Architecture)
+  // ─────────────────────────────────────────────────────────────
   role: {
     type: String,
-    enum: ['user', 'superadmin'],
-    default: 'user',
+    enum: ['admin', 'manager', 'agent', 'superadmin', 'user'],
+    default: 'agent',
+    required: true,
   },
   isAdmin: { type: Boolean, default: false },
 
-  // Work Status & RBAC (STRICTLY IMMUTABLE AFTER SIGNUP)
+  // Organizational Hierarchy (Admin -> Manager -> Agent)
+  managerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+  managerName: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+
+  // Operational & Lead Routing Controls
+  leadCap: {
+    type: Number,
+    default: 50,
+    min: [0, 'Lead cap cannot be negative'],
+  },
+  isAvailableForRouting: {
+    type: Boolean,
+    default: true,
+  },
+  isAvailable: { // Alias for backward compatibility
+    type: Boolean,
+    default: true,
+  },
+  userStatus: {
+    type: String,
+    enum: ['active', 'inactive', 'disabled'],
+    default: 'active',
+  },
+  isActive: {
+    type: Boolean,
+    default: true,
+  },
+
+  // Work Status & RBAC Legacy
   workStatus: {
     type: String,
     enum: ['company_owner', 'independent_agent', 'agent', 'employee'],
-    default: 'independent_agent',
+    default: 'agent',
   },
   companyRole: {
     type: String,
     enum: ['owner', 'agent', 'solo', 'sales_rep', 'manager', 'telecaller'],
     default: 'agent',
   },
-  // Associated Company (points to company owner user)
   companyId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null,
   },
-  // Single User to Organization Collaboration (Rule 4)
   connectedCompanyId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null,
   },
-  shareLeadsWithCompany: {
-    type: Boolean,
-    default: false,
-  },
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    default: null,
-  },
-  incentive_pct: {
-    type: Number,
-    default: 10,
-  },
-  incentivePct: {
-    type: Number,
-    default: 10,
-  },
-  whatsapp_connection: {
-    type: String,
-    enum: ['agent_owned', 'use_admin_number', 'admin_proxy'],
-    default: 'agent_owned',
-  },
-
-  // Industry Vertical (LOCKED & IMMUTABLE AFTER SIGNUP)
-  industryType: {
-    type: String,
-    default: 'Agency',
-    immutable: true,
-  },
-
-  // Education Niche Sub-Profile (For Education sector accounts)
-  educationSubProfile: {
-    type: String,
-    enum: [
-      'higher_education',
-      'edtech',
-      'study_abroad',
-      'test_prep',
-      'k12',
-      'admission_consultants',
-      'other',
-      null,
-    ],
-    default: null,
-    immutable: true,
-  },
-
-  // Dynamic Pipeline Stages (Industry default + User customized)
-  pipelineStages: [{
-    type: String,
-    trim: true,
-  }],
-  customPipelineStages: [{
-    type: String,
-    trim: true,
-  }],
-
-  // Unified Dynamic Form Schema Builder
-  leadFormSchema: [{
-    fieldId: { type: String, required: true },
-    label: { type: String, required: true },
-    fieldType: {
-      type: String,
-      enum: ['text', 'phone', 'email', 'dropdown', 'date', 'number', 'boolean', 'textarea', 'currency'],
-      default: 'text',
-    },
-    options: [{ type: String, trim: true }],
-    isRequired: { type: Boolean, default: false },
-    isSystem: { type: Boolean, default: false },
-    isHidden: { type: Boolean, default: false },
-    order: { type: Number, default: 0 },
-    dependsOn: {
-      field: { type: String, default: null },
-      value: { type: String, default: null },
-    },
-  }],
-
-  // Legacy dynamic lead form fields (kept for fallback)
-  customLeadFields: [{
-    fieldId: { type: String },
-    label: { type: String },
-    fieldType: {
-      type: String,
-      enum: ['text', 'number', 'date', 'dropdown'],
-      default: 'text',
-    },
-    options: [{ type: String, trim: true }],
-    isRequired: { type: Boolean, default: false },
-  }],
-
-  // Smart Exit Permissions tracking
   companyJoinMethod: {
     type: String,
-    enum: ['created_by_company', 'joined_voluntarily', 'none'],
+    enum: ['usercode', 'qr_invite', 'admin_created', 'created_by_company', 'none'],
     default: 'none',
   },
   companyLeaveRequest: {
     type: String,
-    enum: ['none', 'pending'],
+    enum: ['none', 'pending', 'approved', 'rejected'],
     default: 'none',
   },
 
-  // Detailed Company Information
+  // Profile / Company Information
   companyInfo: {
     companyName: { type: String, default: '' },
+    companyLogo: { type: String, default: null },
     companyPhone: { type: String, default: '' },
     companyEmail: { type: String, default: '' },
     companyAddress: { type: String, default: '' },
-    reraNumber: { type: String, default: '' },
-    gstNumber: { type: String, default: '' },
-    website: { type: String, default: '' },
-    logo: { type: String, default: null },
+    companyGst: { type: String, default: '' },
+    companyRera: { type: String, default: '' },
+    companyWebsite: { type: String, default: '' },
+    paymentQrCode: { type: String, default: null },
+    paymentUpiId: { type: String, default: '' },
+    paymentBankDetails: {
+      accountName: { type: String, default: '' },
+      accountNumber: { type: String, default: '' },
+      ifscCode: { type: String, default: '' },
+      bankName: { type: String, default: '' },
+    },
+    termsAndConditions: { type: String, default: '' },
   },
 
-  // Company Agency Settings & Lead Sharing Rules
-  companySettings: {
-    leadSharingMode: {
-      type: String,
-      enum: ['common_pool', 'assigned'],
-      default: 'common_pool',
-    },
-    incentivePerConversion: {
-      type: Number,
-      default: 0, // Incentive per closed/won deal
-    },
-    allowAgentCompanyWhatsApp: {
-      type: Boolean,
-      default: true,
-    },
-    exportPermissionStatus: {
-      type: String,
-      enum: ['allowed', 'restricted', 'pending_approval'],
-      default: 'allowed',
-    },
-  },
-
-  // Per-Agent WhatsApp Authorization & Export Permissions
-  allowCompanyWhatsApp: {
-    type: Boolean,
-    default: false,
-  },
-  exportPermissionStatus: {
+  // Vertical & Customization
+  industryType: {
     type: String,
-    enum: ['allowed', 'restricted', 'pending_approval'],
-    default: 'allowed',
+    default: 'Agency',
+    trim: true,
   },
-  // Universal SaaS Localization & Multi-Currency Settings
-  localization: {
-    currencySymbol: { type: String, default: '₹' },
-    currencyCode: { type: String, default: 'INR' },
-    countryPhoneCode: { type: String, default: '91' },
-  },
-
-  // Tenant / User Preferences
-  showFollowUpOnCreate: { type: Boolean, default: true },
-  preferences: {
-    showFollowUpOnCreate: { type: Boolean, default: true },
+  educationSubProfile: {
+    type: String,
+    default: null,
+    trim: true,
   },
 
-  // Two-Factor Authentication (TOTP Authenticator App)
+  pipelineStages: {
+    type: [String],
+    default: [],
+  },
+  customPipelineStages: {
+    type: [String],
+    default: [],
+  },
+  leadFormSchema: {
+    type: [mongoose.Schema.Types.Mixed],
+    default: [],
+  },
+
+  // Authentication & Security
   twoFactorEnabled: { type: Boolean, default: false },
-  twoFactorMethod: {
-    type: String,
-    enum: ['totp', 'none'],
-    default: 'totp',
-  },
   twoFactorSecret: { type: String, default: null },
-  twoFactorRecoveryCodes: [{ type: String, uppercase: true, trim: true }],
+  twoFactorRecoveryCodes: { type: [String], default: [] },
   twoFactorOtp: { type: String, default: null },
   twoFactorOtpExpires: { type: Date, default: null },
 
+  // Subscription Tiering
   plan: {
     type: String,
     enum: [
       'free',
-      // Legacy plans
       'starter',
       'growth',
       'pro',
-      // Individual Solo Plans
       'basic_solo',
       'smart_solo',
       'power_solo',
-      // Organization Plans
       'team_starter',
       'business',
       'enterprise',
-      'custom_enterprise'
+      'custom_enterprise',
     ],
     default: 'free',
   },
@@ -286,17 +214,7 @@ const userSchema = new mongoose.Schema({
     lastOrderId: { type: String, default: null },
   },
 
-  isActive: { type: Boolean, default: true },
   lastLogin: { type: Date },
-
-  suspension: {
-    isSuspended: { type: Boolean, default: false },
-    level: { type: Number, default: 0, min: 0, max: 4 },
-    reason: { type: String, default: null },
-    suspendedAt: { type: Date, default: null },
-    suspendedUntil: { type: Date, default: null },
-  },
-
   loginAttempts: { type: Number, default: 0 },
   lastFailedLogin: { type: Date, default: null },
   abuseScore: { type: Number, default: 0 },
@@ -338,6 +256,13 @@ userSchema.pre('validate', function (next) {
   if (!this.email && !this.phone) {
     return next(new Error('At least one of email or phone is required'));
   }
+  // Sync isAvailable and isAvailableForRouting
+  if (this.isAvailableForRouting !== undefined && this.isAvailable === undefined) {
+    this.isAvailable = this.isAvailableForRouting;
+  }
+  if (this.isAvailable !== undefined && this.isAvailableForRouting === undefined) {
+    this.isAvailableForRouting = this.isAvailable;
+  }
   next();
 });
 
@@ -359,7 +284,12 @@ userSchema.methods.toJSON = function () {
   delete obj.twoFactorSecret;
   delete obj.twoFactorOtp;
   delete obj.twoFactorOtpExpires;
+  delete obj.twoFactorRecoveryCodes;
   return obj;
 };
 
-module.exports = mongoose.model('User', userSchema);
+// Query Indexes
+userSchema.index({ role: 1, managerId: 1 });
+userSchema.index({ isAvailableForRouting: 1, isActive: 1 });
+
+module.exports = mongoose.models.User || mongoose.model('User', userSchema);

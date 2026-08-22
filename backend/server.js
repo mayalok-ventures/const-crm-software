@@ -41,34 +41,8 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:5000',
-  'https://crm.coresetu.com',
-  'http://crm.coresetu.com',
-  'http://13.51.219.53',
-  process.env.FRONTEND_URL,
-].filter(Boolean);
-
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
-    if (!origin) return callback(null, true);
-    
-    // Check if origin is explicitly allowed or matches Cloudflare Pages/custom domains
-    const isAllowed =
-      allowedOrigins.includes(origin) ||
-      origin.endsWith('.pages.dev') ||
-      origin.endsWith('.coresetu.com') ||
-      origin.includes('13.51.219.53') ||
-      process.env.NODE_ENV !== 'production';
-
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS Error: Origin ${origin} is not allowed`));
-    }
-  },
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
@@ -163,7 +137,7 @@ connectDB().then(async () => {
   startFollowUpCron();
 
   const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🚀 Real Estate CRM Backend running on http://localhost:${PORT}`);
     console.log(`📦 Environment: ${process.env.NODE_ENV || 'development'}\n`);
     
