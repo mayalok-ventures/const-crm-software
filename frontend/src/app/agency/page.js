@@ -66,6 +66,16 @@ export default function AgencyPage() {
   const [editingAgent, setEditingAgent] = useState(null);
   const [agentForm, setAgentForm] = useState({ roleId: '', managerId: '', employeeStatus: 'active' });
 
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [newMemberForm, setNewMemberForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    password: '',
+    roleId: '',
+    managerId: ''
+  });
+
   const [incentiveActionData, setIncentiveActionData] = useState(null); // { id, status, reason: '' }
 
   useEffect(() => {
@@ -161,6 +171,47 @@ export default function AgencyPage() {
       fetchData();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update agent profile');
+    }
+  };
+
+  const handleCreateMember = async (e) => {
+    e.preventDefault();
+    if (!newMemberForm.name.trim()) return toast.error('Name is required');
+    if (!newMemberForm.password.trim()) return toast.error('Password is required');
+    if (!newMemberForm.email && !newMemberForm.phone) {
+      return toast.error('Email or Phone is required');
+    }
+
+    try {
+      const res = await api.post('/company/agents', {
+        name: newMemberForm.name,
+        email: newMemberForm.email,
+        phone: newMemberForm.phone,
+        password: newMemberForm.password
+      });
+
+      const newAgentId = res.data?.agent?._id;
+
+      if (newAgentId && (newMemberForm.roleId || newMemberForm.managerId)) {
+        await api.patch(`/agency/agents/${newAgentId}`, {
+          roleId: newMemberForm.roleId || null,
+          managerId: newMemberForm.managerId || null
+        });
+      }
+
+      toast.success(res.data?.message || 'Team member created successfully! 🎉');
+      setShowAddMemberModal(false);
+      setNewMemberForm({
+        name: '',
+        email: '',
+        phone: '',
+        password: '',
+        roleId: '',
+        managerId: ''
+      });
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to create team member');
     }
   };
 
@@ -354,6 +405,17 @@ export default function AgencyPage() {
               <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
                 👥 Active Organization Team Roster ({agents.length})
               </h3>
+              {isOwner && (
+                <button
+                  onClick={() => {
+                    setShowAddMemberModal(true);
+                  }}
+                  className="btn btn-primary btn-sm"
+                  style={{ gap: 4, borderRadius: 8 }}
+                >
+                  <UserPlus size={14} /> Add Team Member
+                </button>
+              )}
             </div>
 
             <div style={{ overflowX: 'auto' }}>
@@ -431,68 +493,6 @@ export default function AgencyPage() {
                 </tbody>
               </table>
             </div>
-
-            {/* Agent Editor Overlay */}
-            {editingAgent && (
-              <div className="modal-overlay" onClick={() => setEditingAgent(null)}>
-                <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
-                  <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700 }}>
-                    ✏️ Configure Agent: {editingAgent.name}
-                  </h3>
-                  <form onSubmit={handleSaveAgent} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Custom Tenant Role</label>
-                      <select
-                        value={agentForm.roleId}
-                        onChange={e => setAgentForm({ ...agentForm, roleId: e.target.value })}
-                        className="form-control btn-full"
-                        style={{ width: '100%' }}
-                      >
-                        <option value="">Default permissions (Default Agent)</option>
-                        {roles.map(r => (
-                          <option key={r._id} value={r._id}>{r.name} ({r.roleType})</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Reporting Manager</label>
-                      <select
-                        value={agentForm.managerId}
-                        onChange={e => setAgentForm({ ...agentForm, managerId: e.target.value })}
-                        className="form-control btn-full"
-                        style={{ width: '100%' }}
-                      >
-                        <option value="">None (Reports to Owner)</option>
-                        {agents.filter(a => a._id !== editingAgent._id && a.companyRole !== 'agent').map(a => (
-                          <option key={a._id} value={a._id}>{a.name} ({a.roleId?.name || 'Manager'})</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Employment Status</label>
-                      <select
-                        value={agentForm.employeeStatus}
-                        onChange={e => setAgentForm({ ...agentForm, employeeStatus: e.target.value })}
-                        className="form-control btn-full"
-                        style={{ width: '100%' }}
-                      >
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                        <option value="suspended">Suspended</option>
-                        <option value="terminated">Terminated</option>
-                      </select>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-                      <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }}>Save Configuration</button>
-                      <button type="button" onClick={() => setEditingAgent(null)} className="btn btn-ghost">Cancel</button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -870,6 +870,164 @@ export default function AgencyPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Modals outside the tab containers to prevent focus loss during renders */}
+        {editingAgent && (
+          <div className="modal-overlay" onClick={() => setEditingAgent(null)}>
+            <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
+              <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700 }}>
+                ✏️ Configure Agent: {editingAgent.name}
+              </h3>
+              <form onSubmit={handleSaveAgent} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Custom Tenant Role</label>
+                  <select
+                    value={agentForm.roleId}
+                    onChange={e => setAgentForm({ ...agentForm, roleId: e.target.value })}
+                    className="input btn-full"
+                    style={{ width: '100%' }}
+                  >
+                    <option value="">Default permissions (Default Agent)</option>
+                    {roles.map(r => (
+                      <option key={r._id} value={r._id}>{r.name} ({r.roleType})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Reporting Manager</label>
+                  <select
+                    value={agentForm.managerId}
+                    onChange={e => setAgentForm({ ...agentForm, managerId: e.target.value })}
+                    className="input btn-full"
+                    style={{ width: '100%' }}
+                  >
+                    <option value="">None (Reports to Owner)</option>
+                    {agents.filter(a => a._id !== editingAgent._id && a.companyRole !== 'agent').map(a => (
+                      <option key={a._id} value={a._id}>{a.name} ({a.roleId?.name || 'Manager'})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Employment Status</label>
+                  <select
+                    value={agentForm.employeeStatus}
+                    onChange={e => setAgentForm({ ...agentForm, employeeStatus: e.target.value })}
+                    className="input btn-full"
+                    style={{ width: '100%' }}
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="suspended">Suspended</option>
+                    <option value="terminated">Terminated</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                  <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }}>Save Configuration</button>
+                  <button type="button" onClick={() => setEditingAgent(null)} className="btn btn-ghost">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {showAddMemberModal && (
+          <div className="modal-overlay" onClick={() => setShowAddMemberModal(false)}>
+            <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
+              <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700 }}>
+                ➕ Add New Team Member
+              </h3>
+              <form onSubmit={handleCreateMember} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Full Name</label>
+                  <input
+                    type="text"
+                    placeholder="Enter full name"
+                    value={newMemberForm.name}
+                    onChange={e => setNewMemberForm({ ...newMemberForm, name: e.target.value })}
+                    className="input"
+                    style={{ width: '100%' }}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Email Address</label>
+                  <input
+                    type="email"
+                    placeholder="e.g. agent@company.com"
+                    value={newMemberForm.email}
+                    onChange={e => setNewMemberForm({ ...newMemberForm, email: e.target.value })}
+                    className="input"
+                    style={{ width: '100%' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Phone Number</label>
+                  <input
+                    type="tel"
+                    placeholder="e.g. 9876543210"
+                    value={newMemberForm.phone}
+                    onChange={e => setNewMemberForm({ ...newMemberForm, phone: e.target.value })}
+                    className="input"
+                    style={{ width: '100%' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Login Password</label>
+                  <input
+                    type="password"
+                    placeholder="Set agent login password"
+                    value={newMemberForm.password}
+                    onChange={e => setNewMemberForm({ ...newMemberForm, password: e.target.value })}
+                    className="input"
+                    style={{ width: '100%' }}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Assign Role</label>
+                  <select
+                    value={newMemberForm.roleId}
+                    onChange={e => setNewMemberForm({ ...newMemberForm, roleId: e.target.value })}
+                    className="input btn-full"
+                    style={{ width: '100%' }}
+                  >
+                    <option value="">Default permissions (Default Agent)</option>
+                    {roles.map(r => (
+                      <option key={r._id} value={r._id}>{r.name} ({r.roleType})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Reporting Manager</label>
+                  <select
+                    value={newMemberForm.managerId}
+                    onChange={e => setNewMemberForm({ ...newMemberForm, managerId: e.target.value })}
+                    className="input btn-full"
+                    style={{ width: '100%' }}
+                  >
+                    <option value="">None (Reports to Owner)</option>
+                    {agents.filter(a => a.companyRole !== 'agent').map(a => (
+                      <option key={a._id} value={a._id}>{a.name} ({a.roleId?.name || 'Manager'})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                  <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }}>Create Member</button>
+                  <button type="button" onClick={() => setShowAddMemberModal(false)} className="btn btn-ghost">Cancel</button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
 
