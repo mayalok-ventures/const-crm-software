@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/adminController');
+const monitoringController = require('../monitoring/controllers/monitoringController');
 const { protect, adminOnly, managerOrAdminOnly } = require('../middleware/auth');
 
 router.use(protect);
@@ -111,8 +112,20 @@ router.route('/security-settings')
   .get(adminOnly, adminController.getSecuritySettings)
   .post(adminOnly, adminController.updateSecuritySettings);
 
-// 17. System Health
+// 17. System Health & Infrastructure Monitoring
 router.get('/system-health', adminOnly, adminController.getSystemHealth);
+router.get('/monitoring/servers', adminOnly, monitoringController.getServers);
+router.get('/monitoring/servers/:serverId', adminOnly, monitoringController.getServerDetails);
+router.get('/monitoring/servers/:serverId/current', adminOnly, monitoringController.getCurrentMetric);
+router.get('/monitoring/servers/:serverId/history', adminOnly, monitoringController.getMetricHistory);
+router.get('/monitoring/servers/:serverId/health', adminOnly, monitoringController.getServerHealth);
+router.get('/monitoring/api-performance', adminOnly, monitoringController.getApiPerformance);
+
+// Server Heartbeat Routes
+router.get('/servers', adminOnly, monitoringController.getServers);
+router.get('/servers/:id/health', adminOnly, monitoringController.getServerHealth);
+router.get('/servers/:id/heartbeat-history', adminOnly, monitoringController.getHeartbeatHistory);
+router.get('/servers/:id/status-events', adminOnly, monitoringController.getStatusEvents);
 
 // Preserved User Management Handlers
 router.get('/users', adminOnly, adminController.getUsers);

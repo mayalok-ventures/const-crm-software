@@ -122,6 +122,16 @@ const userSchema = new mongoose.Schema({
     enum: ['none', 'pending', 'approved', 'rejected'],
     default: 'none',
   },
+  showFollowUpOnCreate: {
+    type: Boolean,
+    default: true,
+  },
+  preferences: {
+    showFollowUpOnCreate: {
+      type: Boolean,
+      default: true,
+    },
+  },
 
   // Profile / Company Information
   companyInfo: {

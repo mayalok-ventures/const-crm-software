@@ -13,6 +13,7 @@ import {
   AlertCircle, CheckCircle2, ChevronDown, Clock, Download, ArrowUpRight
 } from 'lucide-react';
 import { getUser } from '@/lib/auth';
+import SystemHealthDashboard from '@/components/admin/SystemHealthDashboard';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
@@ -2324,23 +2325,7 @@ export default function AdminControlCenter() {
               17. SYSTEM HEALTH
           ────────────────────────────────────────────────────────────── */}
           {activeTab === 'health' && (
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-white">Live System Health & Telemetry</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 rounded-xl bg-[#0d1424] border border-slate-800">
-                  <span className="text-xs text-slate-400">MongoDB Database</span>
-                  <div className="text-xl font-bold text-emerald-400 mt-1 capitalize">{systemHealth?.database || 'Connected'}</div>
-                </div>
-                <div className="p-4 rounded-xl bg-[#0d1424] border border-slate-800">
-                  <span className="text-xs text-slate-400">API Status</span>
-                  <div className="text-xl font-bold text-emerald-400 mt-1 uppercase">{systemHealth?.apiStatus || 'Online'}</div>
-                </div>
-                <div className="p-4 rounded-xl bg-[#0d1424] border border-slate-800">
-                  <span className="text-xs text-slate-400">Memory RSS</span>
-                  <div className="text-xl font-bold text-amber-400 mt-1">{systemHealth?.memoryUsageMb || '42.5'} MB</div>
-                </div>
-              </div>
-            </div>
+            <SystemHealthDashboard authFetch={authFetch} />
           )}
         </div>
       </main>

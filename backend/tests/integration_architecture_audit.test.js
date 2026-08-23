@@ -50,6 +50,10 @@ function createMockRes() {
     statusCode: 200,
     headersSent: false,
     body: null,
+    setHeader(name, value) {
+      // Mock setHeader
+      return this;
+    },
     status(code) {
       this.statusCode = code;
       return this;
@@ -186,6 +190,7 @@ async function runSuite() {
   console.log('\n--- SECTION 4: Integration Model Lifecycle & Encryption ---');
   let integrationA, integrationB;
   {
+    await Integration.deleteMany({});
     await Integration.syncIndexes();
     integrationA = await Integration.create({
       userId: companyAOwner._id,
@@ -484,7 +489,8 @@ async function runSuite() {
     const [dataStr, sig] = stateParam.split('.');
     const forgedState = `${dataStr}.invalid_forged_signature_12345`;
     const callbackReqForged = {
-      query: { code: 'valid_code', state: forgedState },
+      query: { code: 'valid_code', state: forgedState, json: 'true' },
+      headers: { accept: 'application/json' },
     };
     const callbackResForged = createMockRes();
     await metaOAuthController.callback(callbackReqForged, callbackResForged);

@@ -1,4 +1,5 @@
 require('dotenv').config();
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'crm_jwt_secret_dev_key_2026';
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -29,6 +30,8 @@ const campaignWorker = require('./src/services/campaignWorker');
 const integrationRoutes = require('./src/routes/integrationRoutes');
 const catalogueRoutes = require('./src/routes/catalogue');
 const agencyRoutes = require('./src/routes/agency');
+const monitoringRoutes = require('./src/routes/monitoring').default;
+const { apiPerformance } = require('./src/monitoring/apiPerformance');
 
 const app = express();
 
@@ -78,6 +81,12 @@ app.use('/api', (req, res, next) => {
   }
   apiLimiter(req, res, next);
 });
+
+// API Performance interceptor (runs on all /api routes)
+app.use('/api', apiPerformance);
+
+// Register public monitoring routes
+app.use('/api/monitoring', monitoringRoutes);
 
 // Request logger
 app.use((req, res, next) => {
@@ -146,6 +155,34 @@ connectDB().then(async () => {
 
     // Start campaign background worker
     campaignWorker.startWorker();
+
+    // Start background monitoring agents and workers (except in testing)
+    if (process.env.NODE_ENV !== 'test') {
+      const MonitoringAgent = require('./src/monitoring/MonitoringAgent').default;
+      const ServerHeartbeat = require('./src/monitoring/ServerHeartbeat').default;
+      const StatusEvaluator = require('./src/monitoring/StatusEvaluator').default;
+      const MetricsAggregator = require('./src/monitoring/MetricsAggregator').default;
+
+      const agent = new MonitoringAgent();
+      const heartbeat = new ServerHeartbeat();
+      const statusEvaluator = new StatusEvaluator();
+      const aggregator = new MetricsAggregator();
+
+      agent.start();
+      heartbeat.start();
+      statusEvaluator.start();
+      aggregator.start();
+
+      const shutdownWorkers = () => {
+        console.log('Stopping background monitoring workers...');
+        agent.stop();
+        heartbeat.stop();
+        statusEvaluator.stop();
+        aggregator.stop();
+      };
+      process.on('SIGTERM', shutdownWorkers);
+      process.on('SIGINT', shutdownWorkers);
+    }
   });
 }).catch(err => {
   console.error('Failed to initialize database:', err);

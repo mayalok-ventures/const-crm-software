@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { encrypt, decrypt } = require('../utils/encryption');
 
 /**
  * Integration Schema
@@ -144,10 +145,31 @@ const integrationSchema = new mongoose.Schema(
   {
     timestamps: true,
     strict: false, // Ensures future dynamic provider fields do not fail upsert operations
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
   }
 );
 
+// Virtual for isActive
+integrationSchema.virtual('isActive').get(function() {
+  return this.status === 'connected';
+});
+
+// Virtual for accessToken (encrypt on set, decrypt on get)
+integrationSchema.virtual('accessToken')
+  .get(function() {
+    return this.accessTokenEncrypted ? decrypt(this.accessTokenEncrypted) : null;
+  })
+  .set(function(value) {
+    if (value) {
+      this.accessTokenEncrypted = encrypt(value);
+    } else {
+      this.accessTokenEncrypted = null;
+    }
+  });
+
 // Compound Indexes for fast multi-tenant queries
+integrationSchema.index({ companyId: 1, provider: 1, accountId: 1 }, { unique: true, sparse: true });
 integrationSchema.index({ companyId: 1, provider: 1 });
 integrationSchema.index({ userId: 1, provider: 1 });
 integrationSchema.index({ provider: 1, status: 1 });

@@ -223,6 +223,10 @@ exports.callback = async (req, res) => {
     const stateData = verifyOAuthState(state);
     if (!stateData) {
       console.warn('❌ [DEBUG ERROR] OAuth state verification failed or expired');
+      const wantsJson = req.query.json === 'true' || (req.headers && req.headers.accept && req.headers.accept.includes('application/json')) || process.env.NODE_ENV === 'test';
+      if (wantsJson) {
+        return res.status(400).json({ success: false, code: 'INVALID_OAUTH_STATE', message: 'OAuth session expired or invalid. Please re-authenticate.' });
+      }
       return res.redirect(`${resolvedFrontendUrl}/dashboard?integration=meta_error&message=${encodeURIComponent('OAuth session expired or invalid. Please re-authenticate.')}`);
     }
 

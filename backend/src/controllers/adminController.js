@@ -2180,7 +2180,24 @@ exports.applyOfferToLead = async (req, res) => {
 exports.getUsers = async (req, res) => {
   try {
     const users = await User.find().select('-password').sort({ createdAt: -1 }).lean();
-    res.json({ success: true, users });
+    const usersWithTags = await Promise.all(
+      users.map(async (user) => {
+        const isSingleUser = !user.companyId && user.role !== 'superadmin' && user.role !== 'admin' && user.companyRole !== 'owner';
+        let organizationTag = undefined;
+        if (user.companyId) {
+          const owner = await User.findById(user.companyId).select('companyInfo name').lean();
+          if (owner) {
+            organizationTag = (owner.companyInfo && owner.companyInfo.companyName) || owner.name;
+          }
+        }
+        return {
+          ...user,
+          isSingleUser,
+          organizationTag,
+        };
+      })
+    );
+    res.json({ success: true, users: usersWithTags });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }
