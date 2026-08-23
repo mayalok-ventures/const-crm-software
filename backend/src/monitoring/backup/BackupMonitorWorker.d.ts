@@ -88,3 +88,4 @@ export declare class BackupMonitorWorker {
     }>;
 }
 export declare const backupMonitorWorker: BackupMonitorWorker;
+export default backupMonitorWorker;

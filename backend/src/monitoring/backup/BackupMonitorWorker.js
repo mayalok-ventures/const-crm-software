@@ -391,3 +391,4 @@ class BackupMonitorWorker {
 }
 exports.BackupMonitorWorker = BackupMonitorWorker;
 exports.backupMonitorWorker = BackupMonitorWorker.getInstance();
+exports.default = exports.backupMonitorWorker;

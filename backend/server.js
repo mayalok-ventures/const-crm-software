@@ -191,8 +191,8 @@ connectDB().then(async () => {
       const ServerHeartbeat = require('./src/monitoring/ServerHeartbeat').default;
       const StatusEvaluator = require('./src/monitoring/StatusEvaluator').default;
       const MetricsAggregator = require('./src/monitoring/MetricsAggregator').default;
-      const databaseMonitorWorker = require('./src/monitoring/database/DatabaseMonitorWorker').default || require('./src/monitoring/database/DatabaseMonitorWorker');
-      const backupMonitorWorker = require('./src/monitoring/backup/BackupMonitorWorker').default || require('./src/monitoring/backup/BackupMonitorWorker');
+      const databaseMonitorWorker = require('./src/monitoring/database/DatabaseMonitorWorker').databaseMonitorWorker || require('./src/monitoring/database/DatabaseMonitorWorker').default || require('./src/monitoring/database/DatabaseMonitorWorker');
+      const backupMonitorWorker = require('./src/monitoring/backup/BackupMonitorWorker').backupMonitorWorker || require('./src/monitoring/backup/BackupMonitorWorker').default || require('./src/monitoring/backup/BackupMonitorWorker');
 
       const agent = new MonitoringAgent();
       const heartbeat = new ServerHeartbeat();

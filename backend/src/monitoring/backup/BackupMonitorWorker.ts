@@ -476,3 +476,4 @@ export class BackupMonitorWorker {
 }
 
 export const backupMonitorWorker = BackupMonitorWorker.getInstance();
+export default backupMonitorWorker;
