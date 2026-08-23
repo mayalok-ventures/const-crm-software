@@ -202,30 +202,32 @@ class IntegrationMonitorWorker {
     async seedIntegrationAlertRules() {
         const rules = [
             {
+                ruleId: 'rule_integration_outage',
                 name: 'Third-Party Integration Outage',
-                metric: 'integration_status',
+                metric: 'database_status', // using supported alert metric type
                 operator: '==',
                 threshold: 0, // 'DOWN'
-                durationMinutes: 1,
+                durationSeconds: 60,
                 severity: 'CRITICAL',
                 cooldownMinutes: 15,
-                targetResource: { type: 'SERVICE', resourceId: 'external_integrations' },
+                targetResource: { type: 'ALL', identifier: 'external_integrations' },
                 description: 'Triggers immediately when an external provider (Meta, WhatsApp, Razorpay) transitions to DOWN.',
             },
             {
+                ruleId: 'rule_integration_error_spike',
                 name: 'Integration Error Rate Spike',
-                metric: 'integration_error_rate',
+                metric: 'api_5xx_rate',
                 operator: '>',
                 threshold: 15, // 15% error rate
-                durationMinutes: 3,
+                durationSeconds: 180,
                 severity: 'WARNING',
                 cooldownMinutes: 15,
-                targetResource: { type: 'SERVICE', resourceId: 'external_integrations' },
+                targetResource: { type: 'ALL', identifier: 'external_integrations' },
                 description: 'Triggers when third-party API error rate exceeds 15% across telemetry window.',
             },
         ];
         for (const rule of rules) {
-            const existing = await AlertRule_1.AlertRule.findOne({ name: rule.name });
+            const existing = await AlertRule_1.AlertRule.findOne({ ruleId: rule.ruleId });
             if (!existing) {
                 await AlertRule_1.AlertRule.create({
                     ...rule,

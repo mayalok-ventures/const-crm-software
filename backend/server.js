@@ -202,10 +202,17 @@ connectDB().then(async () => {
       const ServerHeartbeat = require('./src/monitoring/ServerHeartbeat').default;
       const StatusEvaluator = require('./src/monitoring/StatusEvaluator').default;
       const MetricsAggregator = require('./src/monitoring/MetricsAggregator').default;
-      const databaseMonitorWorker = require('./src/monitoring/database/DatabaseMonitorWorker').databaseMonitorWorker || require('./src/monitoring/database/DatabaseMonitorWorker').default || require('./src/monitoring/database/DatabaseMonitorWorker');
-      const backupMonitorWorker = require('./src/monitoring/backup/BackupMonitorWorker').backupMonitorWorker || require('./src/monitoring/backup/BackupMonitorWorker').default || require('./src/monitoring/backup/BackupMonitorWorker');
-      const alertMonitorWorker = require('./src/monitoring/alerts/AlertMonitorWorker').alertMonitorWorker || require('./src/monitoring/alerts/AlertMonitorWorker').default || require('./src/monitoring/alerts/AlertMonitorWorker');
-      const integrationMonitorWorker = require('./src/monitoring/integrations/IntegrationMonitorWorker').integrationMonitorWorker || require('./src/monitoring/integrations/IntegrationMonitorWorker').default || require('./src/monitoring/integrations/IntegrationMonitorWorker');
+      const dbWorkerMod = require('./src/monitoring/database/DatabaseMonitorWorker');
+      const databaseMonitorWorker = dbWorkerMod.databaseMonitorWorker || (dbWorkerMod.DatabaseMonitorWorker && dbWorkerMod.DatabaseMonitorWorker.getInstance()) || dbWorkerMod.default;
+
+      const bkWorkerMod = require('./src/monitoring/backup/BackupMonitorWorker');
+      const backupMonitorWorker = bkWorkerMod.backupMonitorWorker || (bkWorkerMod.BackupMonitorWorker && bkWorkerMod.BackupMonitorWorker.getInstance()) || bkWorkerMod.default;
+
+      const alWorkerMod = require('./src/monitoring/alerts/AlertMonitorWorker');
+      const alertMonitorWorker = alWorkerMod.alertMonitorWorker || (alWorkerMod.AlertMonitorWorker && alWorkerMod.AlertMonitorWorker.getInstance()) || alWorkerMod.default;
+
+      const intWorkerMod = require('./src/monitoring/integrations/IntegrationMonitorWorker');
+      const integrationMonitorWorker = intWorkerMod.integrationMonitorWorker || (intWorkerMod.IntegrationMonitorWorker && intWorkerMod.IntegrationMonitorWorker.getInstance()) || intWorkerMod.default;
 
       const agent = new MonitoringAgent();
       const heartbeat = new ServerHeartbeat();
@@ -216,10 +223,10 @@ connectDB().then(async () => {
       heartbeat.start();
       statusEvaluator.start();
       aggregator.start();
-      databaseMonitorWorker.start(30000);
-      backupMonitorWorker.start(60000);
-      alertMonitorWorker.start(30000);
-      integrationMonitorWorker.start(60000);
+      if (databaseMonitorWorker && typeof databaseMonitorWorker.start === 'function') databaseMonitorWorker.start(30000);
+      if (backupMonitorWorker && typeof backupMonitorWorker.start === 'function') backupMonitorWorker.start(60000);
+      if (alertMonitorWorker && typeof alertMonitorWorker.start === 'function') alertMonitorWorker.start(30000);
+      if (integrationMonitorWorker && typeof integrationMonitorWorker.start === 'function') integrationMonitorWorker.start(60000);
 
       const shutdownWorkers = () => {
         console.log('Stopping background monitoring workers...');
@@ -227,10 +234,10 @@ connectDB().then(async () => {
         heartbeat.stop();
         statusEvaluator.stop();
         aggregator.stop();
-        databaseMonitorWorker.stop();
-        backupMonitorWorker.stop();
-        alertMonitorWorker.stop();
-        integrationMonitorWorker.stop();
+        if (databaseMonitorWorker && typeof databaseMonitorWorker.stop === 'function') databaseMonitorWorker.stop();
+        if (backupMonitorWorker && typeof backupMonitorWorker.stop === 'function') backupMonitorWorker.stop();
+        if (alertMonitorWorker && typeof alertMonitorWorker.stop === 'function') alertMonitorWorker.stop();
+        if (integrationMonitorWorker && typeof integrationMonitorWorker.stop === 'function') integrationMonitorWorker.stop();
       };
       process.on('SIGTERM', shutdownWorkers);
       process.on('SIGINT', shutdownWorkers);
