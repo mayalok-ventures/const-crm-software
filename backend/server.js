@@ -192,6 +192,7 @@ connectDB().then(async () => {
       const StatusEvaluator = require('./src/monitoring/StatusEvaluator').default;
       const MetricsAggregator = require('./src/monitoring/MetricsAggregator').default;
       const databaseMonitorWorker = require('./src/monitoring/database/DatabaseMonitorWorker').default || require('./src/monitoring/database/DatabaseMonitorWorker');
+      const backupMonitorWorker = require('./src/monitoring/backup/BackupMonitorWorker').default || require('./src/monitoring/backup/BackupMonitorWorker');
 
       const agent = new MonitoringAgent();
       const heartbeat = new ServerHeartbeat();
@@ -203,6 +204,7 @@ connectDB().then(async () => {
       statusEvaluator.start();
       aggregator.start();
       databaseMonitorWorker.start(30000);
+      backupMonitorWorker.start(60000);
 
       const shutdownWorkers = () => {
         console.log('Stopping background monitoring workers...');
@@ -211,6 +213,7 @@ connectDB().then(async () => {
         statusEvaluator.stop();
         aggregator.stop();
         databaseMonitorWorker.stop();
+        backupMonitorWorker.stop();
       };
       process.on('SIGTERM', shutdownWorkers);
       process.on('SIGINT', shutdownWorkers);

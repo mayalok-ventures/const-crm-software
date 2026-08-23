@@ -172,6 +172,19 @@ router.get('/database/metrics', adminOnly, databaseController.getDatabaseMetrics
 router.get('/database/slow-queries', adminOnly, databaseController.getSlowQueries);
 router.post('/database/ping', adminOnly, databaseController.pingDatabase);
 
+// 23. Production-Grade Backup Monitoring Module
+const backupController = require('../monitoring/controllers/backupController').default || require('../monitoring/controllers/backupController');
+router.get('/backups/overview', adminOnly, backupController.getBackupOverview);
+router.get('/backups/history', adminOnly, backupController.getBackupHistory);
+router.get('/backups/policies', adminOnly, backupController.getBackupPolicies);
+router.put('/backups/policies/:id', adminOnly, backupController.updateBackupPolicy);
+router.get('/backups/incidents', adminOnly, backupController.getBackupIncidents);
+router.post('/backups/incidents/:id/acknowledge', adminOnly, backupController.acknowledgeIncident);
+router.post('/backups/incidents/:id/resolve', adminOnly, backupController.resolveIncident);
+router.post('/backups/trigger', adminOnly, backupController.triggerManualBackup);
+router.post('/backups/verify/:id', adminOnly, backupController.verifyBackupIntegrity);
+router.get('/backups/records/:id', adminOnly, backupController.getBackupRecordById);
+
 // Preserved User Management Handlers
 router.get('/users', adminOnly, adminController.getUsers);
 router.put('/users/:id/plan', adminOnly, adminController.assignPlan);
