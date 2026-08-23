@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { securityTracker } = require('../monitoring/security/securityTracker');
 
 /**
  * Calculates the multi-tenant subscription lifecycle:
@@ -149,12 +150,33 @@ const protect = async (req, res, next) => {
 
     next();
   } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      securityTracker.recordEvent({
+        type: 'TOKEN_EXPIRED',
+        req,
+        metadata: { message: error.message },
+      });
+    } else {
+      securityTracker.recordEvent({
+        type: 'TOKEN_INVALID',
+        req,
+        metadata: { message: error.message },
+      });
+    }
     res.status(401).json({ message: 'Not authorized, token failed' });
   }
 };
 
 const adminOnly = (req, res, next) => {
   if (!req.user || (!req.user.isAdmin && req.user.role !== 'superadmin' && req.user.role !== 'admin')) {
+    securityTracker.recordEvent({
+      type: 'PERMISSION_DENIED',
+      req,
+      userId: req.user?._id,
+      userEmail: req.user?.email,
+      tenantId: req.user?.companyId,
+      metadata: { requiredRole: 'admin', currentRole: req.user?.role || 'anonymous' },
+    });
     return res.status(403).json({ message: 'Admin access required' });
   }
   next();
@@ -164,6 +186,14 @@ const managerOrAdminOnly = (req, res, next) => {
   const role = req.user?.role;
   const isPrivileged = req.user?.isAdmin || role === 'superadmin' || role === 'admin' || role === 'manager';
   if (!req.user || !isPrivileged) {
+    securityTracker.recordEvent({
+      type: 'PERMISSION_DENIED',
+      req,
+      userId: req.user?._id,
+      userEmail: req.user?.email,
+      tenantId: req.user?.companyId,
+      metadata: { requiredRole: 'manager_or_admin', currentRole: req.user?.role || 'anonymous' },
+    });
     return res.status(403).json({ message: 'Manager or Admin access required' });
   }
   next();

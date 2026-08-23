@@ -56,7 +56,7 @@ interface SystemHealthDashboardProps {
 
 export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboardProps) {
   const [activeSubTab, setActiveSubTab] = useState<
-    'infrastructure' | 'availability' | 'api' | 'errors' | 'logs'
+    'infrastructure' | 'availability' | 'api' | 'errors' | 'logs' | 'security'
   >('infrastructure');
 
   // Infrastructure & Servers State
@@ -89,6 +89,25 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
   const [logSearch, setLogSearch] = useState<string>('');
   const [selectedLog, setSelectedLog] = useState<any | null>(null);
   const [copiedLogId, setCopiedLogId] = useState<string | null>(null);
+
+  // Security & Abuse Detection State
+  const [securityStats, setSecurityStats] = useState<any>(null);
+  const [securityIncidents, setSecurityIncidents] = useState<any[]>([]);
+  const [securityEvents, setSecurityEvents] = useState<any[]>([]);
+  const [blockedIps, setBlockedIps] = useState<any[]>([]);
+  const [securityRules, setSecurityRules] = useState<any[]>([]);
+  const [securityView, setSecurityView] = useState<'incidents' | 'events' | 'blocked_ips' | 'rules'>('incidents');
+  const [incidentStatusFilter, setIncidentStatusFilter] = useState<string>('ALL');
+  const [securityEventTypeFilter, setSecurityEventTypeFilter] = useState<string>('ALL');
+  const [selectedIncident, setSelectedIncident] = useState<any | null>(null);
+  const [incidentDetails, setIncidentDetails] = useState<any | null>(null);
+  const [newIncidentNote, setNewIncidentNote] = useState<string>('');
+  const [isSubmittingIncidentNote, setIsSubmittingIncidentNote] = useState<boolean>(false);
+  const [isBlockModalOpen, setIsBlockModalOpen] = useState<boolean>(false);
+  const [manualIpToBlock, setManualIpToBlock] = useState<string>('');
+  const [manualBlockReason, setManualBlockReason] = useState<string>('');
+  const [manualBlockDuration, setManualBlockDuration] = useState<number>(60);
+  const [editingRule, setEditingRule] = useState<any | null>(null);
 
   // Common Controls
   const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h' | '7d' | '30d' | '90d'>('1h');
@@ -142,6 +161,20 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
       if (logsRes?.success) {
         setLogs(logsRes.logs || []);
       }
+
+      // 5. Fetch Security & Abuse Stats
+      const [secStatsRes, incidentsRes, secEventsRes, blockedRes, rulesRes] = await Promise.all([
+        authFetch('/admin/security/stats'),
+        authFetch(`/admin/security/incidents?status=${incidentStatusFilter}`),
+        authFetch(`/admin/security/events?type=${securityEventTypeFilter}&limit=100`),
+        authFetch('/admin/security/blocked-ips'),
+        authFetch('/admin/security/rules'),
+      ]);
+      if (secStatsRes?.success) setSecurityStats(secStatsRes.stats);
+      if (incidentsRes?.success) setSecurityIncidents(incidentsRes.incidents || []);
+      if (secEventsRes?.success) setSecurityEvents(secEventsRes.events || []);
+      if (blockedRes?.success) setBlockedIps(blockedRes.blockedIps || []);
+      if (rulesRes?.success) setSecurityRules(rulesRes.rules || []);
     } catch (error) {
       console.error('Failed to load system health data:', error);
       toast.error('Failed to reload telemetry data');
@@ -158,6 +191,8 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
     logLevelFilter,
     logModuleFilter,
     logSearch,
+    incidentStatusFilter,
+    securityEventTypeFilter,
   ]);
 
   // Metric history per server
@@ -281,6 +316,133 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
       toast.error('Failed to add note');
     } finally {
       setIsSubmittingNote(false);
+    }
+  };
+
+  // Fetch single security incident details when selected
+  useEffect(() => {
+    if (!selectedIncident) {
+      setIncidentDetails(null);
+      return;
+    }
+    const fetchIncident = async () => {
+      try {
+        const res = await authFetch(`/admin/security/incidents/${selectedIncident.incidentId}`);
+        if (res?.success) {
+          setIncidentDetails(res);
+        }
+      } catch (err) {
+        toast.error('Failed to load incident details');
+      }
+    };
+    fetchIncident();
+  }, [selectedIncident, authFetch]);
+
+  // Security Incident Handlers
+  const handleUpdateIncidentStatus = async (incidentId: string, newStatus: string) => {
+    try {
+      const res = await authFetch(`/admin/security/incidents/${incidentId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (res?.success) {
+        toast.success(`Incident status updated to ${newStatus}`);
+        setSecurityIncidents((prev) =>
+          prev.map((inc) => (inc.incidentId === incidentId ? { ...inc, status: newStatus } : inc))
+        );
+        if (selectedIncident?.incidentId === incidentId) {
+          setSelectedIncident((prev: any) => ({ ...prev, status: newStatus }));
+        }
+      }
+    } catch (err) {
+      toast.error('Failed to update incident status');
+    }
+  };
+
+  const handleAddIncidentNote = async (incidentId: string) => {
+    if (!newIncidentNote.trim()) return;
+    setIsSubmittingIncidentNote(true);
+    try {
+      const res = await authFetch(`/admin/security/incidents/${incidentId}/notes`, {
+        method: 'POST',
+        body: JSON.stringify({ note: newIncidentNote.trim() }),
+      });
+      if (res?.success) {
+        toast.success('Investigation note recorded');
+        setNewIncidentNote('');
+        if (incidentDetails) {
+          setIncidentDetails((prev: any) => ({
+            ...prev,
+            incident: { ...prev.incident, adminNotes: res.notes },
+          }));
+        }
+      }
+    } catch (err) {
+      toast.error('Failed to save incident note');
+    } finally {
+      setIsSubmittingIncidentNote(false);
+    }
+  };
+
+  // Block / Unblock IP Handlers
+  const handleManualBlockIp = async () => {
+    if (!manualIpToBlock.trim() || !manualBlockReason.trim()) {
+      toast.error('Please specify IP address and reason');
+      return;
+    }
+    try {
+      const res = await authFetch('/admin/security/blocked-ips', {
+        method: 'POST',
+        body: JSON.stringify({
+          ip: manualIpToBlock.trim(),
+          reason: manualBlockReason.trim(),
+          durationMinutes: manualBlockDuration,
+        }),
+      });
+      if (res?.success) {
+        toast.success(res.message || 'IP blocked successfully');
+        setIsBlockModalOpen(false);
+        setManualIpToBlock('');
+        setManualBlockReason('');
+        // Refresh blocked IPs
+        const blockedRes = await authFetch('/admin/security/blocked-ips');
+        if (blockedRes?.success) setBlockedIps(blockedRes.blockedIps || []);
+      }
+    } catch (err: any) {
+      toast.error('Failed to block IP');
+    }
+  };
+
+  const handleUnblockIp = async (ip: string) => {
+    try {
+      const res = await authFetch(`/admin/security/blocked-ips/${encodeURIComponent(ip)}`, {
+        method: 'DELETE',
+      });
+      if (res?.success) {
+        toast.success(`IP ${ip} unblocked`);
+        setBlockedIps((prev) => prev.filter((b) => b.ip !== ip));
+      }
+    } catch (err) {
+      toast.error('Failed to unblock IP');
+    }
+  };
+
+  // Update Security Rule Handler
+  const handleSaveRule = async (ruleId: string, threshold: number, windowSeconds: number, isActive: boolean) => {
+    try {
+      const res = await authFetch(`/admin/security/rules/${ruleId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ threshold, windowSeconds, isActive }),
+      });
+      if (res?.success) {
+        toast.success(`Rule [${ruleId}] updated`);
+        setSecurityRules((prev) =>
+          prev.map((r) => (r.ruleId === ruleId ? { ...r, threshold, windowSeconds, isActive } : r))
+        );
+        setEditingRule(null);
+      }
+    } catch (err) {
+      toast.error('Failed to update security rule');
     }
   };
 
@@ -454,6 +616,23 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
         >
           <span className="flex items-center gap-2">
             <Terminal className="w-4 h-4" /> Structured Logs
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveSubTab('security')}
+          className={`pb-3 px-4 text-sm font-semibold border-b-2 whitespace-nowrap transition-colors ${
+            activeSubTab === 'security'
+              ? 'border-amber-500 text-amber-400'
+              : 'border-transparent text-slate-400 hover:text-white'
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4" /> Security & Abuse
+            {securityStats?.summary?.openIncidents > 0 && (
+              <span className="px-1.5 py-0.2 text-[10px] bg-rose-500/20 text-rose-300 rounded-full border border-rose-500/30">
+                {securityStats.summary.openIncidents}
+              </span>
+            )}
           </span>
         </button>
       </div>
@@ -1324,6 +1503,729 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
                     </pre>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          6. TAB: SECURITY MONITORING & ABUSE DETECTION
+      ────────────────────────────────────────────────────────────── */}
+      {activeSubTab === 'security' && (
+        <div className="space-y-6">
+          {/* Security Scorecards Banner */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {/* Overall Security Score */}
+            <div className="p-4 rounded-xl bg-gradient-to-br from-[#090f1e] to-slate-900 border border-slate-800 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>Security Score</span>
+                <Shield className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div className="mt-2">
+                <div className="text-2xl font-bold text-emerald-400">
+                  {securityStats?.overallScore ?? 96}%
+                </div>
+                <div className="w-full bg-slate-800 rounded-full h-1.5 mt-2">
+                  <div
+                    className="bg-emerald-400 h-1.5 rounded-full transition-all"
+                    style={{ width: `${securityStats?.overallScore ?? 96}%` }}
+                  />
+                </div>
+              </div>
+              <span className="text-[10px] text-slate-500 mt-2">Weighted Multi-Factor</span>
+            </div>
+
+            {/* Authentication Health */}
+            <div className="p-4 rounded-xl bg-[#090f1e] border border-slate-800 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>Authentication</span>
+                <CheckCircle className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div className="mt-2">
+                <div className="text-2xl font-bold text-white">
+                  {securityStats?.authenticationScore ?? 98}%
+                </div>
+                <div className="w-full bg-slate-800 rounded-full h-1.5 mt-2">
+                  <div
+                    className="bg-emerald-400 h-1.5 rounded-full transition-all"
+                    style={{ width: `${securityStats?.authenticationScore ?? 98}%` }}
+                  />
+                </div>
+              </div>
+              <span className="text-[10px] text-slate-500 mt-2">Logins & 2FA/OTP Health</span>
+            </div>
+
+            {/* Authorization Health */}
+            <div className="p-4 rounded-xl bg-[#090f1e] border border-slate-800 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>Authorization</span>
+                <ShieldAlert className="w-4 h-4 text-sky-400" />
+              </div>
+              <div className="mt-2">
+                <div className="text-2xl font-bold text-white">
+                  {securityStats?.authorizationScore ?? 97}%
+                </div>
+                <div className="w-full bg-slate-800 rounded-full h-1.5 mt-2">
+                  <div
+                    className="bg-sky-400 h-1.5 rounded-full transition-all"
+                    style={{ width: `${securityStats?.authorizationScore ?? 97}%` }}
+                  />
+                </div>
+              </div>
+              <span className="text-[10px] text-slate-500 mt-2">RBAC & Token Validity</span>
+            </div>
+
+            {/* Abuse Protection */}
+            <div className="p-4 rounded-xl bg-[#090f1e] border border-slate-800 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>Abuse Protection</span>
+                <AlertOctagon className="w-4 h-4 text-amber-400" />
+              </div>
+              <div className="mt-2">
+                <div className="text-2xl font-bold text-white">
+                  {securityStats?.abuseProtectionScore ?? 91}%
+                </div>
+                <div className="w-full bg-slate-800 rounded-full h-1.5 mt-2">
+                  <div
+                    className="bg-amber-400 h-1.5 rounded-full transition-all"
+                    style={{ width: `${securityStats?.abuseProtectionScore ?? 91}%` }}
+                  />
+                </div>
+              </div>
+              <span className="text-[10px] text-slate-500 mt-2">Anomaly & Threat Defense</span>
+            </div>
+
+            {/* Rate Limiting Health */}
+            <div className="p-4 rounded-xl bg-[#090f1e] border border-slate-800 flex flex-col justify-between col-span-2 sm:col-span-1">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>Rate Limiting</span>
+                <Zap className="w-4 h-4 text-purple-400" />
+              </div>
+              <div className="mt-2">
+                <div className="text-2xl font-bold text-white">
+                  {securityStats?.rateLimitingScore ?? 94}%
+                </div>
+                <div className="w-full bg-slate-800 rounded-full h-1.5 mt-2">
+                  <div
+                    className="bg-purple-400 h-1.5 rounded-full transition-all"
+                    style={{ width: `${securityStats?.rateLimitingScore ?? 94}%` }}
+                  />
+                </div>
+              </div>
+              <span className="text-[10px] text-slate-500 mt-2">DDoS & Burst Control</span>
+            </div>
+          </div>
+
+          {/* Security Center Sub-Navigation Tabs */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-2 overflow-x-auto">
+              <button
+                onClick={() => setSecurityView('incidents')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                  securityView === 'incidents'
+                    ? 'bg-amber-500 text-slate-950'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>Security Incidents</span>
+                {securityIncidents.filter((i) => i.status === 'OPEN').length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-500 text-white font-bold">
+                    {securityIncidents.filter((i) => i.status === 'OPEN').length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setSecurityView('events')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                  securityView === 'events'
+                    ? 'bg-amber-500 text-slate-950'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                <Activity className="w-3.5 h-3.5" />
+                <span>Live Security Events</span>
+                <span className="text-[10px] opacity-75">({securityEvents.length})</span>
+              </button>
+
+              <button
+                onClick={() => setSecurityView('blocked_ips')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                  securityView === 'blocked_ips'
+                    ? 'bg-amber-500 text-slate-950'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                <ShieldAlert className="w-3.5 h-3.5" />
+                <span>Blocked IPs</span>
+                <span className="text-[10px] opacity-75">({blockedIps.length})</span>
+              </button>
+
+              <button
+                onClick={() => setSecurityView('rules')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                  securityView === 'rules'
+                    ? 'bg-amber-500 text-slate-950'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                <FileCode className="w-3.5 h-3.5" />
+                <span>Configurable Rules</span>
+                <span className="text-[10px] opacity-75">({securityRules.length})</span>
+              </button>
+            </div>
+
+            {securityView === 'blocked_ips' && (
+              <button
+                onClick={() => setIsBlockModalOpen(true)}
+                className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition-colors flex items-center gap-1.5 self-start sm:self-auto shadow-lg shadow-rose-900/30"
+              >
+                <ShieldAlert className="w-3.5 h-3.5" />
+                <span>Block IP Address</span>
+              </button>
+            )}
+          </div>
+
+          {/* VIEW 1: SECURITY INCIDENTS */}
+          {securityView === 'incidents' && (
+            <div className="space-y-4">
+              {/* Incident Status Filters */}
+              <div className="flex items-center gap-2">
+                {(['ALL', 'OPEN', 'ACKNOWLEDGED', 'RESOLVED', 'IGNORED'] as const).map((st) => (
+                  <button
+                    key={st}
+                    onClick={() => setIncidentStatusFilter(st)}
+                    className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors ${
+                      incidentStatusFilter === st
+                        ? 'bg-slate-800 text-amber-400 border border-amber-500/30'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
+
+              {securityIncidents.length === 0 ? (
+                <div className="p-12 text-center rounded-xl bg-[#090f1e] border border-slate-800 text-slate-400 text-sm">
+                  <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+                  No security incidents matching filter. System is running securely.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {securityIncidents.map((incident) => (
+                    <div
+                      key={incident.incidentId}
+                      className="p-4 rounded-xl bg-[#090f1e] border border-slate-800 hover:border-slate-700 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono font-bold text-xs text-white">
+                            {incident.incidentId}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
+                              incident.severity === 'CRITICAL'
+                                ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                                : incident.severity === 'HIGH'
+                                ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                                : incident.severity === 'MEDIUM'
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                : 'bg-slate-500/20 text-slate-300 border-slate-500/30'
+                            }`}
+                          >
+                            {incident.severity}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
+                              incident.status === 'OPEN'
+                                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                : incident.status === 'ACKNOWLEDGED'
+                                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                : incident.status === 'RESOLVED'
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                            }`}
+                          >
+                            {incident.status}
+                          </span>
+                          <span className="text-xs text-slate-400 font-mono">
+                            Risk Score: <span className="text-amber-400 font-bold">{incident.riskScore}</span>
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-semibold text-white">{incident.title}</h4>
+                        <p className="text-xs text-slate-400">{incident.description}</p>
+                        <div className="flex items-center gap-4 text-[11px] text-slate-400 pt-1">
+                          <span>Target IP: <strong className="text-slate-300 font-mono">{incident.targetIp || 'N/A'}</strong></span>
+                          <span>Violations: <strong className="text-amber-400">{incident.eventCount}</strong></span>
+                          <span>Last Seen: {new Date(incident.lastSeen).toLocaleTimeString()}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end md:self-center">
+                        {incident.status === 'OPEN' && (
+                          <button
+                            onClick={() => handleUpdateIncidentStatus(incident.incidentId, 'ACKNOWLEDGED')}
+                            className="px-3 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold transition-colors"
+                          >
+                            Acknowledge
+                          </button>
+                        )}
+                        {incident.status !== 'RESOLVED' && (
+                          <button
+                            onClick={() => handleUpdateIncidentStatus(incident.incidentId, 'RESOLVED')}
+                            className="px-3 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-semibold transition-colors"
+                          >
+                            Resolve
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setSelectedIncident(incident)}
+                          className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors flex items-center gap-1"
+                        >
+                          <Eye className="w-3.5 h-3.5" /> Details
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* VIEW 2: LIVE SECURITY EVENTS FEED */}
+          {securityView === 'events' && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                {(
+                  [
+                    'ALL',
+                    'LOGIN_FAILED',
+                    'LOGIN_SUCCESS',
+                    'TOKEN_INVALID',
+                    'TOKEN_EXPIRED',
+                    'PERMISSION_DENIED',
+                    'RATE_LIMIT',
+                    'OTP_ABUSE',
+                    'PASSWORD_RESET',
+                    'ADMIN_ACTION',
+                    'SUSPICIOUS_ACTIVITY',
+                  ] as const
+                ).map((ev) => (
+                  <button
+                    key={ev}
+                    onClick={() => setSecurityEventTypeFilter(ev)}
+                    className={`px-2.5 py-1 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors ${
+                      securityEventTypeFilter === ev
+                        ? 'bg-amber-500 text-slate-950 font-bold'
+                        : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                    }`}
+                  >
+                    {ev}
+                  </button>
+                ))}
+              </div>
+
+              <div className="rounded-xl border border-slate-800 overflow-hidden bg-[#090f1e]">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-900/80 border-b border-slate-800 text-slate-400">
+                    <tr>
+                      <th className="p-3">Timestamp</th>
+                      <th className="p-3">Event Type</th>
+                      <th className="p-3">Severity</th>
+                      <th className="p-3">Risk</th>
+                      <th className="p-3">Client IP</th>
+                      <th className="p-3">User / Endpoint</th>
+                      <th className="p-3 text-right">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 font-mono">
+                    {securityEvents.map((evt) => (
+                      <tr key={evt._id || Math.random()} className="hover:bg-slate-850/50 transition-colors">
+                        <td className="p-3 text-slate-400">
+                          {new Date(evt.timestamp).toLocaleTimeString()}
+                        </td>
+                        <td className="p-3">
+                          <span className="text-white font-semibold">{evt.type}</span>
+                        </td>
+                        <td className="p-3">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                              evt.severity === 'CRITICAL'
+                                ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                                : evt.severity === 'HIGH'
+                                ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                                : evt.severity === 'MEDIUM'
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                : 'bg-slate-500/20 text-slate-300 border-slate-500/30'
+                            }`}
+                          >
+                            {evt.severity}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <span className="text-amber-400 font-bold">{evt.riskScore}</span>
+                        </td>
+                        <td className="p-3 text-slate-300">{evt.ip}</td>
+                        <td className="p-3 text-slate-300 truncate max-w-xs font-sans">
+                          {evt.userEmail ? (
+                            <span className="text-emerald-400">{evt.userEmail}</span>
+                          ) : (
+                            <span className="text-slate-400">{evt.endpoint || 'N/A'}</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-right">
+                          <button
+                            onClick={() =>
+                              copyToClipboard(
+                                JSON.stringify(evt.metadata || {}, null, 2),
+                                evt._id || 'evt'
+                              )
+                            }
+                            className="p-1 rounded bg-slate-800 text-slate-300 hover:text-white"
+                            title="Copy sanitized payload"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* VIEW 3: BLOCKED IPS MANAGER */}
+          {securityView === 'blocked_ips' && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-slate-800 overflow-hidden bg-[#090f1e]">
+                {blockedIps.length === 0 ? (
+                  <div className="p-12 text-center text-slate-400 text-sm">
+                    <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+                    No IP addresses currently restricted.
+                  </div>
+                ) : (
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-900/80 border-b border-slate-800 text-slate-400">
+                      <tr>
+                        <th className="p-3">Blocked IP</th>
+                        <th className="p-3">Reason</th>
+                        <th className="p-3">Source</th>
+                        <th className="p-3">Attempt Hits</th>
+                        <th className="p-3">Expires At</th>
+                        <th className="p-3 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 font-mono">
+                      {blockedIps.map((b) => (
+                        <tr key={b.ip} className="hover:bg-slate-850/50">
+                          <td className="p-3 font-bold text-rose-400">{b.ip}</td>
+                          <td className="p-3 text-slate-300 font-sans">{b.reason}</td>
+                          <td className="p-3">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                b.blockedBy === 'ADMIN'
+                                  ? 'bg-purple-500/20 text-purple-300'
+                                  : 'bg-rose-500/20 text-rose-300'
+                              }`}
+                            >
+                              {b.blockedBy}
+                            </span>
+                          </td>
+                          <td className="p-3 text-amber-400">{b.hitCount || 0}</td>
+                          <td className="p-3 text-slate-400">
+                            {b.expiresAt ? new Date(b.expiresAt).toLocaleTimeString() : 'Permanent'}
+                          </td>
+                          <td className="p-3 text-right">
+                            <button
+                              onClick={() => handleUnblockIp(b.ip)}
+                              className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-semibold"
+                            >
+                              Unblock
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* VIEW 4: CONFIGURABLE SECURITY RULES */}
+          {securityView === 'rules' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {securityRules.map((rule) => {
+                  const isEditing = editingRule?.ruleId === rule.ruleId;
+                  const currentThreshold = isEditing ? editingRule.threshold : rule.threshold;
+                  const currentWindow = isEditing ? editingRule.windowSeconds : rule.windowSeconds;
+                  const currentActive = isEditing ? editingRule.isActive : rule.isActive;
+
+                  return (
+                    <div
+                      key={rule.ruleId}
+                      className="p-4 rounded-xl bg-[#090f1e] border border-slate-800 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="font-bold text-sm text-white">{rule.name}</h4>
+                          <span className="text-[11px] font-mono text-amber-400">{rule.ruleId}</span>
+                        </div>
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            rule.severity === 'CRITICAL'
+                              ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                              : rule.severity === 'HIGH'
+                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          }`}
+                        >
+                          {rule.severity}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-slate-400">{rule.description}</p>
+
+                      <div className="grid grid-cols-2 gap-3 text-xs pt-1">
+                        <div>
+                          <label className="text-slate-500 block mb-1">Threshold (Count)</label>
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              min="1"
+                              value={currentThreshold}
+                              onChange={(e) =>
+                                setEditingRule({
+                                  ...editingRule,
+                                  threshold: parseInt(e.target.value, 10) || 1,
+                                })
+                              }
+                              className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-700 text-white font-mono"
+                            />
+                          ) : (
+                            <span className="font-bold font-mono text-slate-200">
+                              {rule.threshold} occurrences
+                            </span>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="text-slate-500 block mb-1">Time Window (s)</label>
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              min="10"
+                              value={currentWindow}
+                              onChange={(e) =>
+                                setEditingRule({
+                                  ...editingRule,
+                                  windowSeconds: parseInt(e.target.value, 10) || 10,
+                                })
+                              }
+                              className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-700 text-white font-mono"
+                            />
+                          ) : (
+                            <span className="font-bold font-mono text-slate-200">
+                              {rule.windowSeconds} seconds
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-slate-400">Action:</span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-white font-mono">
+                            {rule.action}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {isEditing ? (
+                            <>
+                              <button
+                                onClick={() => setEditingRule(null)}
+                                className="px-2.5 py-1 rounded bg-slate-800 text-slate-400 hover:text-white text-xs"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() =>
+                                  handleSaveRule(
+                                    rule.ruleId,
+                                    currentThreshold,
+                                    currentWindow,
+                                    currentActive
+                                  )
+                                }
+                                className="px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs"
+                              >
+                                Save
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => setEditingRule(rule)}
+                              className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
+                            >
+                              Edit Threshold
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* INCIDENT DETAILS MODAL */}
+          {selectedIncident && incidentDetails && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+              <div className="bg-[#090f1e] border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6 space-y-4 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-sm text-white">
+                      {selectedIncident.incidentId}
+                    </span>
+                    <span className="text-xs text-slate-400">{selectedIncident.title}</span>
+                  </div>
+                  <button
+                    onClick={() => setSelectedIncident(null)}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+                  >
+                    <XCircle className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+                    <span className="text-slate-400 block mb-1">Target Client IP:</span>
+                    <span className="text-white font-mono font-bold">
+                      {selectedIncident.targetIp || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+                    <span className="text-slate-400 block mb-1">Trigger Rule:</span>
+                    <span className="text-amber-400 font-mono font-bold">
+                      {selectedIncident.triggerRuleId || 'N/A'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Investigation Notes */}
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-400 uppercase mb-2">
+                    Investigation Notes ({incidentDetails.incident?.adminNotes?.length || 0})
+                  </h4>
+                  <div className="space-y-2 max-h-40 overflow-y-auto mb-3">
+                    {incidentDetails.incident?.adminNotes?.map((n: any, idx: number) => (
+                      <div key={idx} className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-xs">
+                        <div className="flex items-center justify-between text-slate-400 mb-1">
+                          <strong className="text-white">{n.author}</strong>
+                          <span className="text-[10px]">{new Date(n.createdAt).toLocaleString()}</span>
+                        </div>
+                        <p className="text-slate-200">{n.note}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Add investigation note / mitigation action..."
+                      value={newIncidentNote}
+                      onChange={(e) => setNewIncidentNote(e.target.value)}
+                      className="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white"
+                    />
+                    <button
+                      onClick={() => handleAddIncidentNote(selectedIncident.incidentId)}
+                      disabled={isSubmittingIncidentNote || !newIncidentNote.trim()}
+                      className="px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs disabled:opacity-50"
+                    >
+                      Add Note
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MANUAL BLOCK IP MODAL */}
+          {isBlockModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+              <div className="bg-[#090f1e] border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-rose-500" /> Restrict IP Address
+                  </h3>
+                  <button
+                    onClick={() => setIsBlockModalOpen(false)}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+                  >
+                    <XCircle className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="text-slate-400 block mb-1">IP Address to Block</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 198.51.100.42"
+                      value={manualIpToBlock}
+                      onChange={(e) => setManualIpToBlock(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 block mb-1">Violation Reason</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Repeated credential stuffing / brute force"
+                      value={manualBlockReason}
+                      onChange={(e) => setManualBlockReason(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 block mb-1">Block Duration</label>
+                    <select
+                      value={manualBlockDuration}
+                      onChange={(e) => setManualBlockDuration(parseInt(e.target.value, 10))}
+                      className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white"
+                    >
+                      <option value={30}>30 Minutes</option>
+                      <option value={60}>1 Hour</option>
+                      <option value={360}>6 Hours</option>
+                      <option value={1440}>24 Hours</option>
+                      <option value={10080}>7 Days</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                  <button
+                    onClick={() => setIsBlockModalOpen(false)}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleManualBlockIp}
+                    className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-900/30"
+                  >
+                    Confirm Block
+                  </button>
+                </div>
               </div>
             </div>
           )}

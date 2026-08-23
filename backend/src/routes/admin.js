@@ -142,6 +142,20 @@ router.get('/logs', adminOnly, loggingController.getLogs);
 router.get('/logs/stream', adminOnly, loggingController.getLiveStream);
 router.get('/logs/:id', adminOnly, loggingController.getLogById);
 
+// 20. Security Monitoring & Abuse Detection Centre
+const securityController = require('../monitoring/controllers/securityController').securityController;
+router.get('/security/stats', adminOnly, securityController.getSecurityStats);
+router.get('/security/events', adminOnly, securityController.getSecurityEvents);
+router.get('/security/incidents', adminOnly, securityController.getSecurityIncidents);
+router.get('/security/incidents/:id', adminOnly, securityController.getSecurityIncidentDetails);
+router.patch('/security/incidents/:id/status', adminOnly, securityController.updateIncidentStatus);
+router.post('/security/incidents/:id/notes', adminOnly, securityController.addIncidentNote);
+router.get('/security/blocked-ips', adminOnly, securityController.getBlockedIps);
+router.post('/security/blocked-ips', adminOnly, securityController.blockIp);
+router.delete('/security/blocked-ips/:ip', adminOnly, securityController.unblockIp);
+router.get('/security/rules', adminOnly, securityController.getSecurityRules);
+router.patch('/security/rules/:ruleId', adminOnly, securityController.updateSecurityRule);
+
 // Preserved User Management Handlers
 router.get('/users', adminOnly, adminController.getUsers);
 router.put('/users/:id/plan', adminOnly, adminController.assignPlan);

@@ -11,6 +11,7 @@ const { generateToken, generateTemp2FAToken } = require('../middleware/auth');
 const { generateUniqueUsername } = require('../utils/generateUsername');
 const { generateUniqueUsercode } = require('../utils/generateUsercode');
 const { getIndustryDefaults } = require('../utils/industryTemplates');
+const { securityTracker } = require('../monitoring/security/securityTracker');
 
 // Helper to construct dynamic default form schema based on industry vertical
 const getDefaultLeadFormSchema = (industryType = 'Agency', educationSubProfile = null) => {
@@ -233,6 +234,11 @@ exports.login = async (req, res) => {
 
     const user = await User.findOne(query);
     if (!user) {
+      securityTracker.recordEvent({
+        type: 'LOGIN_FAILED',
+        req,
+        metadata: { reason: 'User not found', identifier: cleanInput },
+      });
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
@@ -242,6 +248,15 @@ exports.login = async (req, res) => {
         $inc: { loginAttempts: 1 },
         $set: { lastFailedLogin: new Date() }
       });
+      securityTracker.recordEvent({
+        type: 'LOGIN_FAILED',
+        req,
+        userId: user._id,
+        userEmail: user.email,
+        tenantId: user.companyId,
+        metadata: { reason: 'Password mismatch' },
+        isAdminUser: user.isAdmin,
+      });
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
@@ -249,6 +264,27 @@ exports.login = async (req, res) => {
     await User.findByIdAndUpdate(user._id, {
       $set: { loginAttempts: 0, lastLogin: new Date() }
     });
+
+    // Record Security Login Success
+    securityTracker.recordEvent({
+      type: 'LOGIN_SUCCESS',
+      req,
+      userId: user._id,
+      userEmail: user.email,
+      tenantId: user.companyId,
+      isAdminUser: user.isAdmin,
+    });
+
+    if (user.isAdmin) {
+      securityTracker.recordEvent({
+        type: 'ADMIN_ACTION',
+        req,
+        userId: user._id,
+        userEmail: user.email,
+        metadata: { action: 'ADMIN_LOGIN' },
+        isAdminUser: true,
+      });
+    }
 
     // ─────────────────────────────────────────────────────────────
     // TOTP AUTHENTICATOR APP 2FA CHECK
@@ -385,6 +421,14 @@ exports.verify2FA = async (req, res) => {
     }
 
     if (!isVerified) {
+      securityTracker.recordEvent({
+        type: 'OTP_ABUSE',
+        req,
+        userId: user._id,
+        userEmail: user.email,
+        tenantId: user.companyId,
+        metadata: { reason: 'Invalid 2FA Authenticator code' },
+      });
       return res.status(400).json({
         message: 'Invalid 6-digit Authenticator code. Please ensure your device clock is synchronized and try the latest code.',
         code: 'TOTP_MISMATCH',

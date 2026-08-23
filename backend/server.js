@@ -84,6 +84,11 @@ app.use('/api', (req, res, next) => {
 
 const { logger, requestLogger } = require('./src/monitoring/logging/logger');
 const { errorTracker } = require('./src/monitoring/errorTracking/errorTracker');
+const { ipBlocker } = require('./src/monitoring/security/ipBlockerMiddleware');
+const { securityTracker } = require('./src/monitoring/security/securityTracker');
+
+// IP Blocker & Abuse Defense Interceptor (Checks in-memory blacklist immediately)
+app.use(ipBlocker.middleware);
 
 // API Performance interceptor (runs on all /api routes)
 app.use('/api', apiPerformance);
@@ -149,6 +154,10 @@ connectDB().then(async () => {
 
   // Run agency roles & permissions migration
   await runAgencyRolesMigration().catch(err => console.error('[Migration Error]:', err.message));
+
+  // Initialize security rules & IP blacklist cache
+  await securityTracker.initDefaultRules().catch(err => console.error('[Security Rules Init Error]:', err.message));
+  await ipBlocker.initSync().catch(err => console.error('[IP Blocker Sync Error]:', err.message));
 
   // Start cron jobs
   startFollowUpCron();

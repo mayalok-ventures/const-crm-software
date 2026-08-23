@@ -20,6 +20,7 @@ const testFiles = [
   'tests/followup_workflow.test.js',
   'tests/monitoring.test.js',
   'tests/system_observability_suite.test.js',
+  'tests/security_abuse_detection.test.js',
 ];
 
 async function isServerRunning() {

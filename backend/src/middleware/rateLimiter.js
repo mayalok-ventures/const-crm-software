@@ -1,12 +1,21 @@
 const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
 const AbuseLog = require('../models/AbuseLog');
+const { securityTracker } = require('../monitoring/security/securityTracker');
 
 // Track and apply automatic suspensions based on cumulative abuse
 const handleAbuse = async (req, type, detail) => {
   try {
     const userId = req.user?._id || null;
     const ip = req.ip;
+
+    // Log in Security Monitoring Engine
+    securityTracker.recordEvent({
+      type: 'RATE_LIMIT',
+      req,
+      userId,
+      metadata: { abuseType: type, detail },
+    });
 
     // Log abuse event in DB with 90-day TTL
     await AbuseLog.create({
