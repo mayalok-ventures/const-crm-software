@@ -148,6 +148,13 @@ class StructuredLogger {
     this.log('FATAL', message, context);
   }
 
+  public audit(actor: string, action: string, target: string, context?: LogContext) {
+    this.log('INFO', `[AUDIT] ${actor} performed ${action} on ${target}`, {
+      ...context,
+      module: 'audit',
+    });
+  }
+
   public getLiveStream(limit = 100): StructuredLogEntry[] {
     return this.liveRingBuffer.slice(0, limit);
   }

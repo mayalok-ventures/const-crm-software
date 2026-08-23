@@ -27,6 +27,7 @@ const commissionService = require('../services/commissionService');
 const waSession = require('../services/waSession');
 const { generateUniqueUsername } = require('../utils/generateUsername');
 const { generateUniqueUsercode } = require('../utils/generateUsercode');
+const { auditService } = require('../monitoring/audit/auditService');
 
 // Helper: Immutable Universal Activity Logging
 const logActivity = async ({
@@ -78,6 +79,26 @@ const logActivity = async ({
       newValue: newValue || afterState,
       details: details || `${actionEnum} performed on ${entType}`,
       ipAddress,
+    });
+
+    // Record in Immutable AuditLog
+    let auditAction = 'UPDATE';
+    if (actionEnum === 'CREATE') auditAction = 'CREATE';
+    else if (actionEnum === 'DELETE') auditAction = 'DELETE';
+    else if (actUpper.includes('ROLE')) auditAction = 'ROLE_CHANGE';
+    else if (actUpper.includes('PERMISSION')) auditAction = 'PERMISSION_CHANGE';
+    else if (actUpper.includes('SETTING') || actUpper.includes('CONFIG')) auditAction = 'SETTINGS_CHANGE';
+
+    auditService.record({
+      actor: typeof act === 'object' ? act : { _id: act, role: actRole },
+      action: auditAction,
+      resourceType: entType,
+      resourceId: entId,
+      resourceName: details || `${entType} modification`,
+      before: oldValue || beforeState,
+      after: newValue || afterState,
+      ip: ipAddress,
+      metadata: { details, originalAction: action },
     });
   } catch (err) {
     console.warn('[ActivityLog] Logging warning:', err.message);

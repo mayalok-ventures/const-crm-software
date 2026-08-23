@@ -156,6 +156,14 @@ router.delete('/security/blocked-ips/:ip', adminOnly, securityController.unblock
 router.get('/security/rules', adminOnly, securityController.getSecurityRules);
 router.patch('/security/rules/:ruleId', adminOnly, securityController.updateSecurityRule);
 
+// 21. Immutable Audit Logging System
+const auditController = require('../monitoring/controllers/auditController').auditController;
+router.get('/audit/timeline', adminOnly, auditController.getAuditTimeline);
+router.get('/audit/stats', adminOnly, auditController.getAuditStats);
+router.get('/audit/export', adminOnly, auditController.exportAuditLogs);
+router.post('/audit/archive', adminOnly, auditController.archiveAuditLogs);
+router.get('/audit/:id', adminOnly, auditController.getAuditLogById);
+
 // Preserved User Management Handlers
 router.get('/users', adminOnly, adminController.getUsers);
 router.put('/users/:id/plan', adminOnly, adminController.assignPlan);

@@ -1,85 +1,159 @@
 const mongoose = require('mongoose');
 
-/**
- * AuditLog Schema (Security, Anti-Fraud & SuperAdmin Override Audit)
- * Implements an immutable trail of administrative actions, billing proration overrides,
- * risk scores, and anti-fraud enforcement.
- */
-const auditLogSchema = new mongoose.Schema(
+const AuditLogSchema = new mongoose.Schema(
   {
-    // Actor performing the action (SuperAdmin, System Cron, or User)
     actorId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       default: null,
+      index: true,
+    },
+    actorName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    actorEmail: {
+      type: String,
+      default: null,
+      trim: true,
       index: true,
     },
     actorRole: {
       type: String,
-      required: true,
-      enum: ['superadmin', 'system', 'user'],
+      default: 'user',
       index: true,
     },
-    // Target Tenant affected by the action
-    targetUserId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-      index: true,
-    },
-    targetCompanyId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+    organizationId: {
+      type: mongoose.Schema.Types.Mixed,
       default: null,
       index: true,
     },
     action: {
       type: String,
       required: true,
+      enum: [
+        'CREATE',
+        'UPDATE',
+        'DELETE',
+        'LOGIN',
+        'LOGOUT',
+        'EXPORT',
+        'IMPORT',
+        'ROLE_CHANGE',
+        'PERMISSION_CHANGE',
+        'PASSWORD_CHANGE',
+        'SETTINGS_CHANGE',
+        'API_KEY_CREATE',
+        'API_KEY_REVOKE',
+      ],
       index: true,
     },
-    // State snapshots for non-repudiation
-    beforeState: {
-      type: mongoose.Schema.Types.Mixed,
-      default: null,
-    },
-    afterState: {
-      type: mongoose.Schema.Types.Mixed,
-      default: null,
-    },
-    reason: {
+    resourceType: {
       type: String,
       required: true,
-      trim: true,
+      index: true,
     },
-    riskScore: {
-      type: Number,
-      default: 0,
-      min: 0,
-      max: 100,
-    },
-    ipAddress: {
+    resourceId: {
       type: String,
-      trim: true,
       default: null,
+      index: true,
+    },
+    resourceName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    before: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    after: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    changes: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    requestId: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
+    ip: {
+      type: String,
+      default: null,
+      trim: true,
     },
     userAgent: {
       type: String,
-      trim: true,
       default: null,
+      trim: true,
     },
     metadata: {
-      type: Map,
-      of: mongoose.Schema.Types.Mixed,
+      type: mongoose.Schema.Types.Mixed,
       default: {},
+    },
+    retentionCategory: {
+      type: String,
+      enum: ['ACTIVE', 'ARCHIVED'],
+      default: 'ACTIVE',
+      index: true,
     },
   },
   {
-    timestamps: true,
+    timestamps: { createdAt: true, updatedAt: false },
   }
 );
 
-auditLogSchema.index({ targetUserId: 1, createdAt: -1 });
-auditLogSchema.index({ action: 1, createdAt: -1 });
+// ─────────────────────────────────────────────────────────────
+// STRICT IMMUTABILITY ENFORCEMENT HOOKS
+// ─────────────────────────────────────────────────────────────
+const immutabilityError = () =>
+  new Error('IMMUTABILITY_VIOLATION: AuditLog records are strictly append-only and cannot be modified or deleted.');
 
-module.exports = mongoose.models.AuditLog || mongoose.model('AuditLog', auditLogSchema);
+AuditLogSchema.pre('updateOne', function () {
+  throw immutabilityError();
+});
+AuditLogSchema.pre('updateMany', function () {
+  throw immutabilityError();
+});
+AuditLogSchema.pre('findOneAndUpdate', function () {
+  throw immutabilityError();
+});
+AuditLogSchema.pre('replaceOne', function () {
+  throw immutabilityError();
+});
+AuditLogSchema.pre('deleteOne', function () {
+  throw immutabilityError();
+});
+AuditLogSchema.pre('deleteMany', function () {
+  throw immutabilityError();
+});
+AuditLogSchema.pre('findOneAndDelete', function () {
+  throw immutabilityError();
+});
+AuditLogSchema.pre('findOneAndRemove', function () {
+  throw immutabilityError();
+});
+
+AuditLogSchema.pre('save', function (next) {
+  if (!this.isNew) {
+    return next(immutabilityError());
+  }
+  next();
+});
+
+// Compound Indexes
+AuditLogSchema.index({ organizationId: 1, timestamp: -1 });
+AuditLogSchema.index({ resourceType: 1, resourceId: 1, timestamp: -1 });
+AuditLogSchema.index({ actorId: 1, timestamp: -1 });
+AuditLogSchema.index({ action: 1, timestamp: -1 });
+AuditLogSchema.index({ timestamp: -1 });
+
+module.exports = mongoose.models.AuditLog || mongoose.model('AuditLog', AuditLogSchema);

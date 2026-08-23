@@ -12,6 +12,7 @@ const { generateUniqueUsername } = require('../utils/generateUsername');
 const { generateUniqueUsercode } = require('../utils/generateUsercode');
 const { getIndustryDefaults } = require('../utils/industryTemplates');
 const { securityTracker } = require('../monitoring/security/securityTracker');
+const { auditService } = require('../monitoring/audit/auditService');
 
 // Helper to construct dynamic default form schema based on industry vertical
 const getDefaultLeadFormSchema = (industryType = 'Agency', educationSubProfile = null) => {
@@ -171,6 +172,25 @@ exports.register = async (req, res) => {
 
     const token = generateToken(user._id);
 
+    // Record Immutable Audit Log
+    auditService.record({
+      actor: user,
+      organizationId: user.companyId,
+      action: 'CREATE',
+      resourceType: 'User',
+      resourceId: user._id,
+      resourceName: user.name,
+      after: {
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        workStatus: user.workStatus,
+        industryType: user.industryType,
+      },
+      req,
+      metadata: { workStatus: user.workStatus, industryType: user.industryType },
+    });
+
     res.status(201).json({
       _id: user._id,
       name: user.name,
@@ -310,6 +330,18 @@ exports.login = async (req, res) => {
     const token = generateToken(user._id);
     const resolvedRole = user.role || (user.isAdmin ? 'superadmin' : 'user');
 
+    // Record Immutable Audit Log
+    auditService.record({
+      actor: user,
+      organizationId: user.companyId,
+      action: 'LOGIN',
+      resourceType: 'User',
+      resourceId: user._id,
+      resourceName: user.name,
+      req,
+      metadata: { method: 'password', role: resolvedRole },
+    });
+
     res.json({
       _id: user._id,
       name: user.name,
@@ -437,6 +469,18 @@ exports.verify2FA = async (req, res) => {
 
     const token = generateToken(user._id);
     const resolvedRole = user.role || (user.isAdmin ? 'superadmin' : 'user');
+
+    // Record Immutable Audit Log
+    auditService.record({
+      actor: user,
+      organizationId: user.companyId,
+      action: 'LOGIN',
+      resourceType: 'User',
+      resourceId: user._id,
+      resourceName: user.name,
+      req,
+      metadata: { method: '2fa_totp', role: resolvedRole },
+    });
 
     res.json({
       _id: user._id,
@@ -863,6 +907,20 @@ exports.updateProfile = async (req, res) => {
     }
 
     await user.save();
+
+    // Record Immutable Audit Log
+    auditService.record({
+      actor: req.user,
+      organizationId: req.user.companyId,
+      action: 'UPDATE',
+      resourceType: 'User',
+      resourceId: user._id,
+      resourceName: user.name,
+      after: { name: user.name, phone: user.phone },
+      req,
+      metadata: { updateType: 'profile_settings' },
+    });
+
     res.json({ message: 'Profile updated successfully ✅', user });
   } catch (error) {
     res.status(500).json({ message: error.message || 'Failed to update profile' });
@@ -887,6 +945,18 @@ exports.changePassword = async (req, res) => {
 
     user.password = newPassword;
     await user.save();
+
+    // Record Immutable Audit Log
+    auditService.record({
+      actor: req.user,
+      organizationId: req.user.companyId,
+      action: 'PASSWORD_CHANGE',
+      resourceType: 'User',
+      resourceId: user._id,
+      resourceName: user.name,
+      req,
+      metadata: { target: 'self' },
+    });
 
     res.json({ message: 'Password changed successfully' });
   } catch (error) {

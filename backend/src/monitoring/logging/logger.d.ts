@@ -41,6 +41,7 @@ declare class StructuredLogger {
     warn(message: string, context?: LogContext): void;
     error(message: string, context?: LogContext): void;
     fatal(message: string, context?: LogContext): void;
+    audit(actor: string, action: string, target: string, context?: LogContext): void;
     getLiveStream(limit?: number): StructuredLogEntry[];
 }
 export declare const logger: StructuredLogger;

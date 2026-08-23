@@ -34,6 +34,11 @@ import {
   ArrowUpRight,
   Send,
   Zap,
+  History,
+  Download,
+  Database,
+  Lock,
+  FileSpreadsheet,
 } from 'lucide-react';
 import {
   LineChart,
@@ -56,7 +61,7 @@ interface SystemHealthDashboardProps {
 
 export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboardProps) {
   const [activeSubTab, setActiveSubTab] = useState<
-    'infrastructure' | 'availability' | 'api' | 'errors' | 'logs' | 'security'
+    'infrastructure' | 'availability' | 'api' | 'errors' | 'logs' | 'security' | 'audit'
   >('infrastructure');
 
   // Infrastructure & Servers State
@@ -108,6 +113,18 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
   const [manualBlockReason, setManualBlockReason] = useState<string>('');
   const [manualBlockDuration, setManualBlockDuration] = useState<number>(60);
   const [editingRule, setEditingRule] = useState<any | null>(null);
+
+  // Immutable Audit Logging State
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [auditStats, setAuditStats] = useState<any>(null);
+  const [auditActionFilter, setAuditActionFilter] = useState<string>('ALL');
+  const [auditResourceFilter, setAuditResourceFilter] = useState<string>('ALL');
+  const [auditSearch, setAuditSearch] = useState<string>('');
+  const [selectedAuditLog, setSelectedAuditLog] = useState<any | null>(null);
+  const [auditDateFrom, setAuditDateFrom] = useState<string>('');
+  const [auditDateTo, setAuditDateTo] = useState<string>('');
+  const [isArchiving, setIsArchiving] = useState<boolean>(false);
+  const [archiveResultModal, setArchiveResultModal] = useState<any | null>(null);
 
   // Common Controls
   const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h' | '7d' | '30d' | '90d'>('1h');
@@ -175,6 +192,22 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
       if (secEventsRes?.success) setSecurityEvents(secEventsRes.events || []);
       if (blockedRes?.success) setBlockedIps(blockedRes.blockedIps || []);
       if (rulesRes?.success) setSecurityRules(rulesRes.rules || []);
+
+      // 6. Fetch Immutable Audit Trail & Stats
+      const auditParams = new URLSearchParams();
+      if (auditActionFilter !== 'ALL') auditParams.append('action', auditActionFilter);
+      if (auditResourceFilter !== 'ALL') auditParams.append('resourceType', auditResourceFilter);
+      if (auditSearch.trim()) auditParams.append('search', auditSearch.trim());
+      if (auditDateFrom) auditParams.append('from', auditDateFrom);
+      if (auditDateTo) auditParams.append('to', auditDateTo);
+      auditParams.append('limit', '100');
+
+      const [auditTimelineRes, auditStatsRes] = await Promise.all([
+        authFetch(`/admin/audit/timeline?${auditParams.toString()}`),
+        authFetch('/admin/audit/stats'),
+      ]);
+      if (auditTimelineRes?.success) setAuditLogs(auditTimelineRes.logs || []);
+      if (auditStatsRes?.success) setAuditStats(auditStatsRes.stats);
     } catch (error) {
       console.error('Failed to load system health data:', error);
       toast.error('Failed to reload telemetry data');
@@ -193,6 +226,11 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
     logSearch,
     incidentStatusFilter,
     securityEventTypeFilter,
+    auditActionFilter,
+    auditResourceFilter,
+    auditSearch,
+    auditDateFrom,
+    auditDateTo,
   ]);
 
   // Metric history per server
@@ -446,6 +484,89 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
     }
   };
 
+  // Export Audit Trail Handler
+  const handleExportAudit = async (format: 'csv' | 'json') => {
+    try {
+      const params = new URLSearchParams();
+      if (auditActionFilter !== 'ALL') params.append('action', auditActionFilter);
+      if (auditResourceFilter !== 'ALL') params.append('resourceType', auditResourceFilter);
+      if (auditSearch.trim()) params.append('search', auditSearch.trim());
+      if (auditDateFrom) params.append('from', auditDateFrom);
+      if (auditDateTo) params.append('to', auditDateTo);
+      params.append('format', format);
+
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const res = await fetch(`/api/admin/audit/export?${params.toString()}`, {
+        headers: {
+          Authorization: token ? `Bearer ${token}` : '',
+        },
+      });
+
+      if (!res.ok) throw new Error('Export request failed');
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `audit_trail_${new Date().toISOString().slice(0, 10)}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success(`Audit trail exported as ${format.toUpperCase()} 📄`);
+    } catch (err) {
+      toast.error('Failed to export audit trail');
+    }
+  };
+
+  // Trigger Retention Archive Handler
+  const handleTriggerArchive = async (retentionDays = 90) => {
+    setIsArchiving(true);
+    try {
+      const res = await authFetch('/admin/audit/archive', {
+        method: 'POST',
+        body: JSON.stringify({ retentionDays }),
+      });
+      if (res?.success) {
+        toast.success('Archive batch processed successfully 🔒');
+        setArchiveResultModal(res.archive);
+        // Refresh audit data
+        fetchDashboardData();
+      }
+    } catch (err) {
+      toast.error('Failed to archive old audit logs');
+    } finally {
+      setIsArchiving(false);
+    }
+  };
+
+  const getAuditActionBadge = (action: string) => {
+    switch (action?.toUpperCase()) {
+      case 'CREATE':
+        return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+      case 'UPDATE':
+        return 'bg-amber-500/20 text-amber-300 border-amber-500/30';
+      case 'DELETE':
+        return 'bg-rose-500/20 text-rose-300 border-rose-500/30';
+      case 'LOGIN':
+        return 'bg-sky-500/20 text-sky-300 border-sky-500/30';
+      case 'LOGOUT':
+        return 'bg-slate-500/20 text-slate-300 border-slate-500/30';
+      case 'ROLE_CHANGE':
+      case 'PERMISSION_CHANGE':
+        return 'bg-purple-500/20 text-purple-300 border-purple-500/30';
+      case 'PASSWORD_CHANGE':
+        return 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30';
+      case 'SETTINGS_CHANGE':
+        return 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30';
+      case 'EXPORT':
+      case 'IMPORT':
+        return 'bg-teal-500/20 text-teal-300 border-teal-500/30';
+      default:
+        return 'bg-slate-500/20 text-slate-300 border-slate-500/30';
+    }
+  };
+
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedLogId(id);
@@ -631,6 +752,23 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
             {securityStats?.summary?.openIncidents > 0 && (
               <span className="px-1.5 py-0.2 text-[10px] bg-rose-500/20 text-rose-300 rounded-full border border-rose-500/30">
                 {securityStats.summary.openIncidents}
+              </span>
+            )}
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveSubTab('audit')}
+          className={`pb-3 px-4 text-sm font-semibold border-b-2 whitespace-nowrap transition-colors ${
+            activeSubTab === 'audit'
+              ? 'border-amber-500 text-amber-400'
+              : 'border-transparent text-slate-400 hover:text-white'
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <History className="w-4 h-4" /> Audit Trail
+            {auditStats?.totalLogs24h > 0 && (
+              <span className="px-1.5 py-0.2 text-[10px] bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">
+                {auditStats.totalLogs24h} today
               </span>
             )}
           </span>
@@ -2224,6 +2362,476 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
                     className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-900/30"
                   >
                     Confirm Block
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          7. TAB: IMMUTABLE AUDIT LOGGING TRAIL
+      ────────────────────────────────────────────────────────────── */}
+      {activeSubTab === 'audit' && (
+        <div className="space-y-6">
+          {/* Audit Statistics & Integrity Banner */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {/* Total Logs Today */}
+            <div className="p-4 rounded-xl bg-[#090f1e] border border-slate-800 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>Activity (24h)</span>
+                <Clock className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div className="mt-2 text-2xl font-bold text-white font-mono">
+                {auditStats?.totalLogs24h ?? auditLogs.length}
+              </div>
+              <span className="text-[10px] text-slate-500 mt-2">Mutations recorded today</span>
+            </div>
+
+            {/* Total Logs 7 Days */}
+            <div className="p-4 rounded-xl bg-[#090f1e] border border-slate-800 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>Weekly Volume</span>
+                <TrendingUp className="w-4 h-4 text-sky-400" />
+              </div>
+              <div className="mt-2 text-2xl font-bold text-white font-mono">
+                {auditStats?.totalLogs7d ?? auditLogs.length}
+              </div>
+              <span className="text-[10px] text-slate-500 mt-2">Last 7 days cumulative</span>
+            </div>
+
+            {/* All-Time Immutable Trail */}
+            <div className="p-4 rounded-xl bg-gradient-to-br from-[#090f1e] to-slate-900 border border-slate-800 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>All-Time Records</span>
+                <Lock className="w-4 h-4 text-amber-400" />
+              </div>
+              <div className="mt-2 text-2xl font-bold text-amber-400 font-mono">
+                {auditStats?.totalAllTime ?? auditLogs.length}
+              </div>
+              <span className="text-[10px] text-emerald-400/90 font-semibold mt-2 flex items-center gap-1">
+                <Check className="w-3 h-3" /> Append-Only Guaranteed
+              </span>
+            </div>
+
+            {/* Actions Breakdown */}
+            <div className="p-4 rounded-xl bg-[#090f1e] border border-slate-800 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>Top Operations</span>
+                <Layers className="w-4 h-4 text-purple-400" />
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1 max-h-12 overflow-y-auto">
+                {auditStats?.actionBreakdown?.slice(0, 4).map((a: any) => (
+                  <span
+                    key={a.action}
+                    className="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300 font-mono"
+                  >
+                    {a.action}: <strong className="text-white">{a.count}</strong>
+                  </span>
+                )) || <span className="text-xs text-slate-500">No recent actions</span>}
+              </div>
+              <span className="text-[10px] text-slate-500 mt-1">Categorical distribution</span>
+            </div>
+          </div>
+
+          {/* Filters & Export Control Bar */}
+          <div className="p-4 rounded-xl bg-[#090f1e] border border-slate-800 space-y-3">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              {/* Search */}
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search by Actor Email, Resource Name, Request ID, or Client IP..."
+                  value={auditSearch}
+                  onChange={(e) => setAuditSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
+                />
+              </div>
+
+              {/* Export & Archive Buttons */}
+              <div className="flex items-center gap-2 self-end md:self-auto">
+                <button
+                  onClick={() => handleExportAudit('csv')}
+                  className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors flex items-center gap-1.5 border border-slate-700"
+                  title="Export filtered audit logs as CSV spreadsheet"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>CSV Export</span>
+                </button>
+
+                <button
+                  onClick={() => handleExportAudit('json')}
+                  className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors flex items-center gap-1.5 border border-slate-700"
+                  title="Export filtered audit logs as JSON"
+                >
+                  <Download className="w-3.5 h-3.5 text-amber-400" />
+                  <span>JSON Export</span>
+                </button>
+
+                <button
+                  onClick={() => handleTriggerArchive(90)}
+                  disabled={isArchiving}
+                  className="px-3 py-2 rounded-lg bg-purple-950/80 hover:bg-purple-900 border border-purple-800/80 text-purple-200 text-xs font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                  title="Archive logs older than 90 days and seal with SHA256 integrity hash"
+                >
+                  <Lock className="w-3.5 h-3.5 text-purple-400" />
+                  <span>{isArchiving ? 'Sealing...' : 'Archive >90d'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Filter Dropdowns & Pills */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2 border-t border-slate-800/80 overflow-x-auto text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="text-slate-400 font-semibold whitespace-nowrap">Action:</span>
+                <select
+                  value={auditActionFilter}
+                  onChange={(e) => setAuditActionFilter(e.target.value)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white"
+                >
+                  <option value="ALL">All Actions</option>
+                  <option value="CREATE">CREATE</option>
+                  <option value="UPDATE">UPDATE</option>
+                  <option value="DELETE">DELETE</option>
+                  <option value="LOGIN">LOGIN</option>
+                  <option value="LOGOUT">LOGOUT</option>
+                  <option value="EXPORT">EXPORT</option>
+                  <option value="IMPORT">IMPORT</option>
+                  <option value="ROLE_CHANGE">ROLE_CHANGE</option>
+                  <option value="PERMISSION_CHANGE">PERMISSION_CHANGE</option>
+                  <option value="PASSWORD_CHANGE">PASSWORD_CHANGE</option>
+                  <option value="SETTINGS_CHANGE">SETTINGS_CHANGE</option>
+                  <option value="API_KEY_CREATE">API_KEY_CREATE</option>
+                  <option value="API_KEY_REVOKE">API_KEY_REVOKE</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-slate-400 font-semibold whitespace-nowrap">Resource:</span>
+                <select
+                  value={auditResourceFilter}
+                  onChange={(e) => setAuditResourceFilter(e.target.value)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white"
+                >
+                  <option value="ALL">All Resource Types</option>
+                  <option value="Lead">Lead</option>
+                  <option value="User">User</option>
+                  <option value="Campaign">Campaign</option>
+                  <option value="Payment">Payment</option>
+                  <option value="Plan">Plan</option>
+                  <option value="Integration">Integration</option>
+                  <option value="TenantConfig">TenantConfig</option>
+                  <option value="Pipeline">Pipeline</option>
+                  <option value="SecurityRule">SecurityRule</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1.5 ml-auto">
+                <span className="text-slate-400 font-semibold whitespace-nowrap">Range:</span>
+                <input
+                  type="date"
+                  value={auditDateFrom}
+                  onChange={(e) => setAuditDateFrom(e.target.value)}
+                  className="px-2 py-1 rounded bg-slate-900 border border-slate-700 text-[11px] text-white"
+                />
+                <span className="text-slate-500">to</span>
+                <input
+                  type="date"
+                  value={auditDateTo}
+                  onChange={(e) => setAuditDateTo(e.target.value)}
+                  className="px-2 py-1 rounded bg-slate-900 border border-slate-700 text-[11px] text-white"
+                />
+                {(auditDateFrom || auditDateTo) && (
+                  <button
+                    onClick={() => {
+                      setAuditDateFrom('');
+                      setAuditDateTo('');
+                    }}
+                    className="text-slate-400 hover:text-white text-[10px] underline ml-1"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Audit Timeline Stream */}
+          <div className="space-y-3">
+            {auditLogs.length === 0 ? (
+              <div className="p-12 text-center rounded-xl bg-[#090f1e] border border-slate-800 text-slate-400 text-sm">
+                <History className="w-8 h-8 text-slate-500 mx-auto mb-2 opacity-60" />
+                No audit records matching query filters.
+              </div>
+            ) : (
+              auditLogs.map((log) => {
+                const changeKeys = Object.keys(log.changes || {});
+                return (
+                  <div
+                    key={log._id}
+                    className="p-4 rounded-xl bg-[#090f1e] border border-slate-800 hover:border-slate-700 transition-all space-y-3"
+                  >
+                    {/* Header Row */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className={`px-2.5 py-0.5 rounded text-xs font-bold border ${getAuditActionBadge(
+                            log.action
+                          )}`}
+                        >
+                          {log.action}
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                          {log.resourceType}: {log.resourceName || log.resourceId || 'N/A'}
+                        </span>
+                        {log.requestId && (
+                          <button
+                            onClick={() => copyToClipboard(log.requestId, `req_${log._id}`)}
+                            className="px-2 py-0.5 rounded text-[11px] font-mono bg-slate-900 border border-slate-800 text-slate-400 hover:text-amber-400 transition-colors flex items-center gap-1"
+                            title="Click to copy Request ID"
+                          >
+                            <Terminal className="w-3 h-3" />
+                            <span>{log.requestId}</span>
+                            {copiedLogId === `req_${log._id}` && (
+                              <Check className="w-3 h-3 text-emerald-400" />
+                            )}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <Clock className="w-3.5 h-3.5 text-slate-500" />
+                        <span>{new Date(log.timestamp).toLocaleString()}</span>
+                      </div>
+                    </div>
+
+                    {/* Actor & Source Context */}
+                    <div className="flex items-center justify-between text-xs text-slate-400 pt-1 flex-wrap gap-2">
+                      <div className="flex items-center gap-3">
+                        <span>
+                          Actor:{' '}
+                          <strong className="text-white">
+                            {log.actorName || 'System'}
+                          </strong>{' '}
+                          {log.actorEmail && (
+                            <span className="text-slate-400">({log.actorEmail})</span>
+                          )}
+                          <span className="ml-1.5 px-1.5 py-0.2 rounded text-[10px] bg-slate-800 text-amber-400 font-mono">
+                            {log.actorRole}
+                          </span>
+                        </span>
+                        <span>
+                          IP: <strong className="text-slate-300 font-mono">{log.ip || '127.0.0.1'}</strong>
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => setSelectedAuditLog(log)}
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors flex items-center gap-1"
+                      >
+                        <Eye className="w-3 h-3" /> Inspect Snapshots
+                      </button>
+                    </div>
+
+                    {/* Field Changes Chips (e.g. status: "new" -> "qualified") */}
+                    {changeKeys.length > 0 && (
+                      <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800/80 space-y-1.5">
+                        <span className="text-[11px] font-semibold text-slate-400 uppercase block">
+                          Field Changes ({changeKeys.length}):
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {changeKeys.map((field) => {
+                            const change = log.changes[field];
+                            return (
+                              <div
+                                key={field}
+                                className="px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700/80 text-xs font-mono flex items-center gap-1.5"
+                              >
+                                <span className="text-amber-400 font-bold">{field}:</span>
+                                <span className="text-rose-400 line-through">
+                                  {JSON.stringify(change?.from ?? 'null')}
+                                </span>
+                                <span className="text-slate-500">→</span>
+                                <span className="text-emerald-400 font-bold">
+                                  {JSON.stringify(change?.to ?? 'null')}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* AUDIT RECORD DETAIL SNAPSHOT MODAL */}
+          {selectedAuditLog && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+              <div className="bg-[#090f1e] border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[85vh] overflow-y-auto p-6 space-y-4 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`px-2.5 py-0.5 rounded text-xs font-bold border ${getAuditActionBadge(
+                        selectedAuditLog.action
+                      )}`}
+                    >
+                      {selectedAuditLog.action}
+                    </span>
+                    <span className="text-sm font-bold text-white">
+                      {selectedAuditLog.resourceType}: {selectedAuditLog.resourceName || selectedAuditLog.resourceId}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setSelectedAuditLog(null)}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+                  >
+                    <XCircle className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+                    <span className="text-slate-400 block mb-1">Actor:</span>
+                    <span className="text-white font-bold block">{selectedAuditLog.actorName || 'System'}</span>
+                    <span className="text-slate-400 text-[11px]">{selectedAuditLog.actorEmail || 'N/A'}</span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+                    <span className="text-slate-400 block mb-1">Client IP:</span>
+                    <span className="text-white font-mono font-bold">{selectedAuditLog.ip || '127.0.0.1'}</span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+                    <span className="text-slate-400 block mb-1">Request ID:</span>
+                    <span className="text-amber-400 font-mono font-bold truncate block">
+                      {selectedAuditLog.requestId || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+                    <span className="text-slate-400 block mb-1">Timestamp:</span>
+                    <span className="text-slate-200 text-[11px] block">
+                      {new Date(selectedAuditLog.timestamp).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Side-by-Side Before vs After Snapshot */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <h4 className="text-xs font-semibold text-rose-400 uppercase">
+                        Before Snapshot (Sanitized)
+                      </h4>
+                      {selectedAuditLog.before && (
+                        <button
+                          onClick={() =>
+                            copyToClipboard(
+                              JSON.stringify(selectedAuditLog.before, null, 2),
+                              `before_${selectedAuditLog._id}`
+                            )
+                          }
+                          className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1"
+                        >
+                          <Copy className="w-3 h-3" /> Copy JSON
+                        </button>
+                      )}
+                    </div>
+                    <pre className="p-4 rounded-xl bg-[#030712] border border-slate-800/80 font-mono text-[11px] text-slate-300 overflow-x-auto max-h-72">
+                      {selectedAuditLog.before
+                        ? JSON.stringify(selectedAuditLog.before, null, 2)
+                        : '// No prior state (e.g. Creation event)'}
+                    </pre>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <h4 className="text-xs font-semibold text-emerald-400 uppercase">
+                        After Snapshot (Sanitized)
+                      </h4>
+                      {selectedAuditLog.after && (
+                        <button
+                          onClick={() =>
+                            copyToClipboard(
+                              JSON.stringify(selectedAuditLog.after, null, 2),
+                              `after_${selectedAuditLog._id}`
+                            )
+                          }
+                          className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1"
+                        >
+                          <Copy className="w-3 h-3" /> Copy JSON
+                        </button>
+                      )}
+                    </div>
+                    <pre className="p-4 rounded-xl bg-[#030712] border border-slate-800/80 font-mono text-[11px] text-slate-300 overflow-x-auto max-h-72">
+                      {selectedAuditLog.after
+                        ? JSON.stringify(selectedAuditLog.after, null, 2)
+                        : '// Resource was deleted'}
+                    </pre>
+                  </div>
+                </div>
+
+                {selectedAuditLog.metadata && Object.keys(selectedAuditLog.metadata).length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-400 uppercase mb-1">
+                      Context Metadata
+                    </h4>
+                    <pre className="p-3 rounded-lg bg-slate-900 border border-slate-800 font-mono text-[11px] text-slate-300">
+                      {JSON.stringify(selectedAuditLog.metadata, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ARCHIVE SEAL RESULT MODAL */}
+          {archiveResultModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+              <div className="bg-[#090f1e] border border-purple-800/80 rounded-2xl w-full max-w-lg p-6 space-y-4 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-purple-400" /> Retention Archive Sealed
+                  </h3>
+                  <button
+                    onClick={() => setArchiveResultModal(null)}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+                  >
+                    <XCircle className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-3 text-xs">
+                  <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+                    <span className="text-slate-400 block mb-1">Archive Partition ID:</span>
+                    <span className="text-amber-400 font-mono font-bold">
+                      {archiveResultModal.partitionId}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+                    <span className="text-slate-400 block mb-1">Archived Records:</span>
+                    <span className="text-emerald-400 font-mono font-bold text-sm">
+                      {archiveResultModal.archivedCount} records
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+                    <span className="text-slate-400 block mb-1">SHA256 Cryptographic Integrity Digest:</span>
+                    <span className="text-purple-300 font-mono text-[11px] break-all block">
+                      {archiveResultModal.integrityHash}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end pt-2 border-t border-slate-800">
+                  <button
+                    onClick={() => setArchiveResultModal(null)}
+                    className="px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold"
+                  >
+                    Close
                   </button>
                 </div>
               </div>

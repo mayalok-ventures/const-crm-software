@@ -2,6 +2,7 @@ const Lead = require('../models/Lead');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { emitCRMEvent, CRM_EVENTS } = require('../services/automationEvents');
+const { auditService } = require('../monitoring/audit/auditService');
 const xlsx = require('xlsx');
 const PDFDocument = require('pdfkit');
 const csv = require('csv-parser');
@@ -732,6 +733,26 @@ exports.createLead = async (req, res) => {
       });
     }
 
+    // Record Immutable Audit Log
+    auditService.record({
+      actor: req.user,
+      organizationId: lead.companyId || req.user.companyId,
+      action: 'CREATE',
+      resourceType: 'Lead',
+      resourceId: lead._id,
+      resourceName: lead.name,
+      after: {
+        name: lead.name,
+        phone: lead.phone,
+        status: lead.status,
+        company: lead.company,
+        budget: lead.budget,
+        assignedTo: lead.assignedToName || 'Unassigned',
+      },
+      req,
+      metadata: { source: lead.source, status: lead.status },
+    });
+
     res.status(201).json(lead);
   } catch (error) {
     console.error('createLead error:', error);
@@ -974,6 +995,24 @@ exports.updateLead = async (req, res) => {
       });
     }
 
+    // Record Immutable Audit Log if changes occurred
+    if (Object.keys(changes).length > 0) {
+      const formattedDeltas = {};
+      for (const [k, chg] of Object.entries(changes)) {
+        formattedDeltas[k] = { from: chg.old, to: chg.new };
+      }
+      auditService.record({
+        actor: req.user,
+        organizationId: lead.companyId || req.user.companyId,
+        action: 'UPDATE',
+        resourceType: 'Lead',
+        resourceId: lead._id,
+        resourceName: lead.name,
+        changes: formattedDeltas,
+        req,
+      });
+    }
+
     res.json(lead);
   } catch (error) {
     console.error('updateLead error:', error);
@@ -990,6 +1029,24 @@ exports.deleteLead = async (req, res) => {
     const lead = await Lead.findOneAndDelete({ _id: req.params.id, ...basePermissionQuery });
 
     if (!lead) return res.status(404).json({ message: 'Lead not found or unauthorized' });
+
+    // Record Immutable Audit Log
+    auditService.record({
+      actor: req.user,
+      organizationId: lead.companyId || req.user.companyId,
+      action: 'DELETE',
+      resourceType: 'Lead',
+      resourceId: lead._id,
+      resourceName: lead.name,
+      before: {
+        name: lead.name,
+        phone: lead.phone,
+        status: lead.status,
+        company: lead.company,
+        budget: lead.budget,
+      },
+      req,
+    });
 
     res.json({ message: 'Lead deleted successfully', id: req.params.id });
   } catch (error) {
@@ -1367,6 +1424,17 @@ exports.exportLeads = async (req, res) => {
 
     const timestamp = new Date().toISOString().slice(0, 10);
     const userCurrency = req.user.localization?.currencySymbol || '₹';
+
+    // Record Immutable Audit Log for Data Export
+    auditService.record({
+      actor: req.user,
+      organizationId: req.user.companyId,
+      action: 'EXPORT',
+      resourceType: 'Lead',
+      resourceName: `Leads Export (${format.toUpperCase()})`,
+      req,
+      metadata: { format, queryStatus: status || statuses || 'all' },
+    });
 
     // ── 1. STREAMING CSV EXPORT (Zero-Memory Pipeline) ──
     if (format.toLowerCase() === 'csv') {
