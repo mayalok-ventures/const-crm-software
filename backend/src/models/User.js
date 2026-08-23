@@ -261,10 +261,16 @@ const userSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
-// Validate at least one of email or phone
+// Validate at least one of email or phone and assign unique default username/usercode if missing
 userSchema.pre('validate', function (next) {
   if (!this.email && !this.phone) {
     return next(new Error('At least one of email or phone is required'));
+  }
+  if (!this.username) {
+    this.username = `USR_${Date.now()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+  }
+  if (!this.usercode) {
+    this.usercode = `AGT-${Math.floor(100000 + Math.random() * 900000)}`;
   }
   // Sync isAvailable and isAvailableForRouting
   if (this.isAvailableForRouting !== undefined && this.isAvailable === undefined) {
@@ -299,6 +305,8 @@ userSchema.methods.toJSON = function () {
 };
 
 // Query Indexes
+userSchema.index({ companyId: 1, role: 1, userStatus: 1 });
+userSchema.index({ companyId: 1, managerId: 1 });
 userSchema.index({ role: 1, managerId: 1 });
 userSchema.index({ isAvailableForRouting: 1, isActive: 1 });
 

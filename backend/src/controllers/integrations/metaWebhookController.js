@@ -51,69 +51,55 @@ exports.verify = async (req, res) => {
 
 /**
  * POST /api/integrations/meta/webhook
+ * Immediate 200 OK + Asynchronous Lead Ingestion Pattern
  */
-exports.receive = async (req, res) => {
-  console.log('\n================== [META WEBHOOK RECEIVED DEBUG] ==================');
-  console.log('[DEBUG 1] Headers:', JSON.stringify(req.headers, null, 2));
-  console.log('[DEBUG 1] Signature Header:', req.headers['x-hub-signature-256']);
-  console.log('[DEBUG 1] Body Object:', JSON.stringify(req.body, null, 2));
+const handleWebhookPost = async (req, res) => {
+  const body = req.body;
 
-  try {
-    // 1. Signature Verification
-    if (!verifySignature(req)) {
-      console.warn('❌ [DEBUG WARN] Invalid Meta webhook signature verification failed');
-      return res.sendStatus(401);
-    }
+  // Verify this is an event from a Page or WhatsApp subscription
+  if (body?.object === 'page' || body?.object === 'whatsapp_business_account') {
+    // 1. CRITICAL: IMMEDIATELY RESPOND 200 OK TO META
+    res.status(200).send('EVENT_RECEIVED');
 
-    const body = req.body;
-
-    // 2. Immediate 200 OK acknowledgment to prevent Meta retry storms
-    console.log('[DEBUG 2] Acknowledging 200 OK to Meta instantly');
-    res.status(200).json({ success: true });
-
-    // 3. Asynchronous processing
+    // 2. PROCESS THE LEAD ASYNCHRONOUSLY IN THE BACKGROUND
     setImmediate(async () => {
       try {
-        if (body?.object !== 'page') {
-          console.log(`[DEBUG 3] Object is not "page" (got "${body?.object}"), skipping.`);
-          return;
-        }
+        console.log('\n================== [META WEBHOOK RECEIVED] ==================');
+        console.log('[META INBOUND PAYLOAD]:', JSON.stringify(body, null, 2));
 
-        for (const entry of body.entry || []) {
-          console.log(`[DEBUG 3] Processing entry id: ${entry.id}, time: ${entry.time}`);
-          for (const change of entry.changes || []) {
-            if (change.field !== 'leadgen') {
-              console.log(`[DEBUG 3] Change field is "${change.field}" (not "leadgen"), skipping.`);
-              continue;
+        if (Array.isArray(body.entry)) {
+          for (const entry of body.entry) {
+            if (Array.isArray(entry.changes)) {
+              for (const change of entry.changes) {
+                if (change.field === 'leadgen') {
+                  const value = change.value || {};
+                  await handleLead({
+                    pageId: value.page_id || entry.id,
+                    formId: value.form_id,
+                    leadgenId: value.leadgen_id,
+                    adId: value.ad_id,
+                    adsetId: value.adset_id,
+                    campaignId: value.campaign_id,
+                    createdTime: value.created_time,
+                  });
+                }
+              }
             }
-
-            const value = change.value || {};
-            console.log('[DEBUG 4] Found leadgen change payload value:', JSON.stringify(value, null, 2));
-
-            await handleLead({
-              pageId: value.page_id || entry.id,
-              formId: value.form_id,
-              leadgenId: value.leadgen_id,
-              adId: value.ad_id,
-              adsetId: value.adset_id,
-              campaignId: value.campaign_id,
-              createdTime: value.created_time,
-            });
           }
         }
         console.log('================== [META WEBHOOK PROCESSING COMPLETE] ==================\n');
       } catch (error) {
-        console.error('\n❌ [CRITICAL ASYNC WEBHOOK ERROR]:', {
-          message: error.message,
-          stack: error.stack,
-        });
+        console.error('Async Webhook Processing Error:', error);
       }
     });
-  } catch (error) {
-    console.error('❌ [META WEBHOOK SYNC ERROR]:', error.message, error.stack);
-    return res.sendStatus(500);
+  } else {
+    // Return a '404 Not Found' if event is not from a page subscription
+    res.sendStatus(404);
   }
 };
+
+exports.handleWebhookPost = handleWebhookPost;
+exports.receive = handleWebhookPost;
 
 function verifySignature(req) {
   const signature = req.headers['x-hub-signature-256'];
@@ -135,10 +121,9 @@ function verifySignature(req) {
     return false;
   }
 
-  const rawPayload =
-    typeof req.rawBody === 'string'
-      ? req.rawBody
-      : JSON.stringify(req.body);
+  const rawPayload = Buffer.isBuffer(req.rawBody)
+    ? req.rawBody
+    : (typeof req.rawBody === 'string' ? req.rawBody : JSON.stringify(req.body));
 
   const expected = crypto
     .createHmac('sha256', META_APP_SECRET)
@@ -179,24 +164,27 @@ async function handleLead({
 
   console.log(`\n---> [DEBUG HANDLE_LEAD START] leadgenId: "${leadgenId}", pageId: "${pageId}", formId: "${formId}"`);
 
-  // Find active integration for this Meta page, form, or connected account
-  const integrationQuery = {
-    provider: 'meta',
-    $or: [
-      { pageId: String(pageId) },
-      { accountId: String(pageId) },
-      { formIds: String(formId) },
-      { accountId: { $exists: true, $ne: null } },
-    ],
-    status: 'connected',
-  };
+  // Strict Tenant Scoping: Lookup integration strictly by matching Page ID or Form ID
+  const searchQueries = [];
+  if (pageId) {
+    searchQueries.push({ pageId: String(pageId) });
+    searchQueries.push({ accountId: String(pageId) });
+  }
+  if (formId) {
+    searchQueries.push({ formIds: String(formId) });
+  }
 
-  console.log('[DEBUG HANDLE_LEAD] Querying MongoDB Integration with:', JSON.stringify(integrationQuery, null, 2));
-
-  const integration = await Integration.findOne(integrationQuery).select('+accessTokenEncrypted');
+  let integration = null;
+  if (searchQueries.length > 0) {
+    integration = await Integration.findOne({
+      provider: 'meta',
+      $or: searchQueries,
+      status: 'connected',
+    }).select('+accessTokenEncrypted');
+  }
 
   if (!integration) {
-    console.warn(`❌ [DEBUG HANDLE_LEAD ERROR] No active connected integration found in MongoDB for pageId: "${pageId}", formId: "${formId}"`);
+    console.warn(`⚠️ [UNMAPPED WEBHOOK EVENT] No registered Integration found matching Page ID: "${pageId}" or Form ID: "${formId}". Inbound webhook event dropped safely to prevent cross-account data leakage.`);
     return;
   }
 

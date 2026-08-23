@@ -8,6 +8,9 @@
  * - Global Activity & Tenant Isolation (Global logs are secure and properly isolated)
  */
 
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+const mongoose = require('mongoose');
 const User = require('../src/models/User');
 const axios = require('axios');
 const API_URL = 'http://localhost:5000/api';
@@ -15,7 +18,11 @@ const API_URL = 'http://localhost:5000/api';
 async function runAgencyTeamManagementTests() {
   console.log('\n🔒 ========================================================');
   console.log('   AGENCY & TEAM CONTROL SYSTEM INTEGRATION TEST SUITE');
-  console.log('========================================================\n');
+  const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
+  if (mongoose.connection.readyState === 0) {
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 15000 });
+  }
+  console.log(`✅ Test Suite DB Connected: ${mongoose.connection.host}`);
 
   let passed = 0;
   let failed = 0;
@@ -36,28 +43,31 @@ async function runAgencyTeamManagementTests() {
   try {
     console.log('▶️  Step 1: Setup Test Agency Environment...');
 
-    // 1. Register Agency Owner
+    const ownerEmail = `owner_${timestamp}_${Math.random().toString(36).slice(2, 6)}@agency.com`;
     const resOwner = await axios.post(`${API_URL}/auth/register`, {
       name: `Agency Owner_${timestamp}`,
-      email: `owner_${timestamp}_${Math.random().toString(36).slice(2, 6)}@agency.com`,
+      email: ownerEmail,
       phone: randPhone(),
       password: 'Password@123',
       workStatus: 'company_owner',
       companyRole: 'owner',
       companyInfo: { companyName: `Test Agency_${timestamp}` },
     });
+    console.log('resOwner.data is:', JSON.stringify(resOwner.data, null, 2));
     const tokenOwner = resOwner.data.token;
 
     // Upgrade Owner's plan to enterprise to bypass roster limits in testing
-    await User.updateOne(
-      { _id: resOwner.data._id },
+    const updatedOwner = await User.findOneAndUpdate(
+      { email: ownerEmail },
       {
         $set: {
           plan: 'enterprise',
           planEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
         }
-      }
+      },
+      { new: true }
     );
+    console.log(`  [SETUP] Upgraded Owner ${updatedOwner?._id} to plan: ${updatedOwner?.plan}`);
 
     // 2. Register Agent Ravi (created under owner's agency)
     const raviEmail = `ravi_${timestamp}@agency.com`;

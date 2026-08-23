@@ -1,5 +1,27 @@
 const mongoose = require('mongoose');
 
+// ─────────────────────────────────────────────────────────────
+// CANONICAL LEAD SOURCE NORMALIZATION
+// ─────────────────────────────────────────────────────────────
+function normalizeLeadSource(val) {
+  if (!val) return 'MANUAL';
+  const clean = String(val).trim().toUpperCase();
+  
+  if (['USER_SIGNUP', 'SIGNUP', 'AUTO-SIGNUP', 'AUTO_SIGNUP', 'AUTOSIGNUP', 'PLATFORM_REGISTRATION', 'PLATFORM SIGNUP'].includes(clean)) {
+    return 'USER_SIGNUP';
+  }
+  if (['ADS', 'META', 'GOOGLE', 'FACEBOOK', 'INSTAGRAM', 'GOOGLE_ADS', 'META_ADS', 'META ADS', 'GOOGLE ADS', 'CAMPAIGN'].includes(clean)) {
+    return 'ADS';
+  }
+  if (['WEBHOOK', 'META_WEBHOOK', 'GOOGLE_WEBHOOK', 'API', 'EXTERNAL_INGESTION'].includes(clean)) {
+    return 'WEBHOOK';
+  }
+  if (['MANUAL', 'AGENT_MANUAL', 'DIRECT CALL', 'DIRECT_CALL', 'CALL', 'IMPORT', 'SPREADSHEET', 'REFERRAL', 'PARTNER', 'WEBSITE', 'ORGANIC', 'OTHER'].includes(clean)) {
+    return 'MANUAL';
+  }
+  return 'MANUAL';
+}
+
 const noteSchema = new mongoose.Schema({
   text: { type: String, required: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -33,8 +55,21 @@ const leadActivitySchema = new mongoose.Schema({
       'followup_scheduled',
       'followup_completed',
       'followup_postponed',
+      'followup_cancelled',
+      'followup_updated',
       'stall_locked',
       'event_pass',
+      'plan_assigned',
+      'free_plan_assigned',
+      'deal_closed',
+      'lead_reassigned',
+      'deal_won',
+      'deal_lost',
+      'commission_calculated',
+      'service_updated',
+      'custom_price_applied',
+      'broadcast_sent',
+      'webhook_ingested',
     ],
   },
   performedBy: {
@@ -92,11 +127,17 @@ const leadSchema = new mongoose.Schema({
   distributionStrategy: { type: String, default: 'manual' },
   visibilityMode: { type: String, enum: ['shared', 'isolated'], default: 'shared' },
 
-  // Primary Source Classification (Phase 4: Source A - Manual, Source B - User Signup, Source C - Ads)
+  // Primary Source Classification (Canonical: MANUAL, USER_SIGNUP, ADS, WEBHOOK)
   primarySource: {
     type: String,
-    enum: ['SOURCE_A_MANUAL', 'SOURCE_B_SIGNUP', 'SOURCE_C_ADS', 'manual', 'signup', 'ads', 'webhook'],
-    default: 'SOURCE_A_MANUAL',
+    enum: [
+      'MANUAL', 'USER_SIGNUP', 'ADS', 'WEBHOOK',
+      'SOURCE_A_MANUAL', 'SOURCE_B_SIGNUP', 'SOURCE_C_ADS',
+      'manual', 'signup', 'ads', 'webhook',
+      'auto-signup', 'Auto-Signup', 'Direct Call', 'Meta Ads', 'Google Ads'
+    ],
+    default: 'MANUAL',
+    set: normalizeLeadSource,
     index: true,
   },
 
@@ -110,31 +151,9 @@ const leadSchema = new mongoose.Schema({
   company: { type: String, trim: true },
   tags: [{ type: String, trim: true }],
 
-  // CoreSetu Subscription Plans (3 Individual, 3 Organization)
+  // CoreSetu Subscription Plans / Commercial Packages
   service_required: {
     type: String,
-    enum: [
-      // 3 Individual Plans
-      'basic_solo',
-      'smart_solo',
-      'power_solo',
-      // 3 Organization Plans
-      'team_starter',
-      'business',
-      'enterprise',
-      // Dynamic & Backward Compatibility
-      'custom_enterprise',
-      'starter',
-      'growth',
-      'pro',
-      'free',
-      'digital_marketing',
-      'web_development',
-      'seo_optimization',
-      'crm_automation',
-      'branding_design',
-      'cloud_infrastructure'
-    ],
     default: 'smart_solo',
     lowercase: true,
     trim: true,
@@ -240,13 +259,15 @@ const leadSchema = new mongoose.Schema({
   source: {
     type: String,
     enum: [
+      'MANUAL', 'USER_SIGNUP', 'ADS', 'WEBHOOK',
       'meta', 'google', 'facebook', 'instagram', 'google_ads', 'meta_ads',
       'website', 'organic', 'referral', 'partner', 'import', 'spreadsheet',
       'signup', 'agent_manual', 'manual', 'other', 'platform_registration',
-      'auto-signup', 'meta_webhook', 'google_webhook', 'api', 'webhook'
+      'auto-signup', 'meta_webhook', 'google_webhook', 'api', 'webhook',
+      'Auto-Signup', 'Direct Call', 'Meta Ads', 'Google Ads', 'Organic Search', 'Referral'
     ],
-    default: 'agent_manual',
-    lowercase: true,
+    default: 'MANUAL',
+    set: normalizeLeadSource,
     trim: true,
   },
   leadSource: {
@@ -406,8 +427,54 @@ leadSchema.index(
   }
 );
 leadSchema.index({ userId: 1, createdAt: -1 });
-leadSchema.index({ status: 1, service_required: 1, assignedTo: 1 });
-leadSchema.index({ deletedAt: 1, createdAt: -1 });
-leadSchema.index({ name: 'text', phone: 'text', company: 'text', email: 'text', project: 'text' });
+leadSchema.index({ userId: 1, deletedAt: 1, status: 1 });
+leadSchema.index({ userId: 1, deletedAt: 1, createdAt: -1 });
+leadSchema.index({ companyId: 1, deletedAt: 1, status: 1 });
+leadSchema.index({ companyId: 1, deletedAt: 1, createdAt: -1 });
+leadSchema.index({ assignedTo: 1, deletedAt: 1, status: 1 });
+leadSchema.index({ assignedTo: 1, deletedAt: 1, createdAt: -1 });
+leadSchema.index({ sharedWithCompanyId: 1, deletedAt: 1 });
+leadSchema.index({ followUpDate: 1, deletedAt: 1 });
+leadSchema.index({ 'leadActivities.timestamp': -1 });
+// ─────────────────────────────────────────────────────────────
+// CANONICAL LEAD SOURCE NORMALIZATION
+// ─────────────────────────────────────────────────────────────
+function normalizeLeadSource(val) {
+  if (!val) return 'MANUAL';
+  const clean = String(val).trim().toUpperCase();
+  
+  if (['USER_SIGNUP', 'SIGNUP', 'AUTO-SIGNUP', 'AUTO_SIGNUP', 'AUTOSIGNUP', 'PLATFORM_REGISTRATION', 'PLATFORM SIGNUP'].includes(clean)) {
+    return 'USER_SIGNUP';
+  }
+  if (['ADS', 'META', 'GOOGLE', 'FACEBOOK', 'INSTAGRAM', 'GOOGLE_ADS', 'META_ADS', 'META ADS', 'GOOGLE ADS', 'CAMPAIGN'].includes(clean)) {
+    return 'ADS';
+  }
+  if (['WEBHOOK', 'META_WEBHOOK', 'GOOGLE_WEBHOOK', 'API', 'EXTERNAL_INGESTION'].includes(clean)) {
+    return 'WEBHOOK';
+  }
+  if (['MANUAL', 'AGENT_MANUAL', 'DIRECT CALL', 'DIRECT_CALL', 'CALL', 'IMPORT', 'SPREADSHEET', 'REFERRAL', 'PARTNER', 'WEBSITE', 'ORGANIC', 'OTHER'].includes(clean)) {
+    return 'MANUAL';
+  }
+  return 'MANUAL';
+}
+
+leadSchema.pre('validate', function() {
+  if (this.source) {
+    this.source = normalizeLeadSource(this.source);
+  }
+  if (this.primarySource) {
+    this.primarySource = normalizeLeadSource(this.primarySource);
+  }
+});
+
+leadSchema.pre('save', function() {
+  if (this.source) {
+    this.source = normalizeLeadSource(this.source);
+  }
+  if (this.primarySource) {
+    this.primarySource = normalizeLeadSource(this.primarySource);
+  }
+});
 
 module.exports = mongoose.model('Lead', leadSchema);
+module.exports.normalizeLeadSource = normalizeLeadSource;

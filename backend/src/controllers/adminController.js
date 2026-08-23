@@ -124,93 +124,353 @@ const normalizeLeadStage = (rawStatus) => {
   return 'new_lead';
 };
 
+// Helper: Robust Multi-Tenant Query Scoper
+const getTenantScope = (user) => {
+  if (!user) return { _id: null };
+  // Super Admin / Platform Admin with no companyId constraint has global oversight
+  if (user.role === 'superadmin' || (user.isAdmin && !user.companyId)) {
+    return {};
+  }
+  if (user.companyId) {
+    const cid = new mongoose.Types.ObjectId(String(user.companyId));
+    return {
+      $or: [
+        { companyId: cid },
+        { userId: cid },
+        { sharedWithCompanyId: cid },
+      ],
+    };
+  }
+  if (user.workStatus === 'company_owner' || user.companyRole === 'owner' || user.role === 'admin') {
+    const uid = new mongoose.Types.ObjectId(String(user._id));
+    return {
+      $or: [
+        { companyId: uid },
+        { userId: uid },
+        { sharedWithCompanyId: uid },
+      ],
+    };
+  }
+  if (user.role === 'manager') {
+    const uid = new mongoose.Types.ObjectId(String(user._id));
+    return {
+      $or: [
+        { assignedManager: uid },
+        { assignedTo: uid },
+        { userId: uid },
+      ],
+    };
+  }
+  return { assignedTo: new mongoose.Types.ObjectId(String(user._id)) };
+};
+
+const getTenantUserScope = (user) => {
+  if (!user) return { _id: null };
+  // Super Admin / Platform Admin with no companyId constraint has global oversight
+  if (user.role === 'superadmin' || (user.isAdmin && !user.companyId)) {
+    return {};
+  }
+  if (user.companyId) {
+    const cid = new mongoose.Types.ObjectId(String(user.companyId));
+    return {
+      $or: [
+        { companyId: cid },
+        { managerId: cid },
+        { _id: cid },
+      ],
+    };
+  }
+  if (user.workStatus === 'company_owner' || user.companyRole === 'owner' || user.role === 'admin') {
+    const uid = new mongoose.Types.ObjectId(String(user._id));
+    return {
+      $or: [
+        { companyId: uid },
+        { managerId: uid },
+        { _id: uid },
+      ],
+    };
+  }
+  if (user.role === 'manager') {
+    const uid = new mongoose.Types.ObjectId(String(user._id));
+    return {
+      $or: [
+        { managerId: uid },
+        { _id: uid },
+      ],
+    };
+  }
+  return { _id: new mongoose.Types.ObjectId(String(user._id)) };
+};
+
 // ─────────────────────────────────────────────────────────────
 // 1. OVERVIEW / DASHBOARD CENTRE
 // ─────────────────────────────────────────────────────────────
 exports.getOverviewMetrics = async (req, res) => {
   try {
+    const tenantScope = getTenantScope(req.user);
+    const tenantUserScope = getTenantUserScope(req.user);
+
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    const [
-      totalLeads,
-      todayLeads,
-      convertedLeadsCount,
-      allLeads,
-      totalPayments,
-      totalUsers,
-      activeAgents,
-      activeManagers,
-      commissionAgg,
-    ] = await Promise.all([
-      Lead.countDocuments({ deletedAt: null }),
-      Lead.countDocuments({ deletedAt: null, createdAt: { $gte: todayStart } }),
-      Lead.countDocuments({ deletedAt: null, status: { $in: ['converted', 'payment_done', 'won'] } }),
-      Lead.find({ deletedAt: null }).select('status source primarySource payable_amount paid_amount monthly_spend createdAt assignedTo').lean(),
+    const baseMatch = {
+      deletedAt: null,
+      ...tenantScope,
+    };
+
+    const isCompany = Boolean(req.user.companyId || req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner' || req.user.role === 'admin');
+    const compId = req.user.companyId || req.user._id;
+
+    const [leadAgg, paymentAgg, userAgg, commissionAgg] = await Promise.all([
+      Lead.aggregate([
+        { $match: baseMatch },
+        {
+          $facet: {
+            totals: [
+              {
+                $group: {
+                  _id: null,
+                  totalLeads: { $sum: 1 },
+                  todayLeads: {
+                    $sum: { $cond: [{ $gte: ['$createdAt', todayStart] }, 1, 0] },
+                  },
+                  convertedLeads: {
+                    $sum: {
+                      $cond: [
+                        {
+                          $in: [
+                            { $toLower: { $ifNull: ['$status', 'new_lead'] } },
+                            [
+                              'converted',
+                              'payment_done',
+                              'won',
+                              'closed',
+                              'closed / won',
+                              'closed won',
+                              'advance paid',
+                              'subscription won',
+                              'documents uploaded',
+                              'onboarded',
+                              'paid',
+                            ],
+                          ],
+                        },
+                        1,
+                        0,
+                      ],
+                    },
+                  },
+                  totalPaidRevenue: {
+                    $sum: {
+                      $cond: [
+                        {
+                          $in: [
+                            { $toLower: { $ifNull: ['$status', 'new_lead'] } },
+                            [
+                              'converted',
+                              'payment_done',
+                              'won',
+                              'closed',
+                              'closed / won',
+                              'closed won',
+                              'advance paid',
+                              'subscription won',
+                              'paid',
+                            ],
+                          ],
+                        },
+                        { $ifNull: ['$paid_amount', { $ifNull: ['$payable_amount', { $ifNull: ['$deal_value', 0] }] }] },
+                        0,
+                      ],
+                    },
+                  },
+                },
+              },
+            ],
+            stageCounts: [
+              {
+                $project: {
+                  stage: {
+                    $switch: {
+                      branches: [
+                        {
+                          case: {
+                            $in: [
+                              { $toLower: { $ifNull: ['$status', 'new_lead'] } },
+                              ['payment_done', 'closed', 'won', 'closed / won', 'closed won', 'advance paid', 'subscription won', 'paid', 'complete'],
+                            ],
+                          },
+                          then: 'payment_done',
+                        },
+                        {
+                          case: {
+                            $in: [
+                              { $toLower: { $ifNull: ['$status', 'new_lead'] } },
+                              ['converted', 'qualified', 'negotiation', 'site_visit', 'documents uploaded', 'onboarded', 'deal closed'],
+                            ],
+                          },
+                          then: 'converted',
+                        },
+                        {
+                          case: {
+                            $in: [
+                              { $toLower: { $ifNull: ['$status', 'new_lead'] } },
+                              ['not_interested', 'lost', 'not interested', 'rejected', 'cancelled', 'junk'],
+                            ],
+                          },
+                          then: 'not_interested',
+                        },
+                        {
+                          case: {
+                            $in: [
+                              { $toLower: { $ifNull: ['$status', 'new_lead'] } },
+                              ['contacted', 'connected', 'attempted', 'inquiry', 'demo class', 'floor plan shared', 'follow-up scheduled', 'follow_up', 'meeting scheduled', 'quote sent', 'stall blocked'],
+                            ],
+                          },
+                          then: 'contacted',
+                        },
+                      ],
+                      default: 'new_lead',
+                    },
+                  },
+                },
+              },
+              {
+                $group: {
+                  _id: '$stage',
+                  count: { $sum: 1 },
+                },
+              },
+            ],
+            sourceBreakdown: [
+              {
+                $project: {
+                  sourceGroup: {
+                    $switch: {
+                      branches: [
+                        {
+                          case: {
+                            $in: [
+                              { $toLower: { $ifNull: ['$source', { $ifNull: ['$primarySource', 'manual'] }] } },
+                              ['signup', 'auto-signup', 'platform_registration', 'source_b_signup'],
+                            ],
+                          },
+                          then: 'signup',
+                        },
+                        {
+                          case: {
+                            $in: [
+                              { $toLower: { $ifNull: ['$source', { $ifNull: ['$primarySource', 'manual'] }] } },
+                              ['ads', 'meta', 'google', 'webhook', 'source_c_ads', 'facebook', 'instagram', 'adwords'],
+                            ],
+                          },
+                          then: 'ads',
+                        },
+                      ],
+                      default: 'manual',
+                    },
+                  },
+                },
+              },
+              {
+                $group: {
+                  _id: '$sourceGroup',
+                  count: { $sum: 1 },
+                },
+              },
+            ],
+          },
+        },
+      ]),
+
       Payment.aggregate([
-        { $match: { status: { $in: ['success', 'captured'] } } },
+        {
+          $match: {
+            status: { $in: ['completed', 'captured', 'success'] },
+            ...(isCompany ? { companyId: new mongoose.Types.ObjectId(String(compId)) } : {}),
+          },
+        },
         { $group: { _id: null, total: { $sum: '$amount' } } },
       ]),
-      User.countDocuments({}),
-      User.countDocuments({ role: 'agent', userStatus: 'active' }),
-      User.countDocuments({ role: 'manager', userStatus: 'active' }),
+
+      User.aggregate([
+        {
+          $match: {
+            ...tenantUserScope,
+            userStatus: 'active',
+          },
+        },
+        {
+          $group: {
+            _id: '$role',
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+
       CommissionPayout.aggregate([
-        { $match: { status: { $in: ['approved', 'paid'] } } },
+        {
+          $match: {
+            status: { $in: ['approved', 'paid'] },
+            ...(isCompany ? { companyId: new mongoose.Types.ObjectId(String(compId)) } : {}),
+          },
+        },
         { $group: { _id: null, totalEarned: { $sum: '$commissionAmount' } } },
       ]),
     ]);
 
-    // Calculate Stage Funnel
-    const stageCounts = {
+    const totalsObj = leadAgg[0]?.totals[0] || {
+      totalLeads: 0,
+      todayLeads: 0,
+      convertedLeads: 0,
+      totalPaidRevenue: 0,
+    };
+
+    const stageMap = {
       new_lead: 0,
       contacted: 0,
       not_interested: 0,
       converted: 0,
       payment_done: 0,
     };
+    (leadAgg[0]?.stageCounts || []).forEach((s) => {
+      if (stageMap[s._id] !== undefined) stageMap[s._id] = s.count;
+    });
 
-    let totalCalculatedRevenue = 0;
-    const sourceBreakdown = {
+    const sourceMap = {
       manual: 0,
       signup: 0,
       ads: 0,
     };
+    (leadAgg[0]?.sourceBreakdown || []).forEach((src) => {
+      if (sourceMap[src._id] !== undefined) sourceMap[src._id] = src.count;
+    });
 
-    for (const lead of allLeads) {
-      const stage = normalizeLeadStage(lead.status);
-      if (stageCounts[stage] !== undefined) {
-        stageCounts[stage]++;
-      }
-      totalCalculatedRevenue += Number(lead.paid_amount || lead.payable_amount || 0);
+    const userMap = {};
+    (userAgg || []).forEach((u) => {
+      userMap[u._id] = u.count;
+    });
 
-      const src = String(lead.primarySource || lead.source || '').toLowerCase();
-      if (src.includes('signup') || src.includes('platform_registration')) {
-        sourceBreakdown.signup++;
-      } else if (src.includes('meta') || src.includes('google') || src.includes('ads') || src.includes('webhook')) {
-        sourceBreakdown.ads++;
-      } else {
-        sourceBreakdown.manual++;
-      }
-    }
-
-    const totalRevenue = totalPayments[0]?.total || totalCalculatedRevenue;
-    const totalCommissions = commissionAgg[0]?.totalEarned || 0;
-    const conversionRate = totalLeads > 0 ? ((convertedLeadsCount / totalLeads) * 100).toFixed(1) : 0;
+    const totalLeads = totalsObj.totalLeads || 0;
+    const convertedLeads = totalsObj.convertedLeads || 0;
+    const conversionRate = totalLeads > 0 ? ((convertedLeads / totalLeads) * 100).toFixed(1) : '0';
+    const paymentRevenue = paymentAgg[0]?.total || 0;
+    const totalRevenue = paymentRevenue > 0 ? paymentRevenue : totalsObj.totalPaidRevenue || 0;
 
     res.json({
       success: true,
       data: {
         totalLeads,
-        todayLeads,
-        convertedLeads: convertedLeadsCount,
+        todayLeads: totalsObj.todayLeads || 0,
+        convertedLeads,
         conversionRate: `${conversionRate}%`,
         totalRevenue,
-        totalCommissions,
-        totalUsers,
-        activeAgents,
-        activeManagers,
-        stageCounts,
-        sourceBreakdown,
+        totalCommissions: commissionAgg[0]?.totalEarned || 0,
+        totalUsers: (userMap.agent || 0) + (userMap.manager || 0) + (userMap.admin || 0) + (userMap.user || 0),
+        activeAgents: userMap.agent || 0,
+        activeManagers: userMap.manager || 0,
+        stageCounts: stageMap,
+        sourceBreakdown: sourceMap,
         systemStatus: 'healthy',
         timestamp: new Date(),
       },
@@ -243,7 +503,8 @@ exports.getAdminLeads = async (req, res) => {
       limit = 50,
     } = req.query;
 
-    const query = { deletedAt: null };
+    const tenantScope = getTenantScope(req.user);
+    const query = { deletedAt: null, ...tenantScope };
 
     // Role-based visibility check
     if (req.user?.role === 'agent') {
@@ -251,7 +512,10 @@ exports.getAdminLeads = async (req, res) => {
       query.assignedTo = req.user._id;
     } else if (req.user?.role === 'manager') {
       // Managers see assigned team leads + direct leads
-      query.$or = [{ assignedManager: req.user._id }, { assignedTo: req.user._id }];
+      query.$and = query.$and || [];
+      query.$and.push({
+        $or: [{ assignedManager: req.user._id }, { assignedTo: req.user._id }],
+      });
     }
 
     if (search) {
@@ -259,14 +523,62 @@ exports.getAdminLeads = async (req, res) => {
       query.$or = [{ name: regex }, { phone: regex }, { email: regex }, { company: regex }];
     }
 
-    if (stage || status) {
-      query.status = stage || status;
+    if (stage && stage !== 'all') {
+      if (stage === 'payment_done') {
+        query.status = { $in: ['payment_done', 'closed', 'won', 'closed / won', 'closed won', 'advance paid', 'subscription won', 'Payment Done', 'Advance Paid', 'Closed Won', 'Closed / Won'] };
+      } else if (stage === 'converted') {
+        query.status = { $in: ['converted', 'qualified', 'negotiation', 'site_visit', 'documents uploaded', 'onboarded', 'Converted', 'Documents Uploaded'] };
+      } else if (stage === 'not_interested') {
+        query.status = { $in: ['not_interested', 'lost', 'not interested', 'rejected', 'dropped', 'Not Interested'] };
+      } else if (stage === 'contacted') {
+        query.status = { $in: ['contacted', 'connected', 'attempted', 'inquiry', 'demo class', 'floor plan shared', 'follow-up scheduled', 'Contacted', 'Inquiry', 'Demo Class', 'Floor Plan Shared', 'Follow-Up Scheduled'] };
+      } else if (stage === 'new_lead') {
+        query.status = { $in: ['new_lead', 'new', 'New', 'Platform Signup (Auto-generated when a user registers)', 'New Lead', ''] };
+      } else {
+        query.status = stage;
+      }
+    } else if (status && status !== 'all') {
+      query.status = status;
     }
 
-    if (primarySource) {
-      query.primarySource = primarySource;
+    if (primarySource && primarySource !== 'all') {
+      if (primarySource === 'SOURCE_C_ADS' || primarySource === 'ads') {
+        query.$or = [
+          { primarySource: { $in: ['SOURCE_C_ADS', 'ads'] } },
+          { source: { $in: ['ads', 'meta', 'google', 'webhook', 'facebook', 'instagram', 'adwords'] } },
+        ];
+      } else if (primarySource === 'SOURCE_B_SIGNUP' || primarySource === 'signup') {
+        query.$or = [
+          { primarySource: { $in: ['SOURCE_B_SIGNUP', 'signup'] } },
+          { source: { $in: ['signup', 'auto-signup', 'Auto-Signup', 'platform_registration'] } },
+        ];
+      } else if (primarySource === 'SOURCE_A_MANUAL' || primarySource === 'manual') {
+        query.$or = [
+          { primarySource: { $in: ['SOURCE_A_MANUAL', 'manual'] } },
+          { source: { $in: ['manual', 'agent_manual', 'direct', ''] } },
+        ];
+      } else {
+        query.primarySource = primarySource;
+      }
     } else if (source && source !== 'all') {
-      query.source = source;
+      if (source === 'ads') {
+        query.$or = [
+          { primarySource: { $in: ['SOURCE_C_ADS', 'ads'] } },
+          { source: { $in: ['ads', 'meta', 'google', 'webhook', 'facebook', 'instagram', 'adwords'] } },
+        ];
+      } else if (source === 'signup') {
+        query.$or = [
+          { primarySource: { $in: ['SOURCE_B_SIGNUP', 'signup'] } },
+          { source: { $in: ['signup', 'auto-signup', 'Auto-Signup', 'platform_registration'] } },
+        ];
+      } else if (source === 'manual') {
+        query.$or = [
+          { primarySource: { $in: ['SOURCE_A_MANUAL', 'manual'] } },
+          { source: { $in: ['manual', 'agent_manual', 'direct', ''] } },
+        ];
+      } else {
+        query.source = source;
+      }
     }
 
     if (assignedTo && assignedTo !== 'all') {
@@ -853,10 +1165,11 @@ exports.savePipelineSettings = async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 exports.getHierarchy = async (req, res) => {
   try {
+    const tenantUserScope = getTenantUserScope(req.user);
     const [managers, agents, allUsers] = await Promise.all([
-      User.find({ role: 'manager' }).select('name email phone userStatus leadCap isAvailable isAvailableForRouting isActive incentive_pct createdBy createdAt').lean(),
-      User.find({ role: 'agent' }).populate('managerId', 'name email').select('name email phone userStatus leadCap isAvailable isAvailableForRouting isActive managerId managerName incentive_pct createdBy createdAt').lean(),
-      User.find({ role: { $in: ['user', 'superadmin', 'admin'] } }).select('name email phone role userStatus isActive createdAt').lean(),
+      User.find({ ...tenantUserScope, role: 'manager' }).select('name email phone userStatus leadCap isAvailable isAvailableForRouting isActive incentive_pct createdBy createdAt').lean(),
+      User.find({ ...tenantUserScope, role: 'agent' }).populate('managerId', 'name email').select('name email phone userStatus leadCap isAvailable isAvailableForRouting isActive managerId managerName incentive_pct createdBy createdAt').lean(),
+      User.find({ ...tenantUserScope, role: { $in: ['user', 'superadmin', 'admin'] } }).select('name email phone role userStatus isActive createdAt').lean(),
     ]);
 
     // Group agents under managers
@@ -899,6 +1212,8 @@ exports.createAdminAgent = async (req, res) => {
       managerName = mgr?.name || '';
     }
 
+    const companyId = req.user.companyId || (req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner' || req.user.role === 'admin' ? req.user._id : null);
+
     const user = await User.create({
       name: name.trim(),
       email: email ? email.trim().toLowerCase() : undefined,
@@ -907,6 +1222,7 @@ exports.createAdminAgent = async (req, res) => {
       username,
       usercode,
       role: role === 'manager' ? 'manager' : 'agent',
+      companyId: companyId || undefined,
       managerId: managerId || null,
       managerName,
       incentive_pct: Number(incentive_pct) || (role === 'manager' ? 15 : 10),
@@ -1319,22 +1635,28 @@ exports.deleteAdminCatalogueItem = async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 exports.getIntegrationsStatus = async (req, res) => {
   try {
-    const integrations = await Integration.find().select('-encryptedCredentials -accessTokenEncrypted').lean();
+    const isCompany = Boolean(req.user.companyId || req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner' || req.user.role === 'admin');
+    const compId = req.user.companyId || req.user._id;
+    const query = isCompany ? { $or: [{ companyId: compId }, { userId: compId }] } : { userId: req.user._id };
+
+    const integrations = await Integration.find(query).select('-encryptedCredentials -accessTokenEncrypted').lean();
     const isWaConnected = waSession.isClientReady();
+
+    const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
 
     res.json({
       success: true,
       integrations,
       meta: {
         provider: 'META',
-        webhookUrl: 'https://api.coresetu.com/api/integrations/meta/webhook',
-        verifyToken: 'crm_meta_webhook_secret_2026',
-        status: integrations.some(i => i.provider === 'META' && i.status === 'CONNECTED') ? 'CONNECTED' : 'DISCONNECTED',
+        webhookUrl: `${baseUrl}/api/integrations/meta/webhook`,
+        verifyToken: process.env.META_WEBHOOK_VERIFY_TOKEN || 'crm_meta_webhook_secret_2026',
+        status: integrations.some(i => String(i.provider).toUpperCase() === 'META' && String(i.status).toUpperCase() === 'CONNECTED') ? 'CONNECTED' : 'DISCONNECTED',
       },
       google: {
         provider: 'GOOGLE',
-        webhookUrl: 'https://api.coresetu.com/api/integrations/google/webhook',
-        status: integrations.some(i => i.provider === 'GOOGLE' && i.status === 'CONNECTED') ? 'CONNECTED' : 'DISCONNECTED',
+        webhookUrl: `${baseUrl}/api/integrations/google/webhook`,
+        status: integrations.some(i => String(i.provider).toUpperCase() === 'GOOGLE' && String(i.status).toUpperCase() === 'CONNECTED') ? 'CONNECTED' : 'DISCONNECTED',
       },
       whatsapp: {
         provider: 'WHATSAPP',
@@ -1342,7 +1664,7 @@ exports.getIntegrationsStatus = async (req, res) => {
       },
       webhook: {
         provider: 'WEBHOOK',
-        webhookUrl: 'https://api.coresetu.com/api/integrations/generic/webhook',
+        webhookUrl: `${baseUrl}/api/integrations/generic/webhook`,
         status: 'CONNECTED',
       },
     });
@@ -1362,8 +1684,14 @@ exports.saveIntegrationCredentials = async (req, res) => {
     const credString = typeof credentials === 'object' ? JSON.stringify(credentials) : String(credentials);
     const encryptedCredentials = encrypt(credString);
 
+    const isCompany = Boolean(req.user.companyId || req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner' || req.user.role === 'admin');
+    const compId = req.user.companyId || req.user._id;
+
     const integration = await Integration.findOneAndUpdate(
-      { provider: provUpper },
+      {
+        provider: provUpper,
+        ...(isCompany ? { companyId: compId } : { userId: req.user._id }),
+      },
       {
         $set: {
           provider: provUpper,
@@ -1372,6 +1700,8 @@ exports.saveIntegrationCredentials = async (req, res) => {
           webhookUrl: webhookUrl || null,
           lastSyncAt: new Date(),
           updatedBy: req.user._id,
+          userId: req.user._id,
+          companyId: isCompany ? compId : null,
         },
       },
       { new: true, upsert: true }
@@ -1747,10 +2077,24 @@ exports.sendBroadcast = async (req, res) => {
     const audienceNorm = String(targetAudience).toUpperCase();
 
     const query = {};
-    if (audienceNorm === 'INTERNAL_MANAGERS') query.role = 'manager';
-    else if (audienceNorm === 'INTERNAL_AGENTS') query.role = 'agent';
-    else if (audienceNorm === 'INTERNAL_ALL') query.role = { $in: ['admin', 'manager', 'agent'] };
-    else if (audienceNorm === 'PLATFORM_SPECIFIC_USER' && Array.isArray(targetIds) && targetIds.length > 0) {
+    if (audienceNorm === 'ALL_USERS') {
+      query._id = { $exists: true };
+    } else if (audienceNorm === 'PLATFORM_MANAGERS_AGENTS') {
+      query.role = { $in: ['manager', 'agent'] };
+    } else if (audienceNorm === 'PLATFORM_MANAGERS_ONLY' || audienceNorm === 'INTERNAL_MANAGERS') {
+      query.role = 'manager';
+    } else if (audienceNorm === 'PLATFORM_AGENTS_ONLY' || audienceNorm === 'INTERNAL_AGENTS') {
+      query.role = 'agent';
+    } else if (audienceNorm === 'SOLO_USERS_ONLY') {
+      query.$or = [{ role: 'user' }, { companyId: null, role: { $nin: ['superadmin', 'admin'] } }];
+    } else if (audienceNorm === 'ORGANISATIONS_ONLY' || audienceNorm === 'PLATFORM_ALL_ORGS') {
+      query.$or = [{ workStatus: 'company_owner' }, { companyRole: 'owner' }, { role: 'admin' }];
+    } else if (audienceNorm === 'MY_TEAM_ONLY') {
+      const tenantId = req.user.companyId || req.user._id;
+      query.$or = [{ companyId: tenantId }, { _id: tenantId }];
+    } else if (audienceNorm === 'INTERNAL_ALL') {
+      query.role = { $in: ['admin', 'manager', 'agent'] };
+    } else if (audienceNorm === 'PLATFORM_SPECIFIC_USER' && Array.isArray(targetIds) && targetIds.length > 0) {
       query._id = { $in: targetIds };
     }
 
@@ -1810,10 +2154,16 @@ exports.sendCustomAlert = exports.sendBroadcast;
 // ─────────────────────────────────────────────────────────────
 exports.getUniversalAnalytics = async (req, res) => {
   try {
+    const tenantScope = getTenantScope(req.user);
+    const isCompany = Boolean(req.user.companyId || req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner' || req.user.role === 'admin');
+    const compId = req.user.companyId || req.user._id;
+    const campaignMatch = isCompany ? { companyId: new mongoose.Types.ObjectId(String(compId)) } : { userId: new mongoose.Types.ObjectId(String(req.user._id)) };
+
     const [roiFacet, repPerformance, stageFunnel, sourceAttribution] = await Promise.all([
       // 1. Total Platform Revenue vs Internal Ad Spend (ROI & ROAS)
       Promise.all([
         Campaign.aggregate([
+          { $match: campaignMatch },
           {
             $group: {
               _id: null,
@@ -1824,7 +2174,7 @@ exports.getUniversalAnalytics = async (req, res) => {
           },
         ]),
         Lead.aggregate([
-          { $match: { deletedAt: null, status: { $in: ['converted', 'payment_done'] } } },
+          { $match: { deletedAt: null, ...tenantScope, status: { $in: ['converted', 'payment_done', 'won', 'closed'] } } },
           {
             $group: {
               _id: null,
@@ -1837,15 +2187,15 @@ exports.getUniversalAnalytics = async (req, res) => {
 
       // 2. Agent / Manager Conversion Rates
       Lead.aggregate([
-        { $match: { deletedAt: null, assignedTo: { $ne: null } } },
+        { $match: { deletedAt: null, ...tenantScope, assignedTo: { $ne: null } } },
         {
           $group: {
             _id: '$assignedTo',
             totalAssigned: { $sum: 1 },
             contactedCount: { $sum: { $cond: [{ $ne: ['$status', 'new_lead'] }, 1, 0] } },
-            convertedCount: { $sum: { $cond: [{ $in: ['$status', ['converted', 'payment_done']] }, 1, 0] } },
-            lostCount: { $sum: { $cond: [{ $eq: ['$status', 'not_interested'] }, 1, 0] } },
-            totalRevenue: { $sum: { $cond: [{ $in: ['$status', ['converted', 'payment_done']] }, '$paid_amount', 0] } },
+            convertedCount: { $sum: { $cond: [{ $in: ['$status', ['converted', 'payment_done', 'won', 'closed']] }, 1, 0] } },
+            lostCount: { $sum: { $cond: [{ $in: ['$status', ['not_interested', 'lost']] }, 1, 0] } },
+            totalRevenue: { $sum: { $cond: [{ $in: ['$status', ['converted', 'payment_done', 'won', 'closed']] }, '$paid_amount', 0] } },
           },
         },
         {
@@ -1887,7 +2237,7 @@ exports.getUniversalAnalytics = async (req, res) => {
 
       // 3. Drop-off Analysis per Pipeline Stage
       Lead.aggregate([
-        { $match: { deletedAt: null } },
+        { $match: { deletedAt: null, ...tenantScope } },
         {
           $group: {
             _id: { $ifNull: ['$status', 'new_lead'] },
@@ -1899,7 +2249,7 @@ exports.getUniversalAnalytics = async (req, res) => {
 
       // 4. Lead Source Quality (Highest paying users by ad platform/UTM)
       Lead.aggregate([
-        { $match: { deletedAt: null } },
+        { $match: { deletedAt: null, ...tenantScope } },
         {
           $group: {
             _id: {
@@ -1908,10 +2258,10 @@ exports.getUniversalAnalytics = async (req, res) => {
             },
             inboundLeads: { $sum: 1 },
             conversions: {
-              $sum: { $cond: [{ $in: ['$status', ['converted', 'payment_done']] }, 1, 0] },
+              $sum: { $cond: [{ $in: ['$status', ['converted', 'payment_done', 'won', 'closed']] }, 1, 0] },
             },
             totalRevenue: {
-              $sum: { $cond: [{ $in: ['$status', ['converted', 'payment_done']] }, '$paid_amount', 0] },
+              $sum: { $cond: [{ $in: ['$status', ['converted', 'payment_done', 'won', 'closed']] }, '$paid_amount', 0] },
             },
           },
         },
@@ -2176,12 +2526,553 @@ exports.completeFollowUp = async (req, res) => {
 
     lead.followUpStatus = 'completed';
     lead.followUpDate = null;
+    if (lead.activeFollowUp) {
+      lead.activeFollowUp.status = 'completed';
+      lead.activeFollowUp.completedAt = new Date();
+      lead.activeFollowUp.completionNote = completion_note || 'Completed by Admin';
+    }
     if (completion_note) {
       lead.notes.push({ text: `Follow-up completed: ${completion_note}`, createdBy: req.user._id, authorName: req.user.name });
     }
+    lead.leadActivities.push({
+      action: 'followup_completed',
+      performedBy: req.user._id,
+      performerName: req.user.name || 'Admin',
+      details: completion_note || 'Follow-up marked completed',
+      timestamp: new Date(),
+    });
     await lead.save();
 
     res.json({ success: true, message: 'Follow-up completed', lead });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+// Cancel / Disable Follow-up with MANDATORY reason
+exports.cancelFollowUp = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    if (!reason || !String(reason).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'A mandatory justification reason/note is required to cancel or disable this follow-up.',
+      });
+    }
+
+    const lead = await Lead.findById(id);
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+
+    const cleanReason = String(reason).trim();
+
+    if (lead.activeFollowUp) {
+      lead.activeFollowUp.status = 'none';
+      lead.activeFollowUp.completionNote = `[Cancelled]: ${cleanReason}`;
+      lead.activeFollowUp.completedAt = new Date();
+      lead.activeFollowUp.completedBy = req.user._id;
+    }
+    lead.followUpStatus = 'none';
+    lead.followUpDate = null;
+    lead.followUpNotified = false;
+
+    lead.notes.push({
+      text: `[Follow-Up Cancelled]: ${cleanReason}`,
+      createdBy: req.user._id,
+      authorName: req.user.name || 'Admin',
+      createdAt: new Date(),
+    });
+
+    lead.leadActivities.push({
+      action: 'followup_completed',
+      performedBy: req.user._id,
+      performerName: req.user.name || 'Admin',
+      details: `Follow-up cancelled. Reason: "${cleanReason}"`,
+      timestamp: new Date(),
+    });
+
+    await lead.save();
+
+    // Update FollowUp collection record if present
+    try {
+      await FollowUp.updateMany(
+        { lead_id: lead._id, status: { $in: ['open', 'postponed', 'scheduled'] } },
+        { $set: { status: 'cancelled', completion_note: cleanReason, completionNote: cleanReason, completed_at: new Date() } }
+      );
+    } catch (fuErr) {}
+
+    // Record ActivityLog entry for audit & manager reporting
+    try {
+      await ActivityLog.create({
+        actor: req.user._id,
+        actorRole: req.user.role || 'admin',
+        action: 'followup_cancelled',
+        entityType: 'Lead',
+        entityId: lead._id,
+        eventType: 'LEAD_FOLLOWUP_CANCELLED',
+        details: `Follow-up cancelled for lead ${lead.name}. Reason: "${cleanReason}"`,
+        metadata: { reason: cleanReason, leadId: lead._id },
+        visibility: 'GLOBAL',
+      });
+    } catch (logErr) {}
+
+    res.json({
+      success: true,
+      message: 'Follow-up cancelled successfully and audit logged',
+      lead,
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+// Deal Closure with MANDATORY Plan, Closing Amount, Reason & Automatic Commission
+exports.closeLeadWithCommission = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { planId, closingAmount, closingReason, closingType = 'PAID' } = req.body;
+
+    if (!planId) {
+      return res.status(400).json({ success: false, message: 'Plan selection is mandatory to close a deal.' });
+    }
+    if (closingAmount === undefined || closingAmount === null || isNaN(Number(closingAmount)) || Number(closingAmount) < 0) {
+      return res.status(400).json({ success: false, message: 'A valid actual closing amount (>= 0) is mandatory.' });
+    }
+    if (!closingReason || !String(closingReason).trim()) {
+      return res.status(400).json({ success: false, message: 'Closing reason / note is mandatory to close a deal.' });
+    }
+
+    const lead = await Lead.findById(id);
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+
+    // Validate Plan
+    let selectedPlan = null;
+    if (mongoose.Types.ObjectId.isValid(planId)) {
+      selectedPlan = await Plan.findById(planId);
+    }
+    if (!selectedPlan) {
+      selectedPlan = await Plan.findOne({ code: String(planId).toUpperCase() });
+    }
+    if (!selectedPlan) {
+      // Fallback lookup
+      selectedPlan = await Plan.findOne({ isActive: true });
+    }
+
+    const finalAmount = Number(closingAmount);
+    const cleanReason = String(closingReason).trim();
+
+    if (req.body.assignedTo) lead.assignedTo = req.body.assignedTo;
+    if (req.body.assignedManager) lead.assignedManager = req.body.assignedManager;
+    if (!lead.assignedTo && req.user._id) lead.assignedTo = req.user._id;
+
+    lead.status = 'payment_done';
+    lead.selected_plan_id = selectedPlan ? String(selectedPlan._id) : planId;
+    lead.service_required = selectedPlan ? selectedPlan.code?.toLowerCase() : lead.service_required;
+    lead.closedDealAmount = finalAmount;
+    lead.payable_amount = finalAmount;
+    lead.paid_amount = finalAmount;
+    lead.closingReason = cleanReason;
+    lead.closingType = closingType;
+    lead.closedAt = new Date();
+    lead.closedBy = req.user._id;
+
+    lead.notes.push({
+      text: `[Deal Closed]: Sold Plan "${selectedPlan?.name || planId}" for ₹${finalAmount.toLocaleString('en-IN')}. Reason: ${cleanReason}`,
+      createdBy: req.user._id,
+      authorName: req.user.name || 'Admin',
+      createdAt: new Date(),
+    });
+
+    lead.leadActivities.push({
+      action: 'deal_closed',
+      performedBy: req.user._id,
+      performerName: req.user.name || 'Admin',
+      details: `Deal closed [Payment Done]. Plan: ${selectedPlan?.name || planId}, Amount: ₹${finalAmount}, Type: ${closingType}, Note: "${cleanReason}"`,
+      timestamp: new Date(),
+    });
+
+    await lead.save();
+
+    // Automatic Commission Calculation & Payout Ledger Generation
+    const payoutsCreated = [];
+    if (finalAmount > 0) {
+      try {
+        // 1. Agent Commission
+        if (lead.assignedTo) {
+          const agentRule = (await CommissionRule.findOne({ targetRole: 'AGENT', isActive: true }).sort({ createdAt: -1 })) || {
+            _id: new mongoose.Types.ObjectId(),
+            ruleName: 'Default 10% Agent Bonus',
+            commissionType: 'PERCENTAGE',
+            value: 10,
+          };
+          const agentEarned = agentRule.commissionType === 'FLAT' ? agentRule.value : (finalAmount * agentRule.value) / 100;
+          const agentPayout = await CommissionPayout.create({
+            userId: lead.assignedTo,
+            leadId: lead._id,
+            saleValue: finalAmount,
+            commissionEarned: agentEarned,
+            appliedRuleId: agentRule._id,
+            ruleNameSnapshot: agentRule.ruleName,
+            status: 'PENDING',
+            calculationSnapshot: {
+              planName: selectedPlan?.name,
+              closingAmount: finalAmount,
+              ruleType: agentRule.commissionType,
+              ruleValue: agentRule.value,
+            },
+          });
+          payoutsCreated.push(agentPayout);
+        }
+
+        // 2. Manager Commission
+        if (lead.assignedManager) {
+          const mgrRule = (await CommissionRule.findOne({ targetRole: 'MANAGER', isActive: true }).sort({ createdAt: -1 })) || {
+            _id: new mongoose.Types.ObjectId(),
+            ruleName: 'Default 5% Manager Override',
+            commissionType: 'PERCENTAGE',
+            value: 5,
+          };
+          const mgrEarned = mgrRule.commissionType === 'FLAT' ? mgrRule.value : (finalAmount * mgrRule.value) / 100;
+          const mgrPayout = await CommissionPayout.create({
+            userId: lead.assignedManager,
+            leadId: lead._id,
+            saleValue: finalAmount,
+            commissionEarned: mgrEarned,
+            appliedRuleId: mgrRule._id,
+            ruleNameSnapshot: mgrRule.ruleName,
+            status: 'PENDING',
+            calculationSnapshot: {
+              planName: selectedPlan?.name,
+              closingAmount: finalAmount,
+              ruleType: mgrRule.commissionType,
+              ruleValue: mgrRule.value,
+            },
+          });
+          payoutsCreated.push(mgrPayout);
+        }
+      } catch (commErr) {
+        console.warn('[Commission Ledger Notice]:', commErr.message);
+      }
+    }
+
+    // Audit Logging
+    try {
+      await ActivityLog.create({
+        actor: req.user._id,
+        actorRole: req.user.role || 'admin',
+        action: 'deal_closed',
+        entityType: 'Lead',
+        entityId: lead._id,
+        eventType: 'DEAL_CLOSED',
+        details: `Deal closed for lead ${lead.name} at ₹${finalAmount}. Plan: ${selectedPlan?.name || planId}. Reason: "${cleanReason}"`,
+        metadata: {
+          planId: selectedPlan?._id || planId,
+          planName: selectedPlan?.name,
+          closingAmount: finalAmount,
+          closingType,
+          closingReason: cleanReason,
+          payoutsCount: payoutsCreated.length,
+        },
+        visibility: 'GLOBAL',
+      });
+    } catch (logErr) {}
+
+    res.json({
+      success: true,
+      message: 'Deal closed successfully, plan bound, and commission ledger generated',
+      lead,
+      payouts: payoutsCreated,
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+// Assign Plan & Complimentary / Free Plan to Lead with Audit Reporting
+exports.assignLeadPlan = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { planId, isFree = false, reason = '' } = req.body;
+
+    if (!planId) {
+      return res.status(400).json({ success: false, message: 'Plan ID is required' });
+    }
+    if (isFree && (!reason || !String(reason).trim())) {
+      return res.status(400).json({ success: false, message: 'A mandatory justification reason is required when assigning a free/complimentary plan.' });
+    }
+
+    const lead = await Lead.findById(id);
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+
+    let plan = null;
+    if (mongoose.Types.ObjectId.isValid(planId)) {
+      plan = await Plan.findById(planId);
+    }
+    if (!plan) {
+      plan = await Plan.findOne({ code: String(planId).toUpperCase() });
+    }
+
+    const cleanReason = String(reason || '').trim();
+    const planPrice = isFree ? 0 : (plan ? plan.priceInPaise / 100 : 0);
+
+    lead.selected_plan_id = plan ? String(plan._id) : planId;
+    lead.service_required = plan ? plan.code?.toLowerCase() : lead.service_required;
+    lead.payable_amount = planPrice;
+    if (isFree) {
+      lead.paid_amount = 0;
+      lead.customData = { ...lead.customData, freePlanGranted: true, freePlanReason: cleanReason, freePlanGrantedBy: req.user._id };
+    }
+
+    lead.notes.push({
+      text: isFree
+        ? `[Complimentary Plan Assigned]: "${plan?.name || planId}" for free. Reason: ${cleanReason}`
+        : `[Plan Assigned]: "${plan?.name || planId}" (₹${planPrice})`,
+      createdBy: req.user._id,
+      authorName: req.user.name || 'Admin',
+      createdAt: new Date(),
+    });
+
+    lead.leadActivities.push({
+      action: 'plan_assigned',
+      performedBy: req.user._id,
+      performerName: req.user.name || 'Admin',
+      details: isFree
+        ? `Free plan "${plan?.name || planId}" assigned. Justification: "${cleanReason}"`
+        : `Plan "${plan?.name || planId}" assigned (₹${planPrice})`,
+      timestamp: new Date(),
+    });
+
+    await lead.save();
+
+    // Audit Logging
+    try {
+      await ActivityLog.create({
+        actor: req.user._id,
+        actorRole: req.user.role || 'admin',
+        action: isFree ? 'free_plan_assigned' : 'plan_assigned',
+        entityType: 'Lead',
+        entityId: lead._id,
+        eventType: isFree ? 'FREE_PLAN_ASSIGNED' : 'PLAN_ASSIGNED',
+        details: isFree
+          ? `${req.user.name} (${req.user.role}) granted complimentary plan "${plan?.name || planId}" to lead ${lead.name}. Reason: "${cleanReason}"`
+          : `Plan "${plan?.name || planId}" assigned to lead ${lead.name}`,
+        metadata: { planId: plan?._id || planId, planName: plan?.name, isFree, reason: cleanReason },
+        visibility: 'GLOBAL',
+      });
+    } catch (logErr) {}
+
+    // Manager action reporting to Admin
+    if (req.user.role === 'manager') {
+      try {
+        const adminUser = (await User.findOne({ companyId: req.user.companyId, role: 'admin' })) || (await User.findOne({ role: 'admin' }));
+        if (adminUser) {
+          await Notification.create({
+            userId: adminUser._id,
+            title: isFree ? `Manager Free Plan Grant: ${req.user.name}` : `Manager Plan Assigned: ${req.user.name}`,
+            message: `Manager ${req.user.name} assigned plan "${plan?.name || planId}" to lead ${lead.name}. ${cleanReason ? `Reason: "${cleanReason}"` : ''}`,
+            type: 'manager_activity_alert',
+            priority: 'high',
+            createdAt: new Date(),
+          });
+        }
+      } catch (notifErr) {}
+    }
+
+    res.json({
+      success: true,
+      message: isFree ? 'Complimentary plan assigned and logged for admin review' : 'Plan assigned successfully',
+      lead,
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+// Plan Hierarchy & CRUD Handlers
+exports.getPlanHierarchy = async (req, res) => {
+  try {
+    const plans = await Plan.find().sort({ industry: 1, subIndustry: 1, tier: 1 }).lean();
+    const hierarchy = {};
+
+    plans.forEach((p) => {
+      const ind = p.industry || 'General';
+      const sub = p.subIndustry || 'General';
+      if (!hierarchy[ind]) {
+        hierarchy[ind] = {};
+      }
+      if (!hierarchy[ind][sub]) {
+        hierarchy[ind][sub] = [];
+      }
+      hierarchy[ind][sub].push(p);
+    });
+
+    const structured = Object.keys(hierarchy).map((indName) => ({
+      industry: indName,
+      subIndustries: Object.keys(hierarchy[indName]).map((subName) => ({
+        name: subName,
+        plans: hierarchy[indName][subName],
+      })),
+    }));
+
+    res.json({ success: true, hierarchy: structured, allPlans: plans });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+exports.createAdminPlan = async (req, res) => {
+  try {
+    const { code, name, description, industry, subIndustry, accountType, tier, interval, priceInPaise, features, defaultEntitlements } = req.body;
+    if (!code || !name || priceInPaise === undefined) {
+      return res.status(400).json({ success: false, message: 'Plan Code, Name, and Price are required' });
+    }
+
+    const newPlan = await Plan.create({
+      code: String(code).toUpperCase().trim(),
+      name: String(name).trim(),
+      description: description || '',
+      industry: industry || 'General',
+      subIndustry: subIndustry || 'General',
+      accountType: accountType || 'INDIVIDUAL',
+      tier: Number(tier) || 1,
+      interval: interval || 'monthly',
+      priceInPaise: Number(priceInPaise),
+      features: features || {},
+      defaultEntitlements: defaultEntitlements || { maxSeats: 1, maxLeads: 1000, monthlyWAQuota: 500 },
+      isActive: true,
+    });
+
+    res.status(201).json({ success: true, message: 'Plan created successfully', plan: newPlan });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+exports.updateAdminPlan = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = { ...req.body };
+    if (updateData.code) updateData.code = String(updateData.code).toUpperCase().trim();
+
+    const plan = await Plan.findByIdAndUpdate(id, { $set: updateData }, { new: true });
+    if (!plan) return res.status(404).json({ success: false, message: 'Plan not found' });
+
+    res.json({ success: true, message: 'Plan updated successfully', plan });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+exports.deleteAdminPlan = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await Plan.findByIdAndUpdate(id, { $set: { isActive: false } });
+    res.json({ success: true, message: 'Plan deactivated' });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+// Pipeline Configuration Handlers
+exports.getPipelineConfig = async (req, res) => {
+  try {
+    let pipeline = await Pipeline.findOne({ isDefault: true }).lean();
+    if (!pipeline) {
+      pipeline = await Pipeline.create({
+        name: 'Standard CRM Pipeline',
+        isDefault: true,
+        stages: [
+          { name: 'New Lead', order: 0, probability: 10, colorCode: '#64748b', slaHours: 24 },
+          { name: 'Contacted', order: 1, probability: 30, colorCode: '#3b82f6', slaHours: 48 },
+          { name: 'Follow-Up Scheduled', order: 2, probability: 50, colorCode: '#f97316', slaHours: 24 },
+          { name: 'Converted', order: 3, probability: 80, colorCode: '#10b981', slaHours: 72 },
+          { name: 'Payment Done', order: 4, probability: 100, colorCode: '#8b5cf6', slaHours: 0 },
+        ],
+      });
+    }
+    res.json({ success: true, pipeline });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+exports.updatePipelineConfig = async (req, res) => {
+  try {
+    const { stages } = req.body;
+    if (!Array.isArray(stages) || stages.length === 0) {
+      return res.status(400).json({ success: false, message: 'Stages array is required' });
+    }
+
+    let pipeline = await Pipeline.findOne({ isDefault: true });
+    if (!pipeline) {
+      pipeline = new Pipeline({ name: 'Standard CRM Pipeline', isDefault: true });
+    }
+
+    pipeline.stages = stages.map((s, idx) => ({
+      name: s.name,
+      order: s.order !== undefined ? s.order : idx,
+      probability: s.probability || 50,
+      colorCode: s.colorCode || '#6366f1',
+      slaHours: s.slaHours || 24,
+    }));
+
+    await pipeline.save();
+    res.json({ success: true, message: 'Pipeline configuration saved', pipeline });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+// Dynamic Broadcast Audience Counter
+exports.getBroadcastAudienceCount = async (req, res) => {
+  try {
+    const { targetAudience } = req.body;
+    let count = 0;
+
+    switch (targetAudience) {
+      case 'INTERNAL_ALL':
+        count = await User.countDocuments({ role: { $in: ['admin', 'manager', 'agent'] }, userStatus: 'active' });
+        break;
+      case 'INTERNAL_MANAGERS':
+        count = await User.countDocuments({ role: 'manager', userStatus: 'active' });
+        break;
+      case 'INTERNAL_AGENTS':
+        count = await User.countDocuments({ role: 'agent', userStatus: 'active' });
+        break;
+      case 'PLATFORM_ALL_SOLO':
+        count = await User.countDocuments({ workStatus: 'independent_agent', userStatus: 'active' });
+        break;
+      case 'PLATFORM_ALL_ORGS':
+        count = await User.countDocuments({ workStatus: 'company_owner', userStatus: 'active' });
+        break;
+      case 'PLATFORM_ALL_USERS':
+      default:
+        count = await User.countDocuments({ userStatus: 'active' });
+        break;
+    }
+
+    res.json({ success: true, count, targetAudience });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+// Manager Activity Reporting
+exports.getManagerActivities = async (req, res) => {
+  try {
+    const activities = await ActivityLog.find({
+      $or: [
+        { actorRole: 'manager' },
+        { action: { $in: ['free_plan_assigned', 'deal_closed', 'followup_cancelled', 'lead_reassigned', 'stage_changed'] } },
+      ],
+    })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .populate('actor', 'name email role')
+      .lean();
+
+    res.json({ success: true, activities });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }

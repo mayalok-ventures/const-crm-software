@@ -78,7 +78,7 @@ exports.startOAuth = async (req, res) => {
 
     const clientId = (process.env.GOOGLE_CLIENT_ID || '').trim();
     const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').trim();
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI || 'https://crm.coresetu.com/api/integrations/google/oauth/callback';
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:5000/api/integrations/google/oauth/callback';
 
     // Extract frontendUrl dynamically
     let frontendUrl = req.query.frontendUrl || null;
@@ -89,7 +89,7 @@ exports.startOAuth = async (req, res) => {
       } catch {}
     }
     if (!frontendUrl) {
-      frontendUrl = process.env.FRONTEND_URL || 'https://crm.coresetu.com';
+      frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     }
 
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? req.user._id : null);

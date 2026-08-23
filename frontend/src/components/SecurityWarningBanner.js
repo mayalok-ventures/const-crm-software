@@ -69,7 +69,7 @@ export default function SecurityWarningBanner() {
       </div>
 
       <Link
-        href="/profile"
+        href="/admin?tab=security"
         style={{
           display: 'inline-flex',
           alignItems: 'center',

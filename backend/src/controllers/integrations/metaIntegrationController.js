@@ -8,12 +8,19 @@ const { decrypt } = require('../../utils/encryption');
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v23.0';
 
 function getTenantQuery(user) {
+  if (!user) return { _id: null };
+  const uid = user._id;
   const isOwner = user?.workStatus === 'company_owner' || user?.companyRole === 'owner';
-  const companyId = user?.companyId || (isOwner ? user._id : null);
+  const companyId = user?.companyId || (isOwner ? uid : null);
   if (companyId) {
-    return { companyId };
+    return {
+      $or: [
+        { companyId },
+        { userId: uid },
+      ],
+    };
   }
-  return { userId: user._id, companyId: null };
+  return { userId: uid };
 }
 
 /**

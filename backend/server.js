@@ -126,6 +126,8 @@ app.use('/api/projects', projectsRoutes);
 app.use('/api', shareRoutes);
 app.use('/api/integrations', integrationRoutes);
 app.use('/api/catalogue', catalogueRoutes);
+const superAdminRoutes = require('./src/superadmin/routes/superAdminRoutes');
+app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/agency', agencyRoutes);
 
 // Production-Grade Health Check Framework
@@ -217,6 +219,15 @@ connectDB().then(async () => {
       const usWorkerMod = require('./src/monitoring/usage/UsageMonitorWorker');
       const usageMonitorWorker = usWorkerMod.usageMonitorWorker || (usWorkerMod.UsageMonitorWorker && usWorkerMod.UsageMonitorWorker.getInstance()) || usWorkerMod.default;
 
+      const akWorkerMod = require('./src/monitoring/apikeys/ApiKeySecurityWorker');
+      const apiKeySecurityWorker = akWorkerMod.apiKeySecurityWorker || (akWorkerMod.ApiKeySecurityWorker && akWorkerMod.ApiKeySecurityWorker.getInstance()) || akWorkerMod.default;
+
+      const depWorkerMod = require('./src/monitoring/deployment/DeploymentMonitorWorker');
+      const deploymentMonitorWorker = depWorkerMod.deploymentMonitorWorker || (depWorkerMod.DeploymentMonitorWorker && depWorkerMod.DeploymentMonitorWorker.getInstance()) || depWorkerMod.default;
+
+      const hlthWorkerMod = require('./src/monitoring/health/HealthScoreWorker');
+      const healthScoreWorker = hlthWorkerMod.healthScoreWorker || (hlthWorkerMod.HealthScoreWorker && hlthWorkerMod.HealthScoreWorker.getInstance()) || hlthWorkerMod.default;
+
       const agent = new MonitoringAgent();
       const heartbeat = new ServerHeartbeat();
       const statusEvaluator = new StatusEvaluator();
@@ -231,6 +242,9 @@ connectDB().then(async () => {
       if (alertMonitorWorker && typeof alertMonitorWorker.start === 'function') alertMonitorWorker.start(30000);
       if (integrationMonitorWorker && typeof integrationMonitorWorker.start === 'function') integrationMonitorWorker.start(60000);
       if (usageMonitorWorker && typeof usageMonitorWorker.start === 'function') usageMonitorWorker.start(60000);
+      if (apiKeySecurityWorker && typeof apiKeySecurityWorker.start === 'function') apiKeySecurityWorker.start(60000);
+      if (deploymentMonitorWorker && typeof deploymentMonitorWorker.start === 'function') deploymentMonitorWorker.start(60000);
+      if (healthScoreWorker && typeof healthScoreWorker.start === 'function') healthScoreWorker.start(60000);
 
       const shutdownWorkers = () => {
         console.log('Stopping background monitoring workers...');
@@ -243,6 +257,9 @@ connectDB().then(async () => {
         if (alertMonitorWorker && typeof alertMonitorWorker.stop === 'function') alertMonitorWorker.stop();
         if (integrationMonitorWorker && typeof integrationMonitorWorker.stop === 'function') integrationMonitorWorker.stop();
         if (usageMonitorWorker && typeof usageMonitorWorker.stop === 'function') usageMonitorWorker.stop();
+        if (apiKeySecurityWorker && typeof apiKeySecurityWorker.stop === 'function') apiKeySecurityWorker.stop();
+        if (deploymentMonitorWorker && typeof deploymentMonitorWorker.stop === 'function') deploymentMonitorWorker.stop();
+        if (healthScoreWorker && typeof healthScoreWorker.stop === 'function') healthScoreWorker.stop();
       };
       process.on('SIGTERM', shutdownWorkers);
       process.on('SIGINT', shutdownWorkers);

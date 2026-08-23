@@ -258,10 +258,26 @@ const optionalAuth = async (req, res, next) => {
   next();
 };
 
+const superAdminOnly = (req, res, next) => {
+  if (!req.user || req.user.role !== 'superadmin') {
+    securityTracker.recordEvent({
+      type: 'PERMISSION_DENIED',
+      req,
+      userId: req.user?._id,
+      userEmail: req.user?.email,
+      tenantId: req.user?.companyId,
+      metadata: { requiredRole: 'superadmin', currentRole: req.user?.role || 'anonymous' },
+    });
+    return res.status(403).json({ message: 'SuperAdmin platform authorization required' });
+  }
+  next();
+};
+
 module.exports = {
   protect,
   optionalAuth,
   adminOnly,
+  superAdminOnly,
   managerOrAdminOnly,
   checkPlanExpiry,
   calculateSubscriptionLifecycle,

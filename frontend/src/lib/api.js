@@ -1,10 +1,10 @@
 import axios from 'axios';
 
 const getBaseUrl = () => {
-  // Use env var if set (works for both local dev and production builds)
+  // Use env var if set
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
-  // Fallback to secure production API endpoint
-  return 'https://api.coresetu.com/api';
+  // Local development fallback
+  return 'http://localhost:5000/api';
 };
 
 export const API_URL = getBaseUrl();

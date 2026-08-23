@@ -459,6 +459,30 @@ exports.claimLead = async (req, res) => {
 
     res.json({ success: true, lead: result.lead });
   } catch (error) {
+    const isConflictError =
+      (error.message && (
+        error.message.includes('Write conflict') ||
+        error.message.includes('TransientTransactionError') ||
+        error.message.includes('WriteConflict')
+      )) ||
+      (typeof error.hasErrorLabel === 'function' && error.hasErrorLabel('TransientTransactionError'));
+
+    if (isConflictError) {
+      try {
+        const conflictLead = await Lead.findOne({ _id: req.params.id, companyId: req.tenantId }).populate('currentOwnerId', 'name email');
+        return res.status(409).json({
+          message: 'This lead is currently being handled by another employee.',
+          code: 'LEAD_ALREADY_CLAIMED',
+          currentOwner: conflictLead ? conflictLead.currentOwnerId : null,
+        });
+      } catch (findErr) {
+        return res.status(409).json({
+          message: 'This lead is currently being handled by another employee.',
+          code: 'LEAD_ALREADY_CLAIMED',
+          currentOwner: null,
+        });
+      }
+    }
     res.status(500).json({ message: error.message });
   }
 };

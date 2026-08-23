@@ -25,6 +25,24 @@ const planSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    // Industry & Sub-Industry Commercial Hierarchy
+    industry: {
+      type: String,
+      default: 'General',
+      trim: true,
+      index: true,
+    },
+    subIndustry: {
+      type: String,
+      default: 'General',
+      trim: true,
+      index: true,
+    },
+    commissionRuleId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'CommissionRule',
+      default: null,
+    },
     // Account Type Isolation
     accountType: {
       type: String,

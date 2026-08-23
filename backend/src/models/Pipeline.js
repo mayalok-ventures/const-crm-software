@@ -24,7 +24,7 @@ const pipelineStageSchema = new mongoose.Schema({
   },
   slaHours: {
     type: Number,
-    min: [1, 'SLA hours must be at least 1 hour'],
+    min: [0, 'SLA hours cannot be negative'],
     default: 24,
   },
 }, { _id: true });

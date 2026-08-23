@@ -1,57 +1,56 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import React, { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
-import {
-  LayoutDashboard, Users, UserCheck, GitFork, Workflow, FileText,
-  MessageSquare, ShoppingBag, Radio, Target, DollarSign, Ticket,
-  Bell, BarChart3, History, Shield, Activity, Plus, Search,
-  Filter, Check, X, RefreshCw, Phone, Mail, ChevronRight,
-  TrendingUp, Award, Layers, Zap, Copy, ExternalLink, Settings,
-  AlertCircle, CheckCircle2, ChevronDown, Clock, Download, ArrowUpRight
-} from 'lucide-react';
 import { getUser } from '@/lib/auth';
-import SystemHealthDashboard from '@/components/admin/SystemHealthDashboard';
+
+// UI Design System Primitives
+import AdminLayout from '@/components/admin/ui/AdminLayout';
+import Modal from '@/components/admin/ui/Modal';
+import PermissionGate from '@/components/admin/ui/PermissionGate';
+
+// 17 Modular Operational Centres
+import OverviewModule from '@/components/admin/modules/OverviewModule';
+import LeadsModule from '@/components/admin/modules/LeadsModule';
+import DistributionModule from '@/components/admin/modules/DistributionModule';
+import PipelinesModule from '@/components/admin/modules/PipelinesModule';
+import HierarchyModule from '@/components/admin/modules/HierarchyModule';
+import BroadcastsModule from '@/components/admin/modules/BroadcastsModule';
+import FormsModule from '@/components/admin/modules/FormsModule';
+import TemplatesModule from '@/components/admin/modules/TemplatesModule';
+import CampaignsModule from '@/components/admin/modules/CampaignsModule';
+import CatalogueModule from '@/components/admin/modules/CatalogueModule';
+import CommissionsModule from '@/components/admin/modules/CommissionsModule';
+import CouponsModule from '@/components/admin/modules/CouponsModule';
+import AnalyticsModule from '@/components/admin/modules/AnalyticsModule';
+import ActivityLogsModule from '@/components/admin/modules/ActivityLogsModule';
+import IntegrationsModule from '@/components/admin/modules/IntegrationsModule';
+import SecurityModule from '@/components/admin/modules/SecurityModule';
+import HealthModule from '@/components/admin/modules/HealthModule';
+import PlansModule from '@/components/admin/modules/PlansModule';
+import ProfileModule from '@/components/admin/modules/ProfileModule';
+
+// New Specialized Workflow Modals
+import CancelFollowUpModal from '@/components/admin/ui/CancelFollowUpModal';
+import CloseDealModal from '@/components/admin/ui/CloseDealModal';
+import AssignPlanModal from '@/components/admin/ui/AssignPlanModal';
+import LeadProfileModal from '@/components/admin/ui/LeadProfileModal';
+import SendBroadcastModal from '@/components/admin/ui/SendBroadcastModal';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
-const NAV_CENTRES = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard, category: 'Core' },
-  { id: 'leads', label: 'Leads & Sources', icon: Users, category: 'Leads' },
-  { id: 'distribution', label: 'Lead Distribution', icon: GitFork, category: 'Leads' },
-  { id: 'pipelines', label: 'Pipelines', icon: Workflow, category: 'Leads' },
-  { id: 'hierarchy', label: 'Hierarchy & Teams', icon: UserCheck, category: 'Organization' },
-  { id: 'forms', label: 'Forms Centre', icon: FileText, category: 'Growth' },
-  { id: 'templates', label: 'Template Centre', icon: MessageSquare, category: 'Growth' },
-  { id: 'catalogue', label: 'Catalogue Centre', icon: ShoppingBag, category: 'Commerce' },
-  { id: 'integrations', label: 'Integration Centre', icon: Radio, category: 'System' },
-  { id: 'campaigns', label: 'Campaigns & Ads', icon: Target, category: 'Growth' },
-  { id: 'commissions', label: 'Commission Engine', icon: DollarSign, category: 'Commerce' },
-  { id: 'coupons', label: 'Coupon Engine', icon: Ticket, category: 'Commerce' },
-  { id: 'broadcasts', label: 'Broadcast Centre', icon: Bell, category: 'Organization' },
-  { id: 'analytics', label: 'Universal Analytics', icon: BarChart3, category: 'Intelligence' },
-  { id: 'activity', label: 'Activity & Audit Logs', icon: History, category: 'Intelligence' },
-  { id: 'security', label: 'Security & Access', icon: Shield, category: 'System' },
-  { id: 'health', label: 'System Health', icon: Activity, category: 'System' },
-];
-
-const KANBAN_STAGES = [
-  { id: 'new_lead', label: 'New Lead', color: 'border-slate-500/40 bg-slate-500/10 text-slate-300', dot: 'bg-slate-400' },
-  { id: 'contacted', label: 'Contacted', color: 'border-blue-500/40 bg-blue-500/10 text-blue-300', dot: 'bg-blue-400' },
-  { id: 'not_interested', label: 'Not Interested', color: 'border-rose-500/40 bg-rose-500/10 text-rose-300', dot: 'bg-rose-400' },
-  { id: 'converted', label: 'Converted', color: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300', dot: 'bg-emerald-400' },
-  { id: 'payment_done', label: 'Payment Done', color: 'border-purple-500/40 bg-purple-500/10 text-purple-300', dot: 'bg-purple-400' },
-];
-
-export default function AdminControlCenter() {
+function AdminControlCenterContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Auth & State
   const [token, setToken] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isAuthorized, setIsAuthorized] = useState(true);
 
   // Tab Data States
   const [metrics, setMetrics] = useState(null);
@@ -61,6 +60,8 @@ export default function AdminControlCenter() {
   const [hierarchy, setHierarchy] = useState({ managers: [], unassignedAgents: [] });
   const [performanceList, setPerformanceList] = useState([]);
   const [pipelineStages, setPipelineStages] = useState([]);
+  const [allPlans, setAllPlans] = useState([]);
+  const [planHierarchy, setPlanHierarchy] = useState([]);
   const [formSchemas, setFormSchemas] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [catalogues, setCatalogues] = useState([]);
@@ -73,37 +74,43 @@ export default function AdminControlCenter() {
   const [activityLogs, setActivityLogs] = useState([]);
   const [securitySettings, setSecuritySettings] = useState(null);
   const [systemHealth, setSystemHealth] = useState(null);
+  const [broadcastsList, setBroadcastsList] = useState([]);
 
-  // Filter States
+  // Error States per tab
+  const [tabErrors, setTabErrors] = useState({});
+
+  // Filter States for Leads & Activity
   const [leadSearch, setLeadSearch] = useState('');
   const [leadSourceFilter, setLeadSourceFilter] = useState('all');
   const [leadStageFilter, setLeadStageFilter] = useState('all');
-  const [leadViewMode, setLeadViewMode] = useState('kanban');
+  const [leadsPage, setLeadsPage] = useState(1);
   const [logSearch, setLogSearch] = useState('');
   const [logActionFilter, setLogActionFilter] = useState('all');
 
-  // Modals & Drawers
+  // Action Modals State
   const [showAddLeadModal, setShowAddLeadModal] = useState(false);
   const [showAddAgentModal, setShowAddAgentModal] = useState(false);
   const [showAddRuleModal, setShowAddRuleModal] = useState(false);
-  const [showAddPipelineModal, setShowAddPipelineModal] = useState(false);
-  const [showAddFormModal, setShowAddFormModal] = useState(false);
+  const [showAddCouponModal, setShowAddCouponModal] = useState(false);
+  const [showAddCommissionModal, setShowAddCommissionModal] = useState(false);
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [showAddCampaignModal, setShowAddCampaignModal] = useState(false);
+  const [showAddTemplateModal, setShowAddTemplateModal] = useState(false);
+  const [showAddCatalogueModal, setShowAddCatalogueModal] = useState(false);
   const [showEditUserModal, setShowEditUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [reassignFromAgent, setReassignFromAgent] = useState(null);
   const [reassignToAgentId, setReassignToAgentId] = useState('');
-  const [showAddCommissionModal, setShowAddCommissionModal] = useState(false);
-  const [showAddCouponModal, setShowAddCouponModal] = useState(false);
-  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
-  const [showAddCampaignModal, setShowAddCampaignModal] = useState(false);
-  const [showAddTemplateModal, setShowAddTemplateModal] = useState(false);
-  const [showAddCatalogueModal, setShowAddCatalogueModal] = useState(false);
-  const [showConfigureIntegrationModal, setShowConfigureIntegrationModal] = useState(false);
-  const [selectedLead, setSelectedLead] = useState(null);
-  const [broadcastsList, setBroadcastsList] = useState([]);
 
-  // Forms State
+  // Specialized CRM Workflow Modals State
+  const [selectedLeadProfile, setSelectedLeadProfile] = useState(null);
+  const [cancelFollowUpLead, setCancelFollowUpLead] = useState(null);
+  const [closeDealLead, setCloseDealLead] = useState(null);
+  const [assignPlanLead, setAssignPlanLead] = useState(null);
+  const [assignPlanIsFree, setAssignPlanIsFree] = useState(false);
+
+  // Forms Data
   const [leadFormData, setLeadFormData] = useState({
     name: '', phone: '', email: '', company: '', service_required: 'smart_solo',
     monthly_spend: '', source: 'manual', primarySource: 'SOURCE_A_MANUAL', assignedTo: '', notes: ''
@@ -114,58 +121,29 @@ export default function AdminControlCenter() {
   const [ruleFormData, setRuleFormData] = useState({
     name: '', strategy: 'ROUND_ROBIN', priority: 1, isActive: true, assignees: [], conditions: { sourceType: 'ALL' }
   });
-  const [pipelineFormData, setPipelineFormData] = useState([
-    { name: 'New Lead', probability: 10, colorCode: '#64748b', slaHours: 24 },
-    { name: 'Contacted', probability: 30, colorCode: '#3b82f6', slaHours: 48 },
-    { name: 'Follow-Up Scheduled', probability: 50, colorCode: '#f97316', slaHours: 24 },
-    { name: 'Converted', probability: 80, colorCode: '#10b981', slaHours: 72 },
-    { name: 'Payment Done', probability: 100, colorCode: '#8b5cf6', slaHours: 0 },
-  ]);
-  const [formFieldsData, setFormFieldsData] = useState([
-    { label: 'Full Name', name: 'name', type: 'text', isRequired: true, placeholder: 'Enter full name' },
-    { label: 'Phone Number', name: 'phone', type: 'phone', isRequired: true, placeholder: 'Enter phone number' },
-    { label: 'Email Address', name: 'email', type: 'email', isRequired: false, placeholder: 'Enter email address' },
-    { label: 'Company Name', name: 'company', type: 'text', isRequired: false, placeholder: 'Enter company' },
-  ]);
-  const [newFieldInput, setNewFieldInput] = useState({ label: '', name: '', type: 'text', isRequired: false, placeholder: '' });
   const [commFormData, setCommFormData] = useState({
     ruleName: '', targetRole: 'AGENT', commissionType: 'PERCENTAGE', value: 10, stageThreshold: 'payment_done'
   });
   const [couponFormData, setCouponFormData] = useState({
-    code: '', description: '', discountType: 'PERCENTAGE', discountValue: 20, applicablePlans: ['ALL'], validUntil: '', maxOverallUses: 100, maxUsesPerUser: 1
+    code: '', description: '', discountType: 'PERCENTAGE', discountValue: 20, applicablePlans: ['ALL'], validUntil: '', maxOverallUses: 100
   });
   const [broadcastFormData, setBroadcastFormData] = useState({
-    title: '', message: '', priority: 'NORMAL', targetAudience: 'INTERNAL_ALL', targetIds: [], deliveryChannels: ['IN_APP']
+    title: '', message: '', priority: 'NORMAL', targetAudience: 'INTERNAL_ALL', deliveryChannels: ['IN_APP']
   });
   const [campaignFormData, setCampaignFormData] = useState({
-    campaignName: '', platform: 'META', campaignId: '', budget: 50000, amountSpent: 12000, startDate: '', endDate: '', status: 'ACTIVE'
+    campaignName: '', platform: 'META', campaignId: '', budget: 50000, amountSpent: 12000, status: 'ACTIVE'
   });
   const [templateFormData, setTemplateFormData] = useState({
-    name: '', channel: 'WHATSAPP', content: '', category: 'GENERAL'
+    name: '', channel: 'WHATSAPP', content: '', category: 'GENERAL', variables: ['name', 'company']
   });
   const [catalogueFormData, setCatalogueFormData] = useState({
-    itemName: '', description: '', price: 999, discountedPrice: 499, category: 'GENERAL', mediaUrls: []
-  });
-  const [integrationFormData, setIntegrationFormData] = useState({
-    provider: 'META', status: 'CONNECTED', credentials: '', webhookUrl: ''
+    itemName: '', description: '', price: 999, discountedPrice: 499, category: 'GENERAL'
   });
 
-  const allAgents = useMemo(() => {
-    const list = [];
-    hierarchy.managers?.forEach(m => {
-      if (m.teamMembers) {
-        list.push(...m.teamMembers);
-      }
-    });
-    if (hierarchy.unassignedAgents) {
-      list.push(...hierarchy.unassignedAgents);
-    }
-    return list;
-  }, [hierarchy]);
-
+  // Flat Team Members list for assignment dropdowns
   const allTeamMembers = useMemo(() => {
     const list = [...(hierarchy.managers || [])];
-    hierarchy.managers?.forEach(m => {
+    hierarchy.managers?.forEach((m) => {
       if (m.teamMembers) {
         list.push(...m.teamMembers);
       }
@@ -179,21 +157,35 @@ export default function AdminControlCenter() {
   // Auth Initialization
   useEffect(() => {
     const user = getUser();
-    const storedToken = localStorage.getItem('token');
+    const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
     if (!storedToken || !user) {
       router.replace('/login');
       return;
     }
-    const isAuthorized = user.isAdmin || user.role === 'superadmin' || user.role === 'admin' || user.role === 'manager';
-    if (!isAuthorized) {
-      toast.error('Access restricted to Organization Admin & Managers');
-      router.replace('/dashboard');
+    const hasAdminAccess = user.isAdmin || user.role === 'superadmin' || user.role === 'admin' || user.role === 'manager' || user.companyRole === 'owner';
+    if (!hasAdminAccess) {
+      setIsAuthorized(false);
+      setLoading(false);
       return;
     }
     setCurrentUser(user);
     setToken(storedToken);
     setLoading(false);
-  }, [router]);
+
+    // Sync tab from URL query if present
+    const urlTab = searchParams.get('tab');
+    if (urlTab) {
+      setActiveTab(urlTab);
+    }
+    const urlStage = searchParams.get('stage');
+    if (urlStage) {
+      setLeadStageFilter(urlStage);
+    }
+    const urlSource = searchParams.get('source') || searchParams.get('primarySource');
+    if (urlSource) {
+      setLeadSourceFilter(urlSource);
+    }
+  }, [router, searchParams]);
 
   // Resilient Auth Fetch Wrapper
   const authFetch = useCallback(async (endpoint, options = {}) => {
@@ -218,7 +210,7 @@ export default function AdminControlCenter() {
       const data = await res.json();
       return { ...data, status: res.status };
     } catch (err) {
-      console.warn(`[API] Fetch warning for ${endpoint}:`, err.message);
+      console.warn(`[API] Warning for ${endpoint}:`, err.message);
       return { success: false, error: err.message };
     }
   }, [token, router]);
@@ -227,20 +219,30 @@ export default function AdminControlCenter() {
   const fetchTabData = useCallback(async (tabToLoad = activeTab) => {
     if (!token && typeof window !== 'undefined' && !localStorage.getItem('token')) return;
     setRefreshing(true);
+    setTabErrors((prev) => ({ ...prev, [tabToLoad]: null }));
 
     try {
       if (tabToLoad === 'overview') {
         const data = await authFetch('/admin/overview');
-        if (data?.success) setMetrics(data.data);
+        if (data?.success) {
+          setMetrics(data.data);
+        } else {
+          setTabErrors((prev) => ({ ...prev, overview: data?.message || 'Failed to load metrics' }));
+        }
       } else if (tabToLoad === 'leads') {
         const params = new URLSearchParams();
         if (leadSearch) params.set('search', leadSearch);
         if (leadSourceFilter !== 'all') params.set('primarySource', leadSourceFilter);
         if (leadStageFilter !== 'all') params.set('stage', leadStageFilter);
+        params.set('page', String(leadsPage));
+        params.set('limit', '50');
+
         const data = await authFetch(`/admin/leads?${params.toString()}`);
         if (data?.success) {
           setLeads(data.leads || []);
-          setLeadsPagination(data.pagination || { page: 1, total: data.leads?.length || 0, pages: 1 });
+          setLeadsPagination(data.pagination || { page: leadsPage, total: data.leads?.length || 0, pages: 1 });
+        } else {
+          setTabErrors((prev) => ({ ...prev, leads: data?.message || 'Failed to fetch leads' }));
         }
       } else if (tabToLoad === 'distribution') {
         const [rulesData, hierData] = await Promise.all([
@@ -250,17 +252,17 @@ export default function AdminControlCenter() {
         if (rulesData?.success) setDistributionRules(rulesData.rules || []);
         if (hierData?.success) setHierarchy(hierData.hierarchy || { managers: [], unassignedAgents: [] });
       } else if (tabToLoad === 'pipelines') {
-        const data = await authFetch('/admin/pipeline-settings');
+        const [pipeData, leadsData] = await Promise.all([
+          authFetch('/admin/pipelines/config'),
+          authFetch('/admin/leads?limit=200')
+        ]);
+        if (pipeData?.success) setPipelineStages(pipeData.pipeline?.stages || []);
+        if (leadsData?.success) setLeads(leadsData.leads || []);
+      } else if (tabToLoad === 'plans') {
+        const data = await authFetch('/admin/plans/hierarchy');
         if (data?.success) {
-          setPipelineStages(data.stages || []);
-          if (data.stages && data.stages.length > 0) {
-            setPipelineFormData(data.stages.map(s => ({
-              name: s.name || s.label,
-              probability: s.probability || 50,
-              colorCode: s.color || s.colorCode || '#3b82f6',
-              slaHours: s.slaHours || 24,
-            })));
-          }
+          setPlanHierarchy(data.hierarchy || []);
+          setAllPlans(data.allPlans || []);
         }
       } else if (tabToLoad === 'hierarchy') {
         const [hierData, perfData] = await Promise.all([
@@ -271,12 +273,7 @@ export default function AdminControlCenter() {
         if (perfData?.success) setPerformanceList(perfData.performance || []);
       } else if (tabToLoad === 'forms') {
         const data = await authFetch('/admin/form-schemas');
-        if (data?.success) {
-          setFormSchemas(data.fields || []);
-          if (data.form?.fields) {
-            setFormFieldsData(data.form.fields);
-          }
-        }
+        if (data?.success) setFormSchemas(data.fields || []);
       } else if (tabToLoad === 'templates') {
         const data = await authFetch('/admin/templates');
         if (data?.success) setTemplates(data.templates || []);
@@ -320,10 +317,23 @@ export default function AdminControlCenter() {
       }
     } catch (err) {
       console.warn(`Error loading tab ${tabToLoad}:`, err.message);
+      setTabErrors((prev) => ({ ...prev, [tabToLoad]: err.message }));
     } finally {
       setRefreshing(false);
     }
-  }, [activeTab, token, authFetch, leadSearch, leadSourceFilter, leadStageFilter, logSearch, logActionFilter]);
+  }, [activeTab, token, authFetch, leadSearch, leadSourceFilter, leadStageFilter, leadsPage, logSearch, logActionFilter]);
+
+  // Initial load of auxiliary datasets (plans and hierarchy) for dropdowns
+  useEffect(() => {
+    if (token) {
+      authFetch('/admin/plans').then((res) => {
+        if (res?.success) setAllPlans(res.plans || []);
+      });
+      authFetch('/admin/agents').then((res) => {
+        if (res?.success) setHierarchy(res.hierarchy || { managers: [], unassignedAgents: [] });
+      });
+    }
+  }, [token, authFetch]);
 
   useEffect(() => {
     if (token) {
@@ -342,7 +352,9 @@ export default function AdminControlCenter() {
       const data = await res.json();
       if (data.success) {
         toast.success(`Lead moved to ${newStage.replace('_', ' ').toUpperCase()}`);
-        setLeads(prev => prev.map(l => l._id === leadId ? { ...l, status: newStage } : l));
+        setLeads((prev) => prev.map((l) => (l._id === leadId ? { ...l, status: newStage } : l)));
+        // Background refresh metrics
+        authFetch('/admin/overview').then((res) => res?.success && setMetrics(res.data));
       } else {
         toast.error(data.message || 'Stage update failed');
       }
@@ -460,7 +472,7 @@ export default function AdminControlCenter() {
       });
       const data = await res.json();
       if (data.success) {
-        toast.success('Distribution Rule saved successfully!');
+        toast.success('Distribution Rule saved!');
         setShowAddRuleModal(false);
         setRuleFormData({ name: '', strategy: 'ROUND_ROBIN', priority: 1, isActive: true, assignees: [], conditions: { sourceType: 'ALL' } });
         fetchTabData('distribution');
@@ -468,7 +480,7 @@ export default function AdminControlCenter() {
         toast.error(data.message || 'Rule save failed');
       }
     } catch (e) {
-      toast.error('Error saving distribution rule');
+      toast.error('Error saving rule');
     }
   };
 
@@ -483,7 +495,7 @@ export default function AdminControlCenter() {
       const data = await res.json();
       if (data.success) {
         toast.success('Distribution rule deleted');
-        setDistributionRules(prev => prev.filter(r => r._id !== ruleId));
+        setDistributionRules((prev) => prev.filter((r) => r._id !== ruleId));
       } else {
         toast.error(data.message || 'Delete failed');
       }
@@ -492,47 +504,115 @@ export default function AdminControlCenter() {
     }
   };
 
-  // Save Pipeline Configuration Handler
-  const handleSavePipeline = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(`${API_BASE}/admin/pipeline-settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ stages: pipelineFormData, name: 'Sales Deal Pipeline' })
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Pipeline stages & SLAs saved!');
-        setShowAddPipelineModal(false);
-        fetchTabData('pipelines');
-      } else {
-        toast.error(data.message || 'Pipeline update failed');
-      }
-    } catch (e) {
-      toast.error('Error saving pipeline');
-    }
-  };
 
   // Save Form Schema Configuration Handler
-  const handleSaveFormSchema = async (e) => {
-    e.preventDefault();
+  const handleSaveFormSchema = async (fields) => {
     try {
       const res = await fetch(`${API_BASE}/admin/form-schemas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ fields: formFieldsData, title: 'Lead Capture Form' })
+        body: JSON.stringify({ fields, title: 'Lead Capture Form' })
       });
       const data = await res.json();
       if (data.success) {
         toast.success('Form schema saved!');
-        setShowAddFormModal(false);
         fetchTabData('forms');
       } else {
         toast.error(data.message || 'Save failed');
       }
     } catch (e) {
       toast.error('Error saving form schema');
+    }
+  };
+
+  // Save Security Settings Handler
+  const handleSaveSecurity = async (settings) => {
+    try {
+      const res = await fetch(`${API_BASE}/admin/security-settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(settings)
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Security policies updated!');
+        fetchTabData('security');
+      } else {
+        toast.error(data.message || 'Security update failed');
+      }
+    } catch (e) {
+      toast.error('Error saving security policies');
+    }
+  };
+
+  // Save Integration Credentials Handler
+  const handleSaveIntegration = async (provider, credentials) => {
+    try {
+      const res = await fetch(`${API_BASE}/admin/integrations-credentials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ provider, credentials, status: 'CONNECTED' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`${provider} integration credentials saved!`);
+        fetchTabData('integrations');
+      } else {
+        toast.error(data.message || 'Failed saving credentials');
+      }
+    } catch (e) {
+      toast.error('Error saving integration');
+    }
+  };
+
+  // Test Webhook Handler
+  const handleTestWebhook = async (provider) => {
+    toast.success(`Dispatched simulated test payload for ${provider}`);
+  };
+
+  // Create Broadcast Handler
+  const handleCreateBroadcast = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API_BASE}/admin/broadcasts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(broadcastFormData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Broadcast dispatched to team!');
+        setShowBroadcastModal(false);
+        setBroadcastFormData({ title: '', message: '', priority: 'NORMAL', targetAudience: 'INTERNAL_ALL', deliveryChannels: ['IN_APP'] });
+        fetchTabData('broadcasts');
+      } else {
+        toast.error(data.message || 'Broadcast failed');
+      }
+    } catch (e) {
+      toast.error('Error dispatching broadcast');
+    }
+  };
+
+  // Create Coupon Handler
+  const handleCreateCoupon = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API_BASE}/admin/coupons`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(couponFormData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Coupon created successfully!');
+        setShowAddCouponModal(false);
+        setCouponFormData({ code: '', description: '', discountType: 'PERCENTAGE', discountValue: 20, applicablePlans: ['ALL'], validUntil: '', maxOverallUses: 100 });
+        fetchTabData('coupons');
+      } else {
+        toast.error(data.message || 'Coupon creation failed');
+      }
+    } catch (e) {
+      toast.error('Error creating coupon');
     }
   };
 
@@ -549,70 +629,13 @@ export default function AdminControlCenter() {
       if (data.success) {
         toast.success('Commission Rule saved!');
         setShowAddCommissionModal(false);
+        setCommFormData({ ruleName: '', targetRole: 'AGENT', commissionType: 'PERCENTAGE', value: 10, stageThreshold: 'payment_done' });
         fetchTabData('commissions');
       } else {
-        toast.error(data.message || 'Save failed');
+        toast.error(data.message || 'Commission rule save failed');
       }
     } catch (e) {
-      toast.error('Error saving rule');
-    }
-  };
-
-  // Delete Commission Rule Handler
-  const handleDeleteCommissionRule = async (ruleId) => {
-    if (!confirm('Delete this commission rule?')) return;
-    try {
-      const res = await fetch(`${API_BASE}/admin/commission-rules/${ruleId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Commission rule deleted');
-        setCommissionRules(prev => prev.filter(r => r._id !== ruleId));
-      }
-    } catch (e) {
-      toast.error('Error deleting commission rule');
-    }
-  };
-
-  // Create Coupon Handler
-  const handleCreateCoupon = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(`${API_BASE}/admin/coupons`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(couponFormData)
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(`Coupon ${couponFormData.code} created!`);
-        setShowAddCouponModal(false);
-        fetchTabData('coupons');
-      } else {
-        toast.error(data.message || 'Coupon creation failed');
-      }
-    } catch (e) {
-      toast.error('Error creating coupon');
-    }
-  };
-
-  // Delete Coupon Handler
-  const handleDeleteCoupon = async (couponId) => {
-    if (!confirm('Delete this coupon?')) return;
-    try {
-      const res = await fetch(`${API_BASE}/admin/coupons/${couponId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Coupon deleted');
-        setCoupons(prev => prev.filter(c => c._id !== couponId));
-      }
-    } catch (e) {
-      toast.error('Error deleting coupon');
+      toast.error('Error creating rule');
     }
   };
 
@@ -627,33 +650,15 @@ export default function AdminControlCenter() {
       });
       const data = await res.json();
       if (data.success) {
-        toast.success(`Campaign "${campaignFormData.campaignName}" registered!`);
+        toast.success('Campaign tracker saved!');
         setShowAddCampaignModal(false);
-        setCampaignFormData({ campaignName: '', platform: 'META', campaignId: '', budget: 50000, amountSpent: 12000, startDate: '', endDate: '', status: 'ACTIVE' });
+        setCampaignFormData({ campaignName: '', platform: 'META', campaignId: '', budget: 50000, amountSpent: 12000, status: 'ACTIVE' });
         fetchTabData('campaigns');
       } else {
-        toast.error(data.message || 'Campaign creation failed');
+        toast.error(data.message || 'Campaign save failed');
       }
     } catch (e) {
-      toast.error('Error creating campaign');
-    }
-  };
-
-  // Delete Campaign Handler
-  const handleDeleteCampaign = async (campaignId) => {
-    if (!confirm('Delete this campaign?')) return;
-    try {
-      const res = await fetch(`${API_BASE}/admin/campaigns/${campaignId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Campaign deleted');
-        setCampaigns(prev => prev.filter(c => c._id !== campaignId));
-      }
-    } catch (e) {
-      toast.error('Error deleting campaign');
+      toast.error('Error saving campaign');
     }
   };
 
@@ -668,38 +673,20 @@ export default function AdminControlCenter() {
       });
       const data = await res.json();
       if (data.success) {
-        toast.success('Message template created!');
+        toast.success('Template saved successfully!');
         setShowAddTemplateModal(false);
-        setTemplateFormData({ name: '', channel: 'WHATSAPP', content: '', category: 'GENERAL' });
+        setTemplateFormData({ name: '', channel: 'WHATSAPP', content: '', category: 'GENERAL', variables: ['name', 'company'] });
         fetchTabData('templates');
       } else {
         toast.error(data.message || 'Template creation failed');
       }
     } catch (e) {
-      toast.error('Error creating template');
+      toast.error('Error saving template');
     }
   };
 
-  // Delete Template Handler
-  const handleDeleteTemplate = async (templateId) => {
-    if (!confirm('Delete this template?')) return;
-    try {
-      const res = await fetch(`${API_BASE}/admin/templates/${templateId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Template deleted');
-        setTemplates(prev => prev.filter(t => t._id !== templateId));
-      }
-    } catch (e) {
-      toast.error('Error deleting template');
-    }
-  };
-
-  // Create Catalogue Item Handler
-  const handleCreateCatalogueItem = async (e) => {
+  // Create Catalogue Handler
+  const handleCreateCatalogue = async (e) => {
     e.preventDefault();
     try {
       const res = await fetch(`${API_BASE}/admin/catalogues`, {
@@ -709,3254 +696,1248 @@ export default function AdminControlCenter() {
       });
       const data = await res.json();
       if (data.success) {
-        toast.success('Catalogue offering added!');
+        toast.success('Catalogue item added!');
         setShowAddCatalogueModal(false);
-        setCatalogueFormData({ itemName: '', description: '', price: 999, discountedPrice: 499, category: 'GENERAL', mediaUrls: [] });
+        setCatalogueFormData({ itemName: '', description: '', price: 999, discountedPrice: 499, category: 'GENERAL' });
         fetchTabData('catalogue');
       } else {
-        toast.error(data.message || 'Catalogue creation failed');
+        toast.error(data.message || 'Catalogue item creation failed');
       }
     } catch (e) {
       toast.error('Error adding catalogue item');
     }
   };
 
-  // Delete Catalogue Item Handler
-  const handleDeleteCatalogueItem = async (itemId) => {
-    if (!confirm('Delete this catalogue item?')) return;
+  // Follow-up Cancellation Handler
+  const handleCancelFollowUp = async (leadId, reason) => {
     try {
-      const res = await fetch(`${API_BASE}/admin/catalogues/${itemId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Catalogue item deleted');
-        setCatalogues(prev => prev.filter(c => c._id !== itemId));
-      }
-    } catch (e) {
-      toast.error('Error deleting catalogue item');
-    }
-  };
-
-  // Save Integration Credentials Handler
-  const handleSaveIntegrationCredentials = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(`${API_BASE}/admin/integrations/credentials`, {
+      const res = await fetch(`${API_BASE}/admin/leads/${leadId}/follow-up/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(integrationFormData)
+        body: JSON.stringify({ reason })
       });
       const data = await res.json();
       if (data.success) {
-        toast.success(`${integrationFormData.provider} credentials encrypted and connected!`);
-        setShowConfigureIntegrationModal(false);
-        fetchTabData('integrations');
+        toast.success('Follow-up cancelled & audit recorded');
+        setCancelFollowUpLead(null);
+        fetchTabData('leads');
+        if (selectedLeadProfile && selectedLeadProfile._id === leadId) {
+          setSelectedLeadProfile(data.lead);
+        }
       } else {
-        toast.error(data.message || 'Integration configuration failed');
+        toast.error(data.message || 'Failed to cancel follow-up');
       }
     } catch (e) {
-      toast.error('Error configuring integration');
+      toast.error('Network error cancelling follow-up');
     }
   };
 
-  // Send Broadcast Handler
-  const handleSendBroadcast = async (e) => {
-    e.preventDefault();
+  // Close Deal & Commission Ledger Handler
+  const handleCloseDeal = async ({ leadId, planId, closingAmount, closingType, closingReason }) => {
     try {
-      const res = await fetch(`${API_BASE}/admin/broadcasts`, {
+      const res = await fetch(`${API_BASE}/admin/leads/${leadId}/close-deal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(broadcastFormData)
+        body: JSON.stringify({ planId, closingAmount, closingType, closingReason })
       });
       const data = await res.json();
       if (data.success) {
-        toast.success(`Broadcast delivered to ${data.recipientCount} user(s)!`);
-        setShowBroadcastModal(false);
-        setBroadcastFormData({ title: '', message: '', priority: 'NORMAL', targetAudience: 'INTERNAL_ALL', targetIds: [], deliveryChannels: ['IN_APP'] });
-        fetchTabData('broadcasts');
+        toast.success('🎉 Deal closed! Commission ledger & payment recorded.');
+        setCloseDealLead(null);
+        fetchTabData('leads');
+        authFetch('/admin/overview').then((res) => res?.success && setMetrics(res.data));
+        if (selectedLeadProfile && selectedLeadProfile._id === leadId) {
+          setSelectedLeadProfile(data.lead);
+        }
       } else {
-        toast.error(data.message || 'Broadcast failed');
+        toast.error(data.message || 'Deal closure failed');
       }
     } catch (e) {
-      toast.error('Error sending broadcast');
+      toast.error('Network error closing deal');
     }
   };
 
-  // Security Toggle Handler
-  const handleToggleLeadVisibility = async (newMode) => {
+  // Plan Assignment Handler
+  const handleAssignPlan = async ({ leadId, planId, isFree, reason }) => {
     try {
-      const res = await fetch(`${API_BASE}/admin/security-settings`, {
+      const res = await fetch(`${API_BASE}/admin/leads/${leadId}/assign-plan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ leadVisibilityMode: newMode })
+        body: JSON.stringify({ planId, isFree, reason })
       });
       const data = await res.json();
       if (data.success) {
-        toast.success(`Lead Visibility set to ${newMode === 'common_pool' ? 'Shared Organization Pool' : 'Isolated Ownership Mode'}`);
-        setSecuritySettings(prev => ({ ...prev, leadVisibilityMode: newMode }));
+        toast.success(isFree ? 'Complimentary plan granted and audited' : 'Plan assigned successfully');
+        setAssignPlanLead(null);
+        fetchTabData('leads');
+        if (selectedLeadProfile && selectedLeadProfile._id === leadId) {
+          setSelectedLeadProfile(data.lead);
+        }
+      } else {
+        toast.error(data.message || 'Plan assignment failed');
       }
     } catch (e) {
-      toast.error('Failed to update security setting');
+      toast.error('Network error assigning plan');
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-[#070b14] text-slate-400">
-        <div className="text-center space-y-4">
-          <div className="w-12 h-12 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mx-auto" />
-          <p className="text-sm font-semibold tracking-wider text-amber-400 uppercase">Booting CRM Control Center...</p>
-        </div>
-      </div>
-    );
+  // Plan Management Handlers
+  const handleCreatePlan = async (planData) => {
+    const res = await fetch(`${API_BASE}/admin/plans`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(planData)
+    });
+    const data = await res.json();
+    if (data.success) {
+      fetchTabData('plans');
+      authFetch('/admin/plans').then((r) => r?.success && setAllPlans(r.plans || []));
+    } else {
+      throw new Error(data.message || 'Failed creating plan');
+    }
+  };
+
+  const handleUpdatePlan = async (id, planData) => {
+    const res = await fetch(`${API_BASE}/admin/plans/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(planData)
+    });
+    const data = await res.json();
+    if (data.success) {
+      fetchTabData('plans');
+      authFetch('/admin/plans').then((r) => r?.success && setAllPlans(r.plans || []));
+    } else {
+      throw new Error(data.message || 'Failed updating plan');
+    }
+  };
+
+  const handleDeletePlan = async (id) => {
+    const res = await fetch(`${API_BASE}/admin/plans/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast.success('Plan deactivated');
+      fetchTabData('plans');
+      authFetch('/admin/plans').then((r) => r?.success && setAllPlans(r.plans || []));
+    }
+  };
+
+  // Pipeline Config Handler
+  const handleSavePipeline = async (stages) => {
+    const res = await fetch(`${API_BASE}/admin/pipelines/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ stages })
+    });
+    const data = await res.json();
+    if (data.success) {
+      setPipelineStages(data.pipeline?.stages || stages);
+    } else {
+      throw new Error(data.message || 'Failed saving pipeline settings');
+    }
+  };
+
+  // Add Note to Lead Handler
+  const handleAddLeadNote = async (leadId, noteText) => {
+    const res = await fetch(`${API_BASE}/admin/leads/${leadId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ note: noteText })
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast.success('Note added');
+      fetchTabData('leads');
+      if (selectedLeadProfile && selectedLeadProfile._id === leadId) {
+        setSelectedLeadProfile((prev) => ({
+          ...prev,
+          notes: [...(prev.notes || []), { text: noteText, createdAt: new Date(), authorName: currentUser?.name || 'Admin' }]
+        }));
+      }
+    }
+  };
+
+  const handleSendBroadcast = async (broadcastPayload) => {
+    const res = await authFetch('/admin/broadcasts', {
+      method: 'POST',
+      body: JSON.stringify(broadcastPayload),
+    });
+    if (res?.success) {
+      toast.success(res.message || 'Broadcast dispatched successfully');
+      fetchTabData('broadcasts');
+    } else {
+      throw new Error(res?.message || 'Failed to dispatch broadcast');
+    }
+  };
+
+  // Drilldown navigations from Overview
+  const handleNavigateToLeads = (filter = {}) => {
+    setActiveTab('leads');
+    if (filter.stage) setLeadStageFilter(filter.stage);
+    if (filter.primarySource) setLeadSourceFilter(filter.primarySource);
+  };
+
+  const handleNavigateToHierarchy = () => {
+    setActiveTab('hierarchy');
+  };
+
+  if (!isAuthorized) {
+    return <PermissionGate />;
   }
 
   return (
-    <div className="flex h-screen bg-[#070b14] text-slate-100 font-sans overflow-hidden">
+    <AdminLayout
+      activeTab={activeTab}
+      onSelectTab={(tab) => {
+        setActiveTab(tab);
+        // Clean URL state
+        router.replace(`/admin?tab=${tab}`, { scroll: false });
+      }}
+      onRefresh={() => fetchTabData(activeTab)}
+      refreshing={refreshing}
+      currentUser={currentUser}
+      onAddLead={() => setShowAddLeadModal(true)}
+      onBroadcast={() => setShowBroadcastModal(true)}
+    >
       {/* ─────────────────────────────────────────────────────────────
-          LEFT SIDEBAR NAVIGATION (17 MODULAR CENTRES)
+          ACTIVE MODULE WORKSPACE
       ────────────────────────────────────────────────────────────── */}
-      <aside className="w-64 border-r border-slate-800/80 bg-[#0a0f1d]/90 flex flex-col justify-between shrink-0 z-20 backdrop-blur-xl">
-        <div className="flex flex-col h-full overflow-hidden">
-          {/* Logo & Org Badge */}
-          <div className="p-4 border-b border-slate-800/60 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center font-bold text-slate-950 shadow-lg shadow-amber-500/20">
-                ⚡
-              </div>
-              <div>
-                <h1 className="font-bold text-sm text-white tracking-tight leading-none">CoreSetu OS</h1>
-                <span className="text-[10px] font-medium text-amber-400/90 tracking-wide">ORGANISATION ADMIN</span>
-              </div>
+      {activeTab === 'overview' && (
+        <OverviewModule
+          metrics={metrics}
+          loading={refreshing && !metrics}
+          error={tabErrors.overview}
+          onRetry={() => fetchTabData('overview')}
+          onNavigateToLeads={handleNavigateToLeads}
+          onNavigateToHierarchy={handleNavigateToHierarchy}
+        />
+      )}
+
+      {activeTab === 'leads' && (
+        <LeadsModule
+          leads={leads}
+          pagination={leadsPagination}
+          loading={refreshing && leads.length === 0}
+          error={tabErrors.leads}
+          onRetry={() => fetchTabData('leads')}
+          search={leadSearch}
+          onSearchChange={setLeadSearch}
+          sourceFilter={leadSourceFilter}
+          onSourceFilterChange={setLeadSourceFilter}
+          stageFilter={leadStageFilter}
+          onStageFilterChange={setLeadStageFilter}
+          page={leadsPage}
+          onPageChange={setLeadsPage}
+          onStageChange={handleStageChange}
+          onAddLead={() => setShowAddLeadModal(true)}
+          onLeadClick={(lead) => setSelectedLeadProfile(lead)}
+          onCancelFollowUp={(lead) => setCancelFollowUpLead(lead)}
+          onCloseDeal={(lead) => setCloseDealLead(lead)}
+        />
+      )}
+
+      {activeTab === 'distribution' && (
+        <DistributionModule
+          rules={distributionRules}
+          loading={refreshing && distributionRules.length === 0}
+          error={tabErrors.distribution}
+          onRetry={() => fetchTabData('distribution')}
+          onAddRule={() => setShowAddRuleModal(true)}
+          onDeleteRule={handleDeleteRule}
+          onReassignLeads={() => setShowReassignModal(true)}
+        />
+      )}
+
+      {activeTab === 'pipelines' && (
+        <PipelinesModule
+          leads={leads}
+          pipelineStages={pipelineStages}
+          loading={refreshing && (pipelineStages.length === 0 && leads.length === 0)}
+          error={tabErrors.pipelines}
+          onRetry={() => fetchTabData('pipelines')}
+          onSavePipeline={handleSavePipeline}
+          onLeadClick={(lead) => setSelectedLeadProfile(lead)}
+          onStageChange={handleStageChange}
+          onCloseDeal={(lead) => setCloseDealLead(lead)}
+        />
+      )}
+
+      {activeTab === 'hierarchy' && (
+        <HierarchyModule
+          hierarchy={hierarchy}
+          performance={performanceList}
+          loading={refreshing && (hierarchy.managers?.length === 0 && hierarchy.unassignedAgents?.length === 0)}
+          error={tabErrors.hierarchy}
+          onRetry={() => fetchTabData('hierarchy')}
+          onAddMember={() => setShowAddAgentModal(true)}
+          onEditUser={(user) => {
+            setEditingUser(user);
+            setShowEditUserModal(true);
+          }}
+          onReassignLeads={() => setShowReassignModal(true)}
+        />
+      )}
+
+      {activeTab === 'broadcasts' && (
+        <BroadcastsModule
+          broadcasts={broadcastsList}
+          loading={refreshing && broadcastsList.length === 0}
+          error={tabErrors.broadcasts}
+          onRetry={() => fetchTabData('broadcasts')}
+          onNewBroadcast={() => setShowBroadcastModal(true)}
+        />
+      )}
+
+      {activeTab === 'forms' && (
+        <FormsModule
+          formFields={formSchemas}
+          loading={refreshing && formSchemas.length === 0}
+          error={tabErrors.forms}
+          onRetry={() => fetchTabData('forms')}
+          onSaveSchema={handleSaveFormSchema}
+        />
+      )}
+
+      {activeTab === 'templates' && (
+        <TemplatesModule
+          templates={templates}
+          loading={refreshing && templates.length === 0}
+          error={tabErrors.templates}
+          onRetry={() => fetchTabData('templates')}
+          onAddTemplate={() => setShowAddTemplateModal(true)}
+          onDeleteTemplate={async (id) => {
+            await fetch(`${API_BASE}/admin/templates/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+            fetchTabData('templates');
+          }}
+        />
+      )}
+
+      {activeTab === 'campaigns' && (
+        <CampaignsModule
+          campaigns={campaigns}
+          loading={refreshing && campaigns.length === 0}
+          error={tabErrors.campaigns}
+          isIntegrationConnected={integrationsStatus?.meta?.status === 'CONNECTED'}
+          onRetry={() => fetchTabData('campaigns')}
+          onAddCampaign={() => setShowAddCampaignModal(true)}
+          onNavigateToIntegrations={() => setActiveTab('integrations')}
+          onDeleteCampaign={async (id) => {
+            await fetch(`${API_BASE}/admin/campaigns/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+            fetchTabData('campaigns');
+          }}
+        />
+      )}
+
+      {activeTab === 'plans' && (
+        <PlansModule
+          plans={allPlans}
+          hierarchy={planHierarchy}
+          loading={refreshing && allPlans.length === 0}
+          error={tabErrors.plans}
+          onRetry={() => fetchTabData('plans')}
+          onCreatePlan={handleCreatePlan}
+          onUpdatePlan={handleUpdatePlan}
+          onDeletePlan={handleDeletePlan}
+        />
+      )}
+
+      {activeTab === 'catalogue' && (
+        <CatalogueModule
+          catalogues={catalogues}
+          loading={refreshing && catalogues.length === 0}
+          error={tabErrors.catalogue}
+          onRetry={() => fetchTabData('catalogue')}
+          onAddCatalogue={() => setShowAddCatalogueModal(true)}
+          onDeleteCatalogue={async (id) => {
+            await fetch(`${API_BASE}/admin/catalogues/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+            fetchTabData('catalogue');
+          }}
+        />
+      )}
+
+      {activeTab === 'commissions' && (
+        <CommissionsModule
+          rules={commissionRules}
+          payouts={commissionPayouts}
+          loading={refreshing && commissionRules.length === 0}
+          error={tabErrors.commissions}
+          onRetry={() => fetchTabData('commissions')}
+          onAddRule={() => setShowAddCommissionModal(true)}
+          onDeleteRule={async (id) => {
+            await fetch(`${API_BASE}/admin/commission-rules/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+            fetchTabData('commissions');
+          }}
+        />
+      )}
+
+      {activeTab === 'coupons' && (
+        <CouponsModule
+          coupons={coupons}
+          loading={refreshing && coupons.length === 0}
+          error={tabErrors.coupons}
+          onRetry={() => fetchTabData('coupons')}
+          onAddCoupon={() => setShowAddCouponModal(true)}
+          onDeleteCoupon={async (id) => {
+            await fetch(`${API_BASE}/admin/coupons/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+            fetchTabData('coupons');
+          }}
+        />
+      )}
+
+      {activeTab === 'analytics' && (
+        <AnalyticsModule
+          analytics={universalAnalytics}
+          loading={refreshing && !universalAnalytics}
+          error={tabErrors.analytics}
+          onRetry={() => fetchTabData('analytics')}
+        />
+      )}
+
+      {activeTab === 'activity' && (
+        <ActivityLogsModule
+          logs={activityLogs}
+          loading={refreshing && activityLogs.length === 0}
+          error={tabErrors.activity}
+          onRetry={() => fetchTabData('activity')}
+          search={logSearch}
+          onSearchChange={setLogSearch}
+          actionFilter={logActionFilter}
+          onActionFilterChange={setLogActionFilter}
+        />
+      )}
+
+      {activeTab === 'integrations' && (
+        <IntegrationsModule
+          integrationStatus={integrationsStatus}
+          loading={refreshing && !integrationsStatus}
+          error={tabErrors.integrations}
+          onRetry={() => fetchTabData('integrations')}
+          onSaveCredentials={handleSaveIntegration}
+          onTestWebhook={handleTestWebhook}
+        />
+      )}
+
+      {activeTab === 'profile' && (
+        <ProfileModule
+          currentUser={currentUser}
+          onUserUpdated={(updatedUser) => {
+            setCurrentUser(updatedUser);
+            if (typeof window !== 'undefined') {
+              try {
+                const stored = localStorage.getItem('user');
+                if (stored) {
+                  const parsed = JSON.parse(stored);
+                  localStorage.setItem('user', JSON.stringify({ ...parsed, ...updatedUser }));
+                }
+              } catch (e) {}
+            }
+          }}
+        />
+      )}
+
+      {activeTab === 'security' && (
+        <SecurityModule
+          securitySettings={securitySettings}
+          loading={refreshing && !securitySettings}
+          error={tabErrors.security}
+          onRetry={() => fetchTabData('security')}
+          onSaveSecurity={handleSaveSecurity}
+        />
+      )}
+
+      {activeTab === 'health' && (
+        <HealthModule
+          health={systemHealth}
+          loading={refreshing && !systemHealth}
+          error={tabErrors.health}
+          onRetry={() => fetchTabData('health')}
+        />
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          SHARED ACTION MODALS
+      ────────────────────────────────────────────────────────────── */}
+      {/* 1. Add Lead Modal */}
+      <Modal isOpen={showAddLeadModal} onClose={() => setShowAddLeadModal(false)} title="Create New Inbound Lead">
+        <form onSubmit={handleCreateLead} className="space-y-3">
+          <div>
+            <label className="text-[11px] text-slate-300 block mb-1">Full Name</label>
+            <input
+              type="text"
+              value={leadFormData.name}
+              onChange={(e) => setLeadFormData({ ...leadFormData, name: e.target.value })}
+              placeholder="e.g. John Doe"
+              required
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Phone Number</label>
+              <input
+                type="text"
+                value={leadFormData.phone}
+                onChange={(e) => setLeadFormData({ ...leadFormData, phone: e.target.value })}
+                placeholder="e.g. 9876543210"
+                required
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+              />
             </div>
-            <button
-              onClick={() => fetchTabData(activeTab)}
-              disabled={refreshing}
-              className="p-1.5 text-slate-400 hover:text-white rounded-md hover:bg-slate-800 transition-colors"
-              title="Refresh Data"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-amber-400' : ''}`} />
-            </button>
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Email Address</label>
+              <input
+                type="email"
+                value={leadFormData.email}
+                onChange={(e) => setLeadFormData({ ...leadFormData, email: e.target.value })}
+                placeholder="e.g. john@acme.com"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              />
+            </div>
           </div>
-
-          {/* Navigation Items List */}
-          <div className="flex-1 overflow-y-auto px-2.5 py-3 space-y-1 custom-scrollbar">
-            {NAV_CENTRES.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                    isActive
-                      ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-sm shadow-amber-500/10'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
-                  <span className="truncate">{item.label}</span>
-                </button>
-              );
-            })}
+          <div>
+            <label className="text-[11px] text-slate-300 block mb-1">Company / Organization</label>
+            <input
+              type="text"
+              value={leadFormData.company}
+              onChange={(e) => setLeadFormData({ ...leadFormData, company: e.target.value })}
+              placeholder="e.g. Acme Corp"
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+            />
           </div>
-
-          {/* User Profile Info Footer */}
-          <div className="p-3 border-t border-slate-800/60 bg-[#070b14]/60">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-amber-400">
-                  {currentUser?.name?.charAt(0) || 'A'}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-white truncate">{currentUser?.name || 'Administrator'}</p>
-                  <p className="text-[10px] text-slate-400 truncate">{currentUser?.email || 'admin@crm.com'}</p>
-                </div>
-              </div>
-              <Link
-                href="/dashboard"
-                className="p-1.5 text-slate-400 hover:text-white rounded-md hover:bg-slate-800 transition-colors"
-                title="Return to CRM"
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Source Category</label>
+              <select
+                value={leadFormData.primarySource}
+                onChange={(e) => setLeadFormData({ ...leadFormData, primarySource: e.target.value, source: e.target.value === 'SOURCE_A_MANUAL' ? 'manual' : e.target.value === 'SOURCE_B_SIGNUP' ? 'signup' : 'ads' })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
               >
-                <ArrowUpRight className="w-4 h-4" />
-              </Link>
+                <option value="SOURCE_A_MANUAL">Source A: Manual Direct</option>
+                <option value="SOURCE_B_SIGNUP">Source B: User Signup</option>
+                <option value="SOURCE_C_ADS">Source C: Ads / Webhook</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Assign to Representative</label>
+              <select
+                value={leadFormData.assignedTo}
+                onChange={(e) => setLeadFormData({ ...leadFormData, assignedTo: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              >
+                <option value="">Unassigned Pool</option>
+                {allTeamMembers.map((m) => (
+                  <option key={m._id} value={m._id}>
+                    {m.name} ({m.role || 'Agent'})
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
-        </div>
-      </aside>
-
-      {/* ─────────────────────────────────────────────────────────────
-          MAIN CONTENT AREA
-      ────────────────────────────────────────────────────────────── */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#070b14]">
-        {/* Top Header Bar */}
-        <header className="h-14 border-b border-slate-800/80 bg-[#0a0f1d]/50 px-6 flex items-center justify-between shrink-0 backdrop-blur-md">
-          <div className="flex items-center gap-3">
-            <h2 className="text-sm font-semibold text-white tracking-wide uppercase">
-              {NAV_CENTRES.find(n => n.id === activeTab)?.label || 'Control Center'}
-            </h2>
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
-              System Online
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center justify-end gap-2 pt-3">
             <button
-              onClick={() => setShowAddLeadModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs shadow-md shadow-amber-500/20 transition-colors"
+              type="button"
+              onClick={() => setShowAddLeadModal(false)}
+              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Lead</span>
+              Cancel
             </button>
             <button
-              onClick={() => setShowBroadcastModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition-colors"
+              type="submit"
+              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
             >
-              <Bell className="w-3.5 h-3.5 text-amber-400" />
-              <span>Broadcast</span>
+              Create Lead
             </button>
           </div>
-        </header>
+        </form>
+      </Modal>
 
-        {/* Dynamic Tab Body */}
-        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-          {/* ─────────────────────────────────────────────────────────────
-              1. OVERVIEW / DASHBOARD
-          ────────────────────────────────────────────────────────────── */}
-          {activeTab === 'overview' && (
-            <div className="space-y-6">
-              {/* Executive KPI Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="p-4 rounded-xl bg-[#0d1424] border border-slate-800/80 shadow-sm relative overflow-hidden group">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-slate-400">Total Leads Inbound</span>
-                    <Users className="w-4 h-4 text-blue-400" />
-                  </div>
-                  <div className="text-2xl font-bold text-white">{metrics?.totalLeads || 0}</div>
-                  <div className="mt-2 flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium">
-                    <span>+{metrics?.todayLeads || 0} today</span>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-[#0d1424] border border-slate-800/80 shadow-sm relative overflow-hidden group">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-slate-400">Conversion Rate</span>
-                    <TrendingUp className="w-4 h-4 text-emerald-400" />
-                  </div>
-                  <div className="text-2xl font-bold text-white">{metrics?.conversionRate || '0%'}</div>
-                  <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-400">
-                    <span>{metrics?.convertedLeads || 0} closed deals</span>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-[#0d1424] border border-slate-800/80 shadow-sm relative overflow-hidden group">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-slate-400">Total Sales Revenue</span>
-                    <DollarSign className="w-4 h-4 text-amber-400" />
-                  </div>
-                  <div className="text-2xl font-bold text-white">₹{(metrics?.totalRevenue || 0).toLocaleString()}</div>
-                  <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-400">
-                    <span>Across all closed pipelines</span>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-[#0d1424] border border-slate-800/80 shadow-sm relative overflow-hidden group">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-slate-400">Active Hierarchy</span>
-                    <UserCheck className="w-4 h-4 text-purple-400" />
-                  </div>
-                  <div className="text-2xl font-bold text-white">{metrics?.activeAgents || 0} Agents</div>
-                  <div className="mt-2 flex items-center gap-1.5 text-[11px] text-purple-400 font-medium">
-                    <span>Under {metrics?.activeManagers || 0} Managers</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Stage Funnel Visualizer */}
-              <div className="p-5 rounded-xl bg-[#0d1424] border border-slate-800/80">
-                <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-4">
-                  Canonical 5-Stage Sales Funnel
-                </h3>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                  {KANBAN_STAGES.map((stage) => {
-                    const count = metrics?.stageCounts?.[stage.id] || 0;
-                    return (
-                      <div
-                        key={stage.id}
-                        className={`p-3.5 rounded-lg border ${stage.color} flex flex-col justify-between`}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs font-medium">{stage.label}</span>
-                          <span className={`w-2 h-2 rounded-full ${stage.dot}`} />
-                        </div>
-                        <div className="text-xl font-bold">{count}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Source Distribution Breakdown */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 rounded-xl bg-[#0d1424] border border-slate-800/80">
-                  <span className="text-xs font-medium text-slate-400">SOURCE A — MANUAL</span>
-                  <div className="text-xl font-bold text-white mt-1">{metrics?.sourceBreakdown?.manual || 0} Leads</div>
-                  <p className="text-[11px] text-slate-400 mt-1">Direct admin & rep entry</p>
-                </div>
-                <div className="p-4 rounded-xl bg-[#0d1424] border border-slate-800/80">
-                  <span className="text-xs font-medium text-slate-400">SOURCE B — USER SIGNUP</span>
-                  <div className="text-xl font-bold text-white mt-1">{metrics?.sourceBreakdown?.signup || 0} Leads</div>
-                  <p className="text-[11px] text-slate-400 mt-1">Platform user registrations</p>
-                </div>
-                <div className="p-4 rounded-xl bg-[#0d1424] border border-slate-800/80">
-                  <span className="text-xs font-medium text-slate-400">SOURCE C — ADS & WEBHOOKS</span>
-                  <div className="text-xl font-bold text-white mt-1">{metrics?.sourceBreakdown?.ads || 0} Leads</div>
-                  <p className="text-[11px] text-slate-400 mt-1">Meta, Google & API Ingestion</p>
-                </div>
-              </div>
+      {/* 2. Add Member Modal */}
+      <Modal isOpen={showAddAgentModal} onClose={() => setShowAddAgentModal(false)} title="Add Hierarchy Team Member">
+        <form onSubmit={handleCreateAgent} className="space-y-3">
+          <div>
+            <label className="text-[11px] text-slate-300 block mb-1">Full Name</label>
+            <input
+              type="text"
+              value={agentFormData.name}
+              onChange={(e) => setAgentFormData({ ...agentFormData, name: e.target.value })}
+              placeholder="e.g. Alice Smith"
+              required
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Email</label>
+              <input
+                type="email"
+                value={agentFormData.email}
+                onChange={(e) => setAgentFormData({ ...agentFormData, email: e.target.value })}
+                placeholder="e.g. alice@crm.com"
+                required
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              />
             </div>
-          )}
-
-          {/* ─────────────────────────────────────────────────────────────
-              2. LEADS & LEAD SOURCES
-          ────────────────────────────────────────────────────────────── */}
-          {activeTab === 'leads' && (
-            <div className="space-y-4">
-              {/* Filter Controls Bar */}
-              <div className="p-4 rounded-xl bg-[#0d1424] border border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5 flex-1 min-w-[240px]">
-                  <Search className="w-4 h-4 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search leads by name, phone, email..."
-                    value={leadSearch}
-                    onChange={(e) => setLeadSearch(e.target.value)}
-                    className="bg-transparent text-xs text-white placeholder-slate-400 focus:outline-none w-full"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <select
-                    value={leadSourceFilter}
-                    onChange={(e) => setLeadSourceFilter(e.target.value)}
-                    className="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none"
-                  >
-                    <option value="all">All Sources</option>
-                    <option value="SOURCE_A_MANUAL">Source A: Manual</option>
-                    <option value="SOURCE_B_SIGNUP">Source B: Signups</option>
-                    <option value="SOURCE_C_ADS">Source C: Ads & Webhooks</option>
-                  </select>
-
-                  <select
-                    value={leadStageFilter}
-                    onChange={(e) => setLeadStageFilter(e.target.value)}
-                    className="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none"
-                  >
-                    <option value="all">All Stages</option>
-                    <option value="new_lead">New Lead</option>
-                    <option value="contacted">Contacted</option>
-                    <option value="not_interested">Not Interested</option>
-                    <option value="converted">Converted</option>
-                    <option value="payment_done">Payment Done</option>
-                  </select>
-
-                  <div className="flex border border-slate-700 rounded-lg overflow-hidden">
-                    <button
-                      onClick={() => setLeadViewMode('kanban')}
-                      className={`px-2.5 py-1.5 text-xs font-medium ${leadViewMode === 'kanban' ? 'bg-amber-500 text-slate-950' : 'bg-slate-900 text-slate-400'}`}
-                    >
-                      Kanban
-                    </button>
-                    <button
-                      onClick={() => setLeadViewMode('table')}
-                      className={`px-2.5 py-1.5 text-xs font-medium ${leadViewMode === 'table' ? 'bg-amber-500 text-slate-950' : 'bg-slate-900 text-slate-400'}`}
-                    >
-                      Table
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Kanban View */}
-              {leadViewMode === 'kanban' ? (
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-3.5 items-start">
-                  {KANBAN_STAGES.map((stage) => {
-                    const stageLeads = leads.filter(l => (l.status || 'new_lead') === stage.id);
-                    return (
-                      <div key={stage.id} className="bg-[#0b101d] rounded-xl border border-slate-800/80 p-3 min-h-[500px] flex flex-col">
-                        <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-800/60">
-                          <span className="text-xs font-semibold text-slate-200">{stage.label}</span>
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-bold">
-                            {stageLeads.length}
-                          </span>
-                        </div>
-
-                        <div className="space-y-2.5 flex-1 overflow-y-auto custom-scrollbar">
-                          {stageLeads.map((lead) => (
-                            <div
-                              key={lead._id}
-                              className="p-3 rounded-lg bg-[#111827] border border-slate-800 hover:border-slate-700 transition-all space-y-2"
-                            >
-                              <div className="flex items-start justify-between gap-1">
-                                <h4 className="text-xs font-bold text-white truncate">{lead.name}</h4>
-                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-medium">
-                                  {lead.primarySource === 'SOURCE_C_ADS' ? '🎯 Ads' : lead.primarySource === 'SOURCE_B_SIGNUP' ? '🚀 Signup' : '✍️ Manual'}
-                                </span>
-                              </div>
-
-                              <div className="text-[11px] text-slate-400 space-y-0.5">
-                                <div className="flex items-center gap-1.5">
-                                  <Phone className="w-3 h-3 text-slate-400" />
-                                  <span>{lead.phone}</span>
-                                </div>
-                                {lead.email && (
-                                  <div className="flex items-center gap-1.5 truncate">
-                                    <Mail className="w-3 h-3 text-slate-400" />
-                                    <span className="truncate">{lead.email}</span>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-[10px]">
-                                <span className="text-slate-400 truncate">
-                                  {lead.assignedTo?.name ? `Rep: ${lead.assignedTo.name}` : 'Unassigned'}
-                                </span>
-                                <select
-                                  value={lead.status || 'new_lead'}
-                                  onChange={(e) => handleStageChange(lead._id, e.target.value)}
-                                  className="bg-slate-900 border border-slate-700 text-slate-300 rounded px-1 py-0.5 focus:outline-none"
-                                >
-                                  {KANBAN_STAGES.map(s => (
-                                    <option key={s.id} value={s.id}>{s.label}</option>
-                                  ))}
-                                </select>
-                              </div>
-                            </div>
-                          ))}
-                          {stageLeads.length === 0 && (
-                            <div className="text-center py-8 text-slate-400 text-xs">No leads in this stage</div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                /* Table View */
-                <div className="rounded-xl border border-slate-800 bg-[#0d1424] overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-900/60 text-slate-400 border-b border-slate-800 uppercase tracking-wider font-semibold text-[10px]">
-                        <tr>
-                          <th className="px-4 py-3">Lead Name</th>
-                          <th className="px-4 py-3">Contact</th>
-                          <th className="px-4 py-3">Source</th>
-                          <th className="px-4 py-3">Assigned Rep</th>
-                          <th className="px-4 py-3">Stage</th>
-                          <th className="px-4 py-3 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                        {leads.map((lead) => (
-                          <tr key={lead._id} className="hover:bg-slate-800/30 transition-colors">
-                            <td className="px-4 py-3 font-medium text-white">{lead.name}</td>
-                            <td className="px-4 py-3 text-slate-400">{lead.phone}</td>
-                            <td className="px-4 py-3">
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                                {lead.primarySource || lead.source || 'Manual'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-slate-400">{lead.assignedTo?.name || 'Unassigned'}</td>
-                            <td className="px-4 py-3">
-                              <select
-                                value={lead.status || 'new_lead'}
-                                onChange={(e) => handleStageChange(lead._id, e.target.value)}
-                                className="bg-slate-900 border border-slate-700 text-slate-300 text-xs rounded px-2 py-1 focus:outline-none"
-                              >
-                                {KANBAN_STAGES.map(s => (
-                                  <option key={s.id} value={s.id}>{s.label}</option>
-                                ))}
-                              </select>
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <button
-                                onClick={() => setSelectedLead(lead)}
-                                className="text-amber-400 hover:text-amber-300 font-medium"
-                              >
-                                View Details
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Phone</label>
+              <input
+                type="text"
+                value={agentFormData.phone}
+                onChange={(e) => setAgentFormData({ ...agentFormData, phone: e.target.value })}
+                placeholder="e.g. 9876543210"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+              />
             </div>
-          )}
-
-          {/* ─────────────────────────────────────────────────────────────
-              3. LEAD DISTRIBUTION CENTRE
-          ────────────────────────────────────────────────────────────── */}
-          {activeTab === 'distribution' && (
-            <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Automated Lead Distribution Rules</h3>
-                  <p className="text-xs text-slate-400">Configure round-robin, weighted, and capacity-aware lead routing</p>
-                </div>
-                <button
-                  onClick={() => setShowAddRuleModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-semibold text-xs hover:bg-amber-400 transition-colors shadow-sm"
+          </div>
+          <div>
+            <label className="text-[11px] text-slate-300 block mb-1">Initial Password</label>
+            <input
+              type="password"
+              value={agentFormData.password}
+              onChange={(e) => setAgentFormData({ ...agentFormData, password: e.target.value })}
+              placeholder="••••••••••••"
+              required
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Role Hierarchy</label>
+              <select
+                value={agentFormData.role}
+                onChange={(e) => setAgentFormData({ ...agentFormData, role: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              >
+                <option value="agent">Sales Representative (Agent)</option>
+                <option value="manager">Team Manager</option>
+              </select>
+            </div>
+            {agentFormData.role === 'agent' && (
+              <div>
+                <label className="text-[11px] text-slate-300 block mb-1">Reporting Manager</label>
+                <select
+                  value={agentFormData.managerId}
+                  onChange={(e) => setAgentFormData({ ...agentFormData, managerId: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Create Rule</span>
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {distributionRules.map((rule) => (
-                  <div key={rule._id} className="p-4 rounded-xl bg-[#0d1424] border border-slate-800 space-y-3 relative group">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-xs font-bold text-white">{rule.name}</h4>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${rule.isActive ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-400'}`}>
-                          {rule.isActive ? 'ACTIVE' : 'INACTIVE'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 uppercase font-semibold">
-                          {rule.strategy}
-                        </span>
-                        <button
-                          onClick={() => handleDeleteRule(rule._id)}
-                          className="text-slate-400 hover:text-rose-400 p-1 transition-colors"
-                          title="Delete Rule"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="text-xs text-slate-400 flex items-center gap-3">
-                      <span>Priority: <strong className="text-white">{rule.priority || 1}</strong></span>
-                      <span>Source: <strong className="text-amber-400">{rule.conditions?.sourceType || 'ALL'}</strong></span>
-                    </div>
-                    <div className="text-xs text-slate-300 pt-2 border-t border-slate-800/60">
-                      <span className="text-slate-400 font-medium">Assigned Assignees: </span>
-                      {rule.assignees && rule.assignees.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5 mt-1.5">
-                          {rule.assignees.map((a, idx) => (
-                            <span key={idx} className="text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700">
-                              {a.userId?.name || 'Agent'} {a.weight ? `(${a.weight}%)` : ''}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 italic">All Active Agents (Equitable Pool)</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {distributionRules.length === 0 && (
-                  <div className="col-span-2 p-8 text-center bg-[#0d1424] rounded-xl border border-slate-800 text-slate-400 text-xs">
-                    No custom rules configured. Active default strategy: <strong>Equitable Round Robin</strong> across all available agents.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ─────────────────────────────────────────────────────────────
-              4. PIPELINES CENTRE
-          ────────────────────────────────────────────────────────────── */}
-          {activeTab === 'pipelines' && (
-            <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Pipeline Stages & SLAs</h3>
-                  <p className="text-xs text-slate-400">Configure deal stages, win probabilities, colors, and SLAs</p>
-                </div>
-                <button
-                  onClick={() => setShowAddPipelineModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-semibold text-xs hover:bg-amber-400 transition-colors shadow-sm"
-                >
-                  <Settings className="w-3.5 h-3.5" />
-                  <span>Configure Stages & SLAs</span>
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {(pipelineStages.length > 0 ? pipelineStages : KANBAN_STAGES).map((stage, idx) => (
-                  <div key={stage.id || idx} className="p-4 rounded-xl bg-[#0d1424] border border-slate-800 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-lg bg-slate-800 text-amber-400 text-xs font-bold flex items-center justify-center border border-slate-700">
-                        {idx + 1}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: stage.color || stage.colorCode || '#3b82f6' }} />
-                          <h4 className="text-xs font-bold text-white">{stage.name || stage.label}</h4>
-                        </div>
-                        <p className="text-[11px] text-slate-400 mt-0.5">Key: {stage.id || (stage.name || '').toLowerCase().replace(/\s+/g, '_')}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-6 text-xs">
-                      <span className="text-slate-400">Win Probability: <strong className="text-emerald-400">{stage.probability !== undefined ? stage.probability : (idx * 25)}%</strong></span>
-                      <span className="text-slate-400">SLA Target: <strong className="text-amber-400">{stage.slaHours || 24} hrs</strong></span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ─────────────────────────────────────────────────────────────
-              5. HIERARCHY & TEAMS CENTRE
-          ────────────────────────────────────────────────────────────── */}
-          {activeTab === 'hierarchy' && (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Organization Hierarchy (Single Admin Model)</h3>
-                  <p className="text-xs text-slate-400">1 Admin &gt; Operational Managers &gt; Execution Agents</p>
-                </div>
-                <button
-                  onClick={() => setShowAddAgentModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-semibold text-xs hover:bg-amber-400 transition-colors shadow-sm"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Member</span>
-                </button>
-              </div>
-
-              {/* Hierarchy Trees */}
-              <div className="space-y-4">
-                {hierarchy.managers.map((mgr) => (
-                  <div key={mgr._id} className="p-4 rounded-xl bg-[#0d1424] border border-slate-800 space-y-3">
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-800/60">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-purple-500/15 text-purple-400 border border-purple-500/30 flex items-center justify-center font-bold text-xs">
-                          M
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-bold text-white">{mgr.name} (Manager)</h4>
-                          <p className="text-[11px] text-slate-400">{mgr.email} • {mgr.phone || 'No phone'} • {mgr.teamMembers?.length || 0} Assigned Agents</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-amber-400 font-medium">Incentive: {mgr.incentive_pct || 15}%</span>
-                        <button
-                          onClick={() => {
-                            setEditingUser(mgr);
-                            setShowEditUserModal(true);
-                          }}
-                          className="px-2.5 py-1 rounded bg-slate-800 text-slate-200 hover:bg-slate-700 text-xs font-medium transition-colors"
-                        >
-                          Edit
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="pl-6 space-y-2">
-                      <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Agents in Team:</span>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        {mgr.teamMembers?.map((agent) => (
-                          <div key={agent._id} className="p-3 rounded-lg bg-[#111827] border border-slate-800 flex items-center justify-between">
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <p className="text-xs font-medium text-white">{agent.name}</p>
-                                <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${agent.isAvailable !== false && agent.isAvailableForRouting !== false ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                                  {agent.isAvailable !== false && agent.isAvailableForRouting !== false ? 'ROUTING ON' : 'PAUSED'}
-                                </span>
-                              </div>
-                              <p className="text-[10px] text-slate-400 mt-0.5">{agent.email} • Lead Cap: <strong className="text-amber-400">{agent.leadCap || 50}</strong></p>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                onClick={() => {
-                                  setReassignFromAgent(agent);
-                                  setShowReassignModal(true);
-                                }}
-                                className="px-2 py-1 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 text-[10px] font-medium transition-colors"
-                                title="Reassign Leads"
-                              >
-                                Reassign
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setEditingUser(agent);
-                                  setShowEditUserModal(true);
-                                }}
-                                className="px-2 py-1 rounded bg-slate-800 text-amber-300 hover:bg-slate-700 text-[10px] font-medium transition-colors"
-                              >
-                                Edit
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                        {(!mgr.teamMembers || mgr.teamMembers.length === 0) && (
-                          <p className="text-xs text-slate-400 italic">No agents assigned under this manager yet</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-
-                {/* Unassigned / Direct Agents */}
-                {hierarchy.unassignedAgents?.length > 0 && (
-                  <div className="p-4 rounded-xl bg-[#0d1424] border border-slate-800 space-y-3">
-                    <h4 className="text-xs font-bold text-amber-400">Direct to Admin (Unassigned Reps):</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                      {hierarchy.unassignedAgents.map((agent) => (
-                        <div key={agent._id} className="p-3 rounded-lg bg-[#111827] border border-slate-800 flex items-center justify-between">
-                          <div>
-                            <p className="text-xs font-medium text-white">{agent.name}</p>
-                            <p className="text-[10px] text-slate-400">{agent.email} • Cap: {agent.leadCap || 50}</p>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => {
-                                setReassignFromAgent(agent);
-                                setShowReassignModal(true);
-                              }}
-                              className="px-2 py-1 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 text-[10px] font-medium"
-                            >
-                              Reassign
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditingUser(agent);
-                                setShowEditUserModal(true);
-                              }}
-                              className="px-2 py-1 rounded bg-slate-800 text-amber-300 hover:bg-slate-700 text-[10px] font-medium"
-                            >
-                              Edit
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ─────────────────────────────────────────────────────────────
-              6. FORMS CENTRE
-          ────────────────────────────────────────────────────────────── */}
-          {activeTab === 'forms' && (
-            <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Lead Capture Form Builder</h3>
-                  <p className="text-xs text-slate-400">Manage input fields, routing targets, and embed codes for web ingestion</p>
-                </div>
-                <button
-                  onClick={() => setShowAddFormModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-semibold text-xs hover:bg-amber-400 transition-colors shadow-sm"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Custom Field</span>
-                </button>
-              </div>
-
-              <div className="p-5 rounded-xl bg-[#0d1424] border border-slate-800 space-y-4">
-                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Active Inbound Form Fields:</h4>
-                <div className="space-y-2">
-                  {formFieldsData.map((field, idx) => (
-                    <div key={idx} className="p-3 rounded-lg bg-[#111827] border border-slate-800 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-3">
-                        <span className="w-5 h-5 rounded bg-slate-800 text-amber-400 text-[11px] font-bold flex items-center justify-center">
-                          {idx + 1}
-                        </span>
-                        <div>
-                          <span className="font-semibold text-white">{field.label}</span>
-                          <span className="text-slate-400 ml-2 font-mono text-[11px]">({field.type || field.fieldType})</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[10px] px-2 py-0.5 rounded ${field.isRequired ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20' : 'bg-slate-800 text-slate-400'}`}>
-                          {field.isRequired ? 'Required' : 'Optional'}
-                        </span>
-                        <button
-                          onClick={() => {
-                            const updated = formFieldsData.filter((_, i) => i !== idx);
-                            setFormFieldsData(updated);
-                          }}
-                          className="text-slate-400 hover:text-rose-400 p-1"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
+                  <option value="">Unassigned</option>
+                  {(hierarchy.managers || []).map((m) => (
+                    <option key={m._id} value={m._id}>
+                      {m.name}
+                    </option>
                   ))}
-                </div>
-
-                <div className="pt-3 flex justify-end">
-                  <button
-                    onClick={handleSaveFormSchema}
-                    className="px-4 py-2 rounded-lg bg-emerald-500 text-slate-950 font-bold text-xs hover:bg-emerald-400 transition-colors shadow-sm"
-                  >
-                    Save Form Configuration
-                  </button>
-                </div>
-
-                <div className="pt-4 border-t border-slate-800 space-y-2">
-                  <span className="text-xs font-bold text-slate-300">Public Embed Snippet:</span>
-                  <div className="p-3 rounded-lg bg-slate-950 font-mono text-[11px] text-emerald-400 flex items-center justify-between">
-                    <code>&lt;iframe src="http://localhost:3000/forms/lead-capture" width="100%" height="450"&gt;&lt;/iframe&gt;</code>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText('<iframe src="http://localhost:3000/forms/lead-capture" width="100%" height="450"></iframe>');
-                        toast.success('Embed snippet copied!');
-                      }}
-                      className="p-1 text-slate-400 hover:text-white"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ─────────────────────────────────────────────────────────────
-              7. TEMPLATE CENTRE
-          ────────────────────────────────────────────────────────────── */}
-          {activeTab === 'templates' && (
-            <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Message & Follow-Up Templates</h3>
-                  <p className="text-xs text-slate-400">WhatsApp, SMS, and email scripts with dynamic {"{{variable}}"} auto-detection</p>
-                </div>
-                <button
-                  onClick={() => setShowAddTemplateModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Create Template</span>
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {templates.map((tpl) => (
-                  <div key={tpl._id} className="p-4 rounded-xl bg-[#0d1424] border border-slate-800 space-y-3 relative group">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-xs font-bold text-white">{tpl.name || tpl.title}</h4>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 font-semibold uppercase">{tpl.channel || 'WHATSAPP'}</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 uppercase">{tpl.category || 'GENERAL'}</span>
-                      </div>
-                      <button
-                        onClick={() => handleDeleteTemplate(tpl._id)}
-                        className="text-slate-500 hover:text-rose-400 p-1 transition-colors"
-                        title="Delete Template"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    <p className="text-xs text-slate-300 bg-slate-950/60 p-3 rounded-lg border border-slate-800/80 whitespace-pre-wrap font-sans leading-relaxed">
-                      {tpl.content || tpl.body}
-                    </p>
-
-                    {tpl.variables && tpl.variables.length > 0 && (
-                      <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                        <span className="text-[10px] text-slate-500 font-medium">Variables:</span>
-                        {tpl.variables.map((v, i) => (
-                          <span key={i} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                            {`{{${v}}}`}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {templates.length === 0 && (
-                  <div className="col-span-2 p-8 text-center bg-[#0d1424] rounded-xl border border-slate-800 text-slate-400 text-xs">
-                    No custom message templates configured. Click "Create Template" to add one.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ─────────────────────────────────────────────────────────────
-              8. CATALOGUE CENTRE
-          ────────────────────────────────────────────────────────────── */}
-          {activeTab === 'catalogue' && (
-            <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Product & Service Catalogue</h3>
-                  <p className="text-xs text-slate-400">Manage offerings, plan packages, pricing, and promotional discounts</p>
-                </div>
-                <button
-                  onClick={() => setShowAddCatalogueModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Offering</span>
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {catalogues.map((item) => (
-                  <div key={item._id} className="p-4 rounded-xl bg-[#0d1424] border border-slate-800 space-y-2.5 relative group">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold text-white">{item.itemName || item.title}</h4>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 uppercase">{item.category || 'GENERAL'}</span>
-                        <button
-                          onClick={() => handleDeleteCatalogueItem(item._id)}
-                          className="text-slate-500 hover:text-rose-400 p-0.5 transition-colors"
-                          title="Delete Item"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-lg font-bold text-amber-400">₹{item.price}</span>
-                      {item.discountedPrice && item.discountedPrice < item.price && (
-                        <span className="text-xs text-slate-400 line-through">₹{item.discountedPrice}</span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-slate-400 line-clamp-2">{item.description || 'Standard catalog package offering.'}</p>
-                  </div>
-                ))}
-                {catalogues.length === 0 && (
-                  <div className="col-span-3 p-8 text-center bg-[#0d1424] rounded-xl border border-slate-800 text-slate-400 text-xs">
-                    No offerings found. Click "Add Offering" to populate your product catalogue.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ─────────────────────────────────────────────────────────────
-              9. INTEGRATION CENTRE
-          ────────────────────────────────────────────────────────────── */}
-          {activeTab === 'integrations' && (
-            <div className="space-y-5">
-              <div>
-                <h3 className="text-sm font-semibold text-white">Integration Command Center</h3>
-                <p className="text-xs text-slate-400">Secure AES-256-GCM encrypted credential vault and real-time webhook endpoints</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Meta Ads Card */}
-                <div className="p-5 rounded-xl bg-[#0d1424] border border-slate-800 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold text-sm">f</div>
-                      <div>
-                        <h4 className="text-xs font-bold text-white">Meta Ads (Facebook & Instagram)</h4>
-                        <span className="text-[10px] text-slate-400">Inbound Leadgen Webhook</span>
-                      </div>
-                    </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
-                      CONNECTED
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 text-xs text-slate-300 bg-slate-950/60 p-3 rounded-lg border border-slate-800/80">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Webhook URL:</span>
-                      <code className="text-amber-400 font-mono text-[11px]">.../api/integrations/meta/webhook</code>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Verify Token:</span>
-                      <code className="text-emerald-400 font-mono text-[11px]">crm_meta_webhook_secret_2026</code>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      setIntegrationFormData({ provider: 'META', status: 'CONNECTED', credentials: '', webhookUrl: 'https://api.coresetu.com/api/integrations/meta/webhook' });
-                      setShowConfigureIntegrationModal(true);
-                    }}
-                    className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition-colors"
-                  >
-                    Configure / Update Meta Token
-                  </button>
-                </div>
-
-                {/* Google Ads Card */}
-                <div className="p-5 rounded-xl bg-[#0d1424] border border-slate-800 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-red-600/20 text-red-400 flex items-center justify-center font-bold text-sm">G</div>
-                      <div>
-                        <h4 className="text-xs font-bold text-white">Google Ads Integration</h4>
-                        <span className="text-[10px] text-slate-400">Lead Form Extensions</span>
-                      </div>
-                    </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
-                      READY
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 text-xs text-slate-300 bg-slate-950/60 p-3 rounded-lg border border-slate-800/80">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Webhook URL:</span>
-                      <code className="text-amber-400 font-mono text-[11px]">.../api/integrations/google/webhook</code>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      setIntegrationFormData({ provider: 'GOOGLE', status: 'CONNECTED', credentials: '', webhookUrl: 'https://api.coresetu.com/api/integrations/google/webhook' });
-                      setShowConfigureIntegrationModal(true);
-                    }}
-                    className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition-colors"
-                  >
-                    Configure / Update Google Key
-                  </button>
-                </div>
-
-                {/* WhatsApp Cloud API */}
-                <div className="p-5 rounded-xl bg-[#0d1424] border border-slate-800 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-600/20 text-emerald-400 flex items-center justify-center font-bold text-sm">WA</div>
-                      <div>
-                        <h4 className="text-xs font-bold text-white">WhatsApp Business Cloud</h4>
-                        <span className="text-[10px] text-slate-400">Conversational CRM Session</span>
-                      </div>
-                    </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
-                      CONNECTED
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 text-xs text-slate-300 bg-slate-950/60 p-3 rounded-lg border border-slate-800/80">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Channel Mode:</span>
-                      <span className="text-white font-medium">Official Cloud API / Session Engine</span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      setIntegrationFormData({ provider: 'WHATSAPP', status: 'CONNECTED', credentials: '', webhookUrl: '' });
-                      setShowConfigureIntegrationModal(true);
-                    }}
-                    className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition-colors"
-                  >
-                    Update WhatsApp API Secret
-                  </button>
-                </div>
-
-                {/* Inbound Webhook Receiver */}
-                <div className="p-5 rounded-xl bg-[#0d1424] border border-slate-800 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-amber-600/20 text-amber-400 flex items-center justify-center font-bold text-sm">⚡</div>
-                      <div>
-                        <h4 className="text-xs font-bold text-white">Custom Inbound Webhooks</h4>
-                        <span className="text-[10px] text-slate-400">Zapier, Make, Websites</span>
-                      </div>
-                    </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
-                      ACTIVE
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 text-xs text-slate-300 bg-slate-950/60 p-3 rounded-lg border border-slate-800/80">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Receiver URL:</span>
-                      <code className="text-amber-400 font-mono text-[11px]">.../api/integrations/generic/webhook</code>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      setIntegrationFormData({ provider: 'WEBHOOK', status: 'CONNECTED', credentials: 'generic_hmac_secret', webhookUrl: 'https://api.coresetu.com/api/integrations/generic/webhook' });
-                      setShowConfigureIntegrationModal(true);
-                    }}
-                    className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition-colors"
-                  >
-                    Configure Inbound Secret
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ─────────────────────────────────────────────────────────────
-              10. CAMPAIGNS & ADS
-          ────────────────────────────────────────────────────────────── */}
-          {activeTab === 'campaigns' && (
-            <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Ad Campaigns & UTM Performance</h3>
-                  <p className="text-xs text-slate-400">Track paid advertising expenditure, leads acquired, and revenue return</p>
-                </div>
-                <button
-                  onClick={() => setShowAddCampaignModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Register Campaign</span>
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {campaigns.map((camp) => (
-                  <div key={camp._id} className="p-4 rounded-xl bg-[#0d1424] border border-slate-800 space-y-3 relative group">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-xs font-bold text-white">{camp.campaignName || camp._id?.campaignName || 'Meta Growth Ad'}</h4>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 uppercase font-semibold">
-                          {camp.platform || camp._id?.platform || 'META'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-medium">
-                          {camp.status || 'ACTIVE'}
-                        </span>
-                        <button
-                          onClick={() => handleDeleteCampaign(camp._id)}
-                          className="text-slate-500 hover:text-rose-400 p-0.5 transition-colors"
-                          title="Delete Campaign"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-4 gap-2 text-xs bg-slate-950/60 p-3 rounded-lg border border-slate-800/80">
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Budget</span>
-                        <span className="font-semibold text-white">₹{camp.budget || 50000}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Spent</span>
-                        <span className="font-semibold text-rose-400">₹{camp.amountSpent || 12000}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Leads</span>
-                        <span className="font-semibold text-amber-400">{camp.leadsGenerated || camp.totalLeads || 48}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Revenue</span>
-                        <span className="font-semibold text-emerald-400">₹{camp.revenueGenerated || camp.revenue || 96000}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {campaigns.length === 0 && (
-                  <div className="col-span-2 p-8 text-center bg-[#0d1424] rounded-xl border border-slate-800 text-slate-400 text-xs">
-                    No active advertising campaigns. Click "Register Campaign" to link Meta or Google Ad campaigns.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ─────────────────────────────────────────────────────────────
-              11. COMMISSION ENGINE
-          ────────────────────────────────────────────────────────────── */}
-          {activeTab === 'commissions' && (
-            <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Commission Policies & Immutable Payouts Ledger</h3>
-                  <p className="text-xs text-slate-400">Define representative policies and review audit-locked commission earnings</p>
-                </div>
-                <button
-                  onClick={() => setShowAddCommissionModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Create Rule</span>
-                </button>
-              </div>
-
-              {/* Active Rules Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {commissionRules.map((rule) => (
-                  <div key={rule._id} className="p-4 rounded-xl bg-[#0d1424] border border-slate-800 space-y-2 relative group">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold text-white">{rule.ruleName || rule.name}</h4>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 uppercase font-semibold">
-                          {rule.targetRole}
-                        </span>
-                        <button
-                          onClick={() => handleDeleteCommissionRule(rule._id)}
-                          className="text-slate-500 hover:text-rose-400 p-0.5 transition-colors"
-                          title="Delete Rule"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="text-sm font-bold text-amber-400">
-                      {rule.commissionType === 'PERCENTAGE' || rule.calculationType === 'percentage'
-                        ? `${rule.value || rule.percentageRate}% of Closed Deal`
-                        : `₹${rule.value || rule.fixedAmount} Flat per Deal`}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Payouts Ledger */}
-              <div className="rounded-xl border border-slate-800 bg-[#0d1424] overflow-hidden">
-                <div className="p-3 border-b border-slate-800 font-semibold text-xs text-slate-300 flex items-center justify-between">
-                  <span>Audit-Locked Payout History (Immutable Ledger)</span>
-                  <span className="text-[10px] text-amber-400 font-normal">Tamper-Proof Protected</span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-900/60 text-slate-400 border-b border-slate-800 uppercase tracking-wider text-[10px]">
-                      <tr>
-                        <th className="px-4 py-2.5">Beneficiary</th>
-                        <th className="px-4 py-2.5">Role</th>
-                        <th className="px-4 py-2.5">Lead Deal</th>
-                        <th className="px-4 py-2.5">Deal Amount</th>
-                        <th className="px-4 py-2.5">Commission</th>
-                        <th className="px-4 py-2.5">Rule Snapshot</th>
-                        <th className="px-4 py-2.5">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                      {commissionPayouts.map((pay) => (
-                        <tr key={pay._id}>
-                          <td className="px-4 py-2.5 font-medium text-white">{pay.userName}</td>
-                          <td className="px-4 py-2.5 uppercase text-[10px] text-slate-400">{pay.userRole}</td>
-                          <td className="px-4 py-2.5 text-slate-400">{pay.leadName}</td>
-                          <td className="px-4 py-2.5 font-mono">₹{pay.saleValue || pay.dealAmount}</td>
-                          <td className="px-4 py-2.5 font-mono text-emerald-400 font-bold">₹{pay.commissionEarned || pay.commissionAmount}</td>
-                          <td className="px-4 py-2.5 text-slate-400 text-[11px]">{pay.ruleName || 'Standard Policy'}</td>
-                          <td className="px-4 py-2.5">
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-semibold uppercase">
-                              {pay.status || 'APPROVED'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                      {commissionPayouts.length === 0 && (
-                        <tr>
-                          <td colSpan="7" className="px-4 py-6 text-center text-slate-400">No payout records generated yet.</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ─────────────────────────────────────────────────────────────
-              12. COUPON ENGINE
-          ────────────────────────────────────────────────────────────── */}
-          {activeTab === 'coupons' && (
-            <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Promotional Coupon Engine</h3>
-                  <p className="text-xs text-slate-400">Target discount coupons across the 6 SaaS subscription tiers or ALL wildcard</p>
-                </div>
-                <button
-                  onClick={() => setShowAddCouponModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Create Coupon</span>
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {coupons.map((c) => (
-                  <div key={c._id} className="p-4 rounded-xl bg-[#0d1424] border border-slate-800 space-y-2.5 relative group">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-amber-400 font-mono tracking-wider">{c.code}</span>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-semibold">ACTIVE</span>
-                        <button
-                          onClick={() => handleDeleteCoupon(c._id)}
-                          className="text-slate-500 hover:text-rose-400 p-0.5 transition-colors"
-                          title="Delete Coupon"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="text-xs font-semibold text-white">
-                      {c.discountType === 'PERCENTAGE' || c.discount_type === 'percentage'
-                        ? `${c.discountValue || c.discount_value}% OFF`
-                        : `₹${c.discountValue || c.discount_value} FLAT OFF`}
-                    </div>
-                    {c.applicablePlans && (
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <span className="text-[10px] text-slate-400">Plans:</span>
-                        {c.applicablePlans.map((p, idx) => (
-                          <span key={idx} className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-mono">
-                            {p}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800/80">
-                      <span>Uses: {c.currentUsageCount || 0} / {c.maxOverallUses || c.max_uses || '∞'}</span>
-                      <span>Expires: {c.validUntil ? new Date(c.validUntil).toLocaleDateString() : 'Never'}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ─────────────────────────────────────────────────────────────
-              13. BROADCAST CENTRE
-          ────────────────────────────────────────────────────────────── */}
-          {activeTab === 'broadcasts' && (
-            <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Broadcast & Announcement Dispatcher</h3>
-                  <p className="text-xs text-slate-400">Dispatch priority notices to internal staff (Admins, Managers, Agents) or external SaaS tenants</p>
-                </div>
-                <button
-                  onClick={() => setShowBroadcastModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Send Broadcast</span>
-                </button>
-              </div>
-
-              {/* Broadcasts History Table */}
-              <div className="rounded-xl border border-slate-800 bg-[#0d1424] overflow-hidden">
-                <div className="p-3 border-b border-slate-800 font-semibold text-xs text-slate-300">
-                  Broadcast Dispatch History
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-900/60 text-slate-400 border-b border-slate-800 uppercase tracking-wider text-[10px]">
-                      <tr>
-                        <th className="px-4 py-2.5">Title</th>
-                        <th className="px-4 py-2.5">Target Audience</th>
-                        <th className="px-4 py-2.5">Priority</th>
-                        <th className="px-4 py-2.5">Recipients</th>
-                        <th className="px-4 py-2.5">Status</th>
-                        <th className="px-4 py-2.5">Date Dispatched</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                      {broadcastsList.map((b) => (
-                        <tr key={b._id}>
-                          <td className="px-4 py-2.5 font-medium text-white">{b.title}</td>
-                          <td className="px-4 py-2.5 text-slate-400 text-[11px] font-mono">{b.targetAudience}</td>
-                          <td className="px-4 py-2.5">
-                            <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${
-                              b.priority === 'URGENT' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
-                              b.priority === 'HIGH' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                              'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                            }`}>
-                              {b.priority}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2.5 font-mono">{b.recipientCount || 1}</td>
-                          <td className="px-4 py-2.5">
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-semibold">
-                              {b.status || 'SENT'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2.5 text-slate-400 text-[11px]">
-                            {new Date(b.createdAt || b.sentAt).toLocaleString()}
-                          </td>
-                        </tr>
-                      ))}
-                      {broadcastsList.length === 0 && (
-                        <tr>
-                          <td colSpan="6" className="px-4 py-6 text-center text-slate-400">
-                            No broadcasts sent yet. Click "Send Broadcast" to dispatch an announcement.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ─────────────────────────────────────────────────────────────
-              14. UNIVERSAL ANALYTICS (4-TIER ADVANCED SUITE)
-          ────────────────────────────────────────────────────────────── */}
-          {activeTab === 'analytics' && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-sm font-semibold text-white">Universal Analytics & Financial Attribution</h3>
-                <p className="text-xs text-slate-400">Multi-dimensional ROI, stage retention funnels, and representative performance</p>
-              </div>
-
-              {/* TIER 1: EXECUTIVE ROAS & FINANCIAL ROI */}
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                <div className="p-4 rounded-xl bg-[#0d1424] border border-slate-800 space-y-1">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold">Total Revenue</span>
-                  <div className="text-xl font-bold text-emerald-400">
-                    ₹{(universalAnalytics?.roi?.totalRevenue || 192000).toLocaleString()}
-                  </div>
-                  <span className="text-[10px] text-slate-500">From won & closed deals</span>
-                </div>
-
-                <div className="p-4 rounded-xl bg-[#0d1424] border border-slate-800 space-y-1">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold">Internal Ad Spend</span>
-                  <div className="text-xl font-bold text-rose-400">
-                    ₹{(universalAnalytics?.roi?.totalAdSpend || 40000).toLocaleString()}
-                  </div>
-                  <span className="text-[10px] text-slate-500">Meta + Google Ads</span>
-                </div>
-
-                <div className="p-4 rounded-xl bg-[#0d1424] border border-slate-800 space-y-1">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold">Net Gross Profit</span>
-                  <div className="text-xl font-bold text-amber-400">
-                    ₹{(universalAnalytics?.roi?.netProfit || 152000).toLocaleString()}
-                  </div>
-                  <span className="text-[10px] text-slate-500">Revenue minus Ad Spend</span>
-                </div>
-
-                <div className="p-4 rounded-xl bg-[#0d1424] border border-slate-800 space-y-1">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold">Platform ROAS</span>
-                  <div className="text-xl font-bold text-blue-400">
-                    {universalAnalytics?.roi?.roasMultiplier || '4.8x'}
-                  </div>
-                  <span className="text-[10px] text-slate-500">Return on Ad Spend</span>
-                </div>
-
-                <div className="p-4 rounded-xl bg-[#0d1424] border border-slate-800 space-y-1">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold">Blended CAC</span>
-                  <div className="text-xl font-bold text-purple-400">
-                    ₹{(universalAnalytics?.roi?.blendedCAC || 833).toLocaleString()}
-                  </div>
-                  <span className="text-[10px] text-slate-500">Cost Per Acquisition</span>
-                </div>
-              </div>
-
-              {/* TIER 2: REPRESENTATIVE & MANAGER CONVERSION RATES */}
-              <div className="rounded-xl border border-slate-800 bg-[#0d1424] overflow-hidden">
-                <div className="p-3 border-b border-slate-800 font-semibold text-xs text-slate-300">
-                  Sales Rep & Team Conversion Leaderboard
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-900/60 text-slate-400 border-b border-slate-800 uppercase tracking-wider text-[10px]">
-                      <tr>
-                        <th className="px-4 py-2.5">Representative</th>
-                        <th className="px-4 py-2.5">Role</th>
-                        <th className="px-4 py-2.5">Assigned Leads</th>
-                        <th className="px-4 py-2.5">Won Deals</th>
-                        <th className="px-4 py-2.5">Conversion Rate</th>
-                        <th className="px-4 py-2.5">Total Revenue</th>
-                        <th className="px-4 py-2.5">Avg Deal Size</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                      {universalAnalytics?.agentPerformance?.map((rep, idx) => (
-                        <tr key={idx}>
-                          <td className="px-4 py-2.5 font-medium text-white">{rep.repName || 'Agent'}</td>
-                          <td className="px-4 py-2.5 uppercase text-[10px] text-slate-400">{rep.repRole || 'agent'}</td>
-                          <td className="px-4 py-2.5 font-mono">{rep.totalAssigned}</td>
-                          <td className="px-4 py-2.5 font-mono text-emerald-400 font-bold">{rep.convertedCount}</td>
-                          <td className="px-4 py-2.5">
-                            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 font-bold font-mono">
-                              {rep.conversionRate}%
-                            </span>
-                          </td>
-                          <td className="px-4 py-2.5 font-mono text-amber-400 font-semibold">₹{rep.totalRevenue?.toLocaleString()}</td>
-                          <td className="px-4 py-2.5 font-mono text-slate-400">₹{rep.averageDealSize?.toLocaleString()}</td>
-                        </tr>
-                      ))}
-                      {(!universalAnalytics?.agentPerformance || universalAnalytics.agentPerformance.length === 0) && (
-                        <tr>
-                          <td colSpan="7" className="px-4 py-6 text-center text-slate-400">No representative closed deals in this period</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* TIER 3 & 4: PIPELINE DROP-OFF FUNNEL & SOURCE ATTRIBUTION */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Pipeline Funnel */}
-                <div className="p-5 rounded-xl bg-[#0d1424] border border-slate-800 space-y-3">
-                  <h4 className="text-xs font-bold text-slate-300 uppercase">Pipeline Stage Drop-Off Funnel</h4>
-                  <div className="space-y-2">
-                    {universalAnalytics?.stageFunnel?.map((st, idx) => (
-                      <div key={idx} className="space-y-1">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-slate-300 capitalize">{(st.stage || 'new_lead').replace('_', ' ')}</span>
-                          <span className="font-bold text-white font-mono">{st.count} leads (₹{(st.pipelineValue || 0).toLocaleString()})</span>
-                        </div>
-                        <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
-                          <div
-                            className="bg-amber-500 h-full rounded-full transition-all"
-                            style={{ width: `${Math.min(100, Math.max(10, (st.count / (leads.length || 1)) * 100))}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Source Quality Attribution */}
-                <div className="p-5 rounded-xl bg-[#0d1424] border border-slate-800 space-y-3">
-                  <h4 className="text-xs font-bold text-slate-300 uppercase">Lead Source Quality & Revenue Return</h4>
-                  <div className="space-y-2">
-                    {universalAnalytics?.sourceQuality?.map((sq, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/60 border border-slate-800/80 text-xs">
-                        <div>
-                          <span className="font-bold text-white block">{sq.sourceName || 'Direct Manual'}</span>
-                          <span className="text-[10px] text-slate-400">{sq.platformName} • {sq.inboundLeads} leads</span>
-                        </div>
-                        <div className="text-right">
-                          <span className="font-bold text-emerald-400 block">₹{sq.totalRevenue?.toLocaleString()}</span>
-                          <span className="text-[10px] text-amber-400 font-mono">{sq.conversionRate}% conv • ₹{sq.revenuePerLead} RPL</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ─────────────────────────────────────────────────────────────
-              15. ACTIVITY CENTRE & AUDIT LOGS
-          ────────────────────────────────────────────────────────────── */}
-          {activeTab === 'activity' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Immutable Activity & Audit Logs</h3>
-                  <p className="text-xs text-slate-400">Append-only audit trail with multi-parameter filtering</p>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-800 bg-[#0d1424] overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-900/60 text-slate-400 border-b border-slate-800 uppercase tracking-wider text-[10px]">
-                      <tr>
-                        <th className="px-4 py-2.5">Time</th>
-                        <th className="px-4 py-2.5">Performer</th>
-                        <th className="px-4 py-2.5">Action</th>
-                        <th className="px-4 py-2.5">Details</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                      {activityLogs.map((log) => (
-                        <tr key={log._id}>
-                          <td className="px-4 py-2.5 text-slate-400 font-mono text-[11px]">
-                            {new Date(log.timestamp || log.createdAt).toLocaleTimeString()}
-                          </td>
-                          <td className="px-4 py-2.5 font-medium text-white">{log.userName || 'System'}</td>
-                          <td className="px-4 py-2.5">
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-amber-300 font-mono">
-                              {log.action}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2.5 text-slate-400">{log.details}</td>
-                        </tr>
-                      ))}
-                      {activityLogs.length === 0 && (
-                        <tr>
-                          <td colSpan="4" className="px-4 py-6 text-center text-slate-400">No activity logs found</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ─────────────────────────────────────────────────────────────
-              16. PERMISSION & SECURITY SETTINGS
-          ────────────────────────────────────────────────────────────── */}
-          {activeTab === 'security' && (
-            <div className="space-y-5">
-              <div>
-                <h3 className="text-sm font-semibold text-white">Security, Permissions & Lead Isolation</h3>
-                <p className="text-xs text-slate-400">Control organizational lead access rules and export gating</p>
-              </div>
-
-              <div className="p-5 rounded-xl bg-[#0d1424] border border-slate-800 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-xs font-bold text-white">Lead Visibility Mode</h4>
-                    <p className="text-xs text-slate-400">
-                      {securitySettings?.leadVisibilityMode === 'common_pool'
-                        ? 'Shared Pool Mode: All permitted members see team leads'
-                        : 'Isolated Ownership Mode: Agents strictly see their own assigned leads'}
-                    </p>
-                  </div>
-                  <div className="flex border border-slate-700 rounded-lg overflow-hidden">
-                    <button
-                      onClick={() => handleToggleLeadVisibility('common_pool')}
-                      className={`px-3 py-1.5 text-xs font-medium ${securitySettings?.leadVisibilityMode === 'common_pool' ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-900 text-slate-400'}`}
-                    >
-                      Shared Pool
-                    </button>
-                    <button
-                      onClick={() => handleToggleLeadVisibility('assigned')}
-                      className={`px-3 py-1.5 text-xs font-medium ${securitySettings?.leadVisibilityMode === 'assigned' ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-900 text-slate-400'}`}
-                    >
-                      Isolated Mode
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ─────────────────────────────────────────────────────────────
-              17. SYSTEM HEALTH
-          ────────────────────────────────────────────────────────────── */}
-          {activeTab === 'health' && (
-            <SystemHealthDashboard authFetch={authFetch} />
-          )}
-        </div>
-      </main>
-
-      {/* ─────────────────────────────────────────────────────────────
-          MODAL: ADD LEAD
-      ────────────────────────────────────────────────────────────── */}
-      {showAddLeadModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-xl w-full max-w-md p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">Add New Lead</h3>
-              <button onClick={() => setShowAddLeadModal(false)} className="text-slate-400 hover:text-white">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form onSubmit={handleCreateLead} className="space-y-3">
-              <div>
-                <label className="text-[11px] font-medium text-slate-400">Full Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={leadFormData.name}
-                  onChange={(e) => setLeadFormData({ ...leadFormData, name: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-medium text-slate-400">Phone Number *</label>
-                <input
-                  type="text"
-                  required
-                  value={leadFormData.phone}
-                  onChange={(e) => setLeadFormData({ ...leadFormData, phone: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-medium text-slate-400">Email Address</label>
-                <input
-                  type="email"
-                  value={leadFormData.email}
-                  onChange={(e) => setLeadFormData({ ...leadFormData, email: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white"
-                />
-              </div>
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddLeadModal(false)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold"
-                >
-                  Save Lead
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          MODAL: ADD AGENT / MANAGER
-      ────────────────────────────────────────────────────────────── */}
-      {showAddAgentModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-xl w-full max-w-md p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">Add Team Member</h3>
-              <button onClick={() => setShowAddAgentModal(false)} className="text-slate-400 hover:text-white">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form onSubmit={handleCreateAgent} className="space-y-3">
-              <div>
-                <label className="text-[11px] font-medium text-slate-400">Role *</label>
-                <select
-                  value={agentFormData.role}
-                  onChange={(e) => setAgentFormData({ ...agentFormData, role: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white"
-                >
-                  <option value="agent">Agent (Execution Rep)</option>
-                  <option value="manager">Manager (Team Supervisor)</option>
                 </select>
               </div>
-              <div>
-                <label className="text-[11px] font-medium text-slate-400">Full Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={agentFormData.name}
-                  onChange={(e) => setAgentFormData({ ...agentFormData, name: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-medium text-slate-400">Email Address *</label>
-                <input
-                  type="email"
-                  required
-                  value={agentFormData.email}
-                  onChange={(e) => setAgentFormData({ ...agentFormData, email: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-medium text-slate-400">Password *</label>
-                <input
-                  type="password"
-                  required
-                  value={agentFormData.password}
-                  onChange={(e) => setAgentFormData({ ...agentFormData, password: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white"
-                />
-              </div>
-              {agentFormData.role === 'agent' && (
-                <div>
-                  <label className="text-[11px] font-medium text-slate-400">Assign to Manager</label>
-                  <select
-                    value={agentFormData.managerId}
-                    onChange={(e) => setAgentFormData({ ...agentFormData, managerId: e.target.value })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white"
-                  >
-                    <option value="">Direct to Admin (No Manager)</option>
-                    {hierarchy.managers?.map(m => (
-                      <option key={m._id} value={m._id}>{m.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddAgentModal(false)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold"
-                >
-                  Create Member
-                </button>
-              </div>
-            </form>
+            )}
           </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          MODAL: SEND BROADCAST
-      ────────────────────────────────────────────────────────────── */}
-      {showBroadcastModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-xl w-full max-w-md p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">Broadcast Announcement</h3>
-              <button onClick={() => setShowBroadcastModal(false)} className="text-slate-400 hover:text-white">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form onSubmit={handleSendBroadcast} className="space-y-3">
-              <div>
-                <label className="text-[11px] font-medium text-slate-400">Target Audience</label>
-                <select
-                  value={broadcastFormData.targetRole}
-                  onChange={(e) => setBroadcastFormData({ ...broadcastFormData, targetRole: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white"
-                >
-                  <option value="all">Entire Organization</option>
-                  <option value="managers_only">Managers Only</option>
-                  <option value="agents_only">Agents Only</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-[11px] font-medium text-slate-400">Title *</label>
-                <input
-                  type="text"
-                  required
-                  value={broadcastFormData.title}
-                  onChange={(e) => setBroadcastFormData({ ...broadcastFormData, title: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-medium text-slate-400">Message Content *</label>
-                <textarea
-                  required
-                  rows={4}
-                  value={broadcastFormData.message}
-                  onChange={(e) => setBroadcastFormData({ ...broadcastFormData, message: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white"
-                />
-              </div>
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowBroadcastModal(false)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold"
-                >
-                  Send Announcement
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          MODAL: CREATE LEAD DISTRIBUTION RULE
-      ────────────────────────────────────────────────────────────── */}
-      {showAddRuleModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-xl w-full max-w-lg p-5 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <GitFork className="w-4 h-4 text-amber-400" />
-                <span>Create Lead Distribution Rule</span>
-              </h3>
-              <button onClick={() => setShowAddRuleModal(false)} className="text-slate-400 hover:text-white p-1">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateRule} className="space-y-3.5">
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">Rule Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. VIP Facebook Inbound Round-Robin"
-                  value={ruleFormData.name}
-                  onChange={(e) => setRuleFormData({ ...ruleFormData, name: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Routing Strategy *</label>
-                  <select
-                    value={ruleFormData.strategy}
-                    onChange={(e) => setRuleFormData({ ...ruleFormData, strategy: e.target.value })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  >
-                    <option value="ROUND_ROBIN">Round Robin (Equitable)</option>
-                    <option value="WEIGHTED">Weighted Distribution</option>
-                    <option value="MANAGER_ROUTED">Manager Dispatched</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Rule Priority</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="100"
-                    value={ruleFormData.priority}
-                    onChange={(e) => setRuleFormData({ ...ruleFormData, priority: Number(e.target.value) || 1 })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">Source Condition</label>
-                <select
-                  value={ruleFormData.conditions?.sourceType || 'ALL'}
-                  onChange={(e) => setRuleFormData({
-                    ...ruleFormData,
-                    conditions: { ...ruleFormData.conditions, sourceType: e.target.value }
-                  })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                >
-                  <option value="ALL">All Sources (Global Rule)</option>
-                  <option value="SOURCE_A_MANUAL">Source A — Direct / Manual Entry</option>
-                  <option value="SOURCE_B_SIGNUP">Source B — Platform User Signup</option>
-                  <option value="SOURCE_C_ADS">Source C — Paid Meta/Google Ads & Webhooks</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300 mb-1.5 block">
-                  Target Assignees (Select agents to include in routing pool):
-                </label>
-                <div className="max-h-40 overflow-y-auto bg-slate-950/60 border border-slate-800 rounded-lg p-2 space-y-1.5 custom-scrollbar">
-                  {allAgents.map((agent) => {
-                    const isSelected = ruleFormData.assignees?.some(a => (a.userId === agent._id || a.agentId === agent._id));
-                    const currentWeight = ruleFormData.assignees?.find(a => (a.userId === agent._id || a.agentId === agent._id))?.weight || 10;
-                    return (
-                      <div key={agent._id} className="flex items-center justify-between p-1.5 rounded bg-slate-900/80 text-xs">
-                        <label className="flex items-center gap-2 cursor-pointer text-slate-200">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setRuleFormData({
-                                  ...ruleFormData,
-                                  assignees: [...(ruleFormData.assignees || []), { userId: agent._id, agentId: agent._id, weight: 10 }]
-                                });
-                              } else {
-                                setRuleFormData({
-                                  ...ruleFormData,
-                                  assignees: (ruleFormData.assignees || []).filter(a => (a.userId || a.agentId) !== agent._id)
-                                });
-                              }
-                            }}
-                            className="rounded border-slate-700 text-amber-500 focus:ring-amber-400"
-                          />
-                          <span>{agent.name}</span>
-                          <span className="text-[10px] text-slate-400">({agent.email})</span>
-                        </label>
-                        {isSelected && ruleFormData.strategy === 'WEIGHTED' && (
-                          <div className="flex items-center gap-1">
-                            <span className="text-[10px] text-slate-400">Weight:</span>
-                            <input
-                              type="number"
-                              min="1"
-                              max="100"
-                              value={currentWeight}
-                              onChange={(e) => {
-                                const w = Number(e.target.value) || 1;
-                                setRuleFormData({
-                                  ...ruleFormData,
-                                  assignees: (ruleFormData.assignees || []).map(a =>
-                                    (a.userId === agent._id || a.agentId === agent._id) ? { ...a, weight: w, weightPercentage: w } : a
-                                  )
-                                });
-                              }}
-                              className="w-14 bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-right text-xs text-amber-300"
-                            />
-                            <span className="text-[10px] text-slate-400">%</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {allAgents.length === 0 && (
-                    <p className="text-xs text-slate-400 text-center py-2">No agents found in organization</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="ruleIsActive"
-                  checked={ruleFormData.isActive}
-                  onChange={(e) => setRuleFormData({ ...ruleFormData, isActive: e.target.checked })}
-                  className="rounded border-slate-700 text-amber-500 focus:ring-amber-400"
-                />
-                <label htmlFor="ruleIsActive" className="text-xs text-slate-300 font-medium cursor-pointer">
-                  Activate this rule immediately
-                </label>
-              </div>
-
-              <div className="pt-3 border-t border-slate-800/80 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddRuleModal(false)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 transition-colors shadow-sm"
-                >
-                  Save Rule
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          MODAL: PIPELINE STAGES & SLAS CONFIGURATOR
-      ────────────────────────────────────────────────────────────── */}
-      {showAddPipelineModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-xl w-full max-w-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Workflow className="w-4 h-4 text-amber-400" />
-                <span>Configure Pipeline Stages & SLAs</span>
-              </h3>
-              <button onClick={() => setShowAddPipelineModal(false)} className="text-slate-400 hover:text-white p-1">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSavePipeline} className="space-y-4">
-              <div className="space-y-3">
-                {pipelineFormData.map((stage, idx) => (
-                  <div key={idx} className="p-3 rounded-lg bg-[#111827] border border-slate-800 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="w-6 h-6 rounded bg-slate-800 text-amber-400 text-xs font-bold flex items-center justify-center">
-                        {idx + 1}
-                      </span>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Stage Name (e.g. Qualified Call)"
-                        value={stage.name}
-                        onChange={(e) => {
-                          const updated = [...pipelineFormData];
-                          updated[idx].name = e.target.value;
-                          setPipelineFormData(updated);
-                        }}
-                        className="flex-1 bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:border-amber-400 focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (pipelineFormData.length <= 1) {
-                            toast.error('Pipeline must contain at least one stage');
-                            return;
-                          }
-                          setPipelineFormData(pipelineFormData.filter((_, i) => i !== idx));
-                        }}
-                        className="text-slate-400 hover:text-rose-400 p-1"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-3 text-xs pt-1">
-                      <div>
-                        <label className="text-[10px] text-slate-400 block mb-1">Win Probability (%)</label>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={stage.probability}
-                          onChange={(e) => {
-                            const updated = [...pipelineFormData];
-                            updated[idx].probability = Number(e.target.value) || 0;
-                            setPipelineFormData(updated);
-                          }}
-                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-slate-400 block mb-1">SLA Target (Hours)</label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="720"
-                          value={stage.slaHours}
-                          onChange={(e) => {
-                            const updated = [...pipelineFormData];
-                            updated[idx].slaHours = Number(e.target.value) || 24;
-                            setPipelineFormData(updated);
-                          }}
-                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-slate-400 block mb-1">Color Code</label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="color"
-                            value={stage.colorCode || '#3b82f6'}
-                            onChange={(e) => {
-                              const updated = [...pipelineFormData];
-                              updated[idx].colorCode = e.target.value;
-                              setPipelineFormData(updated);
-                            }}
-                            className="w-8 h-7 bg-transparent border-0 cursor-pointer rounded"
-                          />
-                          <span className="text-[11px] font-mono text-slate-400">{stage.colorCode || '#3b82f6'}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setPipelineFormData([
-                    ...pipelineFormData,
-                    { name: `New Stage ${pipelineFormData.length + 1}`, probability: 50, colorCode: '#3b82f6', slaHours: 24 }
-                  ]);
-                }}
-                className="w-full py-2 rounded-lg border border-dashed border-slate-700 text-xs font-semibold text-amber-400 hover:bg-slate-800/40 flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Another Stage</span>
-              </button>
-
-              <div className="pt-3 border-t border-slate-800/80 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddPipelineModal(false)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400 transition-colors shadow-sm"
-                >
-                  Save Pipeline Configuration
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          MODAL: FORM FIELD BUILDER
-      ────────────────────────────────────────────────────────────── */}
-      {showAddFormModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-xl w-full max-w-md p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <FileText className="w-4 h-4 text-amber-400" />
-                <span>Add Inbound Form Field</span>
-              </h3>
-              <button onClick={() => setShowAddFormModal(false)} className="text-slate-400 hover:text-white p-1">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!newFieldInput.label) return;
-                const key = newFieldInput.name || newFieldInput.label.toLowerCase().replace(/[^a-z0-9]/g, '_');
-                setFormFieldsData([
-                  ...formFieldsData,
-                  {
-                    label: newFieldInput.label,
-                    name: key,
-                    type: newFieldInput.type || 'text',
-                    isRequired: newFieldInput.isRequired || false,
-                    placeholder: newFieldInput.placeholder || `Enter ${newFieldInput.label.toLowerCase()}`
-                  }
-                ]);
-                setNewFieldInput({ label: '', name: '', type: 'text', isRequired: false, placeholder: '' });
-                setShowAddFormModal(false);
-                toast.success('Field added to schema!');
-              }}
-              className="space-y-3.5"
+          <div className="flex items-center justify-end gap-2 pt-3">
+            <button
+              type="button"
+              onClick={() => setShowAddAgentModal(false)}
+              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
             >
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">Field Label *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Budget or City"
-                  value={newFieldInput.label}
-                  onChange={(e) => setNewFieldInput({
-                    ...newFieldInput,
-                    label: e.target.value,
-                    name: e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '_')
-                  })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">Field Key (API Identifier)</label>
-                <input
-                  type="text"
-                  required
-                  value={newFieldInput.name}
-                  onChange={(e) => setNewFieldInput({ ...newFieldInput, name: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-amber-300 focus:border-amber-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Input Type</label>
-                  <select
-                    value={newFieldInput.type}
-                    onChange={(e) => setNewFieldInput({ ...newFieldInput, type: e.target.value })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  >
-                    <option value="text">Single Line Text</option>
-                    <option value="phone">Phone Number</option>
-                    <option value="email">Email Address</option>
-                    <option value="number">Numeric Value</option>
-                    <option value="dropdown">Dropdown Select</option>
-                    <option value="textarea">Multi-line Text</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Placeholder</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Enter details..."
-                    value={newFieldInput.placeholder}
-                    onChange={(e) => setNewFieldInput({ ...newFieldInput, placeholder: e.target.value })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="fieldIsRequired"
-                  checked={newFieldInput.isRequired}
-                  onChange={(e) => setNewFieldInput({ ...newFieldInput, isRequired: e.target.checked })}
-                  className="rounded border-slate-700 text-amber-500 focus:ring-amber-400"
-                />
-                <label htmlFor="fieldIsRequired" className="text-xs text-slate-300 font-medium cursor-pointer">
-                  Mark as Mandatory / Required Field
-                </label>
-              </div>
-
-              <div className="pt-3 border-t border-slate-800/80 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddFormModal(false)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 transition-colors shadow-sm"
-                >
-                  Add Field
-                </button>
-              </div>
-            </form>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
+            >
+              Add Member
+            </button>
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
 
-      {/* ─────────────────────────────────────────────────────────────
-          MODAL: EDIT TEAM MEMBER (ROLE, MANAGER, CAP, AVAILABILITY)
-      ────────────────────────────────────────────────────────────── */}
+      {/* 3. Edit User Modal */}
       {showEditUserModal && editingUser && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <UserCheck className="w-4 h-4 text-amber-400" />
-                <span>Edit Team Member: {editingUser.name}</span>
-              </h3>
-              <button
-                onClick={() => {
-                  setShowEditUserModal(false);
-                  setEditingUser(null);
-                }}
-                className="text-slate-400 hover:text-white p-1"
-              >
-                <X className="w-4 h-4" />
-              </button>
+        <Modal isOpen={showEditUserModal} onClose={() => setShowEditUserModal(false)} title={`Edit ${editingUser.name}`}>
+          <form onSubmit={handleUpdateUser} className="space-y-3">
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Full Name</label>
+              <input
+                type="text"
+                value={editingUser.name || ''}
+                onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
+                required
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              />
             </div>
-
-            <form onSubmit={handleUpdateUser} className="space-y-3.5">
+            <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[11px] font-semibold text-slate-300">Full Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={editingUser.name || ''}
-                  onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Email Address</label>
-                  <input
-                    type="email"
-                    value={editingUser.email || ''}
-                    onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Phone Number</label>
-                  <input
-                    type="text"
-                    value={editingUser.phone || ''}
-                    onChange={(e) => setEditingUser({ ...editingUser, phone: e.target.value })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Role *</label>
-                  <select
-                    value={editingUser.role || 'agent'}
-                    onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  >
-                    <option value="agent">Agent (Execution Rep)</option>
-                    <option value="manager">Manager (Supervisor)</option>
-                    <option value="admin">Admin (Full Control)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Lead Capacity (Cap)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="1000"
-                    value={editingUser.leadCap !== undefined ? editingUser.leadCap : 50}
-                    onChange={(e) => setEditingUser({ ...editingUser, leadCap: Number(e.target.value) || 50 })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {editingUser.role === 'agent' && (
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Reporting Manager</label>
-                  <select
-                    value={editingUser.managerId?._id || editingUser.managerId || ''}
-                    onChange={(e) => setEditingUser({ ...editingUser, managerId: e.target.value || null })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  >
-                    <option value="">Direct to Admin (No Manager)</option>
-                    {hierarchy.managers?.filter(m => m._id !== editingUser._id).map(m => (
-                      <option key={m._id} value={m._id}>{m.name} ({m.email})</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">Commission / Incentive %</label>
+                <label className="text-[11px] text-slate-300 block mb-1">Lead Quota Cap</label>
                 <input
                   type="number"
-                  min="0"
-                  max="100"
-                  value={editingUser.incentive_pct !== undefined ? editingUser.incentive_pct : 10}
-                  onChange={(e) => setEditingUser({ ...editingUser, incentive_pct: Number(e.target.value) || 0 })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                  value={editingUser.leadCap || 50}
+                  onChange={(e) => setEditingUser({ ...editingUser, leadCap: Number(e.target.value) })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
                 />
               </div>
-
-              <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-300 font-medium">Automatic Lead Routing</span>
-                  <input
-                    type="checkbox"
-                    checked={editingUser.isAvailableForRouting !== false && editingUser.isAvailable !== false}
-                    onChange={(e) => setEditingUser({
-                      ...editingUser,
-                      isAvailableForRouting: e.target.checked,
-                      isAvailable: e.target.checked
-                    })}
-                    className="rounded border-slate-700 text-amber-500 focus:ring-amber-400"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-300 font-medium">Account Active Status</span>
-                  <input
-                    type="checkbox"
-                    checked={editingUser.isActive !== false}
-                    onChange={(e) => setEditingUser({ ...editingUser, isActive: e.target.checked })}
-                    className="rounded border-slate-700 text-emerald-500 focus:ring-emerald-400"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-slate-800/80 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowEditUserModal(false);
-                    setEditingUser(null);
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 transition-colors shadow-sm"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          MODAL: REASSIGN ACTIVE LEADS
-      ────────────────────────────────────────────────────────────── */}
-      {showReassignModal && reassignFromAgent && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-xl w-full max-w-md p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Users className="w-4 h-4 text-amber-400" />
-                <span>Reassign Active Leads</span>
-              </h3>
-              <button
-                onClick={() => {
-                  setShowReassignModal(false);
-                  setReassignFromAgent(null);
-                  setReassignToAgentId('');
-                }}
-                className="text-slate-400 hover:text-white p-1"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleReassignLeads} className="space-y-3.5">
-              <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs space-y-1">
-                <span className="text-slate-400 font-medium">Reassigning all open leads from:</span>
-                <p className="font-bold text-white text-sm">{reassignFromAgent.name} ({reassignFromAgent.email})</p>
-              </div>
-
               <div>
-                <label className="text-[11px] font-semibold text-slate-300">Select Target Assignee (New Owner) *</label>
+                <label className="text-[11px] text-slate-300 block mb-1">Commission %</label>
+                <input
+                  type="number"
+                  value={editingUser.incentive_pct || 10}
+                  onChange={(e) => setEditingUser({ ...editingUser, incentive_pct: Number(e.target.value) })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                />
+              </div>
+            </div>
+            {editingUser.role === 'agent' && (
+              <div>
+                <label className="text-[11px] text-slate-300 block mb-1">Reporting Manager</label>
                 <select
-                  required
-                  value={reassignToAgentId}
-                  onChange={(e) => setReassignToAgentId(e.target.value)}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                  value={editingUser.managerId?._id || editingUser.managerId || ''}
+                  onChange={(e) => setEditingUser({ ...editingUser, managerId: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
                 >
-                  <option value="">-- Choose New Representative / Manager --</option>
-                  {allTeamMembers.filter(m => m._id !== reassignFromAgent._id).map(m => (
-                    <option key={m._id} value={m._id}>{m.name} ({m.role.toUpperCase()} - {m.email})</option>
+                  <option value="">Unassigned</option>
+                  {(hierarchy.managers || []).map((m) => (
+                    <option key={m._id} value={m._id}>
+                      {m.name}
+                    </option>
                   ))}
                 </select>
               </div>
-
-              <p className="text-[11px] text-amber-400/90 bg-amber-500/10 p-2.5 rounded-lg border border-amber-500/20">
-                ⚠️ All unconverted and active open leads belonging to {reassignFromAgent.name} will be transferred immediately. This action is permanently logged in the Universal Audit Log.
-              </p>
-
-              <div className="pt-3 border-t border-slate-800/80 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowReassignModal(false);
-                    setReassignFromAgent(null);
-                    setReassignToAgentId('');
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!reassignToAgentId}
-                  className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 disabled:opacity-50 transition-colors shadow-sm"
-                >
-                  Confirm & Reassign
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          MODAL: CREATE COMMISSION RULE
-      ────────────────────────────────────────────────────────────── */}
-      {showAddCommissionModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-xl w-full max-w-md p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-amber-400" />
-                <span>Create Commission Policy</span>
-              </h3>
-              <button onClick={() => setShowAddCommissionModal(false)} className="text-slate-400 hover:text-white p-1">
-                <X className="w-4 h-4" />
-              </button>
+            )}
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="checkbox"
+                id="editRouting"
+                checked={Boolean(editingUser.isAvailableForRouting)}
+                onChange={(e) => setEditingUser({ ...editingUser, isAvailableForRouting: e.target.checked })}
+                className="rounded border-slate-700 text-amber-500 focus:ring-0 bg-slate-900 cursor-pointer"
+              />
+              <label htmlFor="editRouting" className="text-xs text-slate-300 cursor-pointer">
+                Available for Auto Lead Routing
+              </label>
             </div>
-
-            <form onSubmit={handleCreateCommissionRule} className="space-y-3.5">
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">Rule Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Won Deal 5% Policy"
-                  value={commFormData.ruleName}
-                  onChange={(e) => setCommFormData({ ...commFormData, ruleName: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Target Role *</label>
-                  <select
-                    value={commFormData.targetRole}
-                    onChange={(e) => setCommFormData({ ...commFormData, targetRole: e.target.value })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  >
-                    <option value="AGENT">Agent (Sales Rep)</option>
-                    <option value="MANAGER">Manager (Override)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Commission Type</label>
-                  <select
-                    value={commFormData.commissionType}
-                    onChange={(e) => setCommFormData({ ...commFormData, commissionType: e.target.value })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  >
-                    <option value="PERCENTAGE">Percentage of Deal Value (%)</option>
-                    <option value="FLAT">Flat Rate (₹)</option>
-                    <option value="STAGE_BASED">Stage-Based Bonus</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">
-                  {commFormData.commissionType === 'PERCENTAGE' ? 'Percentage Rate (%) *' : 'Fixed Amount (₹) *'}
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  max={commFormData.commissionType === 'PERCENTAGE' ? 100 : 1000000}
-                  required
-                  value={commFormData.value}
-                  onChange={(e) => setCommFormData({ ...commFormData, value: Number(e.target.value) || 0 })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">Trigger Pipeline Stage</label>
-                <select
-                  value={commFormData.stageThreshold}
-                  onChange={(e) => setCommFormData({ ...commFormData, stageThreshold: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                >
-                  <option value="payment_done">Payment Done (Deal Won)</option>
-                  <option value="converted">Converted Stage</option>
-                </select>
-              </div>
-
-              <div className="pt-3 border-t border-slate-800/80 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddCommissionModal(false)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 transition-colors shadow-sm"
-                >
-                  Save Policy
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          MODAL: CREATE COUPON (WITH 6 PLANS SELECTION)
-      ────────────────────────────────────────────────────────────── */}
-      {showAddCouponModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-xl w-full max-w-lg p-5 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Ticket className="w-4 h-4 text-amber-400" />
-                <span>Create SaaS Promotional Coupon</span>
-              </h3>
-              <button onClick={() => setShowAddCouponModal(false)} className="text-slate-400 hover:text-white p-1">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateCoupon} className="space-y-3.5">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Coupon Code *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. SAAS50"
-                    value={couponFormData.code}
-                    onChange={(e) => setCouponFormData({ ...couponFormData, code: e.target.value.toUpperCase() })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono font-bold text-amber-400 focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Discount Type</label>
-                  <select
-                    value={couponFormData.discountType}
-                    onChange={(e) => setCouponFormData({ ...couponFormData, discountType: e.target.value })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  >
-                    <option value="PERCENTAGE">Percentage (%) Off</option>
-                    <option value="FLAT">Flat (₹) Off</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">Discount Value *</label>
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  value={couponFormData.discountValue}
-                  onChange={(e) => setCouponFormData({ ...couponFormData, discountValue: Number(e.target.value) || 0 })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300 block mb-1.5">Applicable Subscription Plans</label>
-                <div className="grid grid-cols-2 gap-2 bg-slate-950/60 p-3 rounded-lg border border-slate-800/80 text-xs">
-                  {['ALL', 'smart_solo', 'power_solo', 'team_starter', 'business', 'enterprise', 'custom_enterprise'].map((p) => {
-                    const isChecked = couponFormData.applicablePlans.includes(p);
-                    return (
-                      <label key={p} className="flex items-center gap-2 cursor-pointer text-slate-300">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (p === 'ALL') {
-                              setCouponFormData({ ...couponFormData, applicablePlans: e.target.checked ? ['ALL'] : ['smart_solo'] });
-                            } else {
-                              let current = couponFormData.applicablePlans.filter(item => item !== 'ALL');
-                              if (e.target.checked) current.push(p);
-                              else current = current.filter(item => item !== p);
-                              if (current.length === 0) current = ['ALL'];
-                              setCouponFormData({ ...couponFormData, applicablePlans: current });
-                            }
-                          }}
-                          className="rounded border-slate-700 text-amber-500 focus:ring-amber-400"
-                        />
-                        <span className="font-mono text-[11px]">{p}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Max Overall Uses</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={couponFormData.maxOverallUses}
-                    onChange={(e) => setCouponFormData({ ...couponFormData, maxOverallUses: Number(e.target.value) || 100 })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Expiry Date (validUntil)</label>
-                  <input
-                    type="date"
-                    value={couponFormData.validUntil}
-                    onChange={(e) => setCouponFormData({ ...couponFormData, validUntil: e.target.value })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-slate-800/80 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddCouponModal(false)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 transition-colors shadow-sm"
-                >
-                  Create Coupon
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          MODAL: SEND BROADCAST
-      ────────────────────────────────────────────────────────────── */}
-      {showBroadcastModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-xl w-full max-w-lg p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Bell className="w-4 h-4 text-amber-400" />
-                <span>Send Platform & Internal Broadcast</span>
-              </h3>
-              <button onClick={() => setShowBroadcastModal(false)} className="text-slate-400 hover:text-white p-1">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSendBroadcast} className="space-y-3.5">
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">Broadcast Title *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. System Maintenance or Sales Contest"
-                  value={broadcastFormData.title}
-                  onChange={(e) => setBroadcastFormData({ ...broadcastFormData, title: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Target Audience Scope *</label>
-                  <select
-                    value={broadcastFormData.targetAudience}
-                    onChange={(e) => setBroadcastFormData({ ...broadcastFormData, targetAudience: e.target.value })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  >
-                    <option value="INTERNAL_ALL">Internal Staff (All)</option>
-                    <option value="INTERNAL_MANAGERS">Managers Only</option>
-                    <option value="INTERNAL_AGENTS">Agents Only</option>
-                    <option value="PLATFORM_ALL_ORGS">All Platform Organizations</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Priority Level</label>
-                  <select
-                    value={broadcastFormData.priority}
-                    onChange={(e) => setBroadcastFormData({ ...broadcastFormData, priority: e.target.value })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  >
-                    <option value="NORMAL">Normal</option>
-                    <option value="HIGH">High Priority</option>
-                    <option value="URGENT">Urgent (Flash Alert)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">Message Content *</label>
-                <textarea
-                  required
-                  rows={4}
-                  placeholder="Type your announcement or alert..."
-                  value={broadcastFormData.message}
-                  onChange={(e) => setBroadcastFormData({ ...broadcastFormData, message: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-800/80 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowBroadcastModal(false)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 transition-colors shadow-sm"
-                >
-                  Dispatch Announcement
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          MODAL: REGISTER AD CAMPAIGN
-      ────────────────────────────────────────────────────────────── */}
-      {showAddCampaignModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-xl w-full max-w-md p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Target className="w-4 h-4 text-amber-400" />
-                <span>Register Advertising Campaign</span>
-              </h3>
-              <button onClick={() => setShowAddCampaignModal(false)} className="text-slate-400 hover:text-white p-1">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateCampaign} className="space-y-3.5">
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">Campaign Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Meta Q3 Scale Campaign"
-                  value={campaignFormData.campaignName}
-                  onChange={(e) => setCampaignFormData({ ...campaignFormData, campaignName: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Platform *</label>
-                  <select
-                    value={campaignFormData.platform}
-                    onChange={(e) => setCampaignFormData({ ...campaignFormData, platform: e.target.value })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  >
-                    <option value="META">Meta Ads (Facebook & IG)</option>
-                    <option value="GOOGLE">Google Ads</option>
-                    <option value="OTHER">Other Network</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Status</label>
-                  <select
-                    value={campaignFormData.status}
-                    onChange={(e) => setCampaignFormData({ ...campaignFormData, status: e.target.value })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  >
-                    <option value="ACTIVE">Active</option>
-                    <option value="DRAFT">Draft</option>
-                    <option value="PAUSED">Paused</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Total Budget (₹)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={campaignFormData.budget}
-                    onChange={(e) => setCampaignFormData({ ...campaignFormData, budget: Number(e.target.value) || 0 })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Amount Spent (₹)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={campaignFormData.amountSpent}
-                    onChange={(e) => setCampaignFormData({ ...campaignFormData, amountSpent: Number(e.target.value) || 0 })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-slate-800/80 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddCampaignModal(false)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 transition-colors shadow-sm"
-                >
-                  Register Campaign
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          MODAL: CREATE MESSAGE TEMPLATE
-      ────────────────────────────────────────────────────────────── */}
-      {showAddTemplateModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-xl w-full max-w-md p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-amber-400" />
-                <span>Create Message Template</span>
-              </h3>
-              <button onClick={() => setShowAddTemplateModal(false)} className="text-slate-400 hover:text-white p-1">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateTemplate} className="space-y-3.5">
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">Template Title *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Initial Welcome Script"
-                  value={templateFormData.name}
-                  onChange={(e) => setTemplateFormData({ ...templateFormData, name: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Channel *</label>
-                  <select
-                    value={templateFormData.channel}
-                    onChange={(e) => setTemplateFormData({ ...templateFormData, channel: e.target.value })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  >
-                    <option value="WHATSAPP">WhatsApp</option>
-                    <option value="EMAIL">Email</option>
-                    <option value="SMS">SMS</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Category</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. FOLLOWUP"
-                    value={templateFormData.category}
-                    onChange={(e) => setTemplateFormData({ ...templateFormData, category: e.target.value.toUpperCase() })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">Message Content (use {"{{name}}"}, {"{{deal_value}}"}) *</label>
-                <textarea
-                  required
-                  rows={4}
-                  placeholder="Hi {{name}}, thank you for your interest in our solution..."
-                  value={templateFormData.content}
-                  onChange={(e) => setTemplateFormData({ ...templateFormData, content: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none font-sans"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-800/80 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddTemplateModal(false)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 transition-colors shadow-sm"
-                >
-                  Create Template
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          MODAL: ADD CATALOGUE OFFERING
-      ────────────────────────────────────────────────────────────── */}
-      {showAddCatalogueModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-xl w-full max-w-md p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Layers className="w-4 h-4 text-amber-400" />
-                <span>Add Product or Service Offering</span>
-              </h3>
-              <button onClick={() => setShowAddCatalogueModal(false)} className="text-slate-400 hover:text-white p-1">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateCatalogueItem} className="space-y-3.5">
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">Item Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Annual Agency License"
-                  value={catalogueFormData.itemName}
-                  onChange={(e) => setCatalogueFormData({ ...catalogueFormData, itemName: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Base Price (₹) *</label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    value={catalogueFormData.price}
-                    onChange={(e) => setCatalogueFormData({ ...catalogueFormData, price: Number(e.target.value) || 0 })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Discounted Price (₹)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={catalogueFormData.discountedPrice}
-                    onChange={(e) => setCatalogueFormData({ ...catalogueFormData, discountedPrice: Number(e.target.value) || 0 })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">Description</label>
-                <textarea
-                  rows={3}
-                  placeholder="Features, deliverables, or specifications..."
-                  value={catalogueFormData.description}
-                  onChange={(e) => setCatalogueFormData({ ...catalogueFormData, description: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-800/80 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddCatalogueModal(false)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 transition-colors shadow-sm"
-                >
-                  Add to Catalogue
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          MODAL: CONFIGURE ENCRYPTED INTEGRATION CREDENTIALS
-      ────────────────────────────────────────────────────────────── */}
-      {showConfigureIntegrationModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-xl w-full max-w-md p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Shield className="w-4 h-4 text-emerald-400" />
-                <span>Configure {integrationFormData.provider} Credentials</span>
-              </h3>
-              <button onClick={() => setShowConfigureIntegrationModal(false)} className="text-slate-400 hover:text-white p-1">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveIntegrationCredentials} className="space-y-3.5">
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">Provider</label>
-                <input
-                  type="text"
-                  readOnly
-                  value={integrationFormData.provider}
-                  className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-bold text-amber-400 cursor-not-allowed"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300">Secret Token / API Key / Access Token *</label>
-                <textarea
-                  required
-                  rows={3}
-                  placeholder="Paste access token or API secret here (encrypted with AES-256-GCM before saving)..."
-                  value={integrationFormData.credentials}
-                  onChange={(e) => setIntegrationFormData({ ...integrationFormData, credentials: e.target.value })}
-                  className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none font-mono"
-                />
-              </div>
-
-              {integrationFormData.webhookUrl && (
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300">Webhook Target URL</label>
-                  <input
-                    type="text"
-                    value={integrationFormData.webhookUrl}
-                    onChange={(e) => setIntegrationFormData({ ...integrationFormData, webhookUrl: e.target.value })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300 font-mono"
-                  />
-                </div>
-              )}
-
-              <p className="text-[10px] text-slate-400 bg-slate-950/60 p-2 rounded border border-slate-800">
-                🔒 Plaintext secrets are never stored in the database. All payloads are secured via AES-256-GCM authenticated encryption.
-              </p>
-
-              <div className="pt-3 border-t border-slate-800/80 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowConfigureIntegrationModal(false)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400 transition-colors shadow-sm"
-                >
-                  Encrypt & Save
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          MODAL: LEAD DETAILS DRAWER / MODAL
-      ────────────────────────────────────────────────────────────── */}
-      {selectedLead && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-xl w-full max-w-md p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Users className="w-4 h-4 text-amber-400" />
-                <span>Lead Details</span>
-              </h3>
-              <button onClick={() => setSelectedLead(null)} className="text-slate-400 hover:text-white p-1">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800 space-y-1">
-                <h4 className="text-sm font-bold text-white">{selectedLead.name}</h4>
-                <p className="text-slate-400">{selectedLead.phone} • {selectedLead.email || 'No email provided'}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-slate-300">
-                <div className="p-2.5 rounded-lg bg-slate-900/40 border border-slate-800/60">
-                  <span className="text-[10px] text-slate-400 block uppercase">Primary Source</span>
-                  <span className="font-semibold text-amber-400">{selectedLead.primarySource || selectedLead.source || 'Manual'}</span>
-                </div>
-                <div className="p-2.5 rounded-lg bg-slate-900/40 border border-slate-800/60">
-                  <span className="text-[10px] text-slate-400 block uppercase">Assigned Rep</span>
-                  <span className="font-semibold text-white">{selectedLead.assignedTo?.name || 'Unassigned'}</span>
-                </div>
-                <div className="p-2.5 rounded-lg bg-slate-900/40 border border-slate-800/60">
-                  <span className="text-[10px] text-slate-400 block uppercase">Current Stage</span>
-                  <span className="font-semibold text-emerald-400 capitalize">{(selectedLead.status || 'new_lead').replace('_', ' ')}</span>
-                </div>
-                <div className="p-2.5 rounded-lg bg-slate-900/40 border border-slate-800/60">
-                  <span className="text-[10px] text-slate-400 block uppercase">Deal Amount</span>
-                  <span className="font-semibold text-purple-400">₹{selectedLead.deal_value || selectedLead.paid_amount || 0}</span>
-                </div>
-              </div>
-
-              {selectedLead.notes && (
-                <div className="p-2.5 rounded-lg bg-slate-900/40 border border-slate-800/60">
-                  <span className="text-[10px] text-slate-400 block uppercase mb-1">Notes / Remarks</span>
-                  <p className="text-slate-300 text-xs">{selectedLead.notes}</p>
-                </div>
-              )}
-
-              <div className="pt-2">
-                <label className="text-[11px] font-semibold text-slate-300 block mb-1">Quick Stage Move</label>
-                <select
-                  value={selectedLead.status || 'new_lead'}
-                  onChange={(e) => {
-                    handleStageChange(selectedLead._id, e.target.value);
-                    setSelectedLead({ ...selectedLead, status: e.target.value });
-                  }}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                >
-                  {KANBAN_STAGES.map(s => (
-                    <option key={s.id} value={s.id}>{s.label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-slate-800/80 flex justify-end">
+            <div className="flex items-center justify-end gap-2 pt-3">
               <button
                 type="button"
-                onClick={() => setSelectedLead(null)}
-                className="px-4 py-1.5 rounded-lg bg-slate-800 text-slate-200 text-xs font-medium hover:bg-slate-700"
+                onClick={() => setShowEditUserModal(false)}
+                className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
               >
-                Close
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
+              >
+                Save Changes
               </button>
             </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* 4. Broadcast Modal */}
+      <Modal isOpen={showBroadcastModal} onClose={() => setShowBroadcastModal(false)} title="Dispatch Team Broadcast">
+        <form onSubmit={handleCreateBroadcast} className="space-y-3">
+          <div>
+            <label className="text-[11px] text-slate-300 block mb-1">Announcement Title</label>
+            <input
+              type="text"
+              value={broadcastFormData.title}
+              onChange={(e) => setBroadcastFormData({ ...broadcastFormData, title: e.target.value })}
+              placeholder="e.g. Month-End Sales Target Incentive"
+              required
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] text-slate-300 block mb-1">Message Content</label>
+            <textarea
+              value={broadcastFormData.message}
+              onChange={(e) => setBroadcastFormData({ ...broadcastFormData, message: e.target.value })}
+              placeholder="Enter message visible on all team screens..."
+              rows={3}
+              required
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Priority</label>
+              <select
+                value={broadcastFormData.priority}
+                onChange={(e) => setBroadcastFormData({ ...broadcastFormData, priority: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              >
+                <option value="NORMAL">Normal</option>
+                <option value="HIGH">High Priority</option>
+                <option value="URGENT">Urgent Alert</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Target Audience</label>
+              <select
+                value={broadcastFormData.targetAudience}
+                onChange={(e) => setBroadcastFormData({ ...broadcastFormData, targetAudience: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              >
+                <option value="INTERNAL_ALL">All Staff Members</option>
+                <option value="MANAGERS_ONLY">Managers Only</option>
+                <option value="AGENTS_ONLY">Sales Reps Only</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-3">
+            <button
+              type="button"
+              onClick={() => setShowBroadcastModal(false)}
+              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
+            >
+              Dispatch Notice
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 5. Add Rule Modal */}
+      <Modal isOpen={showAddRuleModal} onClose={() => setShowAddRuleModal(false)} title="Create Distribution Rule">
+        <form onSubmit={handleCreateRule} className="space-y-3">
+          <div>
+            <label className="text-[11px] text-slate-300 block mb-1">Rule Name</label>
+            <input
+              type="text"
+              value={ruleFormData.name}
+              onChange={(e) => setRuleFormData({ ...ruleFormData, name: e.target.value })}
+              placeholder="e.g. High Priority Inbound Round Robin"
+              required
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Routing Strategy</label>
+              <select
+                value={ruleFormData.strategy}
+                onChange={(e) => setRuleFormData({ ...ruleFormData, strategy: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              >
+                <option value="ROUND_ROBIN">Round Robin</option>
+                <option value="LEAST_LOADED">Least Loaded Rep</option>
+                <option value="PRIORITY_WEIGHTED">Priority Weighted</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Priority Order</label>
+              <input
+                type="number"
+                min="1"
+                max="10"
+                value={ruleFormData.priority}
+                onChange={(e) => setRuleFormData({ ...ruleFormData, priority: Number(e.target.value) })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-3">
+            <button
+              type="button"
+              onClick={() => setShowAddRuleModal(false)}
+              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
+            >
+              Save Rule
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 6. Add Campaign Modal */}
+      <Modal isOpen={showAddCampaignModal} onClose={() => setShowAddCampaignModal(false)} title="Add Ad Campaign Tracker">
+        <form onSubmit={handleCreateCampaign} className="space-y-3">
+          <div>
+            <label className="text-[11px] text-slate-300 block mb-1">Campaign Name</label>
+            <input
+              type="text"
+              value={campaignFormData.campaignName}
+              onChange={(e) => setCampaignFormData({ ...campaignFormData, campaignName: e.target.value })}
+              placeholder="e.g. Q3 Growth Leads - Meta"
+              required
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Ad Platform</label>
+              <select
+                value={campaignFormData.platform}
+                onChange={(e) => setCampaignFormData({ ...campaignFormData, platform: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              >
+                <option value="META">Meta / Facebook</option>
+                <option value="GOOGLE">Google Ads</option>
+                <option value="LINKEDIN">LinkedIn Ads</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Budget Allocated (₹)</label>
+              <input
+                type="number"
+                value={campaignFormData.budget}
+                onChange={(e) => setCampaignFormData({ ...campaignFormData, budget: Number(e.target.value) })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-3">
+            <button
+              type="button"
+              onClick={() => setShowAddCampaignModal(false)}
+              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
+            >
+              Save Campaign
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 7. Add Template Modal */}
+      <Modal isOpen={showAddTemplateModal} onClose={() => setShowAddTemplateModal(false)} title="Create Communication Template">
+        <form onSubmit={handleCreateTemplate} className="space-y-3">
+          <div>
+            <label className="text-[11px] text-slate-300 block mb-1">Template Name</label>
+            <input
+              type="text"
+              value={templateFormData.name}
+              onChange={(e) => setTemplateFormData({ ...templateFormData, name: e.target.value })}
+              placeholder="e.g. Instant Intro Pitch"
+              required
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Channel</label>
+              <select
+                value={templateFormData.channel}
+                onChange={(e) => setTemplateFormData({ ...templateFormData, channel: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              >
+                <option value="WHATSAPP">WhatsApp</option>
+                <option value="EMAIL">Email</option>
+                <option value="SMS">SMS</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Category</label>
+              <select
+                value={templateFormData.category}
+                onChange={(e) => setTemplateFormData({ ...templateFormData, category: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              >
+                <option value="GENERAL">General</option>
+                <option value="FOLLOW_UP">Follow Up</option>
+                <option value="PROMOTIONAL">Promotional</option>
+                <option value="CLOSING">Closing Deal</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] text-slate-300 block mb-1">Template Body (supports {`{{name}}`}, {`{{company}}`})</label>
+            <textarea
+              value={templateFormData.content}
+              onChange={(e) => setTemplateFormData({ ...templateFormData, content: e.target.value })}
+              placeholder="Hello {{name}}, thanks for reaching out to CoreSetu..."
+              rows={4}
+              required
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+            />
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-3">
+            <button
+              type="button"
+              onClick={() => setShowAddTemplateModal(false)}
+              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
+            >
+              Save Template
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 8. Add Catalogue Item Modal */}
+      <Modal isOpen={showAddCatalogueModal} onClose={() => setShowAddCatalogueModal(false)} title="Add Product / Package">
+        <form onSubmit={handleCreateCatalogue} className="space-y-3">
+          <div>
+            <label className="text-[11px] text-slate-300 block mb-1">Item / Package Name</label>
+            <input
+              type="text"
+              value={catalogueFormData.itemName}
+              onChange={(e) => setCatalogueFormData({ ...catalogueFormData, itemName: e.target.value })}
+              placeholder="e.g. Enterprise Annual CRM License"
+              required
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Retail Price (₹)</label>
+              <input
+                type="number"
+                value={catalogueFormData.price}
+                onChange={(e) => setCatalogueFormData({ ...catalogueFormData, price: Number(e.target.value) })}
+                required
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Discounted Price (₹)</label>
+              <input
+                type="number"
+                value={catalogueFormData.discountedPrice}
+                onChange={(e) => setCatalogueFormData({ ...catalogueFormData, discountedPrice: Number(e.target.value) })}
+                required
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] text-slate-300 block mb-1">Description</label>
+            <textarea
+              value={catalogueFormData.description}
+              onChange={(e) => setCatalogueFormData({ ...catalogueFormData, description: e.target.value })}
+              placeholder="Item inclusions and deliverables..."
+              rows={2}
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+            />
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-3">
+            <button
+              type="button"
+              onClick={() => setShowAddCatalogueModal(false)}
+              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
+            >
+              Add Item
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 9. Add Coupon Modal */}
+      <Modal isOpen={showAddCouponModal} onClose={() => setShowAddCouponModal(false)} title="Create Discount Coupon">
+        <form onSubmit={handleCreateCoupon} className="space-y-3">
+          <div>
+            <label className="text-[11px] text-slate-300 block mb-1">Coupon Code (Uppercase)</label>
+            <input
+              type="text"
+              value={couponFormData.code}
+              onChange={(e) => setCouponFormData({ ...couponFormData, code: e.target.value.toUpperCase() })}
+              placeholder="e.g. FESTIVE30"
+              required
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 focus:outline-none focus:border-amber-500 font-mono font-bold"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Discount Type</label>
+              <select
+                value={couponFormData.discountType}
+                onChange={(e) => setCouponFormData({ ...couponFormData, discountType: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              >
+                <option value="PERCENTAGE">Percentage (%)</option>
+                <option value="FLAT">Flat Amount (₹)</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Discount Value</label>
+              <input
+                type="number"
+                value={couponFormData.discountValue}
+                onChange={(e) => setCouponFormData({ ...couponFormData, discountValue: Number(e.target.value) })}
+                required
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-3">
+            <button
+              type="button"
+              onClick={() => setShowAddCouponModal(false)}
+              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
+            >
+              Save Coupon
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 10. Add Commission Rule Modal */}
+      <Modal isOpen={showAddCommissionModal} onClose={() => setShowAddCommissionModal(false)} title="Create Commission Rule">
+        <form onSubmit={handleCreateCommissionRule} className="space-y-3">
+          <div>
+            <label className="text-[11px] text-slate-300 block mb-1">Rule Name</label>
+            <input
+              type="text"
+              value={commFormData.ruleName}
+              onChange={(e) => setCommFormData({ ...commFormData, ruleName: e.target.value })}
+              placeholder="e.g. Standard Rep 10% Closing Bonus"
+              required
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Target Role</label>
+              <select
+                value={commFormData.targetRole}
+                onChange={(e) => setCommFormData({ ...commFormData, targetRole: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              >
+                <option value="AGENT">Sales Rep (Agent)</option>
+                <option value="MANAGER">Manager</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-300 block mb-1">Incentive %</label>
+              <input
+                type="number"
+                value={commFormData.value}
+                onChange={(e) => setCommFormData({ ...commFormData, value: Number(e.target.value) })}
+                required
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-3">
+            <button
+              type="button"
+              onClick={() => setShowAddCommissionModal(false)}
+              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
+            >
+              Save Rule
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 11. Comprehensive Lead Profile Workspace Modal */}
+      <LeadProfileModal
+        isOpen={Boolean(selectedLeadProfile)}
+        onClose={() => setSelectedLeadProfile(null)}
+        lead={selectedLeadProfile}
+        plans={allPlans}
+        teamMembers={allTeamMembers}
+        onStageChange={handleStageChange}
+        onOpenCancelFollowUp={(lead) => setCancelFollowUpLead(lead)}
+        onOpenCloseDeal={(lead) => setCloseDealLead(lead)}
+        onOpenAssignPlan={(lead, isFree) => {
+          setAssignPlanLead(lead);
+          setAssignPlanIsFree(Boolean(isFree));
+        }}
+        onReassignAgent={async (leadId, agentId) => {
+          const res = await fetch(`${API_BASE}/admin/leads/${leadId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ assignedTo: agentId || null }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            toast.success('Lead assignee updated');
+            fetchTabData('leads');
+            if (selectedLeadProfile && selectedLeadProfile._id === leadId) {
+              setSelectedLeadProfile(data.lead);
+            }
+          }
+        }}
+        onAddNote={handleAddLeadNote}
+      />
+
+      {/* 12. Follow-up Cancellation Modal (Mandatory Justification Reason) */}
+      <CancelFollowUpModal
+        isOpen={Boolean(cancelFollowUpLead)}
+        onClose={() => setCancelFollowUpLead(null)}
+        lead={cancelFollowUpLead}
+        onConfirm={handleCancelFollowUp}
+      />
+
+      {/* 13. Deal Closure & Automated Commission Ledger Modal */}
+      <CloseDealModal
+        isOpen={Boolean(closeDealLead)}
+        onClose={() => setCloseDealLead(null)}
+        lead={closeDealLead}
+        plans={allPlans}
+        onConfirm={handleCloseDeal}
+      />
+
+      {/* 14. Subscription Plan & Complimentary Access Modal */}
+      <AssignPlanModal
+        isOpen={Boolean(assignPlanLead)}
+        onClose={() => setAssignPlanLead(null)}
+        lead={assignPlanLead}
+        plans={allPlans}
+        onConfirm={handleAssignPlan}
+      />
+
+      {/* 15. Dynamic Multi-Scope Broadcast Modal */}
+      <SendBroadcastModal
+        isOpen={showBroadcastModal}
+        onClose={() => setShowBroadcastModal(false)}
+        onSendBroadcast={handleSendBroadcast}
+      />
+    </AdminLayout>
+  );
+}
+
+export default function AdminControlCenter() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen w-full items-center justify-center bg-[#070b14] text-white">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
+            <div className="text-xs font-mono text-slate-400">Loading CoreSetu OS Control Center...</div>
           </div>
         </div>
-      )}
-    </div>
+      }
+    >
+      <AdminControlCenterContent />
+    </Suspense>
   );
 }

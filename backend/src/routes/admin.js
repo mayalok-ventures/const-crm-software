@@ -10,6 +10,10 @@ router.use(protect);
 router.get('/metrics', adminOnly, adminController.getOverviewMetrics);
 router.get('/overview', adminOnly, adminController.getOverviewMetrics);
 router.get('/plans', adminOnly, adminController.getAdminPlans);
+router.get('/plans/hierarchy', adminOnly, adminController.getPlanHierarchy);
+router.post('/plans', adminOnly, adminController.createAdminPlan);
+router.put('/plans/:id', adminOnly, adminController.updateAdminPlan);
+router.delete('/plans/:id', adminOnly, adminController.deleteAdminPlan);
 router.get('/alerts-queue', adminOnly, adminController.getAdminAlerts);
 
 // 2. Leads & Lead Sources
@@ -23,9 +27,13 @@ router.route('/leads/:id')
 router.patch('/leads/:id/stage', managerOrAdminOnly, adminController.updateLeadStage);
 router.patch('/leads/:id/status', managerOrAdminOnly, adminController.updateLeadStatus);
 router.post('/leads/:id/convert', managerOrAdminOnly, adminController.convertLeadWithPlan);
+router.post('/leads/:id/close-deal', managerOrAdminOnly, adminController.closeLeadWithCommission);
+router.post('/leads/:id/assign-plan', managerOrAdminOnly, adminController.assignLeadPlan);
 
 // Follow-ups
 router.post('/leads/:id/followups', managerOrAdminOnly, adminController.scheduleFollowUp);
+router.post('/leads/:id/follow-up/cancel', managerOrAdminOnly, adminController.cancelFollowUp);
+router.post('/leads/:id/followup/cancel', managerOrAdminOnly, adminController.cancelFollowUp);
 router.patch('/followups/:id', managerOrAdminOnly, adminController.updateFollowUp);
 router.patch('/followups/:id/complete', managerOrAdminOnly, adminController.completeFollowUp);
 router.patch('/followups/:id/postpone', managerOrAdminOnly, adminController.postponeFollowUp);
@@ -42,6 +50,9 @@ router.post('/agents/reassign-leads', adminOnly, adminController.reassignAgentLe
 router.route('/pipeline-settings')
   .get(adminOnly, adminController.getPipelineSettings)
   .post(adminOnly, adminController.savePipelineSettings);
+
+router.get('/pipelines/config', adminOnly, adminController.getPipelineConfig);
+router.put('/pipelines/config', adminOnly, adminController.updatePipelineConfig);
 
 // 5. Agents & Managers Hierarchy
 router.route('/agents')
@@ -98,6 +109,7 @@ router.delete('/coupons/:id', adminOnly, adminController.deleteCoupon);
 // 13. Notification & Broadcast Centre
 router.get('/broadcasts', adminOnly, adminController.getBroadcasts);
 router.post('/broadcasts', adminOnly, adminController.sendBroadcast);
+router.post('/broadcasts/audience-count', adminOnly, adminController.getBroadcastAudienceCount);
 router.post('/alerts', adminOnly, adminController.sendBroadcast);
 
 // 14. Universal & Individual Analytics
@@ -105,6 +117,7 @@ router.get('/analytics/universal', adminOnly, adminController.getUniversalAnalyt
 
 // 15. Activity Centre & Audit Logs
 router.get('/activity-logs', adminOnly, adminController.getActivityLogs);
+router.get('/manager-activities', adminOnly, adminController.getManagerActivities);
 router.get('/subscriptions/audit-logs', adminOnly, adminController.getActivityLogs);
 
 // 16. Permission & Security Settings
@@ -231,6 +244,48 @@ router.get('/usage/alerts', adminOnly, usageMonitoringController.getAlerts);
 router.post('/usage/alerts/:id/acknowledge', adminOnly, usageMonitoringController.acknowledgeAlert);
 router.post('/usage/recalculate', adminOnly, usageMonitoringController.triggerRecalculate);
 
+// 28. Secure API Key and Token Management Module
+const apiKeyController = require('../monitoring/controllers/apiKeyController').default || require('../monitoring/controllers/apiKeyController');
+router.get('/apikeys/overview', adminOnly, apiKeyController.getOverview);
+router.get('/apikeys', adminOnly, apiKeyController.getKeys);
+router.post('/apikeys', adminOnly, apiKeyController.createKey);
+router.get('/apikeys/alerts', adminOnly, apiKeyController.getAlerts);
+router.post('/apikeys/alerts/:id/resolve', adminOnly, apiKeyController.resolveAlert);
+router.get('/apikeys/:id', adminOnly, apiKeyController.getKeyById);
+router.put('/apikeys/:id', adminOnly, apiKeyController.updateKey);
+router.post('/apikeys/:id/rotate', adminOnly, apiKeyController.rotateKey);
+router.post('/apikeys/:id/revoke', adminOnly, apiKeyController.revokeKey);
+router.post('/apikeys/:id/suspend', adminOnly, apiKeyController.suspendKey);
+router.post('/apikeys/:id/reactivate', adminOnly, apiKeyController.reactivateKey);
+router.delete('/apikeys/:id', adminOnly, apiKeyController.deleteKey);
+
+// 29. Production Deployment Monitoring Module
+const deploymentController = require('../monitoring/controllers/deploymentController').default || require('../monitoring/controllers/deploymentController');
+router.get('/deployments/current', adminOnly, deploymentController.getCurrentOverview);
+router.get('/deployments/overview', adminOnly, deploymentController.getCurrentOverview);
+router.get('/deployments/history', adminOnly, deploymentController.getHistory);
+router.get('/deployments/incidents', adminOnly, deploymentController.getIncidents);
+router.post('/deployments/incidents/:id/resolve', adminOnly, deploymentController.resolveIncident);
+router.get('/deployments/policy', adminOnly, deploymentController.getPolicy);
+router.put('/deployments/policy', adminOnly, deploymentController.updatePolicy);
+router.post('/deployments', adminOnly, deploymentController.createDeployment);
+router.get('/deployments/:id', adminOnly, deploymentController.getDeploymentById);
+router.post('/deployments/:id/stage', adminOnly, deploymentController.updateStage);
+router.post('/deployments/:id/smoke-tests', adminOnly, deploymentController.runSmokeTests);
+router.post('/deployments/:id/rollback', adminOnly, deploymentController.triggerRollback);
+router.post('/deployments/webhook', deploymentController.ciCdWebhook); // Open/Token-protected for CI/CD pipelines
+
+// 30. Comprehensive Platform Health Score Engine
+const platformHealthController = require('../monitoring/controllers/platformHealthController').default || require('../monitoring/controllers/platformHealthController');
+router.get('/platform-health', adminOnly, platformHealthController.getPlatformHealth);
+router.get('/platform-health/components', adminOnly, platformHealthController.getAllComponents);
+router.get('/platform-health/components/:componentId', adminOnly, platformHealthController.getComponentDetails);
+router.get('/platform-health/history', adminOnly, platformHealthController.getHistory);
+router.get('/platform-health/incidents', adminOnly, platformHealthController.getPlatformIncidents);
+router.get('/platform-health/config', adminOnly, platformHealthController.getConfig);
+router.put('/platform-health/config', adminOnly, platformHealthController.updateConfig);
+router.post('/platform-health/recalculate', adminOnly, platformHealthController.recalculateNow);
+
 // Preserved User Management Handlers
 router.get('/users', adminOnly, adminController.getUsers);
 router.put('/users/:id/plan', adminOnly, adminController.assignPlan);
@@ -241,3 +296,4 @@ router.post('/clean-slate', adminOnly, adminController.purgeFakeDataAndCleanSlat
 router.post('/purge-test-data', adminOnly, adminController.purgeTestDataOnly);
 
 module.exports = router;
+

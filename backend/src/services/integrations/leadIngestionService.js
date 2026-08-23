@@ -205,6 +205,7 @@ class LeadIngestionService {
 
       status: initialStatus,
       source: provider.toLowerCase(),
+      primarySource: 'SOURCE_C_ADS',
       tags: [
         'Ads Lead',
         `${provider.toUpperCase()} Ads`,

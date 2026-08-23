@@ -167,7 +167,7 @@ export default function IntegrationsPage() {
       router.push('/login');
       return;
     }
-    const backendBase = API_URL || 'https://api.coresetu.com/api';
+    const backendBase = API_URL || 'http://localhost:5000/api';
     window.location.href = `${backendBase}/integrations/google/oauth?token=${encodeURIComponent(token)}`;
   };
 
@@ -180,7 +180,7 @@ export default function IntegrationsPage() {
       return;
     }
     // Direct user to AWS backend endpoint which constructs the Meta OAuth URL with its server redirect_uri
-    const backendBase = API_URL || 'https://api.coresetu.com/api';
+    const backendBase = API_URL || 'http://localhost:5000/api';
     window.location.href = `${backendBase}/integrations/meta/oauth?token=${encodeURIComponent(token)}`;
   };
 

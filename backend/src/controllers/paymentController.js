@@ -520,10 +520,17 @@ exports.getAdminPaymentRequests = async (req, res) => {
 // @access AdminOnly
 exports.approvePaymentRequest = async (req, res) => {
   try {
-    const paymentRequest = await PaymentRequest.findById(req.params.id);
-    if (!paymentRequest) return res.status(404).json({ message: 'Payment request not found' });
-    if (paymentRequest.status !== 'pending') {
-      return res.status(400).json({ message: `Payment request is already processed (${paymentRequest.status})` });
+    // Atomic status transition from pending -> processing to prevent race condition double activation
+    const paymentRequest = await PaymentRequest.findOneAndUpdate(
+      { _id: req.params.id, status: 'pending' },
+      { $set: { status: 'approved', approvedBy: req.user.name, approvedAt: new Date() } },
+      { new: true }
+    );
+
+    if (!paymentRequest) {
+      const existing = await PaymentRequest.findById(req.params.id);
+      if (!existing) return res.status(404).json({ message: 'Payment request not found' });
+      return res.status(400).json({ message: `Payment request is already processed (${existing.status})` });
     }
 
     const { user, subscriptionLifecycle } = await updateUserPlan(
@@ -540,9 +547,6 @@ exports.approvePaymentRequest = async (req, res) => {
         paymentMethod: 'manual_upi',
       }
     );
-
-    paymentRequest.status = 'approved';
-    await paymentRequest.save();
 
     res.json({
       message: 'Payment request approved and plan activated successfully!',
@@ -561,14 +565,17 @@ exports.approvePaymentRequest = async (req, res) => {
 // @access AdminOnly
 exports.rejectPaymentRequest = async (req, res) => {
   try {
-    const paymentRequest = await PaymentRequest.findById(req.params.id);
-    if (!paymentRequest) return res.status(404).json({ message: 'Payment request not found' });
-    if (paymentRequest.status !== 'pending') {
-      return res.status(400).json({ message: `Payment request is already processed (${paymentRequest.status})` });
-    }
+    const paymentRequest = await PaymentRequest.findOneAndUpdate(
+      { _id: req.params.id, status: 'pending' },
+      { $set: { status: 'rejected', rejectedBy: req.user.name, rejectedAt: new Date() } },
+      { new: true }
+    );
 
-    paymentRequest.status = 'rejected';
-    await paymentRequest.save();
+    if (!paymentRequest) {
+      const existing = await PaymentRequest.findById(req.params.id);
+      if (!existing) return res.status(404).json({ message: 'Payment request not found' });
+      return res.status(400).json({ message: `Payment request is already processed (${existing.status})` });
+    }
 
     res.json({ message: 'Payment request rejected.', paymentRequest });
   } catch (error) {

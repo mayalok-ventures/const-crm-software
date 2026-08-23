@@ -81,7 +81,7 @@ const followUpSchema = new mongoose.Schema({
   }],
   status: {
     type: String,
-    enum: ['open', 'done', 'postponed', 'scheduled', 'completed'],
+    enum: ['open', 'done', 'postponed', 'scheduled', 'completed', 'cancelled'],
     default: 'open',
   },
   createdBy: {

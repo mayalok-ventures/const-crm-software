@@ -16,7 +16,7 @@ const MOBILE_ITEMS = [
   { href: '/integrations', label: 'Ads & APIs', icon: Zap, key: 'integrations' },
   { href: '/catalogue', label: 'Colleges', icon: GraduationCap, key: 'catalogue' },
   { href: '/whatsapp', label: 'Inbox', icon: MessageCircle, key: 'whatsapp' },
-  { href: '/profile', label: 'Profile', icon: User, key: 'profile' },
+  { href: '/admin?tab=profile', label: 'Profile', icon: User, key: 'profile' },
 ];
 
 const DESKTOP_ITEMS = [
@@ -29,7 +29,7 @@ const DESKTOP_ITEMS = [
   { href: '/templates', label: 'Message Templates', icon: FileText, key: 'templates' },
   { href: '/groups', label: 'Audience Groups', icon: Users, key: 'groups' },
   { href: '/analytics', label: 'Sales Analytics', icon: BarChart2, key: 'analytics' },
-  { href: '/profile', label: 'Organization & Profile', icon: User, key: 'profile' },
+  { href: '/admin?tab=profile', label: 'Organization & Profile', icon: User, key: 'profile' },
 ];
 
 export default function BottomNav({ active }) {
@@ -94,7 +94,7 @@ export default function BottomNav({ active }) {
       ? { href: '/catalogue', label: 'Colleges', icon: GraduationCap, key: 'catalogue' }
       : { href: '/projects', label: 'Catalogue', icon: Package, key: 'projects' },
     { href: '/whatsapp', label: 'Inbox', icon: MessageCircle, key: 'whatsapp' },
-    { href: '/profile', label: 'Profile', icon: User, key: 'profile' },
+    { href: '/admin?tab=profile', label: 'Profile', icon: User, key: 'profile' },
   ];
 
   const desktopItems = [
@@ -108,7 +108,7 @@ export default function BottomNav({ active }) {
     { href: '/templates', label: 'Message Templates', icon: FileText, key: 'templates' },
     { href: '/groups', label: 'Audience Groups', icon: Users, key: 'groups' },
     { href: '/analytics', label: 'Sales Analytics', icon: BarChart2, key: 'analytics' },
-    { href: '/profile', label: 'Organization & Profile', icon: User, key: 'profile' },
+    { href: '/admin?tab=profile', label: 'Organization & Profile', icon: User, key: 'profile' },
   ];
 
   return (

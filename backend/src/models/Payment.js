@@ -66,13 +66,19 @@ const paymentSchema = new mongoose.Schema({
     ref: 'User',
     default: null,
   },
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+    index: true,
+  },
   plan_id: {
     type: String,
     default: null,
   },
   status: {
     type: String,
-    enum: ['completed', 'refunded', 'pending', 'failed'],
+    enum: ['completed', 'captured', 'success', 'refunded', 'pending', 'failed'],
     default: 'completed',
   },
   refunded_at: {
@@ -119,6 +125,7 @@ paymentSchema.pre('save', function (next) {
   next();
 });
 
+paymentSchema.index({ companyId: 1, status: 1, amount: 1 });
 paymentSchema.index({ lead_id: 1, createdAt: -1 });
 paymentSchema.index({ agent_id: 1 });
 paymentSchema.index(

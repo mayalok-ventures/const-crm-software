@@ -35,9 +35,16 @@ const broadcastSchema = new mongoose.Schema(
       enum: {
         values: [
           'INTERNAL_ALL',
+          'ALL_USERS',
+          'PLATFORM_MANAGERS_AGENTS',
+          'PLATFORM_MANAGERS_ONLY',
           'INTERNAL_MANAGERS',
+          'PLATFORM_AGENTS_ONLY',
           'INTERNAL_AGENTS',
+          'SOLO_USERS_ONLY',
+          'ORGANISATIONS_ONLY',
           'PLATFORM_ALL_ORGS',
+          'MY_TEAM_ONLY',
           'PLATFORM_SPECIFIC_ORG',
           'PLATFORM_SPECIFIC_USER',
         ],

@@ -8,7 +8,7 @@ const META_APP_ID = process.env.META_APP_ID;
 const META_APP_SECRET = process.env.META_APP_SECRET;
 const META_REDIRECT_URI =
   process.env.META_REDIRECT_URI ||
-  'https://api.coresetu.com/api/integrations/meta/oauth/callback';
+  'http://localhost:5000/api/integrations/meta/oauth/callback';
 
 const META_SCOPES = [
   'pages_show_list',
@@ -93,60 +93,10 @@ exports.startOAuth = async (req, res) => {
       } catch { }
     }
     if (!frontendUrl) {
-      frontendUrl = process.env.FRONTEND_URL || 'https://crm.coresetu.com';
+      frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     }
 
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? req.user._id : null);
-
-    // If sandbox mode is explicitly requested OR if no valid numeric Meta App ID is configured yet:
-    const isSandboxMode = req.query.sandbox === 'true' || !appId || appId.startsWith('dev_') || !/^\d+$/.test(appId);
-
-    if (isSandboxMode) {
-      // Connect sandbox/development Meta account immediately
-      const encryptedAccessToken = encrypt('meta_sandbox_access_token_' + Date.now());
-      const query = companyId
-        ? { companyId, provider: 'meta', accountId: 'meta_sandbox_page_01' }
-        : { userId: req.user._id, provider: 'meta', accountId: 'meta_sandbox_page_01' };
-
-      await Integration.findOneAndUpdate(
-        query,
-        {
-          $set: {
-            userId: req.user._id,
-            companyId: companyId || null,
-            provider: 'meta',
-            mode: 'client_managed',
-            status: 'connected',
-            accountId: 'meta_sandbox_page_01',
-            accountName: 'Meta Ads (Sandbox / Test Page)',
-            pageId: '109876543210987',
-            pageName: 'CoreSetu Real Estate & Ads',
-            formIds: ['meta_form_instant_01', 'meta_form_leadgen_02'],
-            accessTokenEncrypted: encryptedAccessToken,
-            tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000), // 60 days
-            connectedAt: new Date(),
-            metadata: {
-              metaUserId: 'meta_sandbox_user',
-              metaUserName: 'Sandbox Ad Account',
-              metaUserEmail: req.user.email,
-              isSandbox: true,
-            },
-            lastError: '',
-          },
-        },
-        {
-          upsert: true,
-          new: true,
-          setDefaultsOnInsert: true,
-        }
-      );
-
-      const redirectTarget = `${frontendUrl}/integrations?meta=connected&account=${encodeURIComponent('Meta Ads (Sandbox Mode)')}`;
-      if (req.query.json === 'true' || req.headers.accept?.includes('application/json')) {
-        return res.json({ success: true, sandbox: true, redirectUrl: redirectTarget });
-      }
-      return res.redirect(redirectTarget);
-    }
 
     if (!appSecret) {
       return res.status(500).json({
@@ -167,9 +117,9 @@ exports.startOAuth = async (req, res) => {
     });
 
     const authorizationUrl = `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth?${params}`;
-    console.log('====== META OAUTH REDIRECT URL ======');
+    console.log('====== META REAL OAUTH REDIRECT URL ======');
     console.log(authorizationUrl);
-    console.log('=====================================');
+    console.log('==========================================');
 
     // If client requested JSON URL or frontend redirect
     if (req.query.json === 'true' || req.headers.accept?.includes('application/json')) {
@@ -193,7 +143,7 @@ exports.startOAuth = async (req, res) => {
  * GET /api/integrations/meta/oauth/callback
  */
 exports.callback = async (req, res) => {
-  let resolvedFrontendUrl = process.env.FRONTEND_URL || 'https://crm.coresetu.com';
+  let resolvedFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
   console.log('\n================== [META OAUTH CALLBACK DEBUG START] ==================');
   console.log('[DEBUG 1] Incoming Query Params:', JSON.stringify(req.query, null, 2));
   console.log('[DEBUG 1] META_REDIRECT_URI Configured:', META_REDIRECT_URI);
@@ -304,6 +254,33 @@ exports.callback = async (req, res) => {
       console.log(`[DEBUG 6] Retrieved ${userPages.length} Facebook Page(s) from /me/accounts:`,
         JSON.stringify(userPages.map((p) => ({ id: p.id, name: p.name, category: p.category, hasToken: !!p.access_token })), null, 2)
       );
+
+      // If no direct pages found, check for Business Portfolio pages (e.g. Admission-360)
+      if (userPages.length === 0) {
+        try {
+          const bizResponse = await axios.get(
+            `https://graph.facebook.com/${META_GRAPH_VERSION}/me/businesses`,
+            {
+              params: {
+                fields: 'id,name,owned_pages{id,name,access_token},client_pages{id,name,access_token}',
+                access_token: accessToken,
+              },
+              timeout: 10000,
+            }
+          );
+          const businesses = bizResponse.data?.data || [];
+          for (const biz of businesses) {
+            const owned = biz.owned_pages?.data || [];
+            const client = biz.client_pages?.data || [];
+            userPages.push(...owned, ...client);
+          }
+          if (userPages.length > 0) {
+            console.log(`[DEBUG 6b] Retrieved ${userPages.length} Page(s) from Business Portfolio:`, userPages.map(p => p.name));
+          }
+        } catch (bizErr) {
+          console.warn('⚠️ [DEBUG WARN] Business pages check notice:', bizErr.message);
+        }
+      }
     } catch (pageErr) {
       console.warn('⚠️ [DEBUG WARN] Could not fetch user pages from /me/accounts:', pageErr.response?.data || pageErr.message);
     }
@@ -460,8 +437,8 @@ exports.callback = async (req, res) => {
     console.log('[DEBUG 8] OAuth flow completed successfully, redirecting to frontend dashboard...');
     console.log('================== [META OAUTH CALLBACK DEBUG END] ==================\n');
 
-    // 302 Redirect user back to frontend dashboard with success query param
-    return res.redirect(`${resolvedFrontendUrl}/dashboard?integration=meta_success`);
+    // 302 Redirect user back to integrations page with success query param
+    return res.redirect(`${resolvedFrontendUrl}/integrations?meta=connected`);
   } catch (error) {
     console.error('\n❌❌❌ [CRITICAL META OAUTH CALLBACK ERROR DETECTED] ❌❌❌');
     console.error('Error Message:', error.message);
@@ -471,6 +448,6 @@ exports.callback = async (req, res) => {
     console.error('Error Stack Trace:\n', error.stack);
     console.error('===================================================================\n');
 
-    return res.redirect(`${resolvedFrontendUrl}/dashboard?integration=meta_error&message=${encodeURIComponent(error.message || 'Meta connection failed')}`);
+    return res.redirect(`${resolvedFrontendUrl}/integrations?meta=error&message=${encodeURIComponent(error.message || 'Meta connection failed')}`);
   }
 };
