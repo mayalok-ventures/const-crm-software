@@ -31,3 +31,6 @@ backend/uploads/wa-sessions/*
 .vscode/
 .idea/
 backend/data/
+*.exe
+backend/cloudflared.exe
+
