@@ -33,6 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.DatabaseHealth = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
 const DatabaseHealthSchema = new mongoose_1.Schema({
     connectionState: {
@@ -98,5 +99,6 @@ const DatabaseHealthSchema = new mongoose_1.Schema({
 }, { timestamps: true });
 // Indexes
 DatabaseHealthSchema.index({ timestamp: -1 });
-exports.default = mongoose_1.default.models.DatabaseHealth ||
+exports.DatabaseHealth = mongoose_1.default.models.DatabaseHealth ||
     mongoose_1.default.model('DatabaseHealth', DatabaseHealthSchema);
+exports.default = exports.DatabaseHealth;

@@ -120,5 +120,7 @@ const DatabaseHealthSchema: Schema = new Schema(
 // Indexes
 DatabaseHealthSchema.index({ timestamp: -1 });
 
-export default mongoose.models.DatabaseHealth ||
+export const DatabaseHealth =
+  mongoose.models.DatabaseHealth ||
   mongoose.model<IDatabaseHealth>('DatabaseHealth', DatabaseHealthSchema);
+export default DatabaseHealth;

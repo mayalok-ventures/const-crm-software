@@ -40,6 +40,15 @@ import {
   Lock,
   FileSpreadsheet,
   ShieldCheck,
+  Bell,
+  Sliders,
+  Volume2,
+  VolumeX,
+  Radio,
+  Mail,
+  MessageCircle,
+  Share2,
+  Plus,
 } from 'lucide-react';
 import {
   LineChart,
@@ -62,7 +71,7 @@ interface SystemHealthDashboardProps {
 
 export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboardProps) {
   const [activeSubTab, setActiveSubTab] = useState<
-    'infrastructure' | 'availability' | 'api' | 'errors' | 'logs' | 'security' | 'audit' | 'database' | 'backups'
+    'infrastructure' | 'availability' | 'api' | 'errors' | 'logs' | 'security' | 'audit' | 'database' | 'backups' | 'alerts'
   >('infrastructure');
 
   // Infrastructure & Servers State
@@ -150,6 +159,29 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
   const [verificationReportModal, setVerificationReportModal] = useState<any | null>(null);
   const [resolvingIncident, setResolvingIncident] = useState<any | null>(null);
   const [incidentResolveNote, setIncidentResolveNote] = useState<string>('');
+
+  // Reusable Alert & Incident Management Engine State
+  const [alertOverview, setAlertOverview] = useState<any>(null);
+  const [incidentsList, setIncidentsList] = useState<any[]>([]);
+  const [incidentFilterStatus, setIncidentFilterStatus] = useState<string>('ALL');
+  const [incidentFilterSeverity, setIncidentFilterSeverity] = useState<string>('ALL');
+  const [incidentSearch, setIncidentSearch] = useState<string>('');
+  const [selectedIncidentDetail, setSelectedIncidentDetail] = useState<any | null>(null);
+  const [alertRules, setAlertRules] = useState<any[]>([]);
+  const [notificationChannels, setNotificationChannels] = useState<any[]>([]);
+  const [notificationDeliveries, setNotificationDeliveries] = useState<any[]>([]);
+  const [alertsViewMode, setAlertsViewMode] = useState<'incidents' | 'rules' | 'channels' | 'deliveries'>('incidents');
+  const [isRuleModalOpen, setIsRuleModalOpen] = useState<boolean>(false);
+  const [editingAlertRule, setEditingAlertRule] = useState<any | null>(null);
+  const [isChannelModalOpen, setIsChannelModalOpen] = useState<boolean>(false);
+  const [editingChannel, setEditingChannel] = useState<any | null>(null);
+  const [isTestingChannelId, setIsTestingChannelId] = useState<string | null>(null);
+  const [isSimulatingAnomaly, setIsSimulatingAnomaly] = useState<boolean>(false);
+  const [simulatedMetric, setSimulatedMetric] = useState<string>('cpu');
+  const [simulatedValue, setSimulatedValue] = useState<number>(96);
+  const [resolvingAlertIncident, setResolvingAlertIncident] = useState<any | null>(null);
+  const [alertResolveNotes, setAlertResolveNotes] = useState<string>('');
+  const [alertRootCause, setAlertRootCause] = useState<string>('');
 
   // Common Controls
   const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h' | '7d' | '30d' | '90d'>('1h');
@@ -257,6 +289,25 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
       if (bkpHistoryRes?.success) setBackupHistory(bkpHistoryRes.records || []);
       if (bkpPoliciesRes?.success) setBackupPolicies(bkpPoliciesRes.policies || []);
       if (bkpIncidentsRes?.success) setBackupIncidents(bkpIncidentsRes.incidents || []);
+
+      // 9. Fetch Reusable Alert and Incident Telemetry
+      const incidentParams = new URLSearchParams();
+      if (incidentFilterStatus !== 'ALL') incidentParams.append('status', incidentFilterStatus);
+      if (incidentFilterSeverity !== 'ALL') incidentParams.append('severity', incidentFilterSeverity);
+      if (incidentSearch.trim()) incidentParams.append('search', incidentSearch.trim());
+
+      const [alertOverviewRes, alertIncidentsRes, alertRulesRes, channelsRes, deliveriesRes] = await Promise.all([
+        authFetch('/admin/alerts/overview'),
+        authFetch(`/admin/alerts/incidents?${incidentParams.toString()}`),
+        authFetch('/admin/alerts/rules'),
+        authFetch('/admin/alerts/channels'),
+        authFetch('/admin/alerts/deliveries?limit=50'),
+      ]);
+      if (alertOverviewRes?.success) setAlertOverview(alertOverviewRes.data);
+      if (alertIncidentsRes?.success) setIncidentsList(alertIncidentsRes.incidents || []);
+      if (alertRulesRes?.success) setAlertRules(alertRulesRes.rules || []);
+      if (channelsRes?.success) setNotificationChannels(channelsRes.channels || []);
+      if (deliveriesRes?.success) setNotificationDeliveries(deliveriesRes.deliveries || []);
     } catch (error) {
       console.error('Failed to load system health data:', error);
       toast.error('Failed to reload telemetry data');
@@ -282,6 +333,9 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
     auditDateTo,
     dbRange,
     backupStatusFilter,
+    incidentFilterStatus,
+    incidentFilterSeverity,
+    incidentSearch,
   ]);
 
   // Metric history per server
@@ -720,6 +774,209 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
     }
   };
 
+  // ─────────────────────────────────────────────────────────────
+  // REUSABLE ALERT & INCIDENT MANAGEMENT HANDLERS
+  // ─────────────────────────────────────────────────────────────
+
+  const handleAcknowledgeAlertIncident = async (incidentId: string) => {
+    try {
+      const res = await authFetch(`/admin/alerts/incidents/${incidentId}/acknowledge`, { method: 'POST' });
+      if (res?.success) {
+        toast.success('Incident acknowledged 📋');
+        fetchDashboardData();
+        if (selectedIncidentDetail?.incidentId === incidentId) {
+          setSelectedIncidentDetail(res.incident);
+        }
+      } else {
+        toast.error(res?.message || 'Failed to acknowledge incident');
+      }
+    } catch (err) {
+      toast.error('Network error acknowledging incident');
+    }
+  };
+
+  const handleResolveAlertIncident = async () => {
+    if (!resolvingAlertIncident) return;
+    try {
+      const res = await authFetch(
+        `/admin/alerts/incidents/${resolvingAlertIncident.incidentId || resolvingAlertIncident._id}/resolve`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            resolutionNotes: alertResolveNotes || 'Manually verified and marked resolved',
+            rootCause: alertRootCause || 'Transient load normalized',
+          }),
+        }
+      );
+      if (res?.success) {
+        toast.success('Incident marked as resolved ✅');
+        setResolvingAlertIncident(null);
+        setAlertResolveNotes('');
+        setAlertRootCause('');
+        fetchDashboardData();
+        if (selectedIncidentDetail?.incidentId === resolvingAlertIncident.incidentId) {
+          setSelectedIncidentDetail(res.incident);
+        }
+      } else {
+        toast.error(res?.message || 'Failed to resolve incident');
+      }
+    } catch (err) {
+      toast.error('Failed to resolve incident');
+    }
+  };
+
+  const handleEscalateAlertIncident = async (incidentId: string) => {
+    try {
+      const res = await authFetch(`/admin/alerts/incidents/${incidentId}/escalate`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'Manual operator escalation' }),
+      });
+      if (res?.success) {
+        toast.success(`Incident escalated to Tier ${res.incident?.escalationLevel || 2} 🚨`);
+        fetchDashboardData();
+        if (selectedIncidentDetail?.incidentId === incidentId) {
+          setSelectedIncidentDetail(res.incident);
+        }
+      }
+    } catch (err) {
+      toast.error('Failed to escalate incident');
+    }
+  };
+
+  const handleInspectIncident = async (incidentId: string) => {
+    try {
+      const res = await authFetch(`/admin/alerts/incidents/${incidentId}`);
+      if (res?.success) {
+        setSelectedIncidentDetail(res.incident);
+      }
+    } catch (err) {
+      toast.error('Failed to load incident details');
+    }
+  };
+
+  const handleToggleAlertRule = async (ruleId: string) => {
+    try {
+      const res = await authFetch(`/admin/alerts/rules/${ruleId}/toggle`, { method: 'POST' });
+      if (res?.success) {
+        toast.success(res.message || 'Alert rule toggled');
+        fetchDashboardData();
+      }
+    } catch (err) {
+      toast.error('Failed to toggle rule');
+    }
+  };
+
+  const handleDeleteAlertRule = async (ruleId: string) => {
+    if (!window.confirm('Are you sure you want to delete this alert rule?')) return;
+    try {
+      const res = await authFetch(`/admin/alerts/rules/${ruleId}`, { method: 'DELETE' });
+      if (res?.success) {
+        toast.success('Alert rule deleted');
+        fetchDashboardData();
+      }
+    } catch (err) {
+      toast.error('Failed to delete rule');
+    }
+  };
+
+  const handleSaveAlertRule = async (ruleData: any) => {
+    try {
+      const isEditing = Boolean(editingAlertRule?.ruleId || editingAlertRule?._id);
+      const url = isEditing
+        ? `/admin/alerts/rules/${editingAlertRule.ruleId || editingAlertRule._id}`
+        : '/admin/alerts/rules';
+      const method = isEditing ? 'PUT' : 'POST';
+
+      const res = await authFetch(url, { method, body: JSON.stringify(ruleData) });
+      if (res?.success) {
+        toast.success(isEditing ? 'Rule updated successfully' : 'Rule created successfully');
+        setIsRuleModalOpen(false);
+        setEditingAlertRule(null);
+        fetchDashboardData();
+      } else {
+        toast.error(res?.message || 'Failed to save alert rule');
+      }
+    } catch (err) {
+      toast.error('Failed to save alert rule');
+    }
+  };
+
+  const handleTestNotificationChannel = async (channelId: string) => {
+    setIsTestingChannelId(channelId);
+    try {
+      const res = await authFetch(`/admin/alerts/channels/${channelId}/test`, { method: 'POST' });
+      if (res?.success) {
+        toast.success(res.message || 'Test notification sent! 🚀');
+        fetchDashboardData();
+      } else {
+        toast.error(res?.message || 'Test notification failure notice');
+      }
+    } catch (err) {
+      toast.error('Failed to send test notification');
+    } finally {
+      setIsTestingChannelId(null);
+    }
+  };
+
+  const handleDeleteNotificationChannel = async (channelId: string) => {
+    if (!window.confirm('Delete this notification channel?')) return;
+    try {
+      const res = await authFetch(`/admin/alerts/channels/${channelId}`, { method: 'DELETE' });
+      if (res?.success) {
+        toast.success('Channel deleted');
+        fetchDashboardData();
+      }
+    } catch (err) {
+      toast.error('Failed to delete channel');
+    }
+  };
+
+  const handleSaveNotificationChannel = async (channelData: any) => {
+    try {
+      const isEditing = Boolean(editingChannel?.channelId || editingChannel?._id);
+      const url = isEditing
+        ? `/admin/alerts/channels/${editingChannel.channelId || editingChannel._id}`
+        : '/admin/alerts/channels';
+      const method = isEditing ? 'PUT' : 'POST';
+
+      const res = await authFetch(url, { method, body: JSON.stringify(channelData) });
+      if (res?.success) {
+        toast.success(isEditing ? 'Channel updated' : 'Channel created');
+        setIsChannelModalOpen(false);
+        setEditingChannel(null);
+        fetchDashboardData();
+      } else {
+        toast.error(res?.message || 'Failed to save channel');
+      }
+    } catch (err) {
+      toast.error('Failed to save notification channel');
+    }
+  };
+
+  const handleExecuteSimulatedAnomaly = async () => {
+    setIsSimulatingAnomaly(true);
+    try {
+      const res = await authFetch('/admin/alerts/simulate', {
+        method: 'POST',
+        body: JSON.stringify({
+          metric: simulatedMetric,
+          value: Number(simulatedValue),
+          severity: Number(simulatedValue) >= 90 ? 'CRITICAL' : 'WARNING',
+        }),
+      });
+      if (res?.success) {
+        toast.success('Simulated anomaly injected! Alert triggered & incident correlated 🚨');
+        fetchDashboardData();
+      } else {
+        toast.error(res?.message || 'Simulation error');
+      }
+    } catch (err) {
+      toast.error('Failed to execute simulation');
+    } finally {
+      setIsSimulatingAnomaly(false);
+    }
+  };
+
   const getAuditActionBadge = (action: string) => {
     switch (action?.toUpperCase()) {
       case 'CREATE':
@@ -998,6 +1255,25 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
               <span className="px-1.5 py-0.2 text-[10px] bg-slate-800 text-emerald-300 rounded-full border border-slate-700 font-mono">
                 {backupOverview.healthScore}%
               </span>
+            )}
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveSubTab('alerts')}
+          className={`pb-3 px-4 text-sm font-semibold border-b-2 whitespace-nowrap transition-colors ${
+            activeSubTab === 'alerts'
+              ? 'border-rose-500 text-rose-400'
+              : 'border-transparent text-slate-400 hover:text-white'
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <Bell className="w-4 h-4 text-rose-400" /> Alerts &amp; Incidents
+            {alertOverview?.counts?.totalOpen > 0 ? (
+              <span className="px-1.5 py-0.2 text-[10px] bg-rose-500/20 text-rose-300 rounded-full border border-rose-500/30 font-bold">
+                {alertOverview.counts.totalOpen}
+              </span>
+            ) : (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400" />
             )}
           </span>
         </button>
@@ -4269,6 +4545,1262 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
                     className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"
                   >
                     Mark Resolved
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          10. TAB: REUSABLE ALERT AND INCIDENT MANAGEMENT ENGINE
+      ────────────────────────────────────────────────────────────── */}
+      {activeSubTab === 'alerts' && (
+        <div className="space-y-6">
+          {/* Active Incidents Hero & Health Overview Banner */}
+          <div className="p-5 rounded-2xl bg-gradient-to-r from-[#130d1d] via-[#1c0f2b] to-[#130d1d] border border-rose-950/60 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 shadow-xl">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Bell className="w-6 h-6 text-rose-400 animate-pulse" />
+                  <h3 className="text-lg font-bold text-white tracking-wide">
+                    Alert &amp; Incident Management Engine
+                  </h3>
+                </div>
+
+                {/* Open Incidents Badge */}
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 ${
+                    (alertOverview?.counts?.activeCritical ?? 0) > 0
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                      : (alertOverview?.counts?.activeWarning ?? 0) > 0
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                      : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      (alertOverview?.counts?.activeCritical ?? 0) > 0
+                        ? 'bg-rose-400 animate-ping'
+                        : (alertOverview?.counts?.activeWarning ?? 0) > 0
+                        ? 'bg-amber-400'
+                        : 'bg-emerald-400'
+                    }`}
+                  />
+                  {alertOverview?.counts?.totalOpen ?? 0} ACTIVE INCIDENTS
+                </span>
+
+                {/* Storm Suppression Active */}
+                <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                  <Shield className="w-3.5 h-3.5" /> Storm Dampener &amp; Cooldown Active
+                </span>
+              </div>
+
+              {/* Status Counters Bar */}
+              <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 bg-slate-950/70 p-3 rounded-xl border border-slate-800/80 text-xs">
+                <div>
+                  <span className="text-rose-400 block text-[11px] font-semibold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Critical:
+                  </span>
+                  <span className="text-white font-bold font-mono text-base">
+                    {alertOverview?.counts?.activeCritical ?? 0}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-amber-400 block text-[11px] font-semibold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Warning:
+                  </span>
+                  <span className="text-white font-bold font-mono text-base">
+                    {alertOverview?.counts?.activeWarning ?? 0}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-emerald-400 block text-[11px] font-semibold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Resolved (24h):
+                  </span>
+                  <span className="text-white font-bold font-mono text-base">
+                    {alertOverview?.counts?.totalResolved24h ?? 0}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[11px]">Mean Ack Time:</span>
+                  <span className="text-sky-300 font-bold font-mono text-base">
+                    {alertOverview?.metrics?.mttaMinutes ?? 3}m
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[11px]">Mean Resolve Time:</span>
+                  <span className="text-purple-300 font-bold font-mono text-base">
+                    {alertOverview?.metrics?.mttrMinutes ?? 12}m
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[11px]">Delivery Success:</span>
+                  <span className="text-emerald-400 font-bold font-mono text-base">
+                    {alertOverview?.metrics?.deliverySuccessRate ?? 100}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Header Actions */}
+            <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+              <button
+                onClick={() => setIsSimulatingAnomaly(true)}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-purple-600 hover:from-rose-500 hover:to-purple-500 text-white text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-rose-950/60"
+                title="Inject a test anomaly to verify end-to-end alert triggering, incident grouping, and multi-channel dispatch"
+              >
+                <Zap className="w-4 h-4 text-rose-200" /> Simulate Anomaly
+              </button>
+            </div>
+          </div>
+
+          {/* Sub-View Navigation Switcher */}
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <div className="flex items-center gap-2 overflow-x-auto">
+              <button
+                onClick={() => setAlertsViewMode('incidents')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 ${
+                  alertsViewMode === 'incidents'
+                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                    : 'text-slate-400 hover:text-white bg-slate-900/50'
+                }`}
+              >
+                <AlertOctagon className="w-3.5 h-3.5" /> Active &amp; Historical Incidents
+                <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-slate-800 text-slate-300 font-mono">
+                  {incidentsList.length}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setAlertsViewMode('rules')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 ${
+                  alertsViewMode === 'rules'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    : 'text-slate-400 hover:text-white bg-slate-900/50'
+                }`}
+              >
+                <Sliders className="w-3.5 h-3.5" /> Configurable Alert Rules
+                <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-slate-800 text-slate-300 font-mono">
+                  {alertRules.length}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setAlertsViewMode('channels')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 ${
+                  alertsViewMode === 'channels'
+                    ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                    : 'text-slate-400 hover:text-white bg-slate-900/50'
+                }`}
+              >
+                <Radio className="w-3.5 h-3.5" /> Notification Channels
+                <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-slate-800 text-slate-300 font-mono">
+                  {notificationChannels.length}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setAlertsViewMode('deliveries')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 ${
+                  alertsViewMode === 'deliveries'
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                    : 'text-slate-400 hover:text-white bg-slate-900/50'
+                }`}
+              >
+                <Send className="w-3.5 h-3.5" /> Delivery Audit Trail
+                <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-slate-800 text-slate-300 font-mono">
+                  {notificationDeliveries.length}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* ─────────────────────────────────────────────────────────────
+              VIEW 1: INCIDENTS MANAGEMENT
+          ────────────────────────────────────────────────────────────── */}
+          {alertsViewMode === 'incidents' && (
+            <div className="space-y-4">
+              {/* Filters Bar */}
+              <div className="p-4 rounded-2xl bg-[#090f1e] border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {/* Status Filter */}
+                  <select
+                    value={incidentFilterStatus}
+                    onChange={(e) => setIncidentFilterStatus(e.target.value)}
+                    className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-rose-500"
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="OPEN">OPEN</option>
+                    <option value="INVESTIGATING">INVESTIGATING</option>
+                    <option value="IDENTIFIED">IDENTIFIED</option>
+                    <option value="MONITORING">MONITORING</option>
+                    <option value="RESOLVED">RESOLVED</option>
+                  </select>
+
+                  {/* Severity Filter */}
+                  <select
+                    value={incidentFilterSeverity}
+                    onChange={(e) => setIncidentFilterSeverity(e.target.value)}
+                    className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-rose-500"
+                  >
+                    <option value="ALL">All Severities</option>
+                    <option value="CRITICAL">🔴 Critical</option>
+                    <option value="WARNING">🟡 Warning</option>
+                    <option value="INFO">🔵 Info</option>
+                  </select>
+                </div>
+
+                {/* Search */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search incidents by title or summary..."
+                    value={incidentSearch}
+                    onChange={(e) => setIncidentSearch(e.target.value)}
+                    className="pl-8 pr-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 w-full sm:w-64"
+                  />
+                </div>
+              </div>
+
+              {/* Incidents Table */}
+              <div className="p-5 rounded-2xl bg-[#090f1e] border border-slate-800 space-y-3">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px]">
+                        <th className="pb-3 px-3">Severity &amp; ID</th>
+                        <th className="pb-3 px-3">Incident Title &amp; Trigger</th>
+                        <th className="pb-3 px-3">Affected Resource</th>
+                        <th className="pb-3 px-3">Timeline / Started</th>
+                        <th className="pb-3 px-3">Status</th>
+                        <th className="pb-3 px-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {incidentsList.map((inc) => (
+                        <tr key={inc.incidentId || inc._id} className="hover:bg-slate-900/50 transition-colors">
+                          {/* Severity & ID */}
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                  inc.severity === 'CRITICAL'
+                                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                                    : inc.severity === 'WARNING'
+                                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                    : 'bg-sky-500/20 text-sky-300 border-sky-500/30'
+                                }`}
+                              >
+                                {inc.severity}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-500 font-mono block mt-1">
+                              {inc.incidentId}
+                            </span>
+                          </td>
+
+                          {/* Title & Trigger */}
+                          <td className="py-3 px-3 max-w-sm">
+                            <div className="font-semibold text-white">{inc.title}</div>
+                            <div className="text-[11px] text-slate-400 truncate mt-0.5">{inc.summary}</div>
+                            {inc.trigger?.metric && (
+                              <span className="inline-block mt-1 px-1.5 py-0.2 rounded bg-slate-900 border border-slate-800 text-[10px] text-purple-300 font-mono">
+                                {inc.trigger.metric} {inc.trigger.operator} {inc.trigger.threshold} (Actual:{' '}
+                                {inc.trigger.value})
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Affected Resource */}
+                          <td className="py-3 px-3 font-mono text-slate-300">
+                            <span className="px-2 py-0.5 rounded bg-slate-800 text-sky-300 text-[11px] border border-slate-700 flex items-center gap-1 w-max">
+                              <ServerIcon className="w-3 h-3 text-slate-400" />
+                              {inc.affectedResources?.serverId ||
+                                inc.affectedResources?.endpoint ||
+                                inc.serverId ||
+                                'crm-backend'}
+                            </span>
+                            {inc.affectedResources?.endpoint && (
+                              <span className="text-[10px] text-slate-500 block truncate max-w-[140px] mt-0.5">
+                                {inc.affectedResources.endpoint}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Started At & Duration */}
+                          <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">
+                            <div>{new Date(inc.startedAt || inc.triggeredAt).toLocaleTimeString()}</div>
+                            <span className="text-[10px] text-slate-500 block">
+                              {inc.durationMs ? `${Math.round(inc.durationMs / 1000)}s total` : 'Active now'}
+                            </span>
+                          </td>
+
+                          {/* Status */}
+                          <td className="py-3 px-3">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
+                                inc.status === 'RESOLVED'
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                                  : inc.status === 'INVESTIGATING'
+                                  ? 'bg-sky-500/20 text-sky-300 border-sky-500/30'
+                                  : inc.status === 'OPEN'
+                                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/30 animate-pulse'
+                                  : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                              }`}
+                            >
+                              {inc.status}
+                            </span>
+                            {inc.escalationLevel > 1 && (
+                              <span className="text-[10px] text-rose-400 font-bold block mt-0.5">
+                                Tier {inc.escalationLevel} Escalated
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Actions */}
+                          <td className="py-3 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => handleInspectIncident(inc.incidentId || inc._id)}
+                                className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs border border-slate-700"
+                                title="Inspect timeline and error correlations"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+
+                              {inc.status === 'OPEN' && (
+                                <button
+                                  onClick={() => handleAcknowledgeAlertIncident(inc.incidentId || inc._id)}
+                                  className="px-2 py-0.5 rounded bg-sky-950 text-sky-300 hover:bg-sky-900 border border-sky-800 text-[11px] font-semibold"
+                                  title="Acknowledge incident"
+                                >
+                                  Ack
+                                </button>
+                              )}
+
+                              {inc.status !== 'RESOLVED' && (
+                                <button
+                                  onClick={() => {
+                                    setResolvingAlertIncident(inc);
+                                    setAlertResolveNotes('');
+                                    setAlertRootCause('');
+                                  }}
+                                  className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 hover:bg-emerald-900 border border-emerald-800 text-[11px] font-semibold"
+                                  title="Resolve incident"
+                                >
+                                  Resolve
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {incidentsList.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-slate-500">
+                            <CheckCircle className="w-6 h-6 text-emerald-400 mx-auto mb-1.5 opacity-60" />
+                            No incidents found matching criteria. System operational.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ─────────────────────────────────────────────────────────────
+              VIEW 2: CONFIGURABLE ALERT RULES CATALOG
+          ────────────────────────────────────────────────────────────── */}
+          {alertsViewMode === 'rules' && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-2xl bg-[#090f1e] border border-slate-800 flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-amber-400" /> Configurable Alert Rules Catalog
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Define metric triggers, evaluation operators (&gt;, &lt;, rate, percentage, absence), sustained durations, and cooldowns.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setEditingAlertRule(null);
+                    setIsRuleModalOpen(true);
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Create Alert Rule
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {alertRules.map((r) => (
+                  <div
+                    key={r.ruleId || r._id}
+                    className={`p-4 rounded-xl border text-xs space-y-3 transition-all ${
+                      r.isActive
+                        ? 'bg-slate-900/90 border-slate-800'
+                        : 'bg-slate-950/60 border-slate-800/50 opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                          r.severity === 'CRITICAL'
+                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                            : r.severity === 'WARNING'
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                            : 'bg-sky-500/20 text-sky-300 border-sky-500/30'
+                        }`}
+                      >
+                        {r.severity}
+                      </span>
+
+                      <button
+                        onClick={() => handleToggleAlertRule(r.ruleId || r._id)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${
+                          r.isActive
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                            : 'bg-slate-800 text-slate-400 border-slate-700'
+                        }`}
+                      >
+                        {r.isActive ? 'ACTIVE' : 'PAUSED'}
+                      </button>
+                    </div>
+
+                    <div>
+                      <h5 className="font-bold text-white text-sm">{r.name}</h5>
+                      <p className="text-slate-400 text-[11px] mt-0.5">{r.description || 'No description'}</p>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800/80 space-y-1 font-mono text-[11px]">
+                      <div className="flex items-center justify-between text-slate-400">
+                        <span>Condition:</span>
+                        <span className="text-amber-300 font-bold">
+                          {r.metric} {r.operator} {r.threshold}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-400">
+                        <span>Sustained Duration:</span>
+                        <span className="text-slate-200">{r.durationSeconds}s</span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-400">
+                        <span>Cooldown:</span>
+                        <span className="text-slate-200">{r.cooldownMinutes} min</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        onClick={() => {
+                          setEditingAlertRule(r);
+                          setIsRuleModalOpen(true);
+                        }}
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] border border-slate-700"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteAlertRule(r.ruleId || r._id)}
+                        className="px-2.5 py-1 rounded bg-rose-950/40 hover:bg-rose-900 text-rose-300 text-[11px] border border-rose-800/40"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ─────────────────────────────────────────────────────────────
+              VIEW 3: NOTIFICATION CHANNELS
+          ────────────────────────────────────────────────────────────── */}
+          {alertsViewMode === 'channels' && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-2xl bg-[#090f1e] border border-slate-800 flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Radio className="w-4 h-4 text-sky-400" /> Pluggable Notification Channels
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Connect Webhooks (with HMAC-SHA256 signatures), Slack Block Kit, Telegram Bots, Email digests, and Discord.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setEditingChannel(null);
+                    setIsChannelModalOpen(true);
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Channel
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {notificationChannels.map((c) => (
+                  <div
+                    key={c.channelId || c._id}
+                    className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 text-xs space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[10px] font-bold">
+                        {c.type}
+                      </span>
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          c.enabled ? 'bg-emerald-400 shadow-sm shadow-emerald-400' : 'bg-slate-600'
+                        }`}
+                      />
+                    </div>
+
+                    <div>
+                      <h5 className="font-bold text-white text-sm">{c.name}</h5>
+                      <span className="text-slate-500 font-mono text-[10px] block mt-0.5">
+                        ID: {c.channelId}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800/80 space-y-1 text-[11px] text-slate-400 font-mono">
+                      <div>
+                        Min Severity: <span className="text-slate-200 font-bold">{c.minSeverity || 'WARNING'}</span>
+                      </div>
+                      <div className="truncate">
+                        Target: <span className="text-slate-200">{c.config?.webhookUrl || c.config?.emailRecipients?.join(', ') || 'Bot Token Configured'}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
+                      <button
+                        onClick={() => handleTestNotificationChannel(c.channelId || c._id)}
+                        disabled={isTestingChannelId === (c.channelId || c._id)}
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-400 text-[11px] font-bold border border-slate-700 flex items-center gap-1"
+                      >
+                        <Zap className={`w-3 h-3 ${isTestingChannelId === (c.channelId || c._id) ? 'animate-spin' : ''}`} />
+                        Send Test
+                      </button>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            setEditingChannel(c);
+                            setIsChannelModalOpen(true);
+                          }}
+                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px]"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteNotificationChannel(c.channelId || c._id)}
+                          className="px-2 py-1 rounded bg-rose-950/40 hover:bg-rose-900 text-rose-300 text-[11px]"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ─────────────────────────────────────────────────────────────
+              VIEW 4: NOTIFICATION DELIVERY AUDIT TRAIL
+          ────────────────────────────────────────────────────────────── */}
+          {alertsViewMode === 'deliveries' && (
+            <div className="p-5 rounded-2xl bg-[#090f1e] border border-slate-800 space-y-4">
+              <div>
+                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Send className="w-4 h-4 text-purple-400" /> Notification Delivery Audit Trail
+                </h4>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Complete audit log of all outbound webhook dispatches, Slack messages, Telegram pings, and email digests.
+                </p>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px]">
+                      <th className="pb-3 px-3">Delivery ID</th>
+                      <th className="pb-3 px-3">Event Type</th>
+                      <th className="pb-3 px-3">Channel &amp; Type</th>
+                      <th className="pb-3 px-3">Status</th>
+                      <th className="pb-3 px-3">HTTP / Latency</th>
+                      <th className="pb-3 px-3 text-right">Dispatched At</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {notificationDeliveries.map((d) => (
+                      <tr key={d.deliveryId || d._id} className="hover:bg-slate-900/50 transition-colors">
+                        <td className="py-3 px-3 font-mono text-slate-300">{d.deliveryId}</td>
+                        <td className="py-3 px-3 font-mono font-semibold text-purple-300">{d.eventType}</td>
+                        <td className="py-3 px-3">
+                          <span className="font-semibold text-white">{d.channelName || d.channelId}</span>
+                          <span className="text-[10px] text-slate-500 block font-mono">{d.channelType}</span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                              d.status === 'DELIVERED'
+                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                                : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                            }`}
+                          >
+                            {d.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 font-mono text-slate-400">
+                          {d.responseCode ? `HTTP ${d.responseCode}` : 'OK'} ({d.latencyMs || 10}ms)
+                        </td>
+                        <td className="py-3 px-3 text-right text-slate-400 font-mono">
+                          {d.createdAt ? new Date(d.createdAt).toLocaleTimeString() : 'Recent'}
+                        </td>
+                      </tr>
+                    ))}
+                    {notificationDeliveries.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-slate-500">
+                          No delivery records logged yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ─────────────────────────────────────────────────────────────
+              MODAL 1: INTERACTIVE INCIDENT DETAIL INSPECTOR
+          ────────────────────────────────────────────────────────────── */}
+          {selectedIncidentDetail && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+              <div className="bg-[#090f1e] border border-slate-800 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 space-y-5 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <span
+                      className={`px-2.5 py-0.5 rounded text-xs font-bold border ${
+                        selectedIncidentDetail.severity === 'CRITICAL'
+                          ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                          : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                      }`}
+                    >
+                      {selectedIncidentDetail.severity}
+                    </span>
+                    <h3 className="text-sm font-bold text-white">{selectedIncidentDetail.title}</h3>
+                  </div>
+
+                  <button
+                    onClick={() => setSelectedIncidentDetail(null)}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+                  >
+                    <XCircle className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Summary & Trigger Spec */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                  <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5">
+                    <span className="text-slate-400 font-semibold block">Incident Summary:</span>
+                    <p className="text-slate-200">{selectedIncidentDetail.summary}</p>
+                    <div className="pt-2 text-[11px] text-slate-500 font-mono">
+                      Incident ID: {selectedIncidentDetail.incidentId}
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5 font-mono text-xs">
+                    <span className="text-slate-400 font-semibold block font-sans">Trigger &amp; Threshold:</span>
+                    <div className="text-amber-300 font-bold">
+                      Metric: {selectedIncidentDetail.trigger?.metric || 'N/A'}
+                    </div>
+                    <div className="text-slate-300">
+                      Condition: {selectedIncidentDetail.trigger?.operator} {selectedIncidentDetail.trigger?.threshold}
+                    </div>
+                    <div className="text-rose-400">
+                      Actual Observed Value: {selectedIncidentDetail.trigger?.value}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Interactive Timeline */}
+                <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-3">
+                  <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <History className="w-4 h-4 text-emerald-400" /> Incident Chronological Timeline
+                  </h4>
+
+                  <div className="space-y-2.5 max-h-48 overflow-y-auto pr-2 text-xs">
+                    {(selectedIncidentDetail.timeline || []).map((t: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800/80 flex items-start justify-between gap-3"
+                      >
+                        <div className="space-y-0.5">
+                          <div className="font-semibold text-white flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                            {t.event}
+                          </div>
+                          <p className="text-slate-400 text-[11px]">{t.description}</p>
+                        </div>
+                        <div className="text-right text-[10px] text-slate-500 font-mono whitespace-nowrap">
+                          <div>{new Date(t.timestamp).toLocaleTimeString()}</div>
+                          <span className="text-slate-400">{t.actor}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Related Errors & Logs (Correlation Engine) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                  {/* Related Errors */}
+                  <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                    <h5 className="font-bold text-white flex items-center gap-1.5">
+                      <Bug className="w-3.5 h-3.5 text-rose-400" /> Correlated Errors (Last 15m)
+                    </h5>
+                    {(selectedIncidentDetail.relatedErrors || []).length === 0 ? (
+                      <p className="text-slate-500 text-[11px]">No specific errors correlated.</p>
+                    ) : (
+                      <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                        {selectedIncidentDetail.relatedErrors.map((e: any, idx: number) => (
+                          <div key={idx} className="p-2 rounded bg-slate-950 border border-slate-800 text-[11px]">
+                            <div className="text-rose-300 font-mono font-bold truncate">{e.name || e.message}</div>
+                            <span className="text-slate-500 text-[10px]">{e.count} occurrences</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Related Logs */}
+                  <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                    <h5 className="font-bold text-white flex items-center gap-1.5">
+                      <Terminal className="w-3.5 h-3.5 text-sky-400" /> Correlated Logs
+                    </h5>
+                    {(selectedIncidentDetail.relatedLogs || []).length === 0 ? (
+                      <p className="text-slate-500 text-[11px]">No warning/error logs attached.</p>
+                    ) : (
+                      <div className="space-y-1.5 max-h-32 overflow-y-auto font-mono text-[10px]">
+                        {selectedIncidentDetail.relatedLogs.map((l: any, idx: number) => (
+                          <div key={idx} className="p-2 rounded bg-slate-950 border border-slate-800">
+                            <span className="text-amber-400 font-bold">[{l.level?.toUpperCase()}]</span>{' '}
+                            <span className="text-slate-300">{l.message}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Modal Footer Actions */}
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                  <div className="flex items-center gap-2">
+                    {selectedIncidentDetail.status !== 'RESOLVED' && (
+                      <>
+                        {selectedIncidentDetail.status === 'OPEN' && (
+                          <button
+                            onClick={() => handleAcknowledgeAlertIncident(selectedIncidentDetail.incidentId)}
+                            className="px-4 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold"
+                          >
+                            Acknowledge
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleEscalateAlertIncident(selectedIncidentDetail.incidentId)}
+                          className="px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold"
+                        >
+                          Escalate Tier
+                        </button>
+                        <button
+                          onClick={() => {
+                            setResolvingAlertIncident(selectedIncidentDetail);
+                            setAlertResolveNotes('');
+                            setAlertRootCause('');
+                          }}
+                          className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"
+                        >
+                          Resolve Incident
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => setSelectedIncidentDetail(null)}
+                    className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ─────────────────────────────────────────────────────────────
+              MODAL 2: RESOLVE INCIDENT DIALOG
+          ────────────────────────────────────────────────────────────── */}
+          {resolvingAlertIncident && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+              <div className="bg-[#090f1e] border border-emerald-800/80 rounded-2xl w-full max-w-lg p-6 space-y-4 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-emerald-400" /> Resolve Incident &amp; Send Recovery Notice
+                  </h3>
+                  <button
+                    onClick={() => setResolvingAlertIncident(null)}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+                  >
+                    <XCircle className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-3 text-xs">
+                  <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+                    <span className="text-slate-400 block mb-1">Target Incident:</span>
+                    <span className="text-white font-bold">{resolvingAlertIncident.title}</span>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 block mb-1">Root Cause Analysis:</label>
+                    <input
+                      type="text"
+                      value={alertRootCause}
+                      onChange={(e) => setAlertRootCause(e.target.value)}
+                      placeholder="e.g. Memory leak cleared, background cron task completed"
+                      className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 block mb-1">Resolution &amp; Remediation Notes:</label>
+                    <textarea
+                      rows={3}
+                      value={alertResolveNotes}
+                      onChange={(e) => setAlertResolveNotes(e.target.value)}
+                      placeholder="Describe steps taken to resolve the incident..."
+                      className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                  <button
+                    onClick={() => setResolvingAlertIncident(null)}
+                    className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleResolveAlertIncident}
+                    className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"
+                  >
+                    Confirm Resolution
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ─────────────────────────────────────────────────────────────
+              MODAL 3: CREATE / EDIT ALERT RULE MODAL
+          ────────────────────────────────────────────────────────────── */}
+          {isRuleModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+              <div className="bg-[#090f1e] border border-amber-800/80 rounded-2xl w-full max-w-xl p-6 space-y-4 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-amber-400" />
+                    {editingAlertRule ? 'Edit Alert Rule' : 'Create New Alert Rule'}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setIsRuleModalOpen(false);
+                      setEditingAlertRule(null);
+                    }}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+                  >
+                    <XCircle className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const form = e.target as any;
+                    handleSaveAlertRule({
+                      name: form.ruleName.value,
+                      description: form.description.value,
+                      metric: form.metric.value,
+                      operator: form.operator.value,
+                      threshold: form.threshold.value,
+                      durationSeconds: Number(form.durationSeconds.value),
+                      cooldownMinutes: Number(form.cooldownMinutes.value),
+                      severity: form.severity.value,
+                    });
+                  }}
+                  className="space-y-3 text-xs"
+                >
+                  <div>
+                    <label className="text-slate-400 block mb-1">Rule Name:</label>
+                    <input
+                      name="ruleName"
+                      defaultValue={editingAlertRule?.name || ''}
+                      required
+                      placeholder="e.g. High Memory Usage Spike"
+                      className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 block mb-1">Description:</label>
+                    <input
+                      name="description"
+                      defaultValue={editingAlertRule?.description || ''}
+                      placeholder="e.g. Triggers alert when RAM usage exceeds threshold"
+                      className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-slate-400 block mb-1">Target Metric:</label>
+                      <select
+                        name="metric"
+                        defaultValue={editingAlertRule?.metric || 'cpu'}
+                        className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                      >
+                        <option value="cpu">CPU Load (%)</option>
+                        <option value="ram">RAM Memory (%)</option>
+                        <option value="disk">Disk Usage (%)</option>
+                        <option value="api_5xx_rate">API 5xx Error Rate (/min)</option>
+                        <option value="p95_latency">API P95 Latency (ms)</option>
+                        <option value="server_heartbeat">Server Heartbeat</option>
+                        <option value="database_status">Database Status</option>
+                        <option value="backup_status">Backup Status</option>
+                        <option value="security_event_spike">Security Threat Rate</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-slate-400 block mb-1">Evaluation Operator:</label>
+                      <select
+                        name="operator"
+                        defaultValue={editingAlertRule?.operator || '>'}
+                        className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                      >
+                        <option value=">">&gt; (Greater than)</option>
+                        <option value="<">&lt; (Less than)</option>
+                        <option value=">=">&gt;= (Greater or equal)</option>
+                        <option value="<=">&lt;= (Less or equal)</option>
+                        <option value="==">== (Exact match)</option>
+                        <option value="rate_increase">rate_increase (Rate / min)</option>
+                        <option value="percentage_increase">percentage_increase (% spike)</option>
+                        <option value="absence_data">absence/no-data (Timeout)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-slate-400 block mb-1">Threshold:</label>
+                      <input
+                        name="threshold"
+                        defaultValue={editingAlertRule?.threshold ?? 90}
+                        required
+                        className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-slate-400 block mb-1">Duration (sec):</label>
+                      <input
+                        name="durationSeconds"
+                        type="number"
+                        defaultValue={editingAlertRule?.durationSeconds ?? 300}
+                        className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-slate-400 block mb-1">Cooldown (min):</label>
+                      <input
+                        name="cooldownMinutes"
+                        type="number"
+                        defaultValue={editingAlertRule?.cooldownMinutes ?? 15}
+                        className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 block mb-1">Severity Level:</label>
+                    <select
+                      name="severity"
+                      defaultValue={editingAlertRule?.severity || 'WARNING'}
+                      className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="CRITICAL">🔴 Critical</option>
+                      <option value="WARNING">🟡 Warning</option>
+                      <option value="INFO">🔵 Info</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsRuleModalOpen(false);
+                        setEditingAlertRule(null);
+                      }}
+                      className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold"
+                    >
+                      Save Alert Rule
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ─────────────────────────────────────────────────────────────
+              MODAL 4: CREATE / EDIT NOTIFICATION CHANNEL MODAL
+          ────────────────────────────────────────────────────────────── */}
+          {isChannelModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+              <div className="bg-[#090f1e] border border-sky-800/80 rounded-2xl w-full max-w-xl p-6 space-y-4 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Radio className="w-4 h-4 text-sky-400" />
+                    {editingChannel ? 'Edit Notification Channel' : 'Add Notification Channel'}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setIsChannelModalOpen(false);
+                      setEditingChannel(null);
+                    }}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+                  >
+                    <XCircle className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const form = e.target as any;
+                    handleSaveNotificationChannel({
+                      name: form.channelName.value,
+                      type: form.channelType.value,
+                      minSeverity: form.minSeverity.value,
+                      config: {
+                        webhookUrl: form.webhookUrl.value,
+                        botToken: form.botToken?.value,
+                        chatId: form.chatId?.value,
+                        emailRecipients: form.emailRecipients?.value
+                          ? form.emailRecipients.value.split(',').map((s: string) => s.trim())
+                          : [],
+                        secretKey: form.secretKey?.value,
+                      },
+                    });
+                  }}
+                  className="space-y-3 text-xs"
+                >
+                  <div>
+                    <label className="text-slate-400 block mb-1">Channel Name:</label>
+                    <input
+                      name="channelName"
+                      defaultValue={editingChannel?.name || ''}
+                      required
+                      placeholder="e.g. Primary DevOps Slack Webhook"
+                      className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-slate-400 block mb-1">Channel Provider:</label>
+                      <select
+                        name="channelType"
+                        defaultValue={editingChannel?.type || 'WEBHOOK'}
+                        className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-500"
+                      >
+                        <option value="WEBHOOK">Webhook (HMAC-SHA256)</option>
+                        <option value="SLACK">Slack (Block Kit)</option>
+                        <option value="TELEGRAM">Telegram Bot API</option>
+                        <option value="EMAIL">Email Digest</option>
+                        <option value="DISCORD">Discord Webhook</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-slate-400 block mb-1">Min Severity Level:</label>
+                      <select
+                        name="minSeverity"
+                        defaultValue={editingChannel?.minSeverity || 'WARNING'}
+                        className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-500"
+                      >
+                        <option value="INFO">🔵 Info &amp; Higher</option>
+                        <option value="WARNING">🟡 Warning &amp; Higher</option>
+                        <option value="CRITICAL">🔴 Critical Only</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 block mb-1">Webhook URL / Endpoint:</label>
+                    <input
+                      name="webhookUrl"
+                      defaultValue={editingChannel?.config?.webhookUrl || ''}
+                      placeholder="https://hooks.slack.com/... or https://discord.com/api/webhooks/..."
+                      className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono text-[11px]"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-slate-400 block mb-1">Telegram Bot Token (Optional):</label>
+                      <input
+                        name="botToken"
+                        defaultValue={editingChannel?.config?.botToken || ''}
+                        placeholder="123456:ABC-DEF..."
+                        className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono text-[11px]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-slate-400 block mb-1">Telegram Chat ID (Optional):</label>
+                      <input
+                        name="chatId"
+                        defaultValue={editingChannel?.config?.chatId || ''}
+                        placeholder="-100123456789"
+                        className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono text-[11px]"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 block mb-1">Email Recipients (Comma-separated):</label>
+                    <input
+                      name="emailRecipients"
+                      defaultValue={(editingChannel?.config?.emailRecipients || []).join(', ')}
+                      placeholder="devops@coresetu.com, admin@coresetu.com"
+                      className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 block mb-1">HMAC Secret Key (Optional):</label>
+                    <input
+                      name="secretKey"
+                      defaultValue={editingChannel?.config?.secretKey || ''}
+                      placeholder="crm_webhook_secret_key"
+                      className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono text-[11px]"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsChannelModalOpen(false);
+                        setEditingChannel(null);
+                      }}
+                      className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold"
+                    >
+                      Save Channel
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ─────────────────────────────────────────────────────────────
+              MODAL 5: ANOMALY SIMULATOR MODAL
+          ────────────────────────────────────────────────────────────── */}
+          {isSimulatingAnomaly && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+              <div className="bg-[#090f1e] border border-rose-800/80 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-rose-400" /> Simulate Metric Anomaly
+                  </h3>
+                  <button
+                    onClick={() => setIsSimulatingAnomaly(false)}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+                  >
+                    <XCircle className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <p className="text-xs text-slate-400">
+                  Injects an artificial metric spike to test the complete pipeline end-to-end: Evaluation $\rightarrow$ Deduplication $\rightarrow$ Incident Grouping $\rightarrow$ Multi-Channel Notification Dispatch.
+                </p>
+
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="text-slate-400 block mb-1">Simulated Metric:</label>
+                    <select
+                      value={simulatedMetric}
+                      onChange={(e) => setSimulatedMetric(e.target.value)}
+                      className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-rose-500"
+                    >
+                      <option value="cpu">CPU Utilization (%)</option>
+                      <option value="ram">RAM Memory (%)</option>
+                      <option value="disk">Disk Capacity (%)</option>
+                      <option value="api_5xx_rate">API 5xx Errors (/min)</option>
+                      <option value="p95_latency">API P95 Latency (ms)</option>
+                      <option value="database_status">Database Status</option>
+                      <option value="backup_status">Backup Status</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 block mb-1">Injected Value (Breach value):</label>
+                    <input
+                      type="number"
+                      value={simulatedValue}
+                      onChange={(e) => setSimulatedValue(Number(e.target.value))}
+                      className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                  <button
+                    onClick={() => setIsSimulatingAnomaly(false)}
+                    className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await handleExecuteSimulatedAnomaly();
+                      setIsSimulatingAnomaly(false);
+                    }}
+                    className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold"
+                  >
+                    Trigger Simulation
                   </button>
                 </div>
               </div>

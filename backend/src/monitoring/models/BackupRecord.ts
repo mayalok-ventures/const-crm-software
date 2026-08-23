@@ -115,5 +115,7 @@ const BackupRecordSchema = new Schema<IBackupRecord>(
 BackupRecordSchema.index({ completedAt: -1, status: 1 });
 BackupRecordSchema.index({ createdAt: -1 });
 
-export default mongoose.models.BackupRecord ||
+export const BackupRecord =
+  mongoose.models.BackupRecord ||
   mongoose.model<IBackupRecord>('BackupRecord', BackupRecordSchema);
+export default BackupRecord;

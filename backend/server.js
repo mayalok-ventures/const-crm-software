@@ -193,6 +193,7 @@ connectDB().then(async () => {
       const MetricsAggregator = require('./src/monitoring/MetricsAggregator').default;
       const databaseMonitorWorker = require('./src/monitoring/database/DatabaseMonitorWorker').databaseMonitorWorker || require('./src/monitoring/database/DatabaseMonitorWorker').default || require('./src/monitoring/database/DatabaseMonitorWorker');
       const backupMonitorWorker = require('./src/monitoring/backup/BackupMonitorWorker').backupMonitorWorker || require('./src/monitoring/backup/BackupMonitorWorker').default || require('./src/monitoring/backup/BackupMonitorWorker');
+      const alertMonitorWorker = require('./src/monitoring/alerts/AlertMonitorWorker').alertMonitorWorker || require('./src/monitoring/alerts/AlertMonitorWorker').default || require('./src/monitoring/alerts/AlertMonitorWorker');
 
       const agent = new MonitoringAgent();
       const heartbeat = new ServerHeartbeat();
@@ -205,6 +206,7 @@ connectDB().then(async () => {
       aggregator.start();
       databaseMonitorWorker.start(30000);
       backupMonitorWorker.start(60000);
+      alertMonitorWorker.start(30000);
 
       const shutdownWorkers = () => {
         console.log('Stopping background monitoring workers...');
@@ -214,6 +216,7 @@ connectDB().then(async () => {
         aggregator.stop();
         databaseMonitorWorker.stop();
         backupMonitorWorker.stop();
+        alertMonitorWorker.stop();
       };
       process.on('SIGTERM', shutdownWorkers);
       process.on('SIGINT', shutdownWorkers);

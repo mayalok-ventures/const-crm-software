@@ -185,6 +185,27 @@ router.post('/backups/trigger', adminOnly, backupController.triggerManualBackup)
 router.post('/backups/verify/:id', adminOnly, backupController.verifyBackupIntegrity);
 router.get('/backups/records/:id', adminOnly, backupController.getBackupRecordById);
 
+// 24. Reusable Alert and Incident Management Module
+const alertController = require('../monitoring/controllers/alertController').default || require('../monitoring/controllers/alertController');
+router.get('/alerts/overview', adminOnly, alertController.getAlertOverview);
+router.get('/alerts/incidents', adminOnly, alertController.getIncidents);
+router.get('/alerts/incidents/:id', adminOnly, alertController.getIncidentById);
+router.post('/alerts/incidents/:id/acknowledge', adminOnly, alertController.acknowledgeIncident);
+router.post('/alerts/incidents/:id/resolve', adminOnly, alertController.resolveIncident);
+router.post('/alerts/incidents/:id/escalate', adminOnly, alertController.escalateIncident);
+router.get('/alerts/rules', adminOnly, alertController.getAlertRules);
+router.post('/alerts/rules', adminOnly, alertController.createAlertRule);
+router.put('/alerts/rules/:id', adminOnly, alertController.updateAlertRule);
+router.delete('/alerts/rules/:id', adminOnly, alertController.deleteAlertRule);
+router.post('/alerts/rules/:id/toggle', adminOnly, alertController.toggleAlertRule);
+router.get('/alerts/channels', adminOnly, alertController.getNotificationChannels);
+router.post('/alerts/channels', adminOnly, alertController.createNotificationChannel);
+router.put('/alerts/channels/:id', adminOnly, alertController.updateNotificationChannel);
+router.delete('/alerts/channels/:id', adminOnly, alertController.deleteNotificationChannel);
+router.post('/alerts/channels/:id/test', adminOnly, alertController.testNotificationChannel);
+router.get('/alerts/deliveries', adminOnly, alertController.getNotificationDeliveries);
+router.post('/alerts/simulate', adminOnly, alertController.simulateAnomaly);
+
 // Preserved User Management Handlers
 router.get('/users', adminOnly, adminController.getUsers);
 router.put('/users/:id/plan', adminOnly, adminController.assignPlan);

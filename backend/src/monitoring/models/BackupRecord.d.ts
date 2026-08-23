@@ -49,5 +49,5 @@ export interface IBackupRecord extends Document {
     createdAt: Date;
     updatedAt: Date;
 }
-declare const _default: mongoose.Model<any, {}, {}, {}, any, any>;
-export default _default;
+export declare const BackupRecord: mongoose.Model<any, {}, {}, {}, any, any>;
+export default BackupRecord;

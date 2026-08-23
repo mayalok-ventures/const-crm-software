@@ -33,6 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.BackupRecord = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
 const BackupRecordSchema = new mongoose_1.Schema({
     backupId: { type: String, required: true, unique: true, index: true },
@@ -92,5 +93,6 @@ const BackupRecordSchema = new mongoose_1.Schema({
 }, { timestamps: true });
 BackupRecordSchema.index({ completedAt: -1, status: 1 });
 BackupRecordSchema.index({ createdAt: -1 });
-exports.default = mongoose_1.default.models.BackupRecord ||
+exports.BackupRecord = mongoose_1.default.models.BackupRecord ||
     mongoose_1.default.model('BackupRecord', BackupRecordSchema);
+exports.default = exports.BackupRecord;

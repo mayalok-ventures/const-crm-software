@@ -49,5 +49,5 @@ export interface IDatabaseHealth extends Document {
     lastCheckedAt: Date;
     timestamp: Date;
 }
-declare const _default: mongoose.Model<any, {}, {}, {}, any, any>;
-export default _default;
+export declare const DatabaseHealth: mongoose.Model<any, {}, {}, {}, any, any>;
+export default DatabaseHealth;
