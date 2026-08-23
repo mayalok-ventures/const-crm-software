@@ -123,9 +123,24 @@ router.get('/monitoring/api-performance', adminOnly, monitoringController.getApi
 
 // Server Heartbeat Routes
 router.get('/servers', adminOnly, monitoringController.getServers);
+router.get('/servers/:id', adminOnly, monitoringController.getServerDetails);
 router.get('/servers/:id/health', adminOnly, monitoringController.getServerHealth);
 router.get('/servers/:id/heartbeat-history', adminOnly, monitoringController.getHeartbeatHistory);
 router.get('/servers/:id/status-events', adminOnly, monitoringController.getStatusEvents);
+
+// 18. Error Tracking Centre
+const errorTrackingController = require('../monitoring/controllers/errorTrackingController').errorTrackingController;
+router.get('/errors/stats', adminOnly, errorTrackingController.getErrorStats);
+router.get('/errors/groups', adminOnly, errorTrackingController.getErrorGroups);
+router.get('/errors/groups/:fingerprint', adminOnly, errorTrackingController.getErrorGroupDetails);
+router.patch('/errors/groups/:fingerprint/status', adminOnly, errorTrackingController.updateErrorGroupStatus);
+router.post('/errors/groups/:fingerprint/notes', adminOnly, errorTrackingController.addErrorGroupNote);
+
+// 19. Structured System Logging Centre
+const loggingController = require('../monitoring/controllers/loggingController').loggingController;
+router.get('/logs', adminOnly, loggingController.getLogs);
+router.get('/logs/stream', adminOnly, loggingController.getLiveStream);
+router.get('/logs/:id', adminOnly, loggingController.getLogById);
 
 // Preserved User Management Handlers
 router.get('/users', adminOnly, adminController.getUsers);

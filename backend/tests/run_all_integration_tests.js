@@ -19,6 +19,7 @@ const testFiles = [
   'tests/e2e_lead_lifecycle.test.js',
   'tests/followup_workflow.test.js',
   'tests/monitoring.test.js',
+  'tests/system_observability_suite.test.js',
 ];
 
 async function isServerRunning() {

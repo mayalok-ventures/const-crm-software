@@ -82,15 +82,22 @@ app.use('/api', (req, res, next) => {
   apiLimiter(req, res, next);
 });
 
+const { logger, requestLogger } = require('./src/monitoring/logging/logger');
+const { errorTracker } = require('./src/monitoring/errorTracking/errorTracker');
+
 // API Performance interceptor (runs on all /api routes)
 app.use('/api', apiPerformance);
 
 // Register public monitoring routes
 app.use('/api/monitoring', monitoringRoutes);
 
-// Request logger
+// Structured Request logger with duration measurement
 app.use((req, res, next) => {
-  console.log(`[REQUEST] ${req.method} ${req.originalUrl}`);
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    requestLogger(req, res, duration);
+  });
   next();
 });
 
@@ -121,7 +128,8 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Dat
 // 404
 app.use((req, res) => res.status(404).json({ message: 'Route not found' }));
 
-// Error handler
+// Error Tracking interceptor & Global error handler
+app.use(errorTracker.expressMiddleware);
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(err.status || 500).json({ message: err.message || 'Internal server error' });
