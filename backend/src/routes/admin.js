@@ -206,6 +206,13 @@ router.post('/alerts/channels/:id/test', adminOnly, alertController.testNotifica
 router.get('/alerts/deliveries', adminOnly, alertController.getNotificationDeliveries);
 router.post('/alerts/simulate', adminOnly, alertController.simulateAnomaly);
 
+// 25. Production-Grade Health Check Framework
+const healthController = require('../monitoring/controllers/healthController').default || require('../monitoring/controllers/healthController');
+router.get('/health', adminOnly, healthController.getHealth);
+router.get('/health/live', adminOnly, healthController.getLive);
+router.get('/health/ready', adminOnly, healthController.getReady);
+router.get('/health/detailed', adminOnly, healthController.getDetailed);
+
 // Preserved User Management Handlers
 router.get('/users', adminOnly, adminController.getUsers);
 router.put('/users/:id/plan', adminOnly, adminController.assignPlan);

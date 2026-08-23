@@ -128,8 +128,19 @@ app.use('/api/integrations', integrationRoutes);
 app.use('/api/catalogue', catalogueRoutes);
 app.use('/api/agency', agencyRoutes);
 
-// Health check
-app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
+// Production-Grade Health Check Framework
+const healthController = require('./src/monitoring/controllers/healthController').default || require('./src/monitoring/controllers/healthController');
+app.get('/health', healthController.getHealth);
+app.get('/health/live', healthController.getLive);
+app.get('/health/ready', healthController.getReady);
+app.get('/health/detailed', healthController.getDetailed);
+
+app.get('/api/health', healthController.getHealth);
+app.get('/api/health/live', healthController.getLive);
+app.get('/api/health/ready', healthController.getReady);
+app.get('/api/health/detailed', healthController.getDetailed);
+
+// Preserved database health endpoints
 const databaseController = require('./src/monitoring/controllers/databaseController').default || require('./src/monitoring/controllers/databaseController');
 app.get('/health/database', databaseController.getDatabaseHealthEndpoint);
 app.get('/api/health/database', databaseController.getDatabaseHealthEndpoint);
