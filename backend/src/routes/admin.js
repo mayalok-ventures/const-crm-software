@@ -213,6 +213,14 @@ router.get('/health/live', adminOnly, healthController.getLive);
 router.get('/health/ready', adminOnly, healthController.getReady);
 router.get('/health/detailed', adminOnly, healthController.getDetailed);
 
+// 26. External Integration Monitoring Module
+const integrationMonitoringController = require('../monitoring/controllers/integrationMonitoringController').default || require('../monitoring/controllers/integrationMonitoringController');
+router.get('/integrations/overview', adminOnly, integrationMonitoringController.getOverview);
+router.get('/integrations/:id', adminOnly, integrationMonitoringController.getIntegrationById);
+router.post('/integrations/:id/check', adminOnly, integrationMonitoringController.checkIntegration);
+router.post('/integrations/record-telemetry', adminOnly, integrationMonitoringController.recordTelemetry);
+router.put('/integrations/:id/thresholds', adminOnly, integrationMonitoringController.updateThresholds);
+
 // Preserved User Management Handlers
 router.get('/users', adminOnly, adminController.getUsers);
 router.put('/users/:id/plan', adminOnly, adminController.assignPlan);
