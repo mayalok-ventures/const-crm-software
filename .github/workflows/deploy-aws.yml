@@ -9,7 +9,7 @@ env:
   AWS_REGION: eu-north-1
   ECR_REPOSITORY: crm-backend
   ECS_SERVICE: crm-backend-service
-  ECS_CLUSTER: crm-backend-cluster
+  ECS_CLUSTER: excellent-bird-x9jsao
   ECS_TASK_DEFINITION: backend/task-definition.json
   CONTAINER_NAME: crm-backend
 
