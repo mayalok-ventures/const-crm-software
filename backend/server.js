@@ -214,6 +214,9 @@ connectDB().then(async () => {
       const intWorkerMod = require('./src/monitoring/integrations/IntegrationMonitorWorker');
       const integrationMonitorWorker = intWorkerMod.integrationMonitorWorker || (intWorkerMod.IntegrationMonitorWorker && intWorkerMod.IntegrationMonitorWorker.getInstance()) || intWorkerMod.default;
 
+      const usWorkerMod = require('./src/monitoring/usage/UsageMonitorWorker');
+      const usageMonitorWorker = usWorkerMod.usageMonitorWorker || (usWorkerMod.UsageMonitorWorker && usWorkerMod.UsageMonitorWorker.getInstance()) || usWorkerMod.default;
+
       const agent = new MonitoringAgent();
       const heartbeat = new ServerHeartbeat();
       const statusEvaluator = new StatusEvaluator();
@@ -227,6 +230,7 @@ connectDB().then(async () => {
       if (backupMonitorWorker && typeof backupMonitorWorker.start === 'function') backupMonitorWorker.start(60000);
       if (alertMonitorWorker && typeof alertMonitorWorker.start === 'function') alertMonitorWorker.start(30000);
       if (integrationMonitorWorker && typeof integrationMonitorWorker.start === 'function') integrationMonitorWorker.start(60000);
+      if (usageMonitorWorker && typeof usageMonitorWorker.start === 'function') usageMonitorWorker.start(60000);
 
       const shutdownWorkers = () => {
         console.log('Stopping background monitoring workers...');
@@ -238,6 +242,7 @@ connectDB().then(async () => {
         if (backupMonitorWorker && typeof backupMonitorWorker.stop === 'function') backupMonitorWorker.stop();
         if (alertMonitorWorker && typeof alertMonitorWorker.stop === 'function') alertMonitorWorker.stop();
         if (integrationMonitorWorker && typeof integrationMonitorWorker.stop === 'function') integrationMonitorWorker.stop();
+        if (usageMonitorWorker && typeof usageMonitorWorker.stop === 'function') usageMonitorWorker.stop();
       };
       process.on('SIGTERM', shutdownWorkers);
       process.on('SIGINT', shutdownWorkers);

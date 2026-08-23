@@ -54,6 +54,10 @@ import {
   FileCheck,
   Globe,
   CreditCard,
+  BarChart3,
+  Building2,
+  Users,
+  PieChart,
 } from 'lucide-react';
 import {
   LineChart,
@@ -76,7 +80,7 @@ interface SystemHealthDashboardProps {
 
 export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboardProps) {
   const [activeSubTab, setActiveSubTab] = useState<
-    'infrastructure' | 'availability' | 'api' | 'errors' | 'logs' | 'security' | 'audit' | 'database' | 'backups' | 'alerts' | 'health' | 'integrations'
+    'infrastructure' | 'availability' | 'api' | 'errors' | 'logs' | 'security' | 'audit' | 'database' | 'backups' | 'alerts' | 'health' | 'integrations' | 'usage'
   >('infrastructure');
 
   // Infrastructure & Servers State
@@ -207,6 +211,31 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
     maxLatencyMs: number;
     consecutiveFailures: number;
   }>({ errorRatePercent: 10, maxLatencyMs: 3000, consecutiveFailures: 3 });
+
+  // 13. Multi-Tenant Resource Usage Monitoring State
+  const [usageOverview, setUsageOverview] = useState<any>(null);
+  const [usageOrganizations, setUsageOrganizations] = useState<any[]>([]);
+  const [usageSearchQuery, setUsageSearchQuery] = useState<string>('');
+  const [usageFilterPlan, setUsageFilterPlan] = useState<string>('all');
+  const [usageFilterStatus, setUsageFilterStatus] = useState<string>('all');
+  const [usageSort, setUsageSort] = useState<string>('capacity_desc');
+  const [selectedOrgUsage, setSelectedOrgUsage] = useState<any | null>(null);
+  const [selectedOrgSnapshots, setSelectedOrgSnapshots] = useState<any[]>([]);
+  const [selectedOrgAlerts, setSelectedOrgAlerts] = useState<any[]>([]);
+  const [isEditingOrgLimits, setIsEditingOrgLimits] = useState<boolean>(false);
+  const [editingLimitsForm, setEditingLimitsForm] = useState<any>({
+    storageLimitBytes: 10737418240,
+    maxUsers: 10,
+    maxApiRequests: 100000,
+    maxLeads: 50000,
+    maxGroups: 100,
+    maxConcurrentCampaigns: 10,
+    maxMonthlyMessages: 50000,
+    notes: '',
+  });
+  const [isRecalculatingUsage, setIsRecalculatingUsage] = useState<boolean>(false);
+  const [usageAlertsList, setUsageAlertsList] = useState<any[]>([]);
+  const [activeLeaderboardTab, setActiveLeaderboardTab] = useState<'storage' | 'users' | 'api' | 'records'>('storage');
 
   // Common Controls
   const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h' | '7d' | '30d' | '90d'>('1h');
@@ -341,6 +370,20 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
       // 11. Fetch External Integrations Monitoring Overview
       const integrationRes = await authFetch('/admin/integrations/overview');
       if (integrationRes?.success) setIntegrationOverview(integrationRes);
+
+      // 12. Fetch Multi-Tenant Resource Usage Monitoring
+      const [usageOverviewRes, usageOrgsRes, usageAlertsRes] = await Promise.all([
+        authFetch('/admin/usage/overview'),
+        authFetch(
+          `/admin/usage/organizations?search=${encodeURIComponent(
+            usageSearchQuery
+          )}&plan=${usageFilterPlan}&status=${usageFilterStatus}&sort=${usageSort}`
+        ),
+        authFetch('/admin/usage/alerts'),
+      ]);
+      if (usageOverviewRes?.success) setUsageOverview(usageOverviewRes);
+      if (usageOrgsRes?.success) setUsageOrganizations(usageOrgsRes.organizations || []);
+      if (usageAlertsRes?.success) setUsageAlertsList(usageAlertsRes.alerts || []);
     } catch (error) {
       console.error('Failed to load system health data:', error);
       toast.error('Failed to reload telemetry data');
@@ -369,6 +412,10 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
     incidentFilterStatus,
     incidentFilterSeverity,
     incidentSearch,
+    usageSearchQuery,
+    usageFilterPlan,
+    usageFilterStatus,
+    usageSort,
   ]);
 
   // Metric history per server
@@ -1238,6 +1285,96 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
     }
   };
 
+  // 13. Multi-Tenant Resource Usage Action Handlers
+  const handleInspectOrganization = async (org: any) => {
+    try {
+      const res = await authFetch(`/admin/usage/organizations/${org.organizationId || org._id}`);
+      if (res?.success) {
+        setSelectedOrgUsage(res.usage);
+        setSelectedOrgSnapshots(res.snapshots || []);
+        setSelectedOrgAlerts(res.alerts || []);
+        if (res.limits) {
+          setEditingLimitsForm({
+            storageLimitBytes: res.limits.storageLimitBytes || res.usage.storage?.limitBytes || 10737418240,
+            maxUsers: res.limits.maxUsers || res.usage.users?.maxUsers || 10,
+            maxApiRequests: res.limits.maxApiRequests || res.usage.apiRequests?.maxRequests || 100000,
+            maxLeads: res.limits.maxLeads || res.usage.databaseRecords?.maxLeads || 50000,
+            maxGroups: res.limits.maxGroups || res.usage.databaseRecords?.maxGroups || 100,
+            maxConcurrentCampaigns: res.limits.maxConcurrentCampaigns || res.usage.campaigns?.maxConcurrent || 10,
+            maxMonthlyMessages: res.limits.maxMonthlyMessages || res.usage.messages?.monthlyLimit || 50000,
+            notes: res.limits.notes || '',
+          });
+        } else {
+          setEditingLimitsForm({
+            storageLimitBytes: org.storage?.limitBytes || 10737418240,
+            maxUsers: org.users?.maxUsers || 10,
+            maxApiRequests: org.apiRequests?.maxRequests || 100000,
+            maxLeads: org.databaseRecords?.maxLeads || 50000,
+            maxGroups: org.databaseRecords?.maxGroups || 100,
+            maxConcurrentCampaigns: org.campaigns?.maxConcurrent || 10,
+            maxMonthlyMessages: org.messages?.monthlyLimit || 50000,
+            notes: '',
+          });
+        }
+      } else {
+        setSelectedOrgUsage(org);
+        setSelectedOrgSnapshots([]);
+      }
+    } catch (err: any) {
+      toast.error('Failed to load organization usage details');
+      setSelectedOrgUsage(org);
+    }
+  };
+
+  const handleSaveOrgLimits = async (orgId: string) => {
+    try {
+      const res = await authFetch(`/admin/usage/organizations/${orgId}/limits`, {
+        method: 'PUT',
+        body: JSON.stringify(editingLimitsForm),
+      });
+      if (res?.success) {
+        toast.success('Organization plan limits updated successfully');
+        setSelectedOrgUsage(res.usage);
+        setIsEditingOrgLimits(false);
+        fetchDashboardData();
+      } else {
+        toast.error(res?.message || 'Failed to update limits');
+      }
+    } catch (err: any) {
+      toast.error('Error updating plan limits');
+    }
+  };
+
+  const handleAcknowledgeUsageAlert = async (alertId: string) => {
+    try {
+      const res = await authFetch(`/admin/usage/alerts/${alertId}/acknowledge`, {
+        method: 'POST',
+      });
+      if (res?.success) {
+        toast.success('Usage alert acknowledged');
+        fetchDashboardData();
+      }
+    } catch (err: any) {
+      toast.error('Failed to acknowledge alert');
+    }
+  };
+
+  const handleRecalculateFleetUsage = async () => {
+    setIsRecalculatingUsage(true);
+    try {
+      const res = await authFetch('/admin/usage/recalculate', { method: 'POST' });
+      if (res?.success) {
+        toast.success('Fleet usage aggregation completed');
+        setUsageOverview(res);
+        fetchDashboardData();
+      }
+    } catch (err: any) {
+      toast.error('Failed to recalculate fleet usage');
+    } finally {
+      setIsRecalculatingUsage(false);
+    }
+  };
+
   const selectedServer = servers.find((s) => s.serverId === selectedServerId) || servers[0];
   const lastMetric = metricHistory[metricHistory.length - 1];
 
@@ -1496,6 +1633,25 @@ export default function SystemHealthDashboard({ authFetch }: SystemHealthDashboa
               <span className="px-1.5 py-0.2 text-[10px] bg-slate-800 text-sky-300 rounded-full border border-slate-700 font-mono">
                 {integrationOverview.summary.overallHealthScore}%
               </span>
+            )}
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveSubTab('usage')}
+          className={`pb-3 px-4 text-sm font-semibold border-b-2 whitespace-nowrap transition-colors ${
+            activeSubTab === 'usage'
+              ? 'border-purple-500 text-purple-400'
+              : 'border-transparent text-slate-400 hover:text-white'
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-purple-400" /> Multi-Tenant Usage
+            {(usageOverview?.summary?.nearLimitsCount ?? 0) > 0 ? (
+              <span className="px-1.5 py-0.2 text-[10px] bg-amber-500/20 text-amber-300 rounded-full border border-amber-500/30 font-bold">
+                {usageOverview.summary.nearLimitsCount} Near Limits
+              </span>
+            ) : (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400" />
             )}
           </span>
         </button>
@@ -7174,6 +7330,894 @@ readinessProbe:
                   </div>
                 )}
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          13. TAB: MULTI-TENANT RESOURCE USAGE MONITORING
+      ────────────────────────────────────────────────────────────── */}
+      {activeSubTab === 'usage' && (
+        <div className="space-y-6">
+          {/* Header & Fleet Controls */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 rounded-2xl bg-gradient-to-br from-[#0c1222] to-[#141026] border border-purple-900/40 shadow-xl shadow-purple-950/20">
+            <div>
+              <div className="flex items-center gap-2.5 mb-1">
+                <div className="p-2 rounded-xl bg-purple-600/20 border border-purple-500/30 text-purple-300">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+                    Multi-Tenant Resource Usage Monitoring
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 uppercase tracking-wider">
+                      Periodic Aggregation Active
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Real-time aggregated storage, user seats, API requests, and database records across all organizations
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={handleRecalculateFleetUsage}
+                disabled={isRecalculatingUsage}
+                className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs flex items-center gap-2 transition-all shadow-lg shadow-purple-600/25 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRecalculatingUsage ? 'animate-spin' : ''}`} />
+                {isRecalculatingUsage ? 'Recalculating Fleet...' : 'Recalculate Usage'}
+              </button>
+            </div>
+          </div>
+
+          {/* Fleet Summary KPI Tiles */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-4 rounded-xl bg-[#090f1e] border border-slate-800 hover:border-slate-700 transition-all">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                  <HardDrive className="w-4 h-4 text-purple-400" /> Fleet Storage Used
+                </span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono">
+                  {usageOverview?.summary?.totalOrganizations || 0} Orgs
+                </span>
+              </div>
+              <div className="text-2xl font-black text-white tracking-tight">
+                {usageOverview?.summary?.totalStorageFormatted || '0 GB'}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                {(usageOverview?.summary?.totalFileCount || 0).toLocaleString()} Total stored files &amp; attachments
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-[#090f1e] border border-slate-800 hover:border-slate-700 transition-all">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-emerald-400" /> Active User Seats
+                </span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">
+                  Team Members
+                </span>
+              </div>
+              <div className="text-2xl font-black text-white tracking-tight">
+                {(usageOverview?.summary?.totalActiveUsers || 0).toLocaleString()}{' '}
+                <span className="text-sm font-normal text-slate-400">seats</span>
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                Across all company teams &amp; agent seats
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-[#090f1e] border border-slate-800 hover:border-slate-700 transition-all">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                  <Network className="w-4 h-4 text-sky-400" /> Monthly API Requests
+                </span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono">
+                  30-Day Window
+                </span>
+              </div>
+              <div className="text-2xl font-black text-white tracking-tight">
+                {(usageOverview?.summary?.totalApiRequests || 0).toLocaleString()}{' '}
+                <span className="text-sm font-normal text-slate-400">calls</span>
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                {(usageOverview?.summary?.totalDatabaseRecords || 0).toLocaleString()} Database records managed
+              </div>
+            </div>
+
+            <div className={`p-4 rounded-xl border transition-all ${
+              (usageOverview?.summary?.nearLimitsCount || 0) > 0
+                ? 'bg-amber-950/20 border-amber-500/40 shadow-lg shadow-amber-950/20'
+                : 'bg-[#090f1e] border-slate-800'
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-400" /> Near Limits (≥80%)
+                </span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                  (usageOverview?.summary?.nearLimitsCount || 0) > 0
+                    ? 'bg-amber-500/20 text-amber-300'
+                    : 'bg-emerald-500/20 text-emerald-300'
+                }`}>
+                  {(usageOverview?.summary?.nearLimitsCount || 0) > 0 ? 'Action Needed' : 'All Clear'}
+                </span>
+              </div>
+              <div className="text-2xl font-black text-amber-400 tracking-tight">
+                {usageOverview?.summary?.nearLimitsCount || 0}{' '}
+                <span className="text-sm font-normal text-slate-400">orgs</span>
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                {usageOverview?.summary?.activeAlertsCount || 0} Active threshold alerts triggered
+              </div>
+            </div>
+          </div>
+
+          {/* 3 Core Highlight Sections */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* 1. Top Resource Consumers */}
+            <div className="p-5 rounded-2xl bg-[#090f1e] border border-slate-800 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <PieChart className="w-4 h-4 text-purple-400" /> Top Resource Consumers
+                  </h4>
+                  <div className="flex bg-slate-900 border border-slate-700/80 rounded-lg p-0.5 text-[10px]">
+                    {(['storage', 'users', 'api', 'records'] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setActiveLeaderboardTab(tab)}
+                        className={`px-2 py-0.5 rounded-md font-semibold transition-all ${
+                          activeLeaderboardTab === tab
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {tab === 'storage' ? 'Storage' : tab === 'users' ? 'Users' : tab === 'api' ? 'API' : 'Records'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-3 mt-4">
+                  {(
+                    (activeLeaderboardTab === 'storage'
+                      ? usageOverview?.topConsumers?.byStorage
+                      : activeLeaderboardTab === 'users'
+                      ? usageOverview?.topConsumers?.byUsers
+                      : activeLeaderboardTab === 'api'
+                      ? usageOverview?.topConsumers?.byApiRequests
+                      : usageOverview?.topConsumers?.byDatabaseRecords) || []
+                  ).slice(0, 4).map((org: any, idx: number) => {
+                    const metricVal =
+                      activeLeaderboardTab === 'storage'
+                        ? org.storage?.usedFormatted
+                        : activeLeaderboardTab === 'users'
+                        ? `${org.users?.activeUsers} users`
+                        : activeLeaderboardTab === 'api'
+                        ? `${(org.apiRequests?.currentMonthRequests || 0).toLocaleString()} calls`
+                        : `${(org.databaseRecords?.totalRecords || 0).toLocaleString()} recs`;
+
+                    const metricPercent =
+                      activeLeaderboardTab === 'storage'
+                        ? org.storage?.percent
+                        : activeLeaderboardTab === 'users'
+                        ? org.users?.percent
+                        : activeLeaderboardTab === 'api'
+                        ? org.apiRequests?.percent
+                        : org.overallCapacityPercent;
+
+                    return (
+                      <div
+                        key={org.organizationId || idx}
+                        onClick={() => handleInspectOrganization(org)}
+                        className="p-3 rounded-xl bg-slate-900/60 hover:bg-slate-850 border border-slate-800/80 hover:border-purple-500/40 cursor-pointer transition-all flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-6 h-6 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-300 font-bold text-xs flex items-center justify-center">
+                            #{idx + 1}
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-white hover:text-purple-300 transition-colors">
+                              {org.organizationName}
+                            </div>
+                            <div className="text-[10px] text-slate-400 capitalize">
+                              {org.plan ? org.plan.replace('_', ' ') : 'Starter'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-xs font-bold text-slate-200">{metricVal}</div>
+                          <div className={`text-[10px] font-bold ${
+                            metricPercent >= 90
+                              ? 'text-rose-400'
+                              : metricPercent >= 80
+                              ? 'text-amber-400'
+                              : 'text-emerald-400'
+                          }`}>
+                            {metricPercent}% used
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Fastest Growing Organizations */}
+            <div className="p-5 rounded-2xl bg-[#090f1e] border border-slate-800 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-emerald-400" /> Fastest Growing Organizations
+                  </h4>
+                  <span className="text-[10px] text-slate-400">Weekly Velocity</span>
+                </div>
+
+                <div className="space-y-3 mt-4">
+                  {(usageOverview?.fastestGrowing || []).slice(0, 4).map((org: any, idx: number) => (
+                    <div
+                      key={org.organizationId || idx}
+                      onClick={() => handleInspectOrganization(org)}
+                      className="p-3 rounded-xl bg-slate-900/60 hover:bg-slate-850 border border-slate-800/80 hover:border-emerald-500/40 cursor-pointer transition-all flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-6 h-6 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-bold text-xs flex items-center justify-center">
+                          #{idx + 1}
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white hover:text-emerald-300 transition-colors">
+                            {org.organizationName}
+                          </div>
+                          <div className="text-[10px] text-slate-400 capitalize">
+                            {org.plan ? org.plan.replace('_', ' ') : 'Enterprise'}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <div className="text-xs font-bold text-emerald-400 flex items-center justify-end gap-1">
+                          <TrendingUp className="w-3 h-3" /> +{org.growthMetrics?.storageGrowthRatePercent || 15}%
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          Score: {org.growthMetrics?.velocityScore || 85}/100
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Organizations Near Limits */}
+            <div className="p-5 rounded-2xl bg-[#090f1e] border border-slate-800 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <AlertOctagon className="w-4 h-4 text-amber-400" /> Organizations Near Limits
+                  </h4>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold">
+                    Thresholds: 80% / 90% / 100%
+                  </span>
+                </div>
+
+                <div className="space-y-3 mt-4">
+                  {(usageOverview?.nearLimits || []).slice(0, 4).map((org: any, idx: number) => {
+                    const statusColor =
+                      org.overallStatus === 'LIMIT_REACHED'
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                        : org.overallStatus === 'CRITICAL'
+                        ? 'bg-red-500/20 text-red-300 border-red-500/40'
+                        : 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+
+                    return (
+                      <div
+                        key={org.organizationId || idx}
+                        onClick={() => handleInspectOrganization(org)}
+                        className="p-3 rounded-xl bg-slate-900/60 hover:bg-slate-850 border border-slate-800/80 hover:border-amber-500/40 cursor-pointer transition-all"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold text-white">{org.organizationName}</span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${statusColor}`}>
+                            {org.overallStatus === 'LIMIT_REACHED'
+                              ? '100% LIMIT REACHED'
+                              : org.overallStatus === 'CRITICAL'
+                              ? '90% CRITICAL'
+                              : '80% WARNING'}
+                          </span>
+                        </div>
+
+                        <div className="w-full bg-slate-850 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${
+                              org.overallCapacityPercent >= 100
+                                ? 'bg-rose-500'
+                                : org.overallCapacityPercent >= 90
+                                ? 'bg-red-500'
+                                : 'bg-amber-400'
+                            }`}
+                            style={{ width: `${Math.min(100, org.overallCapacityPercent)}%` }}
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1.5">
+                          <span>Max Capacity: {org.overallCapacityPercent}%</span>
+                          <span>Storage: {org.storage?.percent}% | Users: {org.users?.percent}%</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Fleet Organizations Directory Table */}
+          <div className="p-5 rounded-2xl bg-[#090f1e] border border-slate-800 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-purple-400" /> Organization Fleet Directory
+                  <span className="text-xs font-normal text-slate-400">
+                    ({usageOrganizations.length} registered organizations)
+                  </span>
+                </h4>
+              </div>
+
+              {/* Filters */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={usageSearchQuery}
+                    onChange={(e) => setUsageSearchQuery(e.target.value)}
+                    placeholder="Search organization..."
+                    className="pl-8 pr-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 w-48"
+                  />
+                </div>
+
+                <select
+                  value={usageFilterPlan}
+                  onChange={(e) => setUsageFilterPlan(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-300 focus:outline-none focus:border-purple-500"
+                >
+                  <option value="all">All Plans</option>
+                  <option value="custom_enterprise">Custom Enterprise</option>
+                  <option value="enterprise">Enterprise</option>
+                  <option value="business">Business</option>
+                  <option value="team_starter">Team Starter</option>
+                  <option value="solo">Solo</option>
+                  <option value="free">Free</option>
+                </select>
+
+                <select
+                  value={usageFilterStatus}
+                  onChange={(e) => setUsageFilterStatus(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-300 focus:outline-none focus:border-purple-500"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="NOMINAL">Nominal (&lt;80%)</option>
+                  <option value="WARNING">Warning (80-89%)</option>
+                  <option value="CRITICAL">Critical (90-99%)</option>
+                  <option value="LIMIT_REACHED">Limit Reached (≥100%)</option>
+                </select>
+
+                <select
+                  value={usageSort}
+                  onChange={(e) => setUsageSort(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-300 focus:outline-none focus:border-purple-500"
+                >
+                  <option value="capacity_desc">Sort: Highest Capacity %</option>
+                  <option value="storage_desc">Sort: Highest Storage</option>
+                  <option value="users_desc">Sort: Highest Users</option>
+                  <option value="api_desc">Sort: Highest API Calls</option>
+                  <option value="velocity_desc">Sort: Fastest Growth</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Directory Table */}
+            <div className="overflow-x-auto rounded-xl border border-slate-800">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-[#0b1222] text-slate-400 border-b border-slate-800">
+                  <tr>
+                    <th className="py-3 px-4 font-semibold">Organization</th>
+                    <th className="py-3 px-4 font-semibold">Plan</th>
+                    <th className="py-3 px-4 font-semibold">Storage</th>
+                    <th className="py-3 px-4 font-semibold">Users</th>
+                    <th className="py-3 px-4 font-semibold">API Requests</th>
+                    <th className="py-3 px-4 font-semibold">DB Records</th>
+                    <th className="py-3 px-4 font-semibold">Velocity</th>
+                    <th className="py-3 px-4 font-semibold">Status</th>
+                    <th className="py-3 px-4 font-semibold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                  {usageOrganizations.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="py-8 text-center text-slate-500">
+                        No organizations found matching filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    usageOrganizations.map((org) => {
+                      const statusBadge =
+                        org.overallStatus === 'LIMIT_REACHED'
+                          ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                          : org.overallStatus === 'CRITICAL'
+                          ? 'bg-red-500/20 text-red-300 border-red-500/40'
+                          : org.overallStatus === 'WARNING'
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                          : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+
+                      return (
+                        <tr key={org.organizationId} className="hover:bg-slate-850/50 transition-colors">
+                          <td className="py-3.5 px-4 font-semibold text-white">
+                            <div>{org.organizationName}</div>
+                            <div className="text-[10px] text-slate-500 font-normal">{org.ownerEmail}</div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 text-[10px] capitalize">
+                              {org.plan ? org.plan.replace('_', ' ') : 'starter'}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="text-white font-medium">{org.storage?.usedFormatted} / {org.storage?.limitFormatted}</div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <div className="w-20 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${
+                                    org.storage?.percent >= 100
+                                      ? 'bg-rose-500'
+                                      : org.storage?.percent >= 90
+                                      ? 'bg-red-500'
+                                      : org.storage?.percent >= 80
+                                      ? 'bg-amber-400'
+                                      : 'bg-purple-500'
+                                  }`}
+                                  style={{ width: `${Math.min(100, org.storage?.percent || 0)}%` }}
+                                />
+                              </div>
+                              <span className="text-[10px] text-slate-400">{org.storage?.percent}%</span>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="text-white font-medium">{org.users?.activeUsers} / {org.users?.maxUsers}</div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <div className="w-20 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${
+                                    org.users?.percent >= 100
+                                      ? 'bg-rose-500'
+                                      : org.users?.percent >= 90
+                                      ? 'bg-red-500'
+                                      : org.users?.percent >= 80
+                                      ? 'bg-amber-400'
+                                      : 'bg-emerald-500'
+                                  }`}
+                                  style={{ width: `${Math.min(100, org.users?.percent || 0)}%` }}
+                                />
+                              </div>
+                              <span className="text-[10px] text-slate-400">{org.users?.percent}%</span>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="text-white font-medium">
+                              {(org.apiRequests?.currentMonthRequests || 0).toLocaleString()} / {(org.apiRequests?.maxRequests || 0).toLocaleString()}
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <div className="w-20 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${
+                                    org.apiRequests?.percent >= 100
+                                      ? 'bg-rose-500'
+                                      : org.apiRequests?.percent >= 90
+                                      ? 'bg-red-500'
+                                      : org.apiRequests?.percent >= 80
+                                      ? 'bg-amber-400'
+                                      : 'bg-sky-500'
+                                  }`}
+                                  style={{ width: `${Math.min(100, org.apiRequests?.percent || 0)}%` }}
+                                />
+                              </div>
+                              <span className="text-[10px] text-slate-400">{org.apiRequests?.percent}%</span>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="text-white font-medium">
+                              {(org.databaseRecords?.totalRecords || 0).toLocaleString()} recs
+                            </div>
+                            <div className="text-[10px] text-slate-500">
+                              {(org.databaseRecords?.leadsCount || 0).toLocaleString()} leads
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="text-emerald-400 font-bold text-[11px] flex items-center gap-1">
+                              <TrendingUp className="w-3 h-3" />
+                              {org.growthMetrics?.velocityScore || 50}/100
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${statusBadge}`}>
+                              {org.overallStatus === 'LIMIT_REACHED'
+                                ? 'LIMIT REACHED'
+                                : org.overallStatus === 'CRITICAL'
+                                ? 'CRITICAL (90%)'
+                                : org.overallStatus === 'WARNING'
+                                ? 'WARNING (80%)'
+                                : 'NOMINAL'}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <button
+                              onClick={() => handleInspectOrganization(org)}
+                              className="px-2.5 py-1 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 font-semibold text-xs transition-colors"
+                            >
+                              Inspect
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Deep Drill-Down Inspector Modal / Drawer */}
+          {selectedOrgUsage && (
+            <div className="p-6 rounded-2xl bg-[#0a1020] border-2 border-purple-500/50 shadow-2xl shadow-purple-950/40 space-y-6 animate-fadeIn">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-800 pb-4">
+                <div>
+                  <div className="flex items-center gap-3">
+                    <h4 className="text-lg font-bold text-white">{selectedOrgUsage.organizationName}</h4>
+                    <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 text-xs font-bold capitalize">
+                      {selectedOrgUsage.plan ? selectedOrgUsage.plan.replace('_', ' ') : 'Custom Enterprise'}
+                    </span>
+                    <span className={`px-2.5 py-0.5 rounded-full border text-xs font-bold ${
+                      selectedOrgUsage.overallStatus === 'LIMIT_REACHED'
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                        : selectedOrgUsage.overallStatus === 'CRITICAL'
+                        ? 'bg-red-500/20 text-red-300 border-red-500/40'
+                        : selectedOrgUsage.overallStatus === 'WARNING'
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                        : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    }`}>
+                      {selectedOrgUsage.overallStatus}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Owner: {selectedOrgUsage.ownerEmail} | Org ID: {selectedOrgUsage.organizationId}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setIsEditingOrgLimits(!isEditingOrgLimits)}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-xs font-semibold text-slate-200 border border-slate-700 flex items-center gap-1.5"
+                  >
+                    <Sliders className="w-3.5 h-3.5 text-purple-400" />
+                    {isEditingOrgLimits ? 'Hide Limits Form' : 'Edit Plan Limits'}
+                  </button>
+                  <button
+                    onClick={() => setSelectedOrgUsage(null)}
+                    className="px-3 py-1.5 rounded-lg bg-slate-850 hover:bg-slate-800 text-xs font-semibold text-slate-400 hover:text-white"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+
+              {/* Exact Prompt Example Tiles (ABC Coaching layout) */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Tile 1: Storage */}
+                <div className="p-4 rounded-xl bg-slate-900/80 border border-purple-500/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                      <HardDrive className="w-4 h-4 text-purple-400" /> Storage
+                    </span>
+                    <span className="text-xs font-bold text-white">{selectedOrgUsage.storage?.percent}%</span>
+                  </div>
+
+                  <div className="text-xl font-black text-white">
+                    {selectedOrgUsage.storage?.usedFormatted} / {selectedOrgUsage.storage?.limitFormatted}
+                  </div>
+
+                  <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-purple-500 h-full rounded-full transition-all"
+                      style={{ width: `${Math.min(100, selectedOrgUsage.storage?.percent || 0)}%` }}
+                    />
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                    <span className="text-slate-400">Storage Health:</span>
+                    <span className="font-bold text-emerald-400">{selectedOrgUsage.storage?.healthScore}%</span>
+                  </div>
+                </div>
+
+                {/* Tile 2: Users */}
+                <div className="p-4 rounded-xl bg-slate-900/80 border border-emerald-500/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                      <Users className="w-4 h-4 text-emerald-400" /> Users
+                    </span>
+                    <span className="text-xs font-bold text-white">{selectedOrgUsage.users?.percent}%</span>
+                  </div>
+
+                  <div className="text-xl font-black text-white">
+                    {selectedOrgUsage.users?.activeUsers} / {selectedOrgUsage.users?.maxUsers}
+                  </div>
+
+                  <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-emerald-500 h-full rounded-full transition-all"
+                      style={{ width: `${Math.min(100, selectedOrgUsage.users?.percent || 0)}%` }}
+                    />
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                    <span className="text-slate-400">User Capacity:</span>
+                    <span className="font-bold text-emerald-400">{selectedOrgUsage.users?.capacityScore}%</span>
+                  </div>
+                </div>
+
+                {/* Tile 3: API Requests */}
+                <div className="p-4 rounded-xl bg-slate-900/80 border border-sky-500/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
+                      <Network className="w-4 h-4 text-sky-400" /> API Requests
+                    </span>
+                    <span className="text-xs font-bold text-white">{selectedOrgUsage.apiRequests?.percent}%</span>
+                  </div>
+
+                  <div className="text-xl font-black text-white">
+                    {(selectedOrgUsage.apiRequests?.currentMonthRequests || 0).toLocaleString()} / {(selectedOrgUsage.apiRequests?.maxRequests || 0).toLocaleString()}
+                  </div>
+
+                  <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-sky-500 h-full rounded-full transition-all"
+                      style={{ width: `${Math.min(100, selectedOrgUsage.apiRequests?.percent || 0)}%` }}
+                    />
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                    <span className="text-slate-400">API Capacity:</span>
+                    <span className="font-bold text-sky-400">{selectedOrgUsage.apiRequests?.capacityScore}%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Custom Plan Limits Editor Form */}
+              {isEditingOrgLimits && (
+                <div className="p-5 rounded-xl bg-slate-950 border border-purple-500/40 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h5 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                      <Sliders className="w-3.5 h-3.5 text-purple-400" /> Override Plan Limits for {selectedOrgUsage.organizationName}
+                    </h5>
+                    <span className="text-[10px] text-slate-400">Overrides standard subscription plan constraints</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-[11px] text-slate-400 block mb-1">Storage Limit (Bytes)</label>
+                      <input
+                        type="number"
+                        value={editingLimitsForm.storageLimitBytes}
+                        onChange={(e) => setEditingLimitsForm({ ...editingLimitsForm, storageLimitBytes: Number(e.target.value) })}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
+                      />
+                      <span className="text-[10px] text-slate-500">
+                        {Math.round(editingLimitsForm.storageLimitBytes / (1024 * 1024 * 1024))} GB Limit
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] text-slate-400 block mb-1">Max User Seats</label>
+                      <input
+                        type="number"
+                        value={editingLimitsForm.maxUsers}
+                        onChange={(e) => setEditingLimitsForm({ ...editingLimitsForm, maxUsers: Number(e.target.value) })}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] text-slate-400 block mb-1">Monthly API Quota</label>
+                      <input
+                        type="number"
+                        value={editingLimitsForm.maxApiRequests}
+                        onChange={(e) => setEditingLimitsForm({ ...editingLimitsForm, maxApiRequests: Number(e.target.value) })}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] text-slate-400 block mb-1">Max Leads Limit</label>
+                      <input
+                        type="number"
+                        value={editingLimitsForm.maxLeads}
+                        onChange={(e) => setEditingLimitsForm({ ...editingLimitsForm, maxLeads: Number(e.target.value) })}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] text-slate-400 block mb-1">Max Concurrent Campaigns</label>
+                      <input
+                        type="number"
+                        value={editingLimitsForm.maxConcurrentCampaigns}
+                        onChange={(e) => setEditingLimitsForm({ ...editingLimitsForm, maxConcurrentCampaigns: Number(e.target.value) })}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] text-slate-400 block mb-1">Admin Notes</label>
+                      <input
+                        type="text"
+                        value={editingLimitsForm.notes}
+                        onChange={(e) => setEditingLimitsForm({ ...editingLimitsForm, notes: e.target.value })}
+                        placeholder="Enterprise custom contract terms..."
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      onClick={() => setIsEditingOrgLimits(false)}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white text-xs"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => handleSaveOrgLimits(selectedOrgUsage.organizationId || selectedOrgUsage._id)}
+                      className="px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs transition-colors shadow-lg shadow-purple-600/30"
+                    >
+                      Save Custom Limits
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Historical Usage Multi-Resource AreaChart */}
+              <div className="p-5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h5 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                    <TrendingUp className="w-3.5 h-3.5 text-purple-400" /> Historical Multi-Resource Capacity Trends (14-Day Timeline)
+                  </h5>
+                  <div className="flex items-center gap-3 text-[10px]">
+                    <span className="flex items-center gap-1 text-purple-400 font-semibold">
+                      <span className="w-2 h-2 rounded-full bg-purple-500 inline-block" /> Storage %
+                    </span>
+                    <span className="flex items-center gap-1 text-emerald-400 font-semibold">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Users %
+                    </span>
+                    <span className="flex items-center gap-1 text-sky-400 font-semibold">
+                      <span className="w-2 h-2 rounded-full bg-sky-500 inline-block" /> API %
+                    </span>
+                  </div>
+                </div>
+
+                <div className="h-64 w-full">
+                  {selectedOrgSnapshots.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-slate-500 text-xs">
+                      No historical snapshots recorded yet for this organization.
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={selectedOrgSnapshots} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="storageGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#a855f7" stopOpacity={0.4} />
+                            <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id="usersGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id="apiGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.4} />
+                            <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                        <XAxis
+                          dataKey="timestamp"
+                          tickFormatter={(val) => new Date(val).toLocaleDateString([], { month: 'numeric', day: 'numeric' })}
+                          stroke="#64748b"
+                          tick={{ fill: '#94a3b8', fontSize: 10 }}
+                        />
+                        <YAxis stroke="#64748b" tick={{ fill: '#94a3b8', fontSize: 10 }} domain={[0, 100]} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#0f172a',
+                            borderColor: '#334155',
+                            borderRadius: '0.75rem',
+                            fontSize: '11px',
+                            color: '#f8fafc',
+                          }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="storage.percent"
+                          name="Storage %"
+                          stroke="#a855f7"
+                          strokeWidth={2}
+                          fillOpacity={1}
+                          fill="url(#storageGrad)"
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="users.percent"
+                          name="Users %"
+                          stroke="#10b981"
+                          strokeWidth={2}
+                          fillOpacity={1}
+                          fill="url(#usersGrad)"
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="apiRequests.percent"
+                          name="API %"
+                          stroke="#0ea5e9"
+                          strokeWidth={2}
+                          fillOpacity={1}
+                          fill="url(#apiGrad)"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              </div>
+
+              {/* Active Alerts for this Organization */}
+              {selectedOrgAlerts && selectedOrgAlerts.length > 0 && (
+                <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
+                  <h5 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                    <Bell className="w-3.5 h-3.5 text-amber-400" /> Recent Capacity Alerts ({selectedOrgAlerts.length})
+                  </h5>
+                  <div className="space-y-2">
+                    {selectedOrgAlerts.map((alert: any) => (
+                      <div
+                        key={alert._id}
+                        className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between text-xs"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            alert.severity === 'CRITICAL' || alert.severity === 'LIMIT_REACHED'
+                              ? 'bg-rose-500/20 text-rose-300'
+                              : 'bg-amber-500/20 text-amber-300'
+                          }`}>
+                            {alert.thresholdPercent}% {alert.severity}
+                          </span>
+                          <span className="text-white font-medium">{alert.message}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-500">
+                            {new Date(alert.createdAt).toLocaleDateString()}
+                          </span>
+                          {alert.status !== 'ACKNOWLEDGED' && alert.status !== 'RESOLVED' && (
+                            <button
+                              onClick={() => handleAcknowledgeUsageAlert(alert._id)}
+                              className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 font-semibold"
+                            >
+                              Acknowledge
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -221,6 +221,16 @@ router.post('/integrations/:id/check', adminOnly, integrationMonitoringControlle
 router.post('/integrations/record-telemetry', adminOnly, integrationMonitoringController.recordTelemetry);
 router.put('/integrations/:id/thresholds', adminOnly, integrationMonitoringController.updateThresholds);
 
+// 27. Multi-Tenant Resource Usage Monitoring Module
+const usageMonitoringController = require('../monitoring/controllers/usageMonitoringController').default || require('../monitoring/controllers/usageMonitoringController');
+router.get('/usage/overview', adminOnly, usageMonitoringController.getOverview);
+router.get('/usage/organizations', adminOnly, usageMonitoringController.getOrganizations);
+router.get('/usage/organizations/:id', adminOnly, usageMonitoringController.getOrganizationById);
+router.put('/usage/organizations/:id/limits', adminOnly, usageMonitoringController.updateOrganizationLimits);
+router.get('/usage/alerts', adminOnly, usageMonitoringController.getAlerts);
+router.post('/usage/alerts/:id/acknowledge', adminOnly, usageMonitoringController.acknowledgeAlert);
+router.post('/usage/recalculate', adminOnly, usageMonitoringController.triggerRecalculate);
+
 // Preserved User Management Handlers
 router.get('/users', adminOnly, adminController.getUsers);
 router.put('/users/:id/plan', adminOnly, adminController.assignPlan);
