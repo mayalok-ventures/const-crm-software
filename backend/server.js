@@ -129,6 +129,9 @@ app.use('/api/agency', agencyRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
+const databaseController = require('./src/monitoring/controllers/databaseController').default || require('./src/monitoring/controllers/databaseController');
+app.get('/health/database', databaseController.getDatabaseHealthEndpoint);
+app.get('/api/health/database', databaseController.getDatabaseHealthEndpoint);
 
 // 404
 app.use((req, res) => res.status(404).json({ message: 'Route not found' }));
@@ -146,6 +149,14 @@ const { runAgencyRolesMigration } = require('./src/utils/seedAgencyRoles');
 
 // Start server after DB is ready
 connectDB().then(async () => {
+  // Attach Mongoose slow query interceptor
+  try {
+    const slowQueryInterceptor = require('./src/monitoring/database/slowQueryInterceptor').default || require('./src/monitoring/database/slowQueryInterceptor');
+    slowQueryInterceptor.attach(mongoose);
+  } catch (sqErr) {
+    console.warn('[SlowQueryInterceptor] Hook initialization notice:', sqErr.message);
+  }
+
   // Seed superadmin if not exists
   await seedSuperAdmin();
 
@@ -179,6 +190,7 @@ connectDB().then(async () => {
       const ServerHeartbeat = require('./src/monitoring/ServerHeartbeat').default;
       const StatusEvaluator = require('./src/monitoring/StatusEvaluator').default;
       const MetricsAggregator = require('./src/monitoring/MetricsAggregator').default;
+      const databaseMonitorWorker = require('./src/monitoring/database/DatabaseMonitorWorker').default || require('./src/monitoring/database/DatabaseMonitorWorker');
 
       const agent = new MonitoringAgent();
       const heartbeat = new ServerHeartbeat();
@@ -189,6 +201,7 @@ connectDB().then(async () => {
       heartbeat.start();
       statusEvaluator.start();
       aggregator.start();
+      databaseMonitorWorker.start(30000);
 
       const shutdownWorkers = () => {
         console.log('Stopping background monitoring workers...');
@@ -196,6 +209,7 @@ connectDB().then(async () => {
         heartbeat.stop();
         statusEvaluator.stop();
         aggregator.stop();
+        databaseMonitorWorker.stop();
       };
       process.on('SIGTERM', shutdownWorkers);
       process.on('SIGINT', shutdownWorkers);

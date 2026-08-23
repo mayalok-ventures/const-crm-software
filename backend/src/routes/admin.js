@@ -164,6 +164,14 @@ router.get('/audit/export', adminOnly, auditController.exportAuditLogs);
 router.post('/audit/archive', adminOnly, auditController.archiveAuditLogs);
 router.get('/audit/:id', adminOnly, auditController.getAuditLogById);
 
+// 22. MongoDB Database Monitoring Module
+const databaseController = require('../monitoring/controllers/databaseController').default || require('../monitoring/controllers/databaseController');
+router.get('/database/overview', adminOnly, databaseController.getDatabaseOverview);
+router.get('/database/collections', adminOnly, databaseController.getDatabaseCollections);
+router.get('/database/metrics', adminOnly, databaseController.getDatabaseMetrics);
+router.get('/database/slow-queries', adminOnly, databaseController.getSlowQueries);
+router.post('/database/ping', adminOnly, databaseController.pingDatabase);
+
 // Preserved User Management Handlers
 router.get('/users', adminOnly, adminController.getUsers);
 router.put('/users/:id/plan', adminOnly, adminController.assignPlan);
