@@ -97,7 +97,8 @@ exports.startOAuth = async (req, res) => {
       } catch {}
     }
     if (!frontendUrl) {
-      frontendUrl = process.env.FRONTEND_URL || 'https://crm.coresetu.com';
+      const isLocal = !process.env.NODE_ENV || process.env.NODE_ENV === 'development' || (req && req.headers && req.headers.host && req.headers.host.includes('localhost'));
+      frontendUrl = isLocal ? 'http://localhost:3000' : (process.env.FRONTEND_URL || 'https://crm.coresetu.com');
     }
 
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? req.user._id : null);
@@ -188,7 +189,8 @@ exports.startOAuth = async (req, res) => {
  * GET /api/integrations/google/oauth/callback
  */
 exports.callback = async (req, res) => {
-  let resolvedFrontendUrl = process.env.FRONTEND_URL || 'https://crm.coresetu.com';
+  const isLocal = !process.env.NODE_ENV || process.env.NODE_ENV === 'development' || (req && req.headers && req.headers.host && req.headers.host.includes('localhost'));
+  let resolvedFrontendUrl = isLocal ? 'http://localhost:3000' : (process.env.FRONTEND_URL || 'https://crm.coresetu.com');
   const redirectUri = getGoogleRedirectUri(req);
   try {
     const { code, state, error, error_description } = req.query;

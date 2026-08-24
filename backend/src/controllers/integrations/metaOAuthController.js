@@ -9,10 +9,15 @@ const META_APP_SECRET = process.env.META_APP_SECRET || '07383347132bb0519be90925
 
 function getMetaRedirectUri(req) {
   if (req && req.query && req.query.redirect_uri) return req.query.redirect_uri;
-  if (process.env.META_REDIRECT_URI && !process.env.META_REDIRECT_URI.includes('localhost')) {
-    return process.env.META_REDIRECT_URI;
+  if (process.env.META_REDIRECT_URI) return process.env.META_REDIRECT_URI;
+
+  const isLocal = !process.env.NODE_ENV || process.env.NODE_ENV === 'development' || (req && req.headers && req.headers.host && req.headers.host.includes('localhost'));
+  if (isLocal) {
+    const port = process.env.PORT || 5000;
+    return `http://localhost:${port}/api/integrations/meta/oauth/callback`;
   }
-  if (process.env.BACKEND_URL && !process.env.BACKEND_URL.includes('localhost')) {
+
+  if (process.env.BACKEND_URL) {
     return `${process.env.BACKEND_URL}/api/integrations/meta/oauth/callback`;
   }
   return 'https://api.coresetu.com/api/integrations/meta/oauth/callback';
@@ -101,7 +106,8 @@ exports.startOAuth = async (req, res) => {
       } catch { }
     }
     if (!frontendUrl) {
-      frontendUrl = process.env.FRONTEND_URL || 'https://crm.coresetu.com';
+      const isLocal = !process.env.NODE_ENV || process.env.NODE_ENV === 'development' || (req && req.headers && req.headers.host && req.headers.host.includes('localhost'));
+      frontendUrl = isLocal ? 'http://localhost:3000' : (process.env.FRONTEND_URL || 'https://crm.coresetu.com');
     }
 
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? req.user._id : null);
@@ -152,7 +158,8 @@ exports.startOAuth = async (req, res) => {
  * GET /api/integrations/meta/oauth/callback
  */
 exports.callback = async (req, res) => {
-  let resolvedFrontendUrl = process.env.FRONTEND_URL || 'https://crm.coresetu.com';
+  const isLocal = !process.env.NODE_ENV || process.env.NODE_ENV === 'development' || (req && req.headers && req.headers.host && req.headers.host.includes('localhost'));
+  let resolvedFrontendUrl = isLocal ? 'http://localhost:3000' : (process.env.FRONTEND_URL || 'https://crm.coresetu.com');
   const redirectUri = getMetaRedirectUri(req);
   console.log('\n================== [META OAUTH CALLBACK DEBUG START] ==================');
   console.log('[DEBUG 1] Incoming Query Params:', JSON.stringify(req.query, null, 2));
