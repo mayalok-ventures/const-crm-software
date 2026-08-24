@@ -26,7 +26,7 @@
         },
         {
           "name": "MONGO_URI",
-          "value": "mongodb+srv://mayalokventures:Mflica2026kps@cluster0.j988j68.mongodb.net/?appName=Cluster0"
+          "value": "mongodb+srv://mayalokventures:Mflica2026crm@cluster0.j988j68.mongodb.net/mobile-crm?retryWrites=true&w=majority&appName=Cluster0"
         },
         {
           "name": "CLOUDINARY_URL",

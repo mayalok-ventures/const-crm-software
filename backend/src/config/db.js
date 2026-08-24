@@ -59,6 +59,14 @@ const connectDB = async () => {
       }
     }
 
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('⚠️ [Production MongoDB] Direct connection failed. Scheduling background reconnection loop...');
+      setTimeout(() => {
+        connectDB().catch(err => console.error('Background DB retry error:', err.message));
+      }, 5000);
+      return;
+    }
+
     let defaultLocalUri = 'mongodb://127.0.0.1:27017/mobile-crm';
 
     // First, test if a local MongoDB is already running on port 27017
@@ -75,7 +83,7 @@ const connectDB = async () => {
       await seedAdminUser();
       return;
     } catch (localErr) {
-      // Port 27017 not yet active, spawn embedded instance
+      // Port 27017 not yet active, spawn embedded instance in development
     }
 
     const { MongoMemoryServer } = require('mongodb-memory-server');
@@ -131,7 +139,9 @@ const connectDB = async () => {
     await seedAdminUser();
   } catch (error) {
     console.error('MongoDB connection error:', error.message);
-    process.exit(1);
+    if (process.env.NODE_ENV !== 'production') {
+      process.exit(1);
+    }
   }
 };
 
