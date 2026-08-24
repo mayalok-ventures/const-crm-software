@@ -125,7 +125,7 @@ app.use('/api/company', companyRoutes);
 app.use('/api/projects', projectsRoutes);
 app.use('/api', shareRoutes);
 app.use('/api/integrations', integrationRoutes);
-app.use('/api/catalogue', catalogueRoutes);
+app.use('/api/catalogue', catalogueRoutes); // Colleges, Degrees, Specializations & WhatsApp Prospectus
 const superAdminRoutes = require('./src/superadmin/routes/superAdminRoutes');
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/agency', agencyRoutes);

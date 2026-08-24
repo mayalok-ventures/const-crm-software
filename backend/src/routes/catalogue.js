@@ -17,6 +17,7 @@ const {
   deleteCourseFromCatalogueItem,
   updateTenantCatalogueItem,
   deleteTenantCatalogueItem,
+  sendFeeStructureOnWhatsApp,
 } = require('../controllers/catalogueController');
 const { protect, checkPlanExpiry } = require('../middleware/auth');
 
@@ -50,5 +51,8 @@ router.delete('/my-catalogue/:id/degrees/:degreeName', checkPlanExpiry, deleteDe
 router.post('/my-catalogue/:id/specializations', checkPlanExpiry, addSpecializationToCatalogueItem);
 router.put('/my-catalogue/:id/courses/:courseId', checkPlanExpiry, updateCourseInCatalogueItem);
 router.delete('/my-catalogue/:id/courses/:courseId', checkPlanExpiry, deleteCourseFromCatalogueItem);
+
+// PHASE 4: WhatsApp Direct Fee Structure Dispatch
+router.post('/send-fee-structure-whatsapp', checkPlanExpiry, sendFeeStructureOnWhatsApp);
 
 module.exports = router;

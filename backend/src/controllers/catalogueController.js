@@ -1,6 +1,8 @@
 const MasterCollege = require('../models/MasterCollege');
 const MasterCourse = require('../models/MasterCourse');
 const TenantCatalogue = require('../models/TenantCatalogue');
+const Lead = require('../models/Lead');
+const waSession = require('../services/waSession');
 const { COMMON_DEGREES } = require('../utils/commonDegrees');
 
 // Comprehensive Pre-seeded Master Universities Database
@@ -1353,6 +1355,188 @@ exports.deleteTenantCatalogueItem = async (req, res) => {
     res.json({ success: true, message: `"${item.customCollegeName}" removed from your active catalogue ✅` });
   } catch (error) {
     console.error('deleteTenantCatalogueItem error:', error);
-    res.status(500).json({ success: false, message: error.message || 'Server error' });
+    res.status(500).json({ success: false, message: error.message || 'Failed to delete catalogue item' });
+  }
+};
+
+// @desc  Send Structured Fee & Admission Details directly to a Lead / Phone via connected WhatsApp
+// @route POST /api/catalogue/send-fee-structure-whatsapp
+// @access Private
+exports.sendFeeStructureOnWhatsApp = async (req, res) => {
+  try {
+    const {
+      leadId,
+      recipientPhone,
+      recipientName,
+      collegeId,
+      courseId,
+      specializationName,
+      degreeName,
+      customNotes,
+      sender = 'personal',
+    } = req.body;
+
+    if (!recipientPhone || !String(recipientPhone).trim()) {
+      return res.status(400).json({ success: false, message: 'Recipient mobile number is required' });
+    }
+
+    // 1. Resolve College & Course Details
+    let college = null;
+    let course = null;
+    let collegeName = '';
+    let locationStr = '';
+    let accreditationStr = '';
+    let website = '';
+    let brochureUrl = '';
+
+    if (collegeId) {
+      college = await TenantCatalogue.findById(collegeId).lean();
+    }
+
+    if (college) {
+      collegeName = college.customCollegeName || college.name || 'Partner Institution';
+      locationStr = `${college.location?.city ? college.location.city + ', ' : ''}${college.location?.state || ''}`;
+      accreditationStr = (college.accreditation || []).slice(0, 3).join(', ');
+      website = college.website || '';
+      brochureUrl = college.brochureUrl || '';
+
+      if (courseId) {
+        course = (college.courses || []).find(c => String(c._id) === String(courseId));
+      }
+      if (!course && specializationName) {
+        course = (college.courses || []).find(c => c.specialization === specializationName && (!degreeName || c.degreeName === degreeName));
+      }
+    } else if (collegeId) {
+      // Check Master College
+      const masterCollege = await MasterCollege.findById(collegeId).lean();
+      if (masterCollege) {
+        collegeName = masterCollege.name;
+        locationStr = `${masterCollege.location?.city ? masterCollege.location.city + ', ' : ''}${masterCollege.location?.state || ''}`;
+        accreditationStr = (masterCollege.accreditation || []).slice(0, 3).join(', ');
+        website = masterCollege.website || '';
+        brochureUrl = masterCollege.brochureUrl || '';
+
+        const masterCourses = await MasterCourse.find({ collegeId: masterCollege._id }).lean();
+        if (courseId) {
+          const foundMc = masterCourses.find(c => String(c._id) === String(courseId));
+          if (foundMc) {
+            course = {
+              degreeName: foundMc.degreeName,
+              specialization: specializationName || foundMc.specializations?.[0] || 'General',
+              level: foundMc.level || 'Undergraduate',
+              durationYears: foundMc.durationYears || 4,
+              customFeeStructure: {
+                annualTuitionFee: foundMc.standardAnnualFee || 0,
+                packageFee: (foundMc.standardAnnualFee || 0) * (foundMc.durationYears || 1),
+                hostelFeePerYear: 80000,
+                oneTimeAdmissionFee: 20000,
+                currency: 'INR',
+              },
+              admissionStatus: 'admissions_open',
+            };
+          }
+        }
+      }
+    }
+
+    if (!course) {
+      return res.status(404).json({ success: false, message: 'Selected course/specialization details not found' });
+    }
+
+    // 2. Validate WhatsApp Connection Status
+    const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner';
+    const companyId = isOwner ? req.user._id : req.user.companyId;
+
+    let targetSessionId = req.user._id;
+    let senderName = req.user.name || 'Admission Counselor';
+
+    if (sender === 'company' && companyId) {
+      targetSessionId = companyId;
+      senderName = `${req.user.name} (via ${req.user.companyInfo?.companyName || 'Admissions Desk'})`;
+    }
+
+    const waStatus = waSession.getStatus(targetSessionId);
+    if (!waStatus || waStatus.status !== 'connected') {
+      return res.status(400).json({
+        success: false,
+        code: 'WHATSAPP_NOT_CONNECTED',
+        message: `WhatsApp is not connected for ${sender === 'company' ? 'your company' : 'your personal account'}. Please scan QR code in the WhatsApp section first.`,
+      });
+    }
+
+    // 3. Format Structured WhatsApp Message
+    const targetDegree = course.degreeName || degreeName || 'Degree Program';
+    const targetSpec = course.specialization || specializationName || 'General Stream';
+    const fees = course.customFeeStructure || {};
+    const currency = fees.currency || 'INR';
+    const annualTuition = Number(fees.annualTuitionFee) || 0;
+    const packageFee = Number(fees.packageFee) || (annualTuition * (course.durationYears || 1));
+    const hostelFee = Number(fees.hostelFeePerYear) || 0;
+    const regFee = Number(fees.oneTimeAdmissionFee) || 0;
+    const studentName = (recipientName || '').trim() || 'Student';
+
+    const statusMap = {
+      admissions_open: '🟢 Admissions Open',
+      seats_fast_filling: '🔥 Seats Fast Filling',
+      merit_closed_mgmt_open: '⚡ Merit Closed (Management Quota Open)',
+      admissions_closed: '🔴 Closed for Intake',
+    };
+    const statusText = statusMap[course.admissionStatus] || '🟢 Admissions Open';
+
+    const formattedMessage = `🎓 *ADMISSION & FEE STRUCTURE DETAILS*
+━━━━━━━━━━━━━━━━━━━━
+👤 *Dear ${studentName}*,
+Greetings! Here is the official fee breakdown and admission details for your requested program:
+
+🏛️ *Institution:* *${collegeName}*
+${locationStr ? `📍 *Location:* ${locationStr}\n` : ''}${accreditationStr ? `🏆 *Accreditation:* ${accreditationStr}\n` : ''}
+📚 *Program:* *${targetDegree}*
+🎯 *Specialization:* *${targetSpec}*
+⏱️ *Duration:* ${course.durationYears || 4} Years (${course.level || 'Undergraduate'})
+⚡ *Status:* ${statusText}
+
+💰 *OFFICIAL FEE STRUCTURE*
+━━━━━━━━━━━━━━━━━━━━
+💵 *Annual Tuition Fee:* *${currency} ${annualTuition.toLocaleString('en-IN')}/year*
+📦 *Total Package Fee:* *${currency} ${packageFee.toLocaleString('en-IN')}*
+${hostelFee ? `🏠 *Hostel & Mess (Optional):* ${currency} ${hostelFee.toLocaleString('en-IN')}/year\n` : ''}${regFee ? `📝 *One-Time Registration/Adm Fee:* ${currency} ${regFee.toLocaleString('en-IN')}\n` : ''}${fees.feeNotes ? `📌 *Note:* ${fees.feeNotes}\n` : ''}
+${customNotes && customNotes.trim() ? `💬 *Counselor Remark:* _${customNotes.trim()}_\n\n` : ''}━━━━━━━━━━━━━━━━━━━━
+${website ? `🌐 *Official Website:* ${website}\n` : ''}${brochureUrl ? `📑 *Brochure Link:* ${brochureUrl}\n` : ''}
+📞 *Need Assistance with Seat Reservation / Scholarship?*
+Feel free to reply directly to this message or contact your admission counselor *${req.user.name || 'Admissions Team'}* (${req.user.phone || ''}).`;
+
+    // 4. Send Message via Baileys waSession
+    await waSession.sendText(targetSessionId, recipientPhone, formattedMessage, req.user._id, senderName);
+
+    // 5. If linked to an existing Lead in CRM, update lead activities & chat
+    if (leadId) {
+      try {
+        const lead = await Lead.findById(leadId);
+        if (lead) {
+          if (!Array.isArray(lead.leadActivities)) lead.leadActivities = [];
+          lead.leadActivities.unshift({
+            action: 'WHATSAPP_FEE_STRUCTURE_SENT',
+            details: `Dispatched Fee Structure for ${collegeName} - ${targetDegree} (${targetSpec}) via WhatsApp`,
+            performedBy: req.user._id,
+            timestamp: new Date(),
+          });
+          await lead.save();
+        }
+      } catch (logErr) {
+        console.warn('Lead activity log warning:', logErr.message);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `🎉 Fee Structure successfully sent to ${studentName} (${recipientPhone}) on WhatsApp!`,
+      sentAt: new Date(),
+    });
+  } catch (error) {
+    console.error('sendFeeStructureOnWhatsApp error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to send fee structure on WhatsApp',
+    });
   }
 };

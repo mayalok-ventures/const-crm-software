@@ -14,6 +14,7 @@ import {
   Check, X, Plus, Edit, AlertTriangle
 } from 'lucide-react';
 import { COMMON_DEGREES, ACCREDITATION_TAGS, INSTITUTION_TYPES, getAccreditationBadgeStyle } from '@/lib/commonDegrees';
+import SendFeeStructureWhatsAppModal from '@/components/catalogue/SendFeeStructureWhatsAppModal';
 
 const ADMISSION_STATUS_LABELS = {
   admissions_open: { label: '🟢 Admissions Open', bg: '#ecfdf5', text: '#059669', border: '#a7f3d0' },
@@ -54,6 +55,17 @@ export default function CollegeDetailClient() {
   const [showEditCourseModal, setShowEditCourseModal] = useState(false);
   const [editingCourse, setEditingCourse] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // WhatsApp Fee Structure Modal State
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [selectedCourseForWhatsApp, setSelectedCourseForWhatsApp] = useState(null);
+  const [selectedDegreeForWhatsApp, setSelectedDegreeForWhatsApp] = useState(null);
+
+  const handleOpenWhatsAppFeeModal = (course, degree) => {
+    setSelectedCourseForWhatsApp(course);
+    setSelectedDegreeForWhatsApp(degree);
+    setShowWhatsAppModal(true);
+  };
 
   // Forms state
   const [infoForm, setInfoForm] = useState({
@@ -947,8 +959,8 @@ export default function CollegeDetailClient() {
                               </div>
 
                               {/* Card Action Buttons */}
-                              {isMyCatalogueItem && (
-                                <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-slate-100 mt-1">
+                              <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-slate-100 mt-1 flex-wrap">
+                                {isMyCatalogueItem && (
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteCourse(course)}
@@ -957,15 +969,29 @@ export default function CollegeDetailClient() {
                                   >
                                     <Trash2 size={14} />
                                   </button>
+                                )}
+
+                                <div className="flex items-center gap-2 ml-auto flex-wrap">
                                   <button
                                     type="button"
-                                    onClick={() => handleOpenEditCourse(course)}
-                                    className="btn btn-secondary btn-sm text-xs py-1 px-3 rounded-lg flex items-center gap-1.5 text-indigo-700 hover:bg-indigo-50 border-indigo-200 font-bold transition shadow-2xs"
+                                    onClick={() => handleOpenWhatsAppFeeModal(course, deg)}
+                                    className="btn btn-sm text-xs py-1 px-3 rounded-lg flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition shadow-2xs"
+                                    title="Send Fee Structure directly to a Lead on WhatsApp"
                                   >
-                                    <Edit size={12} /> Edit Fee & Tie-Up
+                                    <MessageCircle size={13} /> Send on WhatsApp
                                   </button>
+
+                                  {isMyCatalogueItem && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenEditCourse(course)}
+                                      className="btn btn-secondary btn-sm text-xs py-1 px-2.5 rounded-lg flex items-center gap-1.5 text-indigo-700 hover:bg-indigo-50 border-indigo-200 font-bold transition shadow-2xs"
+                                    >
+                                      <Edit size={12} /> Edit Fee
+                                    </button>
+                                  )}
                                 </div>
-                              )}
+                              </div>
                             </div>
                           );
                         })}
@@ -1597,6 +1623,21 @@ export default function CollegeDetailClient() {
           </div>
         </div>
       )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          MODAL: SEND FEE STRUCTURE ON WHATSAPP
+         ───────────────────────────────────────────────────────────── */}
+      <SendFeeStructureWhatsAppModal
+        isOpen={showWhatsAppModal}
+        onClose={() => {
+          setShowWhatsAppModal(false);
+          setSelectedCourseForWhatsApp(null);
+          setSelectedDegreeForWhatsApp(null);
+        }}
+        college={college}
+        degree={selectedDegreeForWhatsApp}
+        course={selectedCourseForWhatsApp}
+      />
 
       <BottomNav active="catalogue" />
     </div>
