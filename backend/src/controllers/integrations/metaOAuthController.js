@@ -4,11 +4,18 @@ const Integration = require('../../models/Integration');
 const { encrypt } = require('../../utils/encryption');
 
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v23.0';
-const META_APP_ID = process.env.META_APP_ID;
-const META_APP_SECRET = process.env.META_APP_SECRET;
-const META_REDIRECT_URI =
-  process.env.META_REDIRECT_URI ||
-  'http://localhost:5000/api/integrations/meta/oauth/callback';
+const META_APP_ID = process.env.META_APP_ID || '1361325099456512';
+const META_APP_SECRET = process.env.META_APP_SECRET || '07383347132bb0519be90925c69e44cb';
+
+function getMetaRedirectUri(req) {
+  if (process.env.META_REDIRECT_URI) return process.env.META_REDIRECT_URI;
+  if (process.env.BACKEND_URL) return `${process.env.BACKEND_URL}/api/integrations/meta/oauth/callback`;
+  if (req && req.headers && req.headers.host && !req.headers.host.includes('localhost')) {
+    const proto = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'https');
+    return `${proto}://${req.headers.host}/api/integrations/meta/oauth/callback`;
+  }
+  return 'https://api.coresetu.com/api/integrations/meta/oauth/callback';
+}
 
 const META_SCOPES = [
   'pages_show_list',
@@ -82,7 +89,7 @@ exports.startOAuth = async (req, res) => {
 
     const appId = META_APP_ID;
     const appSecret = (META_APP_SECRET || '').trim();
-    const redirectUri = META_REDIRECT_URI;
+    const redirectUri = getMetaRedirectUri(req);
 
     // Extract frontendUrl dynamically
     let frontendUrl = req.query.frontendUrl || null;
@@ -118,6 +125,7 @@ exports.startOAuth = async (req, res) => {
 
     const authorizationUrl = `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth?${params}`;
     console.log('====== META REAL OAUTH REDIRECT URL ======');
+    console.log('Using redirect_uri:', redirectUri);
     console.log(authorizationUrl);
     console.log('==========================================');
 
@@ -144,9 +152,10 @@ exports.startOAuth = async (req, res) => {
  */
 exports.callback = async (req, res) => {
   let resolvedFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const redirectUri = getMetaRedirectUri(req);
   console.log('\n================== [META OAUTH CALLBACK DEBUG START] ==================');
   console.log('[DEBUG 1] Incoming Query Params:', JSON.stringify(req.query, null, 2));
-  console.log('[DEBUG 1] META_REDIRECT_URI Configured:', META_REDIRECT_URI);
+  console.log('[DEBUG 1] redirectUri Resolved:', redirectUri);
   console.log('[DEBUG 1] META_APP_ID Configured:', META_APP_ID);
 
   try {
@@ -181,14 +190,14 @@ exports.callback = async (req, res) => {
     }
 
     // 1. Exchange authorization code for short-lived access token
-    console.log('[DEBUG 3] Requesting Access Token from Graph API with redirect_uri:', META_REDIRECT_URI);
+    console.log('[DEBUG 3] Requesting Access Token from Graph API with redirect_uri:', redirectUri);
     const tokenResponse = await axios.get(
       `https://graph.facebook.com/${META_GRAPH_VERSION}/oauth/access_token`,
       {
         params: {
           client_id: META_APP_ID,
           client_secret: META_APP_SECRET,
-          redirect_uri: META_REDIRECT_URI,
+          redirect_uri: redirectUri,
           code,
         },
       }
