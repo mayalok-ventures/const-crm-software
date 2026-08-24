@@ -5,9 +5,17 @@ const { encrypt } = require('../../utils/encryption');
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const GOOGLE_REDIRECT_URI =
-  process.env.GOOGLE_REDIRECT_URI ||
-  'http://localhost:5000/api/integrations/google/oauth/callback';
+
+function getGoogleRedirectUri(req) {
+  if (req && req.query && req.query.redirect_uri) return req.query.redirect_uri;
+  if (process.env.GOOGLE_REDIRECT_URI && !process.env.GOOGLE_REDIRECT_URI.includes('localhost')) {
+    return process.env.GOOGLE_REDIRECT_URI;
+  }
+  if (process.env.BACKEND_URL && !process.env.BACKEND_URL.includes('localhost')) {
+    return `${process.env.BACKEND_URL}/api/integrations/google/oauth/callback`;
+  }
+  return 'https://api.coresetu.com/api/integrations/google/oauth/callback';
+}
 
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/adwords',
@@ -78,7 +86,7 @@ exports.startOAuth = async (req, res) => {
 
     const clientId = (process.env.GOOGLE_CLIENT_ID || '').trim();
     const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').trim();
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:5000/api/integrations/google/oauth/callback';
+    const redirectUri = getGoogleRedirectUri(req);
 
     // Extract frontendUrl dynamically
     let frontendUrl = req.query.frontendUrl || null;
@@ -89,7 +97,7 @@ exports.startOAuth = async (req, res) => {
       } catch {}
     }
     if (!frontendUrl) {
-      frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      frontendUrl = process.env.FRONTEND_URL || 'https://crm.coresetu.com';
     }
 
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? req.user._id : null);
@@ -180,7 +188,8 @@ exports.startOAuth = async (req, res) => {
  * GET /api/integrations/google/oauth/callback
  */
 exports.callback = async (req, res) => {
-  let resolvedFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  let resolvedFrontendUrl = process.env.FRONTEND_URL || 'https://crm.coresetu.com';
+  const redirectUri = getGoogleRedirectUri(req);
   try {
     const { code, state, error, error_description } = req.query;
 

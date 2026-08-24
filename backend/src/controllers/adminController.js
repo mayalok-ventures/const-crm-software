@@ -1642,7 +1642,7 @@ exports.getIntegrationsStatus = async (req, res) => {
     const integrations = await Integration.find(query).select('-encryptedCredentials -accessTokenEncrypted').lean();
     const isWaConnected = waSession.isClientReady();
 
-    const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+    const baseUrl = process.env.BACKEND_URL || 'https://api.coresetu.com';
 
     res.json({
       success: true,

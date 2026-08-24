@@ -101,7 +101,7 @@ exports.startOAuth = async (req, res) => {
       } catch { }
     }
     if (!frontendUrl) {
-      frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      frontendUrl = process.env.FRONTEND_URL || 'https://crm.coresetu.com';
     }
 
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? req.user._id : null);
@@ -152,7 +152,7 @@ exports.startOAuth = async (req, res) => {
  * GET /api/integrations/meta/oauth/callback
  */
 exports.callback = async (req, res) => {
-  let resolvedFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  let resolvedFrontendUrl = process.env.FRONTEND_URL || 'https://crm.coresetu.com';
   const redirectUri = getMetaRedirectUri(req);
   console.log('\n================== [META OAUTH CALLBACK DEBUG START] ==================');
   console.log('[DEBUG 1] Incoming Query Params:', JSON.stringify(req.query, null, 2));
