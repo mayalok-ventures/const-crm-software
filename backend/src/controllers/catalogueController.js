@@ -466,8 +466,12 @@ exports.getMasterColleges = async (req, res) => {
       }
     }
 
-    // Auto-seed disabled - empty database remains clean until explicitly requested
-    const totalCount = await MasterCollege.countDocuments();
+    // Auto-seed if empty database
+    const totalExisting = await MasterCollege.countDocuments();
+    if (totalExisting === 0) {
+      console.log('🌱 Master colleges database empty, auto-seeding standard catalogue...');
+      await exports.seedMasterCatalogue();
+    }
 
     const parsedPage = Math.max(1, parseInt(page) || 1);
     const parsedLimit = Math.min(100, Math.max(1, parseInt(limit) || 50));

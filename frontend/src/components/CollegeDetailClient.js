@@ -124,10 +124,25 @@ export default function CollegeDetailClient() {
   const loadCollegeDetails = async () => {
     setLoading(true);
     try {
-      // 1. Try finding in user's active catalogue first
-      const myRes = await api.get('/catalogue/my-catalogue');
-      const myItems = myRes.data?.catalogue || [];
-      const foundInMy = myItems.find(c => String(c._id) === String(collegeId) || String(c.masterCollegeId?._id) === String(collegeId) || String(c.masterCollegeId) === String(collegeId));
+      // 1. Try finding in user's active catalogue directly first
+      let foundInMy = null;
+      try {
+        const itemRes = await api.get(`/catalogue/my-catalogue/${collegeId}`);
+        if (itemRes.data?.catalogueItem) {
+          foundInMy = itemRes.data.catalogueItem;
+        }
+      } catch (err) {
+        // Fallback: check my-catalogue array
+        try {
+          const myRes = await api.get('/catalogue/my-catalogue');
+          const myItems = myRes.data?.catalogue || [];
+          foundInMy = myItems.find(c =>
+            String(c._id) === String(collegeId) ||
+            String(c.masterCollegeId?._id) === String(collegeId) ||
+            String(c.masterCollegeId) === String(collegeId)
+          );
+        } catch { }
+      }
 
       if (foundInMy) {
         setCollege(foundInMy);
