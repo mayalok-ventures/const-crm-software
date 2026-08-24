@@ -8,11 +8,12 @@ const META_APP_ID = process.env.META_APP_ID || '1361325099456512';
 const META_APP_SECRET = process.env.META_APP_SECRET || '07383347132bb0519be90925c69e44cb';
 
 function getMetaRedirectUri(req) {
-  if (process.env.META_REDIRECT_URI) return process.env.META_REDIRECT_URI;
-  if (process.env.BACKEND_URL) return `${process.env.BACKEND_URL}/api/integrations/meta/oauth/callback`;
-  if (req && req.headers && req.headers.host && !req.headers.host.includes('localhost')) {
-    const proto = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'https');
-    return `${proto}://${req.headers.host}/api/integrations/meta/oauth/callback`;
+  if (req && req.query && req.query.redirect_uri) return req.query.redirect_uri;
+  if (process.env.META_REDIRECT_URI && !process.env.META_REDIRECT_URI.includes('localhost')) {
+    return process.env.META_REDIRECT_URI;
+  }
+  if (process.env.BACKEND_URL && !process.env.BACKEND_URL.includes('localhost')) {
+    return `${process.env.BACKEND_URL}/api/integrations/meta/oauth/callback`;
   }
   return 'https://api.coresetu.com/api/integrations/meta/oauth/callback';
 }
