@@ -260,8 +260,8 @@ function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, refreshKey }) {
   const [chatText, setChatText] = useState('');
   const [senderMode, setSenderMode] = useState('personal'); // 'company' | 'personal'
   const [sending, setSending] = useState(false);
-  const [loading, setLoading] = useState(true);
   const chatScrollRef = useRef(null);
+  const isFetchingHistoryRef = useRef(false);
 
   const canUseCompanyWA = Boolean(waStatus?.allowCompanyWhatsApp && waStatus?.company?.status === 'connected');
   const isPersonalConnected = waStatus?.personal?.status === 'connected';
@@ -277,12 +277,17 @@ function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, refreshKey }) {
 
   const fetchHistory = async (silent = false) => {
     if (!lead?.phone) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if (isFetchingHistoryRef.current) return;
+    isFetchingHistoryRef.current = true;
     try {
       const { data } = await api.get(`/whatsapp/chats/${lead.phone}?leadId=${lead._id || ''}`);
       setMessages(data);
       if (!silent) setLoading(false);
     } catch {
       if (!silent) setLoading(false);
+    } finally {
+      isFetchingHistoryRef.current = false;
     }
   };
 
@@ -291,7 +296,18 @@ function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, refreshKey }) {
     const interval = setInterval(() => {
       fetchHistory(true);
     }, 3500);
-    return () => clearInterval(interval);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchHistory(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [lead?.phone, lead?._id, refreshKey]);
 
   useEffect(() => {

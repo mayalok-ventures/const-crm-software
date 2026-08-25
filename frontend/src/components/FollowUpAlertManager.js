@@ -156,12 +156,16 @@ export default function FollowUpAlertManager() {
     }
   };
 
+  const isCheckingRef = useRef(false);
+
   // 2-Minute Recurring Check & Fail-Safe Audio Engine
   const checkDueFollowUps = useCallback(async () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    const isAuthPage = pathname === '/login' || pathname === '/signup';
-    if (!token || isAuthPage) return;
+    const isPublicPage = pathname === '/login' || pathname === '/signup' || pathname === '/privacy' || pathname === '/terms' || pathname === '/data-deletion';
+    if (!token || isPublicPage || isCheckingRef.current) return;
 
+    isCheckingRef.current = true;
     try {
       const { data } = await api.get('/leads/follow-ups/due');
       const leads = Array.isArray(data) ? data : [];
@@ -179,7 +183,9 @@ export default function FollowUpAlertManager() {
       } else {
         setIsOpen(false);
       }
-    } catch {}
+    } catch {} finally {
+      isCheckingRef.current = false;
+    }
   }, [pathname, playAlarmSound]);
 
   useEffect(() => {
@@ -192,11 +198,19 @@ export default function FollowUpAlertManager() {
     }
 
     checkDueFollowUps();
-    // Poll every 15 seconds to check if any scheduled follow-up has crossed the clock
-    pollTimerRef.current = setInterval(checkDueFollowUps, 15000);
+    // Poll every 30 seconds when active
+    pollTimerRef.current = setInterval(checkDueFollowUps, 30000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkDueFollowUps();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [checkDueFollowUps]);
 

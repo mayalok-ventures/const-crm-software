@@ -16,6 +16,8 @@ const sessions = {};
 const sessionStates = {};
 // Track reconnect attempts to prevent infinite loops
 const reconnectAttempts = {};
+// Reconnect in-flight lock to prevent duplicate concurrent reconnect tasks
+const reconnectInProgress = {};
 // Track pairing-specific reconnect attempts (separate counter from general reconnects)
 const pairingReconnectAttempts = {};
 // Track which users are actively in the pairing window (waiting for user to enter code)
@@ -347,16 +349,24 @@ const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
       // Case 3: Standard connection dropped (network blip, server restart, keepalive drop)
       // Keep reconnecting indefinitely with capped backoff (never abandon an authenticated user)
       if (shouldReconnect) {
+        if (reconnectInProgress[userId]) {
+          return; // A reconnect is already in-flight or scheduled for this user
+        }
+        reconnectInProgress[userId] = true;
         const attempts = (reconnectAttempts[userId] || 0) + 1;
         reconnectAttempts[userId] = attempts;
         const delayMs = Math.min(3000 * Math.pow(1.4, Math.min(attempts, 8)), 30000); // 3s to max 30s
         console.log(`[WA] Scheduling auto-reconnect attempt #${attempts} in ${Math.round(delayMs / 1000)}s for user ${userId}...`);
 
-        setTimeout(() => {
-          if (!pairingInProgress[userId] && (!sessions[userId] || getStatus(userId).status !== 'connected')) {
-            restoreSession(userId, cleanPhone).catch(err => {
-              console.error(`[WA] Auto-reconnect failed for ${userId}:`, err.message);
-            });
+        setTimeout(async () => {
+          try {
+            if (!pairingInProgress[userId] && (!sessions[userId] || getStatus(userId).status !== 'connected')) {
+              await restoreSession(userId, cleanPhone);
+            }
+          } catch (err) {
+            console.error(`[WA] Auto-reconnect failed for ${userId}:`, err.message);
+          } finally {
+            reconnectInProgress[userId] = false;
           }
         }, delayMs);
       }
@@ -364,6 +374,7 @@ const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
       console.log(`[WA] ✅ Connection opened successfully for user ${userId} (${cleanPhone})`);
       sessionStates[userId] = { status: 'connected', phone: cleanPhone, pairingCode: null, qrCode: null };
       pairingInProgress[userId] = false;
+      reconnectInProgress[userId] = false;
       delete pairingReconnectAttempts[userId];
       delete pairingCodeLocks[userId];
       reconnectAttempts[userId] = 0;
@@ -546,6 +557,7 @@ const disconnect = async (userId, clearSession = true, notifyRemote = true) => {
   delete pairingInProgress[uIdStr];
   delete pairingReconnectAttempts[uIdStr];
   delete reconnectAttempts[uIdStr];
+  delete reconnectInProgress[uIdStr];
   delete pairingCodeLocks[uIdStr];
   lastActivityTimestamps.delete(uIdStr);
 
@@ -721,26 +733,46 @@ const initSessions = async () => {
 // ── 7-DAY RESILIENT SESSION GUARANTEE & BACKGROUND HEARTBEAT ───────────────
 // Periodically checks all registered credentials in MongoDB every 45 seconds.
 // If any session dropped connection or server restarted, automatically restore it
-// so users stay connected even after leaving the site or being offline for 7+ days.
+// with exponential cooldown backoff so persistent offline states do not create busy loops.
+let isHeartbeatRunning = false;
+const healFailureCooldowns = new Map();
+
 setInterval(async () => {
+  if (isHeartbeatRunning) return;
+  isHeartbeatRunning = true;
   try {
     const sessionsWithCreds = await WhatsAppAuth.distinct('sessionId', { key: 'creds' });
+    const now = Date.now();
     for (const uId of sessionsWithCreds) {
       if (pairingInProgress[uId]) continue; // Skip if actively in pairing window
       
+      // Check cooldown window for repeatedly failing session restores
+      const cooldown = healFailureCooldowns.get(String(uId));
+      if (cooldown && now < cooldown.nextAllowedAt) {
+        continue;
+      }
+
       const st = getStatus(uId);
       if (st.status !== 'connected' && st.status !== 'connecting') {
         const user = await User.findById(uId).select('phone').lean();
         console.log(`[WA-Heartbeat] Auto-healing offline WhatsApp session for user ${uId}...`);
         try {
           await restoreSession(uId, user?.phone || 'whatsapp');
+          healFailureCooldowns.delete(String(uId));
         } catch (err) {
-          console.warn(`[WA-Heartbeat] Session heal retry notice for ${uId}:`, err.message);
+          const failCount = (cooldown?.failCount || 0) + 1;
+          const cooldownMs = Math.min(60000 * Math.pow(2, Math.min(failCount - 1, 4)), 600000); // 1m -> 2m -> 4m -> 8m -> max 10m
+          healFailureCooldowns.set(String(uId), { nextAllowedAt: now + cooldownMs, failCount });
+          console.warn(`[WA-Heartbeat] Session heal retry notice for ${uId} (Next attempt in ${Math.round(cooldownMs / 1000)}s):`, err.message);
         }
+      } else {
+        healFailureCooldowns.delete(String(uId));
       }
     }
   } catch (e) {
     // Non-blocking background heartbeat
+  } finally {
+    isHeartbeatRunning = false;
   }
 }, 45000);
 

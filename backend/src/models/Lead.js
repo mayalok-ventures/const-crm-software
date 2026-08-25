@@ -428,10 +428,13 @@ leadSchema.index(
 leadSchema.index({ userId: 1, createdAt: -1 });
 leadSchema.index({ userId: 1, deletedAt: 1, status: 1 });
 leadSchema.index({ userId: 1, deletedAt: 1, createdAt: -1 });
+leadSchema.index({ userId: 1, deletedAt: 1, updatedAt: -1 });
 leadSchema.index({ companyId: 1, deletedAt: 1, status: 1 });
 leadSchema.index({ companyId: 1, deletedAt: 1, createdAt: -1 });
+leadSchema.index({ companyId: 1, deletedAt: 1, updatedAt: -1 });
 leadSchema.index({ assignedTo: 1, deletedAt: 1, status: 1 });
 leadSchema.index({ assignedTo: 1, deletedAt: 1, createdAt: -1 });
+leadSchema.index({ assignedTo: 1, deletedAt: 1, updatedAt: -1 });
 leadSchema.index({ sharedWithCompanyId: 1, deletedAt: 1 });
 leadSchema.index({ followUpDate: 1, deletedAt: 1 });
 leadSchema.index({ 'leadActivities.timestamp': -1 });

@@ -43,7 +43,7 @@ export const TIMELINE_OPTIONS = [
   { id: 'flexible', label: 'Flexible / Exploring' },
 ];
 
-export default function LeadCard({
+function LeadCardComponent({
   lead,
   token,
   canonicalPlans = [],
@@ -959,3 +959,24 @@ export default function LeadCard({
     </div>
   );
 }
+
+function areLeadPropsEqual(prevProps, nextProps) {
+  if (prevProps.token !== nextProps.token) return false;
+  if (prevProps.lead === nextProps.lead) return true;
+  if (!prevProps.lead || !nextProps.lead) return false;
+
+  return (
+    prevProps.lead._id === nextProps.lead._id &&
+    prevProps.lead.status === nextProps.lead.status &&
+    prevProps.lead.name === nextProps.lead.name &&
+    prevProps.lead.phone === nextProps.lead.phone &&
+    prevProps.lead.updatedAt === nextProps.lead.updatedAt &&
+    prevProps.lead.followUpDate === nextProps.lead.followUpDate &&
+    prevProps.lead.activeFollowUp?.status === nextProps.lead.activeFollowUp?.status &&
+    prevProps.lead.activeFollowUp?.scheduledAt === nextProps.lead.activeFollowUp?.scheduledAt &&
+    prevProps.canonicalPlans === nextProps.canonicalPlans
+  );
+}
+
+const LeadCard = React.memo(LeadCardComponent, areLeadPropsEqual);
+export default LeadCard;

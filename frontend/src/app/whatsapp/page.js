@@ -43,6 +43,9 @@ export default function WhatsAppConnectPage() {
   const [replyText, setReplyText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
   const chatScrollRef = useRef(null);
+  const loadingStatusRef = useRef(false);
+  const loadingChatsRef = useRef(false);
+  const loadingHistoryRef = useRef(false);
 
   // Generate QR image
   useEffect(() => {
@@ -63,6 +66,9 @@ export default function WhatsAppConnectPage() {
     let active = true;
 
     const checkStatus = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (loadingStatusRef.current) return;
+      loadingStatusRef.current = true;
       try {
         const { data } = await api.get('/whatsapp/status');
         if (active) {
@@ -72,6 +78,8 @@ export default function WhatsAppConnectPage() {
         }
       } catch (err) {
         if (active) setStatusLoading(false);
+      } finally {
+        loadingStatusRef.current = false;
       }
     };
 
@@ -80,15 +88,26 @@ export default function WhatsAppConnectPage() {
       if (active) checkStatus();
     }, 5000);
 
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && active) {
+        checkStatus();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
       active = false;
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, []);
 
   // Fetch chats list when connected
   const loadChats = async (silent = false) => {
     if (status.status !== 'connected') return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if (loadingChatsRef.current) return;
+    loadingChatsRef.current = true;
     if (!silent) setChatsLoading(true);
     try {
       const { data } = await api.get('/whatsapp/chats');
@@ -96,6 +115,7 @@ export default function WhatsAppConnectPage() {
     } catch {
       // Ignore
     } finally {
+      loadingChatsRef.current = false;
       if (!silent) setChatsLoading(false);
     }
   };
@@ -104,13 +124,26 @@ export default function WhatsAppConnectPage() {
     if (status.status === 'connected') {
       loadChats();
       const interval = setInterval(() => loadChats(true), 4000);
-      return () => clearInterval(interval);
+      const handleVisibility = () => {
+        if (document.visibilityState === 'visible') {
+          loadChats(true);
+        }
+      };
+      document.addEventListener('visibilitychange', handleVisibility);
+
+      return () => {
+        clearInterval(interval);
+        document.removeEventListener('visibilitychange', handleVisibility);
+      };
     }
   }, [status.status]);
 
   // Load chat history when selectedChat changes
   const loadChatHistory = async (phone, silent = false) => {
     if (!phone) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if (loadingHistoryRef.current) return;
+    loadingHistoryRef.current = true;
     if (!silent) setChatLoading(true);
     try {
       const { data } = await api.get(`/whatsapp/chats/${phone}`);
@@ -118,6 +151,7 @@ export default function WhatsAppConnectPage() {
     } catch {
       // Ignore
     } finally {
+      loadingHistoryRef.current = false;
       if (!silent) setChatLoading(false);
     }
   };
@@ -126,7 +160,17 @@ export default function WhatsAppConnectPage() {
     if (selectedChat) {
       loadChatHistory(selectedChat);
       const interval = setInterval(() => loadChatHistory(selectedChat, true), 3500);
-      return () => clearInterval(interval);
+      const handleVisibility = () => {
+        if (document.visibilityState === 'visible') {
+          loadChatHistory(selectedChat, true);
+        }
+      };
+      document.addEventListener('visibilitychange', handleVisibility);
+
+      return () => {
+        clearInterval(interval);
+        document.removeEventListener('visibilitychange', handleVisibility);
+      };
     }
   }, [selectedChat]);
 

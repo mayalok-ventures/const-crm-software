@@ -212,7 +212,10 @@ const startWorker = () => {
     console.error('[CampaignWorker] Failed to reset stale campaigns:', err.message)
   );
 
+  let isPolling = false;
   setInterval(async () => {
+    if (isPolling) return;
+    isPolling = true;
     try {
       // Find queued campaigns not already being processed
       const queued = await Campaign.find({ status: 'queued' }).limit(3).lean();
@@ -239,6 +242,8 @@ const startWorker = () => {
       }
     } catch (err) {
       console.error('[CampaignWorker] Poll loop error:', err.message);
+    } finally {
+      isPolling = false;
     }
   }, POLL_INTERVAL_MS);
 

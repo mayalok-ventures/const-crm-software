@@ -58,5 +58,6 @@ const chatMessageSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 chatMessageSchema.index({ userId: 1, phone: 1, timestamp: -1 });
+chatMessageSchema.index({ userId: 1, leadId: 1, timestamp: -1 });
 
 module.exports = mongoose.model('ChatMessage', chatMessageSchema);

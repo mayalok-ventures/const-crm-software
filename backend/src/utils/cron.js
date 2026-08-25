@@ -6,7 +6,10 @@ const { runTestPrepFeeAlertsCron } = require('../services/automationHandlers');
 
 // Run every minute — check for due follow-ups & dispatch due notifications
 const startFollowUpCron = () => {
+  let isFollowUpCronRunning = false;
   cron.schedule('* * * * *', async () => {
+    if (isFollowUpCronRunning) return;
+    isFollowUpCronRunning = true;
     try {
       const now = new Date();
       const leads = await Lead.find({
@@ -49,15 +52,22 @@ const startFollowUpCron = () => {
       console.log(`[Cron] Processed ${notifications.length} due follow-up alarms`);
     } catch (err) {
       console.error('[Cron] Follow-up alarm error:', err.message);
+    } finally {
+      isFollowUpCronRunning = false;
     }
   });
 
   // Run every 15 minutes — process subscription downgrades, grace expiries, and quota drips
+  let isSubCronRunning = false;
   cron.schedule('*/15 * * * *', async () => {
+    if (isSubCronRunning) return;
+    isSubCronRunning = true;
     try {
       await processSubscriptionLifecycle();
     } catch (err) {
       console.error('[Cron] Subscription lifecycle worker error:', err.message);
+    } finally {
+      isSubCronRunning = false;
     }
   });
 

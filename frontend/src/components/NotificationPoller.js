@@ -2,10 +2,11 @@
 import { useEffect, useRef } from 'react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 
 export default function NotificationPoller() {
   const router = useRouter();
+  const pathname = usePathname();
   const lastSeenIdRef = useRef(null);
   const isFetchingRef = useRef(false);
   const timerRef = useRef(null);
@@ -90,6 +91,9 @@ export default function NotificationPoller() {
   };
 
   useEffect(() => {
+    const isPublicPage = pathname === '/login' || pathname === '/signup' || pathname === '/privacy' || pathname === '/terms' || pathname === '/data-deletion';
+    if (isPublicPage) return;
+
     let backoffMs = 0;
 
     const checkNotifications = async () => {
@@ -113,8 +117,8 @@ export default function NotificationPoller() {
           }
         }
       } catch (err) {
-        if (err.response?.status === 429) {
-          backoffMs = Math.min((backoffMs || 20000) * 2, 120000);
+        if (err.response?.status === 429 || err.response?.status >= 500) {
+          backoffMs = Math.min((backoffMs || 25000) * 2, 120000);
         }
       } finally {
         isFetchingRef.current = false;
@@ -123,9 +127,9 @@ export default function NotificationPoller() {
 
     checkNotifications();
 
-    // Polling backup timer (every 20s when active)
+    // Polling timer: 25s when visible + backoff on error
     const poll = () => {
-      const delay = 20000 + backoffMs;
+      const delay = 25000 + backoffMs;
       return setTimeout(async () => {
         await checkNotifications();
         timerRef.current = poll();
@@ -148,7 +152,7 @@ export default function NotificationPoller() {
         eventSourceRef.current.close();
       }
     };
-  }, []);
+  }, [pathname]);
 
   return null;
 }

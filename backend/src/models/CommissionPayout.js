@@ -79,6 +79,7 @@ const commissionPayoutSchema = new mongoose.Schema(
 // Compound Index for Agent Payout History & Tax Ledger
 commissionPayoutSchema.index({ userId: 1, createdAt: -1 });
 commissionPayoutSchema.index({ status: 1, createdAt: -1 });
+commissionPayoutSchema.index({ userId: 1, status: 1, createdAt: -1 });
 
 // Immutability Guard: Prevent editing core financial terms after creation
 commissionPayoutSchema.pre('save', function (next) {

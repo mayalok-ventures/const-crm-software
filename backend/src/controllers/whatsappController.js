@@ -217,7 +217,7 @@ exports.getChatHistory = async (req, res) => {
           { userId: req.user._id, phone: { $in: [cleanPhone, tenDigit, '91' + tenDigit] } },
           ...(companyId ? [{ companyId, phone: { $in: [cleanPhone, tenDigit, '91' + tenDigit] } }] : [])
         ]
-      });
+      }).select('_id').lean();
       if (lead) {
         conditions.push({ leadId: lead._id });
       }

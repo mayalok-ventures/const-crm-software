@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -9,19 +9,36 @@ import { MessageCircle, Play, Pause, XCircle, AlertTriangle, Eye, ChevronRight }
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
+  const isFetchingRef = useRef(false);
 
   const fetchCampaigns = () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     api.get('/campaigns')
       .then(r => setCampaigns(r.data))
       .catch(() => toast.error('Failed to load campaigns'))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        isFetchingRef.current = false;
+        setLoading(false);
+      });
   };
 
   useEffect(() => {
     fetchCampaigns();
-    // Poll every 10s — campaign status changes are not real-time critical
-    const interval = setInterval(fetchCampaigns, 10000);
-    return () => clearInterval(interval);
+    // Poll every 15s when tab is active
+    const interval = setInterval(fetchCampaigns, 15000);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchCampaigns();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, []);
 
   const handlePause = async (id) => {

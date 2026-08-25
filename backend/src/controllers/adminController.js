@@ -595,14 +595,16 @@ exports.getAdminLeads = async (req, res) => {
     }
 
     const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
-    const total = await Lead.countDocuments(query);
-    const leads = await Lead.find(query)
-      .populate('assignedTo', 'name email role')
-      .populate('assignedManager', 'name email')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit, 10))
-      .lean();
+    const [total, leads] = await Promise.all([
+      Lead.countDocuments(query),
+      Lead.find(query)
+        .populate('assignedTo', 'name email role')
+        .populate('assignedManager', 'name email')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit, 10))
+        .lean(),
+    ]);
 
     res.json({
       success: true,
@@ -1926,15 +1928,17 @@ exports.getCommissionPayouts = async (req, res) => {
     if (status && status !== 'all') query.status = String(status).toUpperCase();
 
     const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
-    const total = await CommissionPayout.countDocuments(query);
-    const payouts = await CommissionPayout.find(query)
-      .populate('userId', 'name email role')
-      .populate('leadId', 'name phone status')
-      .populate('appliedRuleId', 'ruleName targetRole commissionType value')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit, 10))
-      .lean();
+    const [total, payouts] = await Promise.all([
+      CommissionPayout.countDocuments(query),
+      CommissionPayout.find(query)
+        .populate('userId', 'name email role')
+        .populate('leadId', 'name phone status')
+        .populate('appliedRuleId', 'ruleName targetRole commissionType value')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit, 10))
+        .lean(),
+    ]);
 
     res.json({
       success: true,
@@ -3092,23 +3096,29 @@ exports.applyOfferToLead = async (req, res) => {
 exports.getUsers = async (req, res) => {
   try {
     const users = await User.find().select('-password').sort({ createdAt: -1 }).lean();
-    const usersWithTags = await Promise.all(
-      users.map(async (user) => {
-        const isSingleUser = !user.companyId && user.role !== 'superadmin' && user.role !== 'admin' && user.companyRole !== 'owner';
-        let organizationTag = undefined;
-        if (user.companyId) {
-          const owner = await User.findById(user.companyId).select('companyInfo name').lean();
-          if (owner) {
-            organizationTag = (owner.companyInfo && owner.companyInfo.companyName) || owner.name;
-          }
+    
+    // Batch lookup all company owners in 1 query to prevent N+1 queries
+    const companyIds = [...new Set(users.map((u) => u.companyId).filter(Boolean))];
+    const owners = companyIds.length > 0
+      ? await User.find({ _id: { $in: companyIds } }).select('companyInfo name').lean()
+      : [];
+    const ownerMap = new Map(owners.map((o) => [String(o._id), o]));
+
+    const usersWithTags = users.map((user) => {
+      const isSingleUser = !user.companyId && user.role !== 'superadmin' && user.role !== 'admin' && user.companyRole !== 'owner';
+      let organizationTag = undefined;
+      if (user.companyId) {
+        const owner = ownerMap.get(String(user.companyId));
+        if (owner) {
+          organizationTag = (owner.companyInfo && owner.companyInfo.companyName) || owner.name;
         }
-        return {
-          ...user,
-          isSingleUser,
-          organizationTag,
-        };
-      })
-    );
+      }
+      return {
+        ...user,
+        isSingleUser,
+        organizationTag,
+      };
+    });
     res.json({ success: true, users: usersWithTags });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
