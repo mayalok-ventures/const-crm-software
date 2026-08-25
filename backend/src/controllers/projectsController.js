@@ -102,6 +102,21 @@ exports.createProject = async (req, res) => {
       return res.status(400).json({ message: 'Name and Location/Market are required' });
     }
 
+    // Dynamic Product/Package Form Schema Validation
+    const { validateFormData, getDefaultProductFormSchema } = require('../utils/formValidator');
+    const activeProductSchema = (req.user?.productFormSchema && Array.isArray(req.user.productFormSchema) && req.user.productFormSchema.length > 0)
+      ? req.user.productFormSchema
+      : getDefaultProductFormSchema();
+
+    const validationResult = validateFormData(activeProductSchema, req.body);
+    if (!validationResult.isValid) {
+      const firstError = Object.values(validationResult.errors)[0] || 'Validation failed';
+      return res.status(400).json({
+        message: firstError,
+        errors: validationResult.errors,
+      });
+    }
+
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' ? req.user._id : null);
     const resolvedVendor = vendorOrBrand || developer || (req.user.companyInfo?.companyName || '');
     const resolvedRef = referenceId || reraNumber || '';
@@ -113,6 +128,24 @@ exports.createProject = async (req, res) => {
     } else if (configuration) {
       categories = Array.isArray(configuration) ? configuration : configuration.split(',').map(c => c.trim()).filter(Boolean);
     }
+
+    const standardProjectKeys = new Set([
+      'name', 'location', 'city', 'vendorOrBrand', 'developer', 'basePrice',
+      'productCategory', 'configuration', 'amenities', 'deliveryOrCompletionDate',
+      'possessionDate', 'description', 'brochureUrl', 'images', 'status',
+      'referenceId', 'reraNumber', 'customData'
+    ]);
+
+    const extraCustomData = {};
+    for (const key of Object.keys(req.body)) {
+      if (!standardProjectKeys.has(key)) {
+        extraCustomData[key] = req.body[key];
+      }
+    }
+    const finalCustomData = {
+      ...(typeof req.body.customData === 'object' ? req.body.customData : {}),
+      ...extraCustomData,
+    };
 
     const project = await Project.create({
       userId: req.user._id,
@@ -134,6 +167,7 @@ exports.createProject = async (req, res) => {
       status: status || 'available',
       referenceId: resolvedRef,
       reraNumber: resolvedRef,
+      customData: finalCustomData,
     });
 
     res.status(201).json(project);

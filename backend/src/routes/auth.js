@@ -11,6 +11,7 @@ const {
   updatePipelineStages,
   updateCustomFields,
   updateFormSchema,
+  getFormSchema,
   getMe,
   updateProfile,
   changePassword,
@@ -32,6 +33,7 @@ router.post('/2fa/setup', protect, setup2FA);
 router.post('/2fa/enable', protect, enable2FA);
 router.post('/2fa/disable', protect, disable2FA);
 router.put('/pipeline-stages', protect, updatePipelineStages);
+router.get('/form-schema', protect, getFormSchema);
 router.put('/form-schema', protect, updateFormSchema || updateCustomFields);
 router.put('/custom-fields', protect, updateCustomFields);
 router.put('/change-password', protect, changePassword);

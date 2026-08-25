@@ -725,48 +725,126 @@ exports.updatePipelineStages = async (req, res) => {
 // @desc  Update Fully Customizable Form Engine Schema (with Conditional Visibility dependsOn)
 // @route PUT /api/auth/form-schema (also aliases PUT /api/auth/custom-fields)
 // @access Private
+// @desc  Update Fully Customizable Form Engine Schema (Lead or Product/Package)
+// @route PUT /api/auth/form-schema (also aliases PUT /api/auth/custom-fields)
+// @access Private
 exports.updateFormSchema = async (req, res) => {
   try {
+    const formType = String(req.query.type || req.body.formType || 'lead').toLowerCase();
     const rawList = Array.isArray(req.body)
       ? req.body
-      : (req.body.schema || req.body.leadFormSchema || req.body.fields || req.body.customLeadFields || []);
+      : (req.body.schema || req.body.leadFormSchema || req.body.productFormSchema || req.body.fields || req.body.customLeadFields || []);
     if (!Array.isArray(rawList)) {
       return res.status(400).json({ message: 'Form schema must be an array' });
     }
 
-    const sanitized = rawList.map((f, idx) => {
-      const fieldId = (f.fieldId || f.label || '').toLowerCase().replace(/[^a-z0-9_]/g, '_').trim();
-      const isSystem = Boolean(f.isSystem);
-      const isMandatorySystem = ['name', 'phone'].includes(fieldId);
+    const ALLOWED_TYPES = [
+      'text', 'textarea', 'number', 'email', 'phone', 'date', 'datetime',
+      'select', 'multiselect', 'radio', 'checkbox', 'currency', 'percentage', 'url',
+      'dropdown', 'hidden'
+    ];
 
+    const sanitized = rawList.map((f, idx) => {
+      const rawId = f.fieldId || f.name || f.label || '';
+      const fieldId = String(rawId).replace(/[^a-zA-Z0-9_]/g, '_').trim();
+      const isSystem = Boolean(f.isSystem);
+      const isMandatorySystem = formType === 'lead'
+        ? ['name', 'phone'].includes(fieldId.toLowerCase())
+        : ['name', 'location'].includes(fieldId.toLowerCase());
+
+      const rawType = String(f.fieldType || f.type || 'text').toLowerCase();
+      const fieldType = ALLOWED_TYPES.includes(rawType) ? rawType : 'text';
+
+      // Backward compatible dependsOn
       const dependsOn = (f.dependsOn && f.dependsOn.field)
         ? { field: String(f.dependsOn.field).trim(), value: String(f.dependsOn.value || '').trim() }
         : { field: null, value: null };
 
+      // Advanced conditional visibility rules
+      let conditionalRules = null;
+      if (f.conditionalRules && Array.isArray(f.conditionalRules.rules)) {
+        conditionalRules = {
+          combinator: f.conditionalRules.combinator === 'OR' ? 'OR' : 'AND',
+          rules: f.conditionalRules.rules.map(r => ({
+            field: String(r.field || '').trim(),
+            operator: String(r.operator || '=').trim(),
+            value: r.value !== undefined ? r.value : '',
+          })).filter(r => r.field),
+        };
+      }
+
+      // Advanced conditional required rules
+      let conditionalRequiredRules = null;
+      if (f.conditionalRequiredRules && Array.isArray(f.conditionalRequiredRules.rules)) {
+        conditionalRequiredRules = {
+          combinator: f.conditionalRequiredRules.combinator === 'OR' ? 'OR' : 'AND',
+          rules: f.conditionalRequiredRules.rules.map(r => ({
+            field: String(r.field || '').trim(),
+            operator: String(r.operator || '=').trim(),
+            value: r.value !== undefined ? r.value : '',
+          })).filter(r => r.field),
+        };
+      }
+
+      // Validation rules (min, max, minLength, maxLength, pattern)
+      const validationRules = {};
+      if (f.validationRules && typeof f.validationRules === 'object') {
+        if (typeof f.validationRules.minLength === 'number') validationRules.minLength = f.validationRules.minLength;
+        if (typeof f.validationRules.maxLength === 'number') validationRules.maxLength = f.validationRules.maxLength;
+        if (typeof f.validationRules.min === 'number') validationRules.min = f.validationRules.min;
+        if (typeof f.validationRules.max === 'number') validationRules.max = f.validationRules.max;
+        if (typeof f.validationRules.pattern === 'string') validationRules.pattern = f.validationRules.pattern.trim();
+      }
+
+      // Format options (support string array or object array with label/value)
+      const options = Array.isArray(f.options) ? f.options.map(opt => {
+        if (typeof opt === 'object' && opt !== null) {
+          return {
+            name: String(opt.name || opt.label || opt.value || '').trim(),
+            value: String(opt.value || opt.name || opt.label || '').trim(),
+            order: typeof opt.order === 'number' ? opt.order : 0,
+            disabled: Boolean(opt.disabled),
+          };
+        }
+        return { name: String(opt).trim(), value: String(opt).trim(), order: 0, disabled: false };
+      }).filter(o => o.value) : [];
+
       return {
         fieldId,
         label: (f.label || fieldId).trim(),
-        fieldType: ['text', 'email', 'phone', 'dropdown', 'date', 'number'].includes(f.fieldType) ? f.fieldType : 'text',
-        options: Array.isArray(f.options) ? f.options.map(o => String(o).trim()).filter(Boolean) : [],
+        fieldType,
+        placeholder: f.placeholder ? String(f.placeholder).trim() : '',
+        helpText: f.helpText ? String(f.helpText).trim() : '',
+        defaultValue: f.defaultValue !== undefined ? f.defaultValue : '',
+        options,
         isRequired: isMandatorySystem ? true : Boolean(f.isRequired),
         isSystem,
         isHidden: isMandatorySystem ? false : Boolean(f.isHidden),
         order: typeof f.order === 'number' ? f.order : (idx + 1),
         dependsOn,
+        conditionalRules,
+        conditionalRequiredRules,
+        validationRules,
       };
     }).filter(f => f.fieldId && f.label);
 
-    // Ensure mandatory name & phone are present
-    const hasName = sanitized.some(f => f.fieldId === 'name');
-    const hasPhone = sanitized.some(f => f.fieldId === 'phone');
-    if (!hasName || !hasPhone) {
-      return res.status(400).json({ message: 'System fields "Name" and "Phone" cannot be removed.' });
+    // Enforce mandatory lead fields
+    if (formType === 'lead') {
+      const hasName = sanitized.some(f => f.fieldId.toLowerCase() === 'name');
+      const hasPhone = sanitized.some(f => f.fieldId.toLowerCase() === 'phone');
+      if (!hasName || !hasPhone) {
+        return res.status(400).json({ message: 'System fields "Name" and "Phone" cannot be removed.' });
+      }
     }
 
     // Sort by order
     sanitized.sort((a, b) => (a.order || 0) - (b.order || 0));
 
-    const updateFields = { leadFormSchema: sanitized };
+    const isProduct = formType === 'product' || formType === 'package';
+    const updateFields = isProduct
+      ? { productFormSchema: sanitized }
+      : { leadFormSchema: sanitized };
+
     if (req.body.showFollowUpOnCreate !== undefined) {
       updateFields.showFollowUpOnCreate = Boolean(req.body.showFollowUpOnCreate);
       updateFields['preferences.showFollowUpOnCreate'] = Boolean(req.body.showFollowUpOnCreate);
@@ -782,8 +860,11 @@ exports.updateFormSchema = async (req, res) => {
     );
 
     res.json({
-      message: 'Lead form layout saved successfully ✅',
+      success: true,
+      message: `${isProduct ? 'Product/Package' : 'Lead'} form layout saved successfully ✅`,
+      formType: isProduct ? 'product' : 'lead',
       leadFormSchema: user.leadFormSchema,
+      productFormSchema: user.productFormSchema,
       showFollowUpOnCreate: user.showFollowUpOnCreate !== false,
       preferences: user.preferences,
       user,
@@ -794,6 +875,48 @@ exports.updateFormSchema = async (req, res) => {
   }
 };
 exports.updateCustomFields = exports.updateFormSchema;
+
+// @desc  Get Active Form Schema (Lead or Product/Package)
+// @route GET /api/auth/form-schema
+// @access Private
+exports.getFormSchema = async (req, res) => {
+  try {
+    const formType = String(req.query.type || 'lead').toLowerCase();
+    const user = await User.findById(req.user._id).lean();
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const { getDefaultProductFormSchema } = require('../utils/formValidator');
+    const { getIndustryDefaults } = require('../utils/industryTemplates');
+
+    if (formType === 'product' || formType === 'package') {
+      const schema = (user.productFormSchema && Array.isArray(user.productFormSchema) && user.productFormSchema.length > 0)
+        ? user.productFormSchema
+        : getDefaultProductFormSchema();
+      return res.json({
+        success: true,
+        formType: 'product',
+        schema,
+        productFormSchema: schema,
+      });
+    }
+
+    const industryDefaults = getIndustryDefaults(user.industryType, user.educationSubProfile);
+    const schema = (user.leadFormSchema && Array.isArray(user.leadFormSchema) && user.leadFormSchema.length > 0)
+      ? user.leadFormSchema
+      : industryDefaults.leadFormSchema;
+
+    return res.json({
+      success: true,
+      formType: 'lead',
+      schema,
+      leadFormSchema: schema,
+      showFollowUpOnCreate: user.showFollowUpOnCreate !== false,
+    });
+  } catch (err) {
+    console.error('getFormSchema error:', err);
+    res.status(500).json({ message: 'Failed to fetch form schema' });
+  }
+};
 
 // @desc  Get current logged in user details
 // @route GET /api/auth/me

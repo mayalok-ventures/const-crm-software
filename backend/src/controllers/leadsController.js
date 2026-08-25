@@ -633,6 +633,22 @@ exports.createLead = async (req, res) => {
 
     if (!name || !phone) return res.status(400).json({ message: 'Name and phone are required' });
 
+    // Dynamic Form Schema Backend Validation (Conditional & Custom Fields)
+    const { validateFormData } = require('../utils/formValidator');
+    const { getIndustryDefaults } = require('../utils/industryTemplates');
+    const activeLeadSchema = (req.user?.leadFormSchema && Array.isArray(req.user.leadFormSchema) && req.user.leadFormSchema.length > 0)
+      ? req.user.leadFormSchema
+      : getIndustryDefaults(req.user?.industryType, req.user?.educationSubProfile).leadFormSchema;
+
+    const validationResult = validateFormData(activeLeadSchema, req.body);
+    if (!validationResult.isValid) {
+      const firstError = Object.values(validationResult.errors)[0] || 'Validation failed';
+      return res.status(400).json({
+        message: firstError,
+        errors: validationResult.errors,
+      });
+    }
+
     const parsedFollowUpDate = (followUpDate && String(followUpDate).trim() !== '') ? new Date(followUpDate) : null;
 
     const cleanPhone = phone.replace(/\D/g, '');

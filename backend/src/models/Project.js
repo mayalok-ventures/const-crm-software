@@ -144,6 +144,10 @@ const projectSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  customData: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
 }, { timestamps: true });
 
 // Auto-sync aliases before saving

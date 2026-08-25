@@ -19,6 +19,7 @@ import LostReasonModal, { isLostStage, LOST_REASON_OPTIONS } from '@/components/
 import PlanStatusWidget from '@/components/PlanStatusWidget';
 import { SourcePill } from '@/lib/sourceHelper';
 import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
+import { isFieldVisible as evaluateFieldVisible, isFieldRequired as evaluateFieldRequired } from '@/components/common/DynamicFormRenderer';
 
 const STAGE_LABELS = {
   new_lead: '🆕 New Lead',
@@ -576,13 +577,10 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
     ? user.leadFormSchema
     : defaults.leadFormSchema;
 
-  // Real-time Conditional Logic Evaluator (dependsOn & showFollowUpOnCreate)
+  // Real-time Conditional Logic Evaluator (Supports 12 operators, AND/OR combinators, dependsOn & showFollowUpOnCreate)
   const isFieldVisible = (field) => {
-    if (field.isHidden) return false;
     if (field.fieldId === 'followUpDate' && !showFollowUpOnCreate) return false;
-    if (!field.dependsOn || !field.dependsOn.field) return true;
-    const parentVal = values[field.dependsOn.field] || '';
-    return String(parentVal || '').trim().toLowerCase() === String(field.dependsOn.value || '').trim().toLowerCase();
+    return evaluateFieldVisible(field, values);
   };
 
   const activeFields = [...rawSchema]
@@ -623,10 +621,11 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
       return toast.error('Please select a Lost Reason for this lost stage');
     }
 
-    // Check active mandatory fields (excluding followUpDate which is governed by showFollowUpOnCreate)
+    // Check active mandatory fields (evaluating conditional requiredness)
     for (const f of activeFields) {
       if (f.fieldId === 'followUpDate') continue;
-      if (f.isRequired && !values[f.fieldId]?.toString().trim()) {
+      const isReq = evaluateFieldRequired(f, values);
+      if (isReq && !values[f.fieldId]?.toString().trim()) {
         return toast.error(`${f.label} is required`);
       }
     }

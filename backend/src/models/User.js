@@ -178,6 +178,10 @@ const userSchema = new mongoose.Schema({
     type: [mongoose.Schema.Types.Mixed],
     default: [],
   },
+  productFormSchema: {
+    type: [mongoose.Schema.Types.Mixed],
+    default: [],
+  },
 
   // Authentication & Security
   twoFactorEnabled: { type: Boolean, default: false },

@@ -1431,39 +1431,30 @@ exports.reassignAgentLeads = async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 exports.getFormSchemas = async (req, res) => {
   try {
-    let form = await FormSchema.findOne({ isActive: true }).sort({ createdAt: -1 }).lean();
-    if (!form) {
-      form = await FormSchema.create({
-        title: 'Lead Capture Form',
-        description: 'Standard Website Inbound Lead Capture',
-        isActive: true,
-        createdBy: req.user._id,
-        fields: [
-          { label: 'Full Name', name: 'name', type: 'text', isRequired: true, placeholder: 'Enter full name' },
-          { label: 'Phone Number', name: 'phone', type: 'phone', isRequired: true, placeholder: 'Enter phone number' },
-          { label: 'Email Address', name: 'email', type: 'email', isRequired: false, placeholder: 'Enter email address' },
-          { label: 'Company / Project', name: 'company', type: 'text', isRequired: false, placeholder: 'Enter organization' },
-          { label: 'Budget Range', name: 'budget', type: 'dropdown', options: ['< ₹10k', '₹10k - ₹50k', '₹50k - ₹2L', '₹2L+'], isRequired: false },
-        ],
-        routing: {
-          targetStage: 'New Lead',
-        },
-      });
-    }
+    const formType = String(req.query.type || 'lead').toLowerCase();
+    const isProduct = formType === 'product' || formType === 'package';
+    const user = await User.findById(req.user._id).lean();
 
-    const fields = form.fields.map(f => ({
-      fieldId: f.name,
-      label: f.label,
-      fieldType: f.type,
-      isRequired: f.isRequired,
-      options: f.options || [],
-      placeholder: f.placeholder,
-    }));
+    const { getDefaultProductFormSchema } = require('../utils/formValidator');
+    const { getIndustryDefaults } = require('../utils/industryTemplates');
+
+    let schema;
+    if (isProduct) {
+      schema = (user?.productFormSchema && Array.isArray(user.productFormSchema) && user.productFormSchema.length > 0)
+        ? user.productFormSchema
+        : getDefaultProductFormSchema();
+    } else {
+      const industryDefaults = getIndustryDefaults(user?.industryType, user?.educationSubProfile);
+      schema = (user?.leadFormSchema && Array.isArray(user.leadFormSchema) && user.leadFormSchema.length > 0)
+        ? user.leadFormSchema
+        : industryDefaults.leadFormSchema;
+    }
 
     res.json({
       success: true,
-      form,
-      fields,
+      formType: isProduct ? 'product' : 'lead',
+      fields: schema,
+      schema,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -1472,37 +1463,78 @@ exports.getFormSchemas = async (req, res) => {
 
 exports.saveFormSchema = async (req, res) => {
   try {
-    const { title, description, fields, routing } = req.body;
+    const formType = String(req.query.type || req.body.formType || 'lead').toLowerCase();
+    const isProduct = formType === 'product' || formType === 'package';
+    const { title, description, fields } = req.body;
     if (!Array.isArray(fields)) {
       return res.status(400).json({ success: false, message: 'Fields array is required' });
     }
 
-    const normalizedFields = fields.map(f => ({
-      label: f.label || f.name,
-      name: f.name || f.fieldId || 'custom_field',
-      type: ['text', 'email', 'phone', 'dropdown', 'number', 'textarea', 'hidden'].includes(f.type || f.fieldType) ? (f.type || f.fieldType) : 'text',
-      isRequired: Boolean(f.isRequired),
-      options: Array.isArray(f.options) ? f.options : [],
-      placeholder: f.placeholder || '',
-    }));
+    const ALLOWED_TYPES = [
+      'text', 'textarea', 'number', 'email', 'phone', 'date', 'datetime',
+      'select', 'multiselect', 'radio', 'checkbox', 'currency', 'percentage', 'url',
+      'dropdown', 'hidden'
+    ];
 
-    const form = await FormSchema.findOneAndUpdate(
-      { isActive: true },
-      {
-        $set: {
-          title: title || 'Lead Capture Form',
-          description: description || 'CRM Inbound Form',
-          fields: normalizedFields,
-          routing: routing || { targetStage: 'New Lead' },
-          isActive: true,
+    const sanitized = fields.map((f, idx) => {
+      const rawId = f.fieldId || f.name || f.label || '';
+      const fieldId = String(rawId).replace(/[^a-zA-Z0-9_]/g, '_').trim();
+      const isSystem = Boolean(f.isSystem);
+      const isMandatorySystem = isProduct
+        ? ['name', 'location'].includes(fieldId.toLowerCase())
+        : ['name', 'phone'].includes(fieldId.toLowerCase());
+
+      const rawType = String(f.fieldType || f.type || 'text').toLowerCase();
+      const fieldType = ALLOWED_TYPES.includes(rawType) ? rawType : 'text';
+
+      const options = Array.isArray(f.options) ? f.options.map(opt => {
+        if (typeof opt === 'object' && opt !== null) {
+          return {
+            name: String(opt.name || opt.label || opt.value || '').trim(),
+            value: String(opt.value || opt.name || opt.label || '').trim(),
+            order: typeof opt.order === 'number' ? opt.order : 0,
+            disabled: Boolean(opt.disabled),
+          };
         }
-      },
-      { new: true, upsert: true }
-    );
+        return { name: String(opt).trim(), value: String(opt).trim(), order: 0, disabled: false };
+      }).filter(o => o.value) : [];
 
+      return {
+        fieldId,
+        label: (f.label || fieldId).trim(),
+        fieldType,
+        placeholder: f.placeholder ? String(f.placeholder).trim() : '',
+        helpText: f.helpText ? String(f.helpText).trim() : '',
+        defaultValue: f.defaultValue !== undefined ? f.defaultValue : '',
+        options,
+        isRequired: isMandatorySystem ? true : Boolean(f.isRequired),
+        isSystem,
+        isHidden: isMandatorySystem ? false : Boolean(f.isHidden),
+        order: typeof f.order === 'number' ? f.order : (idx + 1),
+        conditionalRules: f.conditionalRules || null,
+        conditionalRequiredRules: f.conditionalRequiredRules || null,
+        validationRules: f.validationRules || {},
+      };
+    }).filter(f => f.fieldId && f.label);
+
+    if (!isProduct) {
+      const hasName = sanitized.some(f => f.fieldId.toLowerCase() === 'name');
+      const hasPhone = sanitized.some(f => f.fieldId.toLowerCase() === 'phone');
+      if (!hasName || !hasPhone) {
+        return res.status(400).json({ success: false, message: 'System fields "Name" and "Phone" cannot be removed.' });
+      }
+    }
+
+    sanitized.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    const updateFields = isProduct
+      ? { productFormSchema: sanitized }
+      : { leadFormSchema: sanitized };
+
+    await User.findByIdAndUpdate(req.user._id, { $set: updateFields });
     await TenantConfig.findOneAndUpdate(
       { user: req.user._id },
-      { $set: { leadFormSchema: fields } },
+      { $set: updateFields },
       { upsert: true }
     );
 
@@ -1511,13 +1543,19 @@ exports.saveFormSchema = async (req, res) => {
       actorRole: req.user.role || 'admin',
       action: 'UPDATE',
       entityType: 'Form',
-      entityId: form._id,
-      newValue: form.toObject(),
-      details: `Admin updated form "${form.title}" with ${normalizedFields.length} input fields`,
+      entityId: req.user._id,
+      newValue: sanitized,
+      details: `Admin updated ${isProduct ? 'Product/Package' : 'Lead'} form schema with ${sanitized.length} fields`,
       ipAddress: req.ip,
     });
 
-    res.json({ success: true, message: 'Form builder schema saved successfully', form });
+    res.json({
+      success: true,
+      message: `${isProduct ? 'Product/Package' : 'Lead'} form schema saved successfully`,
+      formType: isProduct ? 'product' : 'lead',
+      fields: sanitized,
+      schema: sanitized,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

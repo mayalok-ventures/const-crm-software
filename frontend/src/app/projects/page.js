@@ -21,43 +21,93 @@ const STATUS_LABELS = {
   archived: '📦 Archived'
 };
 
+import DynamicFormRenderer from '@/components/common/DynamicFormRenderer';
+
 function ProjectModal({ project, onClose, onSaved }) {
   const isEdit = !!project?._id;
-  const [form, setForm] = useState({
-    name: project?.name || '',
-    location: project?.location || '',
-    city: project?.city || '',
-    vendorOrBrand: project?.vendorOrBrand || project?.developer || '',
-    basePrice: project?.basePrice || '',
-    productCategory: Array.isArray(project?.productCategory) ? project.productCategory.join(', ') : (Array.isArray(project?.configuration) ? project.configuration.join(', ') : ''),
-    amenities: Array.isArray(project?.amenities) ? project.amenities.join(', ') : '',
-    deliveryOrCompletionDate: project?.deliveryOrCompletionDate || project?.possessionDate || '',
-    referenceId: project?.referenceId || project?.reraNumber || '',
-    brochureUrl: project?.brochureUrl || '',
-    description: project?.description || '',
-    status: project?.status || 'available',
+  const [schema, setSchema] = useState([]);
+  const [form, setForm] = useState(() => {
+    const initial = {
+      name: project?.name || '',
+      location: project?.location || '',
+      city: project?.city || '',
+      vendorOrBrand: project?.vendorOrBrand || project?.developer || '',
+      basePrice: project?.basePrice || '',
+      productCategory: Array.isArray(project?.productCategory) ? project.productCategory.join(', ') : (Array.isArray(project?.configuration) ? project.configuration.join(', ') : ''),
+      amenities: Array.isArray(project?.amenities) ? project.amenities.join(', ') : '',
+      deliveryOrCompletionDate: project?.deliveryOrCompletionDate || project?.possessionDate || '',
+      referenceId: project?.referenceId || project?.reraNumber || '',
+      brochureUrl: project?.brochureUrl || '',
+      description: project?.description || '',
+      status: project?.status || 'available',
+    };
+    if (project?.customData && typeof project.customData === 'object') {
+      Object.assign(initial, project.customData);
+    }
+    return initial;
   });
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
 
-  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+  useEffect(() => {
+    async function loadSchema() {
+      try {
+        const { data } = await api.get('/auth/form-schema?type=product');
+        if (data?.schema && Array.isArray(data.schema) && data.schema.length > 0) {
+          setSchema(data.schema);
+        }
+      } catch (e) {}
+    }
+    loadSchema();
+  }, []);
+
+  const handleFieldChange = (fieldId, value) => {
+    setForm(f => ({ ...f, [fieldId]: value }));
+    if (errors[fieldId]) {
+      setErrors(errs => ({ ...errs, [fieldId]: null }));
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name || !form.location) return toast.error('Package name and location/market are required');
+    if (!form.name?.trim() || !form.location?.trim()) {
+      return toast.error('Package name and location/market are required');
+    }
 
     setLoading(true);
     try {
-      const categories = form.productCategory ? form.productCategory.split(',').map(c => c.trim()).filter(Boolean) : [];
-      const inclusions = form.amenities ? form.amenities.split(',').map(a => a.trim()).filter(Boolean) : [];
+      const categories = typeof form.productCategory === 'string'
+        ? form.productCategory.split(',').map(c => c.trim()).filter(Boolean)
+        : (Array.isArray(form.productCategory) ? form.productCategory : []);
+
+      const inclusions = typeof form.amenities === 'string'
+        ? form.amenities.split(',').map(a => a.trim()).filter(Boolean)
+        : (Array.isArray(form.amenities) ? form.amenities : []);
+
+      const standardKeys = new Set([
+        'name', 'location', 'city', 'vendorOrBrand', 'basePrice', 'productCategory',
+        'amenities', 'deliveryOrCompletionDate', 'referenceId', 'brochureUrl',
+        'description', 'status'
+      ]);
+
+      const customData = {};
+      Object.keys(form).forEach(k => {
+        if (!standardKeys.has(k)) {
+          customData[k] = form[k];
+        }
+      });
 
       const payload = {
         ...form,
+        name: form.name.trim(),
+        location: form.location.trim(),
         productCategory: categories,
         configuration: categories,
         amenities: inclusions,
         developer: form.vendorOrBrand,
         reraNumber: form.referenceId,
         possessionDate: form.deliveryOrCompletionDate,
+        customData,
       };
 
       let res;
@@ -71,6 +121,9 @@ function ProjectModal({ project, onClose, onSaved }) {
       onSaved(res.data, isEdit);
       onClose();
     } catch (err) {
+      if (err.response?.data?.errors) {
+        setErrors(err.response.data.errors);
+      }
       toast.error(err.response?.data?.message || 'Failed to save item');
     } finally {
       setLoading(false);
@@ -79,7 +132,7 @@ function ProjectModal({ project, onClose, onSaved }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 540 }}>
+      <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
         <div className="modal-handle" />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>
@@ -90,78 +143,90 @@ function ProjectModal({ project, onClose, onSaved }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '72dvh', overflowY: 'auto', paddingRight: 4 }}>
-          <div>
-            <label className="label">Package / Product Name *</label>
-            <input className="input" placeholder="e.g. Enterprise Growth Suite" value={form.name} onChange={set('name')} required />
-          </div>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '72dvh', overflowY: 'auto', paddingRight: 4 }}>
+          {schema.length > 0 ? (
+            <DynamicFormRenderer
+              schema={schema}
+              values={form}
+              onChange={handleFieldChange}
+              errors={errors}
+              gridCols={2}
+            />
+          ) : (
+            <>
+              <div>
+                <label className="label">Package / Product Name *</label>
+                <input className="input" placeholder="e.g. Enterprise Growth Suite" value={form.name} onChange={e => handleFieldChange('name', e.target.value)} required />
+              </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <label className="label">Market / Region / Location *</label>
-              <input className="input" placeholder="e.g. North America or Mumbai" value={form.location} onChange={set('location')} required />
-            </div>
-            <div>
-              <label className="label">City / Territory</label>
-              <input className="input" placeholder="e.g. National / Remote" value={form.city} onChange={set('city')} />
-            </div>
-          </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label className="label">Market / Region / Location *</label>
+                  <input className="input" placeholder="e.g. North America or Mumbai" value={form.location} onChange={e => handleFieldChange('location', e.target.value)} required />
+                </div>
+                <div>
+                  <label className="label">City / Territory</label>
+                  <input className="input" placeholder="e.g. National / Remote" value={form.city} onChange={e => handleFieldChange('city', e.target.value)} />
+                </div>
+              </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <label className="label">Vendor / Brand / Provider</label>
-              <input className="input" placeholder="e.g. Acme Cloud Corp" value={form.vendorOrBrand} onChange={set('vendorOrBrand')} />
-            </div>
-            <div>
-              <label className="label">Base Pricing / Rate</label>
-              <input className="input" placeholder="e.g. $4,500/mo or ₹2.5 Lakhs" value={form.basePrice} onChange={set('basePrice')} />
-            </div>
-          </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label className="label">Vendor / Brand / Provider</label>
+                  <input className="input" placeholder="e.g. Acme Cloud Corp" value={form.vendorOrBrand} onChange={e => handleFieldChange('vendorOrBrand', e.target.value)} />
+                </div>
+                <div>
+                  <label className="label">Base Pricing / Rate</label>
+                  <input className="input" placeholder="e.g. $4,500/mo or ₹2.5 Lakhs" value={form.basePrice} onChange={e => handleFieldChange('basePrice', e.target.value)} />
+                </div>
+              </div>
 
-          <div>
-            <label className="label">Tiers / Variant Categories (comma-separated)</label>
-            <input className="input" placeholder="e.g. Starter, Growth, Enterprise, Custom" value={form.productCategory} onChange={set('productCategory')} />
-          </div>
+              <div>
+                <label className="label">Tiers / Variant Categories (comma-separated)</label>
+                <input className="input" placeholder="e.g. Starter, Growth, Enterprise, Custom" value={form.productCategory} onChange={e => handleFieldChange('productCategory', e.target.value)} />
+              </div>
 
-          <div>
-            <label className="label">Key Features & Inclusions (comma-separated)</label>
-            <input className="input" placeholder="e.g. Dedicated Manager, 24/7 SLA, API Access, Custom Setup" value={form.amenities} onChange={set('amenities')} />
-          </div>
+              <div>
+                <label className="label">Key Features & Inclusions (comma-separated)</label>
+                <input className="input" placeholder="e.g. Dedicated Manager, 24/7 SLA, API Access, Custom Setup" value={form.amenities} onChange={e => handleFieldChange('amenities', e.target.value)} />
+              </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <label className="label">Catalog Status</label>
-              <select className="input" value={form.status} onChange={set('status')}>
-                <option value="available">Active & Available</option>
-                <option value="in_development">In Development</option>
-                <option value="upcoming">Upcoming Launch</option>
-                <option value="sold_out">Sold Out / Closed</option>
-                <option value="archived">Archived</option>
-              </select>
-            </div>
-            <div>
-              <label className="label">Delivery / Completion Timeline</label>
-              <input className="input" placeholder="e.g. Immediate or 2-4 Weeks" value={form.deliveryOrCompletionDate} onChange={set('deliveryOrCompletionDate')} />
-            </div>
-          </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label className="label">Catalog Status</label>
+                  <select className="input" value={form.status} onChange={e => handleFieldChange('status', e.target.value)}>
+                    <option value="available">Active & Available</option>
+                    <option value="in_development">In Development</option>
+                    <option value="upcoming">Upcoming Launch</option>
+                    <option value="sold_out">Sold Out / Closed</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Delivery / Completion Timeline</label>
+                  <input className="input" placeholder="e.g. Immediate or 2-4 Weeks" value={form.deliveryOrCompletionDate} onChange={e => handleFieldChange('deliveryOrCompletionDate', e.target.value)} />
+                </div>
+              </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <label className="label">Reference ID / SKU / License #</label>
-              <input className="input" placeholder="e.g. SKU-849201" value={form.referenceId} onChange={set('referenceId')} />
-            </div>
-            <div>
-              <label className="label">Brochure / Spec Sheet URL</label>
-              <input className="input" placeholder="https://..." value={form.brochureUrl} onChange={set('brochureUrl')} />
-            </div>
-          </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label className="label">Reference ID / SKU / License #</label>
+                  <input className="input" placeholder="e.g. SKU-849201" value={form.referenceId} onChange={e => handleFieldChange('referenceId', e.target.value)} />
+                </div>
+                <div>
+                  <label className="label">Brochure / Spec Sheet URL</label>
+                  <input className="input" placeholder="https://..." value={form.brochureUrl} onChange={e => handleFieldChange('brochureUrl', e.target.value)} />
+                </div>
+              </div>
 
-          <div>
-            <label className="label">Overview / Value Proposition</label>
-            <textarea className="input" rows={2} placeholder="Key benefits, deliverables, and selling points..." value={form.description} onChange={set('description')} />
-          </div>
+              <div>
+                <label className="label">Overview / Value Proposition</label>
+                <textarea className="input" rows={2} placeholder="Key benefits, deliverables, and selling points..." value={form.description} onChange={e => handleFieldChange('description', e.target.value)} />
+              </div>
+            </>
+          )}
 
-          <div className="modal-actions">
+          <div className="modal-actions" style={{ marginTop: 8 }}>
             <button type="button" className="btn btn-ghost" onClick={onClose} style={{ height: 44, borderRadius: 12 }}>
               Cancel
             </button>
