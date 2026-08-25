@@ -198,6 +198,40 @@ const leadSchema = new mongoose.Schema({
   areasOfInterest: [{ type: String, trim: true }],
   siteVisitDate: { type: Date, default: null },
 
+  // Real Estate Domain Enhancements & Lead Scoring Engine
+  temperature: {
+    type: String,
+    enum: ['HOT', 'WARM', 'COLD', 'hot', 'warm', 'cold', null],
+    default: 'WARM',
+    set: (v) => (v ? String(v).toUpperCase() : 'WARM'),
+    index: true,
+  },
+  score: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 100,
+    index: true,
+  },
+  scoringBreakdown: [{
+    factor: { type: String, required: true },
+    points: { type: Number, required: true },
+    appliedAt: { type: Date, default: Date.now }
+  }],
+  lostReason: {
+    type: String,
+    enum: ['Budget', 'Location', 'Property Unavailable', 'Competitor', 'No Response', 'Not Interested', 'Financing Issue', 'Family Decision', 'Fake Lead', 'Duplicate', 'Other', null, ''],
+    default: null,
+  },
+  lostRemarks: { type: String, default: '', trim: true },
+  possessionTimeline: { type: String, default: '', trim: true },
+  purchasePurpose: { type: String, enum: ['End Use', 'Investment', 'Rental Income', null, ''], default: null },
+  preferredConfigurations: [{ type: String, trim: true }],
+  budgetMin: { type: Number, default: 0, min: 0 },
+  budgetMax: { type: Number, default: 0, min: 0 },
+  pipelineId: { type: mongoose.Schema.Types.ObjectId, ref: 'Pipeline', default: null },
+  pipelineStage: { type: String, default: 'New Lead', trim: true },
+
   // Dynamic Custom Form Fields & Metadata (agent_custom_price, admin_flag, etc.)
   customData: {
     type: mongoose.Schema.Types.Mixed,
@@ -432,6 +466,8 @@ leadSchema.index({ userId: 1, deletedAt: 1, updatedAt: -1 });
 leadSchema.index({ companyId: 1, deletedAt: 1, status: 1 });
 leadSchema.index({ companyId: 1, deletedAt: 1, createdAt: -1 });
 leadSchema.index({ companyId: 1, deletedAt: 1, updatedAt: -1 });
+leadSchema.index({ companyId: 1, deletedAt: 1, temperature: 1 });
+leadSchema.index({ companyId: 1, deletedAt: 1, score: -1 });
 leadSchema.index({ assignedTo: 1, deletedAt: 1, status: 1 });
 leadSchema.index({ assignedTo: 1, deletedAt: 1, createdAt: -1 });
 leadSchema.index({ assignedTo: 1, deletedAt: 1, updatedAt: -1 });

@@ -16,6 +16,7 @@ import { getIndustryDefaults } from '@/lib/industryTemplates';
 import LostReasonModal, { isLostStage, LOST_REASON_OPTIONS } from '@/components/LostReasonModal';
 import FollowUpSchedulerModal from '@/components/FollowUpSchedulerModal';
 import FollowUpCompleteModal from '@/components/FollowUpCompleteModal';
+import RealEstateLeadPanel from '@/components/RealEstateLeadPanel';
 import { SourcePill, getLeadSourceTag } from '@/lib/sourceHelper';
 import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
 
@@ -905,6 +906,13 @@ export default function LeadDetailPage() {
     .sort((a, b) => (a.order || 0) - (b.order || 0))
     .filter(isFieldVisible);
 
+  const isRealEstate = (
+    String(currentUser?.industryType || '').toLowerCase().includes('real') ||
+    String(currentUser?.industryType || '').toLowerCase().includes('estate') ||
+    String(currentUser?.industryType || '').toLowerCase().includes('property') ||
+    Boolean(lead?.propertyType || lead?.possessionTimeline || lead?.purchasePurpose || (lead?.score !== undefined && lead?.score > 0) || lead?.budgetMin || lead?.budgetMax)
+  );
+
   const handleConfirmCloseDeal = async (amount) => {
     setShowCloseModal(false);
     setForm(f => ({ ...f, status: 'closed', closedDealAmount: amount }));
@@ -1740,6 +1748,13 @@ export default function LeadDetailPage() {
                   </div>
                 )}
               </div>
+
+              {/* Real Estate Domain Extension Panel (Conditional on Industry Detection) */}
+              {isRealEstate && lead && (
+                <div className={mobileTab === 'details' ? 'block' : 'hidden lg:block'}>
+                  <RealEstateLeadPanel lead={lead} onLeadUpdate={setLead} />
+                </div>
+              )}
 
               {/* Notes Card */}
               <div className={`card ${mobileTab === 'details' ? 'block' : 'hidden lg:block'}`}>

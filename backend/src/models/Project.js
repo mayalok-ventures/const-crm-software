@@ -110,6 +110,36 @@ const projectSchema = new mongoose.Schema({
     enum: ['upcoming', 'under_construction', 'ready_to_move', 'sold_out', 'active', 'in_development', 'available', 'archived'],
     default: 'available',
   },
+  // Real Estate USPs & Property Types
+  usps: [{
+    type: String,
+    trim: true,
+  }],
+  propertyTypes: [{
+    type: String,
+    trim: true, // e.g. ['Apartment', 'Villa', 'Plot', 'Commercial', 'Penthouse']
+  }],
+  // Detailed Pricing Structure
+  pricingBreakdown: {
+    baseRateSqFt: { type: Number, default: 0 },
+    plc: { type: Number, default: 0 },
+    floorRise: { type: Number, default: 0 },
+    parkingCharges: { type: Number, default: 0 },
+    clubMembership: { type: Number, default: 0 },
+    maintenanceDeposit: { type: Number, default: 0 },
+    gstPercent: { type: Number, default: 5 },
+  },
+  // Unit & Inventory Counters
+  totalUnits: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  availableUnits: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
   isActive: {
     type: Boolean,
     default: true,

@@ -79,6 +79,29 @@ const followUpSchema = new mongoose.Schema({
     reason: { type: String, default: '' },
     performed_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   }],
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+    index: true,
+  },
+  type: {
+    type: String,
+    enum: ['call', 'site_visit', 'meeting', 'whatsapp', 'email', 'document_collection', 'payment_reminder'],
+    default: 'call',
+  },
+  siteVisitDetails: {
+    projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
+    inventoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Inventory', default: null },
+    location: { type: String, default: '', trim: true },
+    outcome: {
+      type: String,
+      enum: ['interested', 'highly_interested', 'not_interested', 'budget_mismatch', 'location_mismatch', 'rescheduled', 'no_show', null],
+      default: null,
+    },
+    clientFeedback: { type: String, default: '', trim: true },
+    nextAction: { type: String, default: '', trim: true },
+  },
   status: {
     type: String,
     enum: ['open', 'done', 'postponed', 'scheduled', 'completed', 'cancelled'],

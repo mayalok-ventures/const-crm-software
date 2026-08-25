@@ -42,6 +42,7 @@ const campaignWorker = require('./src/services/campaignWorker');
 const integrationRoutes = require('./src/routes/integrationRoutes');
 const catalogueRoutes = require('./src/routes/catalogue');
 const agencyRoutes = require('./src/routes/agency');
+const realEstateRoutes = require('./src/routes/realEstate');
 const monitoringRoutes = require('./src/routes/monitoring').default;
 const { apiPerformance } = require('./src/monitoring/apiPerformance');
 
@@ -150,6 +151,7 @@ app.use('/api/catalogue', catalogueRoutes); // Colleges, Degrees, Specialization
 const superAdminRoutes = require('./src/superadmin/routes/superAdminRoutes');
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/agency', agencyRoutes);
+app.use('/api/real-estate', realEstateRoutes);
 
 // Production-Grade Health Check Framework
 const healthController = require('./src/monitoring/controllers/healthController').default || require('./src/monitoring/controllers/healthController');

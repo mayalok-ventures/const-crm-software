@@ -70,6 +70,34 @@ const offerSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+    index: true,
+  },
+  schemeType: {
+    type: String,
+    enum: ['flat_discount', 'percentage_discount', 'free_parking', 'free_club', 'modular_kitchen', 'subvention_20_80', 'clp_plan', 'custom'],
+    default: 'flat_discount',
+  },
+  applicableProjects: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Project',
+  }],
+  status: {
+    type: String,
+    enum: ['ACTIVE', 'EXPIRED', 'ARCHIVED'],
+    default: 'ACTIVE',
+  },
+  valid_from: {
+    type: Date,
+    default: Date.now,
+  },
+  validFrom: {
+    type: Date,
+    default: Date.now,
+  },
   metadata: {
     type: mongoose.Schema.Types.Mixed,
     default: {},

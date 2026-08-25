@@ -1,15 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
-import { Calendar, Clock, X, Check, Sparkles } from 'lucide-react';
+import { Calendar, Clock, X, Check, Sparkles, Building, MapPin } from 'lucide-react';
 import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
 
 export default function FollowUpSchedulerModal({ lead, isOpen, onClose, onSuccess }) {
   const [scheduledDate, setScheduledDate] = useState('');
   const [agendaNote, setAgendaNote] = useState('');
+  const [followUpType, setFollowUpType] = useState('call');
+  const [selectedProjectId, setSelectedProjectId] = useState(lead?.projectId || '');
+  const [siteVisitLocation, setSiteVisitLocation] = useState(lead?.location || '');
+  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      api.get('/projects').then(res => setProjects(res.data || [])).catch(() => {});
+      if (lead?.projectId) setSelectedProjectId(lead.projectId);
+      if (lead?.location) setSiteVisitLocation(lead.location);
+    }
+  }, [isOpen, lead]);
 
   if (!isOpen || !lead) return null;
 
@@ -46,12 +58,22 @@ export default function FollowUpSchedulerModal({ lead, isOpen, onClose, onSucces
     setLoading(true);
     try {
       const isoDate = fromLocalDatetimeStringToISO(scheduledDate);
-      const res = await api.post(`/leads/${lead._id}/follow-up`, {
+      const payload = {
         scheduledAt: isoDate,
         note: cleanNote,
-      });
+        type: followUpType,
+      };
 
-      toast.success(`Follow-up scheduled for ${formatDisplayDateTime(isoDate)} ⏰`);
+      if (followUpType === 'site_visit') {
+        payload.siteVisitDetails = {
+          projectId: selectedProjectId || lead.projectId || null,
+          location: siteVisitLocation.trim() || lead.location || '',
+        };
+      }
+
+      const res = await api.post(`/leads/${lead._id}/follow-up`, payload);
+
+      toast.success(`${followUpType === 'site_visit' ? 'Site visit' : 'Follow-up'} scheduled for ${formatDisplayDateTime(isoDate)} ⏰`);
       if (onSuccess) onSuccess(res.data?.lead || { ...lead, followUpDate: isoDate, followUpNote: cleanNote });
       onClose();
     } catch (err) {
@@ -156,6 +178,69 @@ export default function FollowUpSchedulerModal({ lead, isOpen, onClose, onSucces
             </div>
           </div>
 
+          {/* Follow-Up Activity Type */}
+          <div>
+            <label className="label text-xs font-semibold text-slate-700">
+              Follow-Up Activity Type
+            </label>
+            <select
+              className="input text-xs"
+              value={followUpType}
+              onChange={e => setFollowUpType(e.target.value)}
+            >
+              <option value="call">📞 Phone Call</option>
+              <option value="site_visit">🏡 Site Visit / Property Tour</option>
+              <option value="meeting">🤝 In-Person Meeting</option>
+              <option value="whatsapp">💬 WhatsApp Message</option>
+              <option value="email">✉️ Email Follow-Up</option>
+              <option value="document_collection">📄 Document Collection</option>
+              <option value="payment_reminder">💳 Payment Reminder</option>
+            </select>
+          </div>
+
+          {/* Conditional Site Visit Details (Shown only when type is site_visit) */}
+          {followUpType === 'site_visit' && (
+            <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-2.5">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-900">
+                <Building size={13} className="text-indigo-600" />
+                <span>Site Visit Configuration</span>
+              </div>
+
+              <div>
+                <label className="label text-[11px] font-semibold text-slate-600 mb-1">
+                  Target Project / Property Offering
+                </label>
+                <select
+                  className="input text-xs"
+                  value={selectedProjectId}
+                  onChange={e => {
+                    setSelectedProjectId(e.target.value);
+                    const p = projects.find(proj => proj._id === e.target.value);
+                    if (p?.location && !siteVisitLocation) setSiteVisitLocation(p.location);
+                  }}
+                >
+                  <option value="">-- Select Project / Property --</option>
+                  {projects.map(p => (
+                    <option key={p._id} value={p._id}>📦 {p.name} ({p.location || 'Location'})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="label text-[11px] font-semibold text-slate-600 mb-1 flex items-center gap-1">
+                  <MapPin size={11} className="text-indigo-600" /> Visit Venue / Meeting Location
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Sector 150 Site Office / Model Flat"
+                  className="input text-xs"
+                  value={siteVisitLocation}
+                  onChange={e => setSiteVisitLocation(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Date & Time Picker */}
           <div>
             <label className="label text-xs font-semibold text-slate-700">
@@ -174,12 +259,12 @@ export default function FollowUpSchedulerModal({ lead, isOpen, onClose, onSucces
           {/* Mandatory Agenda Note */}
           <div>
             <label className="label text-xs font-semibold text-slate-700 flex items-center justify-between">
-              <span>Follow-Up Agenda / Note *</span>
+              <span>{followUpType === 'site_visit' ? 'Site Visit Agenda / Purpose *' : 'Follow-Up Agenda / Note *'}</span>
               <span className="text-[10px] text-rose-500 font-bold uppercase">Mandatory</span>
             </label>
             <textarea
               className="input text-xs"
-              placeholder="e.g. Call client to discuss customized proposal & seat reservation..."
+              placeholder={followUpType === 'site_visit' ? 'e.g. Showing 3BHK sample flat and discussing payment plans...' : 'e.g. Call client to discuss customized proposal & seat reservation...'}
               rows={3}
               value={agendaNote}
               onChange={e => setAgendaNote(e.target.value)}

@@ -48,6 +48,12 @@ const pipelineSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+    index: true,
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -56,12 +62,16 @@ const pipelineSchema = new mongoose.Schema({
   stages: {
     type: [pipelineStageSchema],
     default: [
-      { name: 'New Lead', order: 0, probability: 10, colorCode: '#3b82f6', slaHours: 2 },
-      { name: 'Contacted', order: 1, probability: 30, colorCode: '#eab308', slaHours: 12 },
-      { name: 'Follow-Up Scheduled', order: 2, probability: 50, colorCode: '#f97316', slaHours: 24 },
-      { name: 'Negotiation', order: 3, probability: 80, colorCode: '#8b5cf6', slaHours: 48 },
-      { name: 'Deal Won / Converted', order: 4, probability: 100, colorCode: '#10b981', slaHours: 72 },
-      { name: 'Deal Lost', order: 5, probability: 0, colorCode: '#ef4444', slaHours: 72 },
+      { name: 'New Inquiry', order: 0, probability: 10, colorCode: '#3b82f6', slaHours: 2 },
+      { name: 'Contacted', order: 1, probability: 20, colorCode: '#eab308', slaHours: 12 },
+      { name: 'Requirement Qualified', order: 2, probability: 30, colorCode: '#6366f1', slaHours: 24 },
+      { name: 'Property Shared', order: 3, probability: 40, colorCode: '#a855f7', slaHours: 24 },
+      { name: 'Site Visit Scheduled', order: 4, probability: 50, colorCode: '#f97316', slaHours: 24 },
+      { name: 'Site Visit Completed', order: 5, probability: 70, colorCode: '#06b6d4', slaHours: 48 },
+      { name: 'Negotiation', order: 6, probability: 80, colorCode: '#8b5cf6', slaHours: 48 },
+      { name: 'EOI Submitted', order: 7, probability: 90, colorCode: '#14b8a6', slaHours: 48 },
+      { name: 'Booking Confirmed', order: 8, probability: 100, colorCode: '#10b981', slaHours: 72 },
+      { name: 'Closed Lost', order: 9, probability: 0, colorCode: '#ef4444', slaHours: 72 },
     ],
   },
 }, {
@@ -69,6 +79,7 @@ const pipelineSchema = new mongoose.Schema({
   strict: true,
 });
 
+pipelineSchema.index({ companyId: 1, isActive: 1 });
 pipelineSchema.index({ name: 1, isActive: 1 });
 pipelineSchema.index({ createdBy: 1 });
 

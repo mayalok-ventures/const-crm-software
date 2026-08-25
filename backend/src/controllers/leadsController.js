@@ -219,7 +219,7 @@ exports.getDueFollowUps = async (req, res) => {
 // @access Private
 exports.scheduleFollowUp = async (req, res) => {
   try {
-    const { scheduledAt, scheduled_at, targetDate, note, scheduleNote } = req.body;
+    const { scheduledAt, scheduled_at, targetDate, note, scheduleNote, type, siteVisitDetails } = req.body;
     const rawDate = scheduledAt || scheduled_at || targetDate;
     const rawNote = note || scheduleNote;
 
@@ -243,6 +243,28 @@ exports.scheduleFollowUp = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Lead not found or unauthorized' });
     }
 
+    const followUpType = type || 'call';
+    const cleanSiteVisitDetails = (followUpType === 'site_visit' && siteVisitDetails && typeof siteVisitDetails === 'object')
+      ? {
+          projectId: siteVisitDetails.projectId || lead.projectId || null,
+          inventoryId: siteVisitDetails.inventoryId || null,
+          location: String(siteVisitDetails.location || '').trim() || lead.location || '',
+          outcome: siteVisitDetails.outcome || null,
+          clientFeedback: String(siteVisitDetails.clientFeedback || '').trim(),
+          nextAction: String(siteVisitDetails.nextAction || '').trim(),
+        }
+      : undefined;
+
+    if (followUpType === 'site_visit') {
+      lead.siteVisitDate = parsedDate;
+      if (cleanSiteVisitDetails?.location && !lead.location) {
+        lead.location = cleanSiteVisitDetails.location;
+      }
+      if (cleanSiteVisitDetails?.projectId && !lead.projectId) {
+        lead.projectId = cleanSiteVisitDetails.projectId;
+      }
+    }
+
     // Set active follow-up state (reset delay count to 0)
     lead.activeFollowUp = {
       scheduledAt: parsedDate,
@@ -263,10 +285,10 @@ exports.scheduleFollowUp = async (req, res) => {
     lead.followUpNotified = false;
 
     lead.leadActivities.push({
-      action: 'followup_scheduled',
+      action: followUpType === 'site_visit' ? 'site_visit_scheduled' : 'followup_scheduled',
       performedBy: req.user._id,
       performerName: req.user.name,
-      details: `Follow-up scheduled for ${parsedDate.toLocaleString()}: "${cleanNote}"`,
+      details: `${followUpType === 'site_visit' ? 'Site visit' : 'Follow-up'} scheduled for ${parsedDate.toLocaleString()}: "${cleanNote}"${cleanSiteVisitDetails?.location ? ` at ${cleanSiteVisitDetails.location}` : ''}`,
       timestamp: new Date(),
     });
 
@@ -284,13 +306,23 @@ exports.scheduleFollowUp = async (req, res) => {
         scheduledAt: parsedDate,
         note: cleanNote,
         delay_count: 0,
+        type: followUpType,
+        siteVisitDetails: cleanSiteVisitDetails,
         status: 'open',
+        companyId: lead.companyId || req.user.companyId || req.user._id,
         createdBy: req.user._id,
         creatorName: req.user.name,
       });
     } catch (fuErr) {
       console.warn('[FollowUp Audit] Non-blocking audit record notice:', fuErr.message);
     }
+
+    // Recalculate lead score if Real Estate
+    try {
+      const { calculateLeadScoreInternal } = require('./realEstateController');
+      const tenantId = lead.companyId || req.user.companyId || req.user._id;
+      await calculateLeadScoreInternal(lead._id, tenantId);
+    } catch (scoreErr) {}
 
     // Dispatched CRM event
     emitCRMEvent(CRM_EVENTS.FOLLOWUP_SCHEDULED, {
@@ -302,7 +334,7 @@ exports.scheduleFollowUp = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Follow-up scheduled successfully ⏰',
+      message: `${followUpType === 'site_visit' ? 'Site visit' : 'Follow-up'} scheduled successfully ⏰`,
       lead,
     });
   } catch (error) {
@@ -416,8 +448,9 @@ exports.delayFollowUp = async (req, res) => {
 // @access Private
 exports.completeFollowUp = async (req, res) => {
   try {
-    const { outcomeNote, note, completionNote, nextFollowUp } = req.body;
+    const { outcomeNote, note, completionNote, nextFollowUp, siteVisitOutcome, outcome, clientFeedback, nextAction } = req.body;
     const cleanNote = (outcomeNote || note || completionNote || '').trim();
+    const resolvedOutcome = siteVisitOutcome || outcome || null;
 
     if (!cleanNote) {
       return res.status(400).json({
@@ -452,7 +485,7 @@ exports.completeFollowUp = async (req, res) => {
 
     // 2. Append outcome note to lead notes
     lead.notes.push({
-      text: `[Follow-Up Completed]: ${cleanNote}`,
+      text: `[Follow-Up Completed]: ${cleanNote}${resolvedOutcome ? ` (Outcome: ${resolvedOutcome})` : ''}`,
       createdBy: req.user._id,
       authorName: req.user.name || 'Agent',
       createdAt: new Date(),
@@ -462,7 +495,7 @@ exports.completeFollowUp = async (req, res) => {
       action: 'followup_completed',
       performedBy: req.user._id,
       performerName: req.user.name,
-      details: `Follow-up completed & alarm silenced. Outcome: "${cleanNote}"`,
+      details: `Follow-up completed & alarm silenced. Outcome: "${cleanNote}"${resolvedOutcome ? ` [Result: ${resolvedOutcome}]` : ''}`,
       timestamp: new Date(),
     });
 
@@ -476,6 +509,12 @@ exports.completeFollowUp = async (req, res) => {
         latestFu.completedAt = new Date();
         latestFu.completion_note = cleanNote;
         latestFu.completionNote = cleanNote;
+        if (resolvedOutcome || clientFeedback || nextAction) {
+          latestFu.siteVisitDetails = latestFu.siteVisitDetails || {};
+          if (resolvedOutcome) latestFu.siteVisitDetails.outcome = resolvedOutcome;
+          if (clientFeedback) latestFu.siteVisitDetails.clientFeedback = String(clientFeedback).trim();
+          if (nextAction) latestFu.siteVisitDetails.nextAction = String(nextAction).trim();
+        }
         await latestFu.save();
       }
     } catch (e) {}
@@ -487,6 +526,7 @@ exports.completeFollowUp = async (req, res) => {
       const nextDate = new Date(rawNextDate);
       if (!isNaN(nextDate.getTime())) {
         const nextAgenda = (nextFollowUp.note || nextFollowUp.scheduleNote || '').trim() || `Next step after: ${cleanNote}`;
+        const nextType = nextFollowUp.type || 'call';
 
         // Reset follow-up cycle with delayCount = 0
         lead.activeFollowUp = {
@@ -525,7 +565,9 @@ exports.completeFollowUp = async (req, res) => {
             scheduledAt: nextDate,
             note: nextAgenda,
             delay_count: 0,
+            type: nextType,
             status: 'open',
+            companyId: lead.companyId || req.user.companyId || req.user._id,
             createdBy: req.user._id,
             creatorName: req.user.name,
           });
@@ -543,6 +585,13 @@ exports.completeFollowUp = async (req, res) => {
     }
 
     await lead.save();
+
+    // Recalculate lead score if Real Estate
+    try {
+      const { calculateLeadScoreInternal } = require('./realEstateController');
+      const tenantId = lead.companyId || req.user.companyId || req.user._id;
+      await calculateLeadScoreInternal(lead._id, tenantId);
+    } catch (scoreErr) {}
 
     res.json({
       success: true,
@@ -754,6 +803,13 @@ exports.createLead = async (req, res) => {
       metadata: { source: lead.source, status: lead.status },
     });
 
+    // Recalculate lead score for Real Estate leads
+    try {
+      const { calculateLeadScoreInternal } = require('./realEstateController');
+      const tenantId = lead.companyId || req.user.companyId || req.user._id;
+      await calculateLeadScoreInternal(lead._id, tenantId);
+    } catch (scoreErr) {}
+
     res.status(201).json(lead);
   } catch (error) {
     console.error('createLead error:', error);
@@ -871,7 +927,9 @@ exports.updateLead = async (req, res) => {
       'location', 'profession', 'budget', 'closedDealAmount', 'areasOfInterest', 'project',
       'projectId', 'propertyType', 'siteVisitDate', 'assignedTo', 'customData',
       'utmCampaign', 'utmMedium', 'utmSource', 'lostReason', 'lostReasonDetail',
-      'service_required', 'monthly_spend', 'goal_timeline', 'paid_amount', 'payable_amount', 'payment_method'
+      'service_required', 'monthly_spend', 'goal_timeline', 'paid_amount', 'payable_amount', 'payment_method',
+      'budgetMin', 'budgetMax', 'possessionTimeline', 'purchasePurpose', 'preferredConfigurations',
+      'pipelineId', 'pipelineStage', 'temperature', 'score'
     ];
 
     for (const field of allowedFields) {
@@ -994,6 +1052,21 @@ exports.updateLead = async (req, res) => {
         },
         user: req.user,
       });
+    }
+
+    // Recalculate lead score if any relevant field changed
+    const scoreRelevantFields = [
+      'budget', 'budgetMin', 'budgetMax', 'location', 'propertyType',
+      'status', 'siteVisitDate', 'preferredConfigurations',
+      'possessionTimeline', 'purchasePurpose', 'lostReason'
+    ];
+    const hasScoringFieldChanged = Object.keys(changes).some(k => scoreRelevantFields.includes(k));
+    if (hasScoringFieldChanged) {
+      try {
+        const { calculateLeadScoreInternal } = require('./realEstateController');
+        const tenantId = lead.companyId || req.user.companyId || req.user._id;
+        await calculateLeadScoreInternal(lead._id, tenantId);
+      } catch (scoreErr) {}
     }
 
     // Record Immutable Audit Log if changes occurred
