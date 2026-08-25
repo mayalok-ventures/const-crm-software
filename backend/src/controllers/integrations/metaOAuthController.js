@@ -3,24 +3,31 @@ const axios = require('axios');
 const Integration = require('../../models/Integration');
 const { encrypt } = require('../../utils/encryption');
 
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v23.0';
-const META_APP_ID = process.env.META_APP_ID || '1361325099456512';
-const META_APP_SECRET = process.env.META_APP_SECRET || '07383347132bb0519be90925c69e44cb';
+function getMetaApiVersion() {
+  return process.env.META_API_VERSION || 'v26.0';
+}
+
+function getMetaAppId() {
+  return process.env.META_APP_ID || '';
+}
+
+function getMetaAppSecret() {
+  return (process.env.META_APP_SECRET || '').trim();
+}
 
 function getMetaRedirectUri(req) {
   if (req && req.query && req.query.redirect_uri) return req.query.redirect_uri;
   if (process.env.META_REDIRECT_URI) return process.env.META_REDIRECT_URI;
 
-  const isLocal = !process.env.NODE_ENV || process.env.NODE_ENV === 'development' || (req && req.headers && req.headers.host && req.headers.host.includes('localhost'));
-  if (isLocal) {
-    const port = process.env.PORT || 5000;
-    return `http://localhost:${port}/api/integrations/meta/oauth/callback`;
-  }
-
   if (process.env.BACKEND_URL) {
     return `${process.env.BACKEND_URL}/api/integrations/meta/oauth/callback`;
   }
-  return 'https://api.coresetu.com/api/integrations/meta/oauth/callback';
+
+  const isLocal = !process.env.NODE_ENV || process.env.NODE_ENV === 'development' || (req && req.headers && req.headers.host && req.headers.host.includes('localhost'));
+  const port = process.env.PORT || 5000;
+  return isLocal
+    ? `http://localhost:${port}/api/integrations/meta/oauth/callback`
+    : `https://${req?.headers?.host || 'localhost'}/api/integrations/meta/oauth/callback`;
 }
 
 const META_SCOPES = [
@@ -93,8 +100,9 @@ exports.startOAuth = async (req, res) => {
       });
     }
 
-    const appId = META_APP_ID;
-    const appSecret = (META_APP_SECRET || '').trim();
+    const appId = getMetaAppId();
+    const appSecret = getMetaAppSecret();
+    const apiVersion = getMetaApiVersion();
     const redirectUri = getMetaRedirectUri(req);
 
     // Extract frontendUrl dynamically
@@ -130,7 +138,7 @@ exports.startOAuth = async (req, res) => {
       state,
     });
 
-    const authorizationUrl = `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth?${params}`;
+    const authorizationUrl = `https://www.facebook.com/${apiVersion}/dialog/oauth?${params}`;
     console.log('====== META REAL OAUTH REDIRECT URL ======');
     console.log('Using redirect_uri:', redirectUri);
     console.log(authorizationUrl);
@@ -161,10 +169,13 @@ exports.callback = async (req, res) => {
   const isLocal = !process.env.NODE_ENV || process.env.NODE_ENV === 'development' || (req && req.headers && req.headers.host && req.headers.host.includes('localhost'));
   let resolvedFrontendUrl = isLocal ? 'http://localhost:3000' : (process.env.FRONTEND_URL || 'https://crm.coresetu.com');
   const redirectUri = getMetaRedirectUri(req);
+  const appId = getMetaAppId();
+  const appSecret = getMetaAppSecret();
+  const apiVersion = getMetaApiVersion();
+
   console.log('\n================== [META OAUTH CALLBACK DEBUG START] ==================');
   console.log('[DEBUG 1] Incoming Query Params:', JSON.stringify(req.query, null, 2));
   console.log('[DEBUG 1] redirectUri Resolved:', redirectUri);
-  console.log('[DEBUG 1] META_APP_ID Configured:', META_APP_ID);
 
   try {
     const { code, state, error, error_description } = req.query;
@@ -200,11 +211,11 @@ exports.callback = async (req, res) => {
     // 1. Exchange authorization code for short-lived access token
     console.log('[DEBUG 3] Requesting Access Token from Graph API with redirect_uri:', redirectUri);
     const tokenResponse = await axios.get(
-      `https://graph.facebook.com/${META_GRAPH_VERSION}/oauth/access_token`,
+      `https://graph.facebook.com/${apiVersion}/oauth/access_token`,
       {
         params: {
-          client_id: META_APP_ID,
-          client_secret: META_APP_SECRET,
+          client_id: appId,
+          client_secret: appSecret,
           redirect_uri: redirectUri,
           code,
         },
@@ -221,12 +232,12 @@ exports.callback = async (req, res) => {
     let accessToken = shortLivedToken;
     try {
       const longTokenResponse = await axios.get(
-        `https://graph.facebook.com/${META_GRAPH_VERSION}/oauth/access_token`,
+        `https://graph.facebook.com/${apiVersion}/oauth/access_token`,
         {
           params: {
             grant_type: 'fb_exchange_token',
-            client_id: META_APP_ID,
-            client_secret: META_APP_SECRET,
+            client_id: appId,
+            client_secret: appSecret,
             fb_exchange_token: shortLivedToken,
           },
         }
@@ -241,7 +252,7 @@ exports.callback = async (req, res) => {
 
     // 3. Fetch current Meta user profile
     const meResponse = await axios.get(
-      `https://graph.facebook.com/${META_GRAPH_VERSION}/me`,
+      `https://graph.facebook.com/${apiVersion}/me`,
       {
         params: {
           fields: 'id,name,email',
@@ -258,7 +269,7 @@ exports.callback = async (req, res) => {
     let userPages = [];
     try {
       const pagesResponse = await axios.get(
-        `https://graph.facebook.com/${META_GRAPH_VERSION}/me/accounts`,
+        `https://graph.facebook.com/${apiVersion}/me/accounts`,
         {
           params: {
             fields: 'id,name,access_token,category,tasks',
@@ -276,7 +287,7 @@ exports.callback = async (req, res) => {
       if (userPages.length === 0) {
         try {
           const bizResponse = await axios.get(
-            `https://graph.facebook.com/${META_GRAPH_VERSION}/me/businesses`,
+            `https://graph.facebook.com/${apiVersion}/me/businesses`,
             {
               params: {
                 fields: 'id,name,owned_pages{id,name,access_token},client_pages{id,name,access_token}',
@@ -318,7 +329,7 @@ exports.callback = async (req, res) => {
         // 5a. Automatically subscribe CRM app to leadgen webhooks for this page
         try {
           const subRes = await axios.post(
-            `https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/subscribed_apps`,
+            `https://graph.facebook.com/${apiVersion}/${pageId}/subscribed_apps`,
             null,
             {
               params: {
@@ -338,7 +349,7 @@ exports.callback = async (req, res) => {
         let formNames = [];
         try {
           const formsResponse = await axios.get(
-            `https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/leadgen_forms`,
+            `https://graph.facebook.com/${apiVersion}/${pageId}/leadgen_forms`,
             {
               params: {
                 fields: 'id,name,status',

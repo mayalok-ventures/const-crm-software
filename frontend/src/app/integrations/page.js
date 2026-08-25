@@ -171,17 +171,29 @@ export default function IntegrationsPage() {
     window.location.href = `${backendBase}/integrations/google/oauth?token=${encodeURIComponent(token)}`;
   };
 
-  const handleConnectMeta = (e) => {
-    e.preventDefault();
+  const handleConnectMeta = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
     if (!token) {
       toast.error('Please log in to connect Meta Ads');
       router.push('/login');
       return;
     }
-    // Direct user to AWS backend endpoint which constructs the Meta OAuth URL with its server redirect_uri
-    const backendBase = API_URL || 'http://localhost:5000/api';
-    window.location.href = `${backendBase}/integrations/meta/oauth?token=${encodeURIComponent(token)}`;
+    try {
+      setLoading(true);
+      // Initiate OAuth via authenticated REST call with Bearer header (no JWT in query parameter)
+      const response = await api.get('/integrations/meta/oauth');
+      if (response.data && response.data.authorizationUrl) {
+        window.location.href = response.data.authorizationUrl;
+      } else {
+        toast.error('Unable to initialize Meta authorization session');
+      }
+    } catch (err) {
+      console.error('Meta connect error:', err);
+      toast.error(err.response?.data?.message || 'Failed to connect to Meta');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleFetchAccounts = async (integrationId) => {
@@ -417,20 +429,41 @@ export default function IntegrationsPage() {
                 ))}
               </div>
 
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
                 {!isMetaConnected ? (
                   <button
                     type="button"
                     onClick={handleConnectMeta}
                     disabled={loading}
                     className="btn btn-primary btn-sm btn-full"
-                    style={{ flex: 1, background: '#2563eb', borderColor: '#2563eb', gap: 5, borderRadius: 8, fontSize: 12, width: '100%', minHeight: 36 }}
+                    style={{ background: '#2563eb', borderColor: '#2563eb', gap: 6, borderRadius: 8, fontSize: 12, width: '100%', minHeight: 36, fontWeight: 700 }}
                   >
-                    <ExternalLink size={12} /> Connect Meta Account
+                    <ExternalLink size={13} /> Connect Meta Account
                   </button>
                 ) : (
-                  <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 12px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, color: '#10b981', fontWeight: 700, fontSize: 13 }}>
-                    ✅ Meta Connected
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={handleTestMetaLead}
+                        disabled={testingMeta || loading}
+                        className="btn btn-secondary btn-sm"
+                        style={{ flex: 1, borderRadius: 8, fontSize: 11, gap: 5, minHeight: 32 }}
+                        title="Simulate Inbound Meta Lead"
+                      >
+                        <Play size={12} className={testingMeta ? 'animate-spin' : ''} />
+                        {testingMeta ? 'Injecting...' : 'Send Test Lead'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConnectMeta}
+                        disabled={loading}
+                        className="btn btn-ghost btn-sm"
+                        style={{ borderRadius: 8, fontSize: 11, gap: 4, minHeight: 32, color: '#2563eb' }}
+                      >
+                        <RefreshCw size={11} /> Reconnect
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

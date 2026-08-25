@@ -56,6 +56,16 @@ exports.verify = async (req, res) => {
 const handleWebhookPost = async (req, res) => {
   const body = req.body;
 
+  // Verify HMAC-SHA256 signature if signature header is provided or enforced
+  const shouldVerify = process.env.META_VERIFY_SIGNATURE !== 'false';
+  if (shouldVerify && req.headers['x-hub-signature-256']) {
+    const isValid = verifySignature(req);
+    if (!isValid) {
+      console.warn('[WEBHOOK ERROR] Invalid Meta signature rejected');
+      return res.status(403).send('Invalid signature');
+    }
+  }
+
   // Verify this is an event from a Page or WhatsApp subscription
   if (body?.object === 'page' || body?.object === 'whatsapp_business_account') {
     // 1. CRITICAL: IMMEDIATELY RESPOND 200 OK TO META
@@ -103,15 +113,13 @@ exports.receive = handleWebhookPost;
 
 function verifySignature(req) {
   const signature = req.headers['x-hub-signature-256'];
+  const appSecret = process.env.META_APP_SECRET || '';
 
-  // If no signature is provided and secret is strictly configured in production, reject
   if (!signature) {
     if (process.env.NODE_ENV === 'production') {
       console.warn('[DEBUG SIGNATURE] No signature provided in production environment');
       return false;
     }
-    // Allow local test simulations without signature in development/test
-    console.log('[DEBUG SIGNATURE] No signature provided, allowed in non-production mode');
     return true;
   }
 
@@ -121,12 +129,17 @@ function verifySignature(req) {
     return false;
   }
 
+  if (!appSecret) {
+    console.warn('[DEBUG SIGNATURE] META_APP_SECRET not configured on server');
+    return false;
+  }
+
   const rawPayload = Buffer.isBuffer(req.rawBody)
     ? req.rawBody
-    : (typeof req.rawBody === 'string' ? req.rawBody : JSON.stringify(req.body));
+    : (typeof req.rawBody === 'string' ? Buffer.from(req.rawBody) : Buffer.from(JSON.stringify(req.body || {})));
 
   const expected = crypto
-    .createHmac('sha256', META_APP_SECRET)
+    .createHmac('sha256', appSecret)
     .update(rawPayload)
     .digest('hex');
 
@@ -283,7 +296,7 @@ async function handleLead({
 }
 
 async function fetchMetaLead(leadgenId, accessToken) {
-  const version = process.env.META_GRAPH_VERSION || 'v23.0';
+  const apiVersion = process.env.META_API_VERSION || 'v26.0';
   const fields = [
     'id',
     'created_time',
@@ -298,7 +311,7 @@ async function fetchMetaLead(leadgenId, accessToken) {
     'form_name',
   ].join(',');
 
-  const url = `https://graph.facebook.com/${version}/${leadgenId}`;
+  const url = `https://graph.facebook.com/${apiVersion}/${leadgenId}`;
   console.log(`[DEBUG fetchMetaLead] GET Request URL: ${url}`);
   const response = await axios.get(url, {
     params: {

@@ -5,7 +5,7 @@ const Lead = require('../../models/Lead');
 const leadIngestionService = require('../../services/integrations/leadIngestionService');
 const { decrypt } = require('../../utils/encryption');
 
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v23.0';
+const META_API_VERSION = process.env.META_API_VERSION || 'v26.0';
 
 function getTenantQuery(user) {
   if (!user) return { _id: null };
@@ -86,7 +86,7 @@ exports.getAssets = async (req, res) => {
 
     // Fetch Pages
     const pagesResponse = await axios.get(
-      `https://graph.facebook.com/${META_GRAPH_VERSION}/me/accounts`,
+      `https://graph.facebook.com/${META_API_VERSION}/me/accounts`,
       {
         params: {
           fields: 'id,name,access_token,tasks',
@@ -102,7 +102,7 @@ exports.getAssets = async (req, res) => {
       let forms = [];
       try {
         const formsResponse = await axios.get(
-          `https://graph.facebook.com/${META_GRAPH_VERSION}/${page.id}/leadgen_forms`,
+          `https://graph.facebook.com/${META_API_VERSION}/${page.id}/leadgen_forms`,
           {
             params: {
               fields: 'id,name,status,leads_count',
@@ -279,7 +279,7 @@ exports.testConnection = async (req, res) => {
     }
 
     const response = await axios.get(
-      `https://graph.facebook.com/${META_GRAPH_VERSION}/me`,
+      `https://graph.facebook.com/${META_API_VERSION}/me`,
       {
         params: {
           fields: 'id,name',

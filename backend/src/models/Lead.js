@@ -7,16 +7,16 @@ function normalizeLeadSource(val) {
   if (!val) return 'MANUAL';
   const clean = String(val).trim().toUpperCase();
   
-  if (['USER_SIGNUP', 'SIGNUP', 'AUTO-SIGNUP', 'AUTO_SIGNUP', 'AUTOSIGNUP', 'PLATFORM_REGISTRATION', 'PLATFORM SIGNUP'].includes(clean)) {
+  if (['USER_SIGNUP', 'SIGNUP', 'AUTO-SIGNUP', 'AUTO_SIGNUP', 'AUTOSIGNUP', 'PLATFORM_REGISTRATION', 'PLATFORM SIGNUP', 'SOURCE_B_SIGNUP'].includes(clean)) {
     return 'USER_SIGNUP';
   }
-  if (['ADS', 'META', 'GOOGLE', 'FACEBOOK', 'INSTAGRAM', 'GOOGLE_ADS', 'META_ADS', 'META ADS', 'GOOGLE ADS', 'CAMPAIGN'].includes(clean)) {
+  if (['ADS', 'META', 'GOOGLE', 'FACEBOOK', 'INSTAGRAM', 'GOOGLE_ADS', 'META_ADS', 'META ADS', 'GOOGLE ADS', 'CAMPAIGN', 'SOURCE_C_ADS'].includes(clean)) {
     return 'ADS';
   }
   if (['WEBHOOK', 'META_WEBHOOK', 'GOOGLE_WEBHOOK', 'API', 'EXTERNAL_INGESTION'].includes(clean)) {
     return 'WEBHOOK';
   }
-  if (['MANUAL', 'AGENT_MANUAL', 'DIRECT CALL', 'DIRECT_CALL', 'CALL', 'IMPORT', 'SPREADSHEET', 'REFERRAL', 'PARTNER', 'WEBSITE', 'ORGANIC', 'OTHER'].includes(clean)) {
+  if (['MANUAL', 'AGENT_MANUAL', 'DIRECT CALL', 'DIRECT_CALL', 'CALL', 'IMPORT', 'SPREADSHEET', 'REFERRAL', 'PARTNER', 'WEBSITE', 'ORGANIC', 'OTHER', 'SOURCE_A_MANUAL'].includes(clean)) {
     return 'MANUAL';
   }
   return 'MANUAL';
@@ -267,7 +267,6 @@ const leadSchema = new mongoose.Schema({
       'Auto-Signup', 'Direct Call', 'Meta Ads', 'Google Ads', 'Organic Search', 'Referral'
     ],
     default: 'MANUAL',
-    set: normalizeLeadSource,
     trim: true,
   },
   leadSource: {
@@ -443,35 +442,33 @@ function normalizeLeadSource(val) {
   if (!val) return 'MANUAL';
   const clean = String(val).trim().toUpperCase();
   
-  if (['USER_SIGNUP', 'SIGNUP', 'AUTO-SIGNUP', 'AUTO_SIGNUP', 'AUTOSIGNUP', 'PLATFORM_REGISTRATION', 'PLATFORM SIGNUP'].includes(clean)) {
+  if (['USER_SIGNUP', 'SIGNUP', 'AUTO-SIGNUP', 'AUTO_SIGNUP', 'AUTOSIGNUP', 'PLATFORM_REGISTRATION', 'PLATFORM SIGNUP', 'SOURCE_B_SIGNUP'].includes(clean)) {
     return 'USER_SIGNUP';
   }
-  if (['ADS', 'META', 'GOOGLE', 'FACEBOOK', 'INSTAGRAM', 'GOOGLE_ADS', 'META_ADS', 'META ADS', 'GOOGLE ADS', 'CAMPAIGN'].includes(clean)) {
+  if (['ADS', 'META', 'GOOGLE', 'FACEBOOK', 'INSTAGRAM', 'GOOGLE_ADS', 'META_ADS', 'META ADS', 'GOOGLE ADS', 'CAMPAIGN', 'SOURCE_C_ADS'].includes(clean)) {
     return 'ADS';
   }
   if (['WEBHOOK', 'META_WEBHOOK', 'GOOGLE_WEBHOOK', 'API', 'EXTERNAL_INGESTION'].includes(clean)) {
     return 'WEBHOOK';
   }
-  if (['MANUAL', 'AGENT_MANUAL', 'DIRECT CALL', 'DIRECT_CALL', 'CALL', 'IMPORT', 'SPREADSHEET', 'REFERRAL', 'PARTNER', 'WEBSITE', 'ORGANIC', 'OTHER'].includes(clean)) {
+  if (['MANUAL', 'AGENT_MANUAL', 'DIRECT CALL', 'DIRECT_CALL', 'CALL', 'IMPORT', 'SPREADSHEET', 'REFERRAL', 'PARTNER', 'WEBSITE', 'ORGANIC', 'OTHER', 'SOURCE_A_MANUAL'].includes(clean)) {
     return 'MANUAL';
   }
   return 'MANUAL';
 }
 
 leadSchema.pre('validate', function() {
-  if (this.source) {
-    this.source = normalizeLeadSource(this.source);
-  }
-  if (this.primarySource) {
+  if (!this.primarySource && this.source) {
+    this.primarySource = normalizeLeadSource(this.source);
+  } else if (this.primarySource) {
     this.primarySource = normalizeLeadSource(this.primarySource);
   }
 });
 
 leadSchema.pre('save', function() {
-  if (this.source) {
-    this.source = normalizeLeadSource(this.source);
-  }
-  if (this.primarySource) {
+  if (!this.primarySource && this.source) {
+    this.primarySource = normalizeLeadSource(this.source);
+  } else if (this.primarySource) {
     this.primarySource = normalizeLeadSource(this.primarySource);
   }
 });
