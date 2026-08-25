@@ -167,8 +167,18 @@ const protect = async (req, res, next) => {
   }
 };
 
+const isTenantAdminUser = (user) => {
+  if (!user) return false;
+  return (
+    user.role === 'superadmin' ||
+    user.role === 'admin' ||
+    user.companyRole === 'owner' ||
+    user.workStatus === 'company_owner'
+  );
+};
+
 const adminOnly = (req, res, next) => {
-  if (!req.user || (!req.user.isAdmin && req.user.role !== 'superadmin' && req.user.role !== 'admin')) {
+  if (!req.user || !isTenantAdminUser(req.user)) {
     securityTracker.recordEvent({
       type: 'PERMISSION_DENIED',
       req,
@@ -184,7 +194,8 @@ const adminOnly = (req, res, next) => {
 
 const managerOrAdminOnly = (req, res, next) => {
   const role = req.user?.role;
-  const isPrivileged = req.user?.isAdmin || role === 'superadmin' || role === 'admin' || role === 'manager';
+  const companyRole = req.user?.companyRole;
+  const isPrivileged = isTenantAdminUser(req.user) || role === 'manager' || companyRole === 'manager';
   if (!req.user || !isPrivileged) {
     securityTracker.recordEvent({
       type: 'PERMISSION_DENIED',

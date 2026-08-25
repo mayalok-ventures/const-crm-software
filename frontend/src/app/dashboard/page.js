@@ -1287,6 +1287,10 @@ export default function DashboardPage() {
       const u = localStorage.getItem('user');
       if (u) {
         const parsed = JSON.parse(u);
+        if (parsed.role === 'superadmin') {
+          router.replace('/superadmin-dashboard');
+          return;
+        }
         setUser(parsed);
       } else {
         router.replace('/login');
@@ -1388,7 +1392,7 @@ export default function DashboardPage() {
       ? user.customPipelineStages
       : (industryDefaults?.pipelineStages || ['new_lead', 'contacted', 'not_interested', 'converted', 'payment_done']));
 
-  if (loadingUser || user?.role === 'superadmin' || user?.isAdmin) {
+  if (loadingUser) {
     return (
       <div className="app-shell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh' }}>
         <div className="spinner" />

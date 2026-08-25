@@ -328,7 +328,7 @@ exports.login = async (req, res) => {
     }
 
     const token = generateToken(user._id);
-    const resolvedRole = user.role || (user.isAdmin ? 'superadmin' : 'user');
+    const resolvedRole = user.role || 'agent';
 
     // Record Immutable Audit Log
     auditService.record({
@@ -349,8 +349,8 @@ exports.login = async (req, res) => {
       phone: user.phone,
       username: user.username,
       usercode: user.usercode,
-      role: resolvedRole,
-      isAdmin: user.isAdmin || resolvedRole === 'superadmin',
+      role: user.role || 'agent',
+      isAdmin: user.role === 'superadmin' || user.isAdmin === true,
       industryType: user.industryType || 'Agency',
       educationSubProfile: user.educationSubProfile || null,
       workStatus: user.workStatus,
@@ -407,8 +407,8 @@ exports.verify2FA = async (req, res) => {
         phone: user.phone,
         username: user.username,
         usercode: user.usercode,
-        role: user.role || (user.isAdmin ? 'superadmin' : 'user'),
-        isAdmin: user.isAdmin || user.role === 'superadmin',
+        role: user.role || 'agent',
+        isAdmin: user.role === 'superadmin' || user.isAdmin === true,
         token,
       });
     }
@@ -468,7 +468,7 @@ exports.verify2FA = async (req, res) => {
     }
 
     const token = generateToken(user._id);
-    const resolvedRole = user.role || (user.isAdmin ? 'superadmin' : 'user');
+    const resolvedRole = user.role || 'agent';
 
     // Record Immutable Audit Log
     auditService.record({
@@ -489,8 +489,8 @@ exports.verify2FA = async (req, res) => {
       phone: user.phone,
       username: user.username,
       usercode: user.usercode,
-      role: resolvedRole,
-      isAdmin: user.isAdmin || resolvedRole === 'superadmin',
+      role: user.role || 'agent',
+      isAdmin: user.role === 'superadmin' || user.isAdmin === true,
       industryType: user.industryType || 'Agency',
       educationSubProfile: user.educationSubProfile || null,
       workStatus: user.workStatus,
@@ -672,7 +672,7 @@ exports.reset2FAEmergency = async (req, res) => {
     await user.save();
 
     const token = generateToken(user._id);
-    const resolvedRole = user.role || (user.isAdmin ? 'superadmin' : 'user');
+    const resolvedRole = user.role || 'agent';
 
     res.json({
       message: '2FA has been successfully removed from your account. You can now log in directly!',
@@ -681,8 +681,8 @@ exports.reset2FAEmergency = async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
-      role: resolvedRole,
-      isAdmin: user.isAdmin || resolvedRole === 'superadmin',
+      role: user.role || 'agent',
+      isAdmin: user.role === 'superadmin' || user.isAdmin === true,
     });
   } catch (error) {
     console.error('reset2FAEmergency error:', error);

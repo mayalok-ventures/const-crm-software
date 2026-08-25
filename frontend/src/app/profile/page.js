@@ -1,38 +1,78 @@
 'use client';
 
-import { useEffect, Suspense } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { getUser } from '@/lib/auth';
+import BottomNav from '@/components/BottomNav';
+import ProfileModule from '@/components/admin/modules/ProfileModule';
+import { ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
 
-function ProfileRedirectContent() {
+export default function ProfilePage() {
   const router = useRouter();
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    router.replace('/admin?tab=profile');
+    const user = getUser();
+    if (!user) {
+      router.replace('/login');
+      return;
+    }
+    if (user.role === 'superadmin') {
+      router.replace('/superadmin-dashboard');
+      return;
+    }
+    if (user.companyRole === 'owner' || user.workStatus === 'company_owner' || user.role === 'admin') {
+      router.replace('/admin?tab=profile');
+      return;
+    }
+    setCurrentUser(user);
+    setLoading(false);
   }, [router]);
 
-  return (
-    <div className="flex h-screen w-full items-center justify-center bg-[#070b14] text-white">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-8 h-8 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
-        <div className="text-xs font-mono text-slate-400">Loading CoreSetu OS Organization & Profile...</div>
+  if (loading) {
+    return (
+      <div className="app-shell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh' }}>
+        <div className="spinner" />
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-export default function ProfileRedirect() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex h-screen w-full items-center justify-center bg-[#070b14] text-white">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
-            <div className="text-xs font-mono text-slate-400">Redirecting to Control Center...</div>
+    <div className="app-shell">
+      <div className="page-container max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 pb-20 md:pb-8">
+        <div className="page-header" style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Link href="/dashboard" className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors">
+              <ArrowLeft size={18} />
+            </Link>
+            <div>
+              <h1 className="page-title" style={{ fontSize: 'clamp(18px, 4vw, 22px)', margin: 0 }}>My Profile & Settings</h1>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+                Manage your account credentials and personal preferences
+              </p>
+            </div>
           </div>
         </div>
-      }
-    >
-      <ProfileRedirectContent />
-    </Suspense>
+
+        <ProfileModule
+          currentUser={currentUser}
+          onUserUpdated={(updatedUser) => {
+            setCurrentUser(updatedUser);
+            if (typeof window !== 'undefined') {
+              try {
+                const stored = localStorage.getItem('user');
+                if (stored) {
+                  const parsed = JSON.parse(stored);
+                  localStorage.setItem('user', JSON.stringify({ ...parsed, ...updatedUser }));
+                }
+              } catch (e) {}
+            }
+          }}
+        />
+      </div>
+      <BottomNav active="profile" />
+    </div>
   );
 }

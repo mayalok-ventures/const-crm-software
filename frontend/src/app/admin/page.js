@@ -162,8 +162,9 @@ function AdminControlCenterContent() {
       router.replace('/login');
       return;
     }
-    const hasAdminAccess = user.isAdmin || user.role === 'superadmin' || user.role === 'admin' || user.role === 'manager' || user.companyRole === 'owner';
-    if (!hasAdminAccess) {
+    const isProfileTab = searchParams?.get('tab') === 'profile';
+    const hasAdminAccess = user.role === 'superadmin' || user.role === 'admin' || user.companyRole === 'owner' || user.workStatus === 'company_owner';
+    if (!hasAdminAccess && !isProfileTab) {
       setIsAuthorized(false);
       setLoading(false);
       return;

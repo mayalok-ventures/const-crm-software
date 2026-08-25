@@ -87,7 +87,7 @@ function SuperAdminDashboardContent() {
       router.replace('/login');
       return;
     }
-    if (user.role !== 'superadmin' && !user.isAdmin) {
+    if (user.role !== 'superadmin') {
       toast.error('Access restricted to Platform SuperAdmins');
       router.replace('/admin');
       return;
