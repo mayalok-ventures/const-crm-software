@@ -54,9 +54,9 @@ function verifyOAuthState(state) {
 }
 
 /**
- * GET /api/integrations/google/oauth/start
+ * GET /api/integrations/google/oauth
  */
-exports.start = async (req, res) => {
+exports.startOAuth = exports.start = async (req, res) => {
   try {
     if (!req.user?._id) {
       return res.status(401).json({
