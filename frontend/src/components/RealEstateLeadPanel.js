@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
@@ -9,6 +10,7 @@ import {
 } from 'lucide-react';
 
 export default function RealEstateLeadPanel({ lead, onLeadUpdate }) {
+  const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('overview'); // overview, requirements, matching, deals, eoi_booking
   const [loading, setLoading] = useState(false);
   const [scoring, setScoring] = useState(false);
@@ -66,6 +68,32 @@ export default function RealEstateLeadPanel({ lead, onLeadUpdate }) {
     agreementValue: '9500000',
     paymentPlan: 'CLP',
   });
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Lock background scroll when any modal is open
+  useEffect(() => {
+    const isAnyOpen = showAddReqModal || showAddOppModal || showEoiModal || showBookingModal;
+    if (typeof document !== 'undefined') {
+      if (isAnyOpen) {
+        document.body.style.overflow = 'hidden';
+      } else {
+        document.body.style.overflow = '';
+      }
+    }
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.body.style.overflow = '';
+      }
+    };
+  }, [showAddReqModal, showAddOppModal, showEoiModal, showBookingModal]);
+
+  const renderPortal = (children) => {
+    if (!mounted || typeof document === 'undefined') return null;
+    return createPortal(children, document.body);
+  };
 
   const leadId = lead?._id;
 
@@ -278,7 +306,17 @@ export default function RealEstateLeadPanel({ lead, onLeadUpdate }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setShowEoiModal(true)}
+            className="btn btn-sm"
+            style={{ fontSize: 12, padding: '4px 12px', height: 32, gap: 5, background: '#10b981', color: '#fff', border: 'none' }}
+            title="Submit Expression of Interest"
+          >
+            <DollarSign size={13} />
+            <span>+ Submit EOI</span>
+          </button>
+
           <button
             onClick={handleRecalculateScore}
             disabled={scoring}
@@ -303,12 +341,20 @@ export default function RealEstateLeadPanel({ lead, onLeadUpdate }) {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', background: '#f8fafc', padding: '0 12px' }}>
+      <div style={{
+        display: 'flex',
+        borderBottom: '1px solid #e2e8f0',
+        background: '#f8fafc',
+        padding: '0 8px',
+        overflowX: 'auto',
+        WebkitOverflowScrolling: 'touch',
+        scrollbarWidth: 'thin',
+      }}>
         {[
           { id: 'overview', label: 'Scoring & Overview', icon: TrendingUp },
           { id: 'requirements', label: `Requirements (${requirements.length})`, icon: Home },
           { id: 'matching', label: `Matches (${matches.length})`, icon: Sparkles },
-          { id: 'deals', label: `Deals / Opportunities (${opportunities.length})`, icon: KeyRound },
+          { id: 'deals', label: `Deals (${opportunities.length})`, icon: KeyRound },
           { id: 'eoi_booking', label: `EOI & Bookings (${eois.length + bookings.length})`, icon: DollarSign },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -323,14 +369,16 @@ export default function RealEstateLeadPanel({ lead, onLeadUpdate }) {
                 gap: 6,
                 padding: '10px 14px',
                 fontSize: 13,
-                fontWeight: isActive ? 600 : 500,
+                fontWeight: isActive ? 700 : 500,
                 color: isActive ? '#4f46e5' : '#64748b',
                 borderBottom: isActive ? '2px solid #4f46e5' : '2px solid transparent',
-                background: 'none',
+                background: isActive ? 'rgba(79, 70, 229, 0.05)' : 'none',
                 borderTop: 'none',
                 borderLeft: 'none',
                 borderRight: 'none',
                 cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
                 transition: 'all 0.15s ease',
               }}
             >
@@ -584,27 +632,27 @@ export default function RealEstateLeadPanel({ lead, onLeadUpdate }) {
       </div>
 
       {/* Add Requirement Modal */}
-      {showAddReqModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}>
-          <div style={{ background: '#ffffff', borderRadius: 14, padding: 20, width: '100%', maxWidth: 450, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+      {showAddReqModal && renderPortal(
+        <div className="modal-overlay" onClick={() => setShowAddReqModal(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <span style={{ fontWeight: 700, fontSize: 16, color: '#1e293b' }}>Add Property Requirement</span>
-              <button onClick={() => setShowAddReqModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={18} /></button>
+              <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--text, #1e293b)' }}>Add Property Requirement</span>
+              <button onClick={() => setShowAddReqModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>
             </div>
-            <form onSubmit={handleCreateRequirement} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <form onSubmit={handleCreateRequirement} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Requirement Title</label>
-                <input type="text" className="input" value={reqForm.title} onChange={(e) => setReqForm({ ...reqForm, title: e.target.value })} required />
+                <label className="label" style={{ fontSize: 12 }}>Requirement Title *</label>
+                <input type="text" className="input" placeholder="e.g. 3BHK in Gurgaon near Metro" value={reqForm.title} onChange={(e) => setReqForm({ ...reqForm, title: e.target.value })} required />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Property Type</label>
+                  <label className="label" style={{ fontSize: 12 }}>Property Type</label>
                   <select className="input" value={reqForm.propertyType} onChange={(e) => setReqForm({ ...reqForm, propertyType: e.target.value })}>
                     {['Apartment', 'Villa', 'Plot', 'Commercial', 'Penthouse'].map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Configuration</label>
+                  <label className="label" style={{ fontSize: 12 }}>Configuration</label>
                   <select className="input" value={reqForm.configurations} onChange={(e) => setReqForm({ ...reqForm, configurations: e.target.value })}>
                     {['1BHK', '2BHK', '3BHK', '4BHK', 'Studio', 'Villa', 'Plot'].map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
@@ -612,35 +660,38 @@ export default function RealEstateLeadPanel({ lead, onLeadUpdate }) {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Min Budget (₹)</label>
-                  <input type="number" className="input" value={reqForm.budgetMin} onChange={(e) => setReqForm({ ...reqForm, budgetMin: e.target.value })} />
+                  <label className="label" style={{ fontSize: 12 }}>Min Budget (₹)</label>
+                  <input type="number" className="input" placeholder="5000000" value={reqForm.budgetMin} onChange={(e) => setReqForm({ ...reqForm, budgetMin: e.target.value })} />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Max Budget (₹)</label>
-                  <input type="number" className="input" value={reqForm.budgetMax} onChange={(e) => setReqForm({ ...reqForm, budgetMax: e.target.value })} />
+                  <label className="label" style={{ fontSize: 12 }}>Max Budget (₹)</label>
+                  <input type="number" className="input" placeholder="15000000" value={reqForm.budgetMax} onChange={(e) => setReqForm({ ...reqForm, budgetMax: e.target.value })} />
                 </div>
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Preferred Locations (comma separated)</label>
-                <input type="text" className="input" value={reqForm.preferredLocations} onChange={(e) => setReqForm({ ...reqForm, preferredLocations: e.target.value })} />
+                <label className="label" style={{ fontSize: 12 }}>Preferred Locations (comma separated)</label>
+                <input type="text" className="input" placeholder="e.g. Sector 62, Golf Course Ext" value={reqForm.preferredLocations} onChange={(e) => setReqForm({ ...reqForm, preferredLocations: e.target.value })} />
               </div>
-              <button type="submit" className="btn btn-primary" style={{ marginTop: 10 }}>Save Requirement</button>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button type="button" className="btn btn-ghost btn-full" onClick={() => setShowAddReqModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary btn-full">Save Requirement</button>
+              </div>
             </form>
           </div>
         </div>
       )}
 
       {/* Add Deal / Opportunity Modal */}
-      {showAddOppModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}>
-          <div style={{ background: '#ffffff', borderRadius: 14, padding: 20, width: '100%', maxWidth: 450, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+      {showAddOppModal && renderPortal(
+        <div className="modal-overlay" onClick={() => setShowAddOppModal(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <span style={{ fontWeight: 700, fontSize: 16, color: '#1e293b' }}>Create Property Deal</span>
-              <button onClick={() => setShowAddOppModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={18} /></button>
+              <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--text, #1e293b)' }}>Create Property Deal</span>
+              <button onClick={() => setShowAddOppModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>
             </div>
-            <form onSubmit={handleCreateOpportunity} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <form onSubmit={handleCreateOpportunity} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Select Project</label>
+                <label className="label" style={{ fontSize: 12 }}>Select Project *</label>
                 <select
                   className="input"
                   value={oppForm.projectId}
@@ -660,30 +711,33 @@ export default function RealEstateLeadPanel({ lead, onLeadUpdate }) {
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Deal Title</label>
+                <label className="label" style={{ fontSize: 12 }}>Deal Title *</label>
                 <input type="text" className="input" value={oppForm.title} onChange={(e) => setOppForm({ ...oppForm, title: e.target.value })} required />
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Expected Deal Value (₹)</label>
-                <input type="number" className="input" value={oppForm.expectedValue} onChange={(e) => setOppForm({ ...oppForm, expectedValue: e.target.value })} />
+                <label className="label" style={{ fontSize: 12 }}>Expected Deal Value (₹)</label>
+                <input type="number" className="input" placeholder="e.g. 7500000" value={oppForm.expectedValue} onChange={(e) => setOppForm({ ...oppForm, expectedValue: e.target.value })} />
               </div>
-              <button type="submit" className="btn btn-primary" style={{ marginTop: 10 }}>Create Deal</button>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button type="button" className="btn btn-ghost btn-full" onClick={() => setShowAddOppModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary btn-full">Create Deal</button>
+              </div>
             </form>
           </div>
         </div>
       )}
 
       {/* Submit EOI Modal */}
-      {showEoiModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}>
-          <div style={{ background: '#ffffff', borderRadius: 14, padding: 20, width: '100%', maxWidth: 450, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+      {showEoiModal && renderPortal(
+        <div className="modal-overlay" onClick={() => setShowEoiModal(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <span style={{ fontWeight: 700, fontSize: 16, color: '#1e293b' }}>Submit Expression of Interest (EOI)</span>
-              <button onClick={() => setShowEoiModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={18} /></button>
+              <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--text, #1e293b)' }}>Submit Expression of Interest (EOI)</span>
+              <button onClick={() => setShowEoiModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>
             </div>
-            <form onSubmit={handleCreateEOI} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <form onSubmit={handleCreateEOI} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Project</label>
+                <label className="label" style={{ fontSize: 12 }}>Project *</label>
                 <select
                   className="input"
                   value={eoiForm.projectId}
@@ -698,7 +752,7 @@ export default function RealEstateLeadPanel({ lead, onLeadUpdate }) {
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Select Unit for Hold (Optional)</label>
+                <label className="label" style={{ fontSize: 12 }}>Select Unit for Hold (Optional)</label>
                 <select
                   className="input"
                   value={eoiForm.inventoryId}
@@ -713,32 +767,39 @@ export default function RealEstateLeadPanel({ lead, onLeadUpdate }) {
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Token Amount (₹)</label>
-                <input type="number" className="input" value={eoiForm.tokenAmount} onChange={(e) => setEoiForm({ ...eoiForm, tokenAmount: e.target.value })} required />
+                <label className="label" style={{ fontSize: 12 }}>Token Amount (₹) *</label>
+                <input type="number" className="input" placeholder="e.g. 50000" value={eoiForm.tokenAmount} onChange={(e) => setEoiForm({ ...eoiForm, tokenAmount: e.target.value })} required />
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Payment Mode</label>
+                <label className="label" style={{ fontSize: 12 }}>Payment Mode</label>
                 <select className="input" value={eoiForm.paymentMode} onChange={(e) => setEoiForm({ ...eoiForm, paymentMode: e.target.value })}>
                   {['UPI', 'Cheque', 'Bank Transfer', 'Credit Card', 'Cash'].map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
-              <button type="submit" className="btn btn-primary" style={{ marginTop: 10 }}>Submit EOI</button>
+              <div>
+                <label className="label" style={{ fontSize: 12 }}>Payment Reference / Transaction ID (Optional)</label>
+                <input type="text" className="input" placeholder="e.g. UPI-REF-9823471" value={eoiForm.paymentReference || ''} onChange={(e) => setEoiForm({ ...eoiForm, paymentReference: e.target.value })} />
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button type="button" className="btn btn-ghost btn-full" onClick={() => setShowEoiModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary btn-full" style={{ background: '#10b981', borderColor: '#10b981' }}>Submit EOI</button>
+              </div>
             </form>
           </div>
         </div>
       )}
 
       {/* Formal Booking Modal */}
-      {showBookingModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}>
-          <div style={{ background: '#ffffff', borderRadius: 14, padding: 20, width: '100%', maxWidth: 450, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+      {showBookingModal && renderPortal(
+        <div className="modal-overlay" onClick={() => setShowBookingModal(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <span style={{ fontWeight: 700, fontSize: 16, color: '#1e293b' }}>Confirm Property Booking</span>
-              <button onClick={() => setShowBookingModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={18} /></button>
+              <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--text, #1e293b)' }}>Confirm Property Booking</span>
+              <button onClick={() => setShowBookingModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>
             </div>
-            <form onSubmit={handleCreateBooking} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <form onSubmit={handleCreateBooking} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Project</label>
+                <label className="label" style={{ fontSize: 12 }}>Project *</label>
                 <select
                   className="input"
                   value={bookingForm.projectId}
@@ -753,7 +814,7 @@ export default function RealEstateLeadPanel({ lead, onLeadUpdate }) {
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Select Inventory Unit (Mandatory)</label>
+                <label className="label" style={{ fontSize: 12 }}>Select Inventory Unit (Mandatory) *</label>
                 <select
                   className="input"
                   value={bookingForm.inventoryId}
@@ -777,16 +838,16 @@ export default function RealEstateLeadPanel({ lead, onLeadUpdate }) {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Booking Amount (₹)</label>
-                  <input type="number" className="input" value={bookingForm.bookingAmount} onChange={(e) => setBookingForm({ ...bookingForm, bookingAmount: e.target.value })} required />
+                  <label className="label" style={{ fontSize: 12 }}>Booking Amount (₹) *</label>
+                  <input type="number" className="input" placeholder="e.g. 200000" value={bookingForm.bookingAmount} onChange={(e) => setBookingForm({ ...bookingForm, bookingAmount: e.target.value })} required />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Agreement Value (₹)</label>
-                  <input type="number" className="input" value={bookingForm.agreementValue} onChange={(e) => setBookingForm({ ...bookingForm, agreementValue: e.target.value })} required />
+                  <label className="label" style={{ fontSize: 12 }}>Agreement Value (₹) *</label>
+                  <input type="number" className="input" placeholder="e.g. 8500000" value={bookingForm.agreementValue} onChange={(e) => setBookingForm({ ...bookingForm, agreementValue: e.target.value })} required />
                 </div>
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Payment Plan</label>
+                <label className="label" style={{ fontSize: 12 }}>Payment Plan</label>
                 <select className="input" value={bookingForm.paymentPlan} onChange={(e) => setBookingForm({ ...bookingForm, paymentPlan: e.target.value })}>
                   <option value="CLP">Construction Linked Plan (CLP)</option>
                   <option value="Down_Payment">Down Payment Plan</option>
@@ -794,7 +855,10 @@ export default function RealEstateLeadPanel({ lead, onLeadUpdate }) {
                   <option value="Custom">Custom Milestone Schedule</option>
                 </select>
               </div>
-              <button type="submit" className="btn btn-primary" style={{ marginTop: 10, background: '#10b981' }}>Confirm Booking & Lock Unit</button>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button type="button" className="btn btn-ghost btn-full" onClick={() => setShowBookingModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary btn-full" style={{ background: '#10b981', borderColor: '#10b981' }}>Confirm Booking & Lock Unit</button>
+              </div>
             </form>
           </div>
         </div>

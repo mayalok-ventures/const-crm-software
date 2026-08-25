@@ -1,5 +1,7 @@
+const mongoose = require('mongoose');
 const Lead = require('../models/Lead');
 const User = require('../models/User');
+const Project = require('../models/Project');
 const Notification = require('../models/Notification');
 const { emitCRMEvent, CRM_EVENTS } = require('../services/automationEvents');
 const { auditService } = require('../monitoring/audit/auditService');
@@ -62,21 +64,61 @@ const buildLeadPermissionQuery = async (user) => {
 // @access Private
 exports.getLeads = async (req, res) => {
   try {
-    const { page = 1, limit = 50, status, tag, search, projectId, assignedTo } = req.query;
+    const { page = 1, limit = 50, status, tag, search, projectId, assignedTo, source, primarySource } = req.query;
 
     const basePermissionQuery = await buildLeadPermissionQuery(req.user);
     const query = { $and: [ basePermissionQuery ] };
 
-    if (status) query.status = status;
-    if (tag) query.tags = tag;
-    if (projectId) query.projectId = projectId;
-    if (assignedTo) {
-      query.$and.push({
-        $or: [
-          { assignedTo: assignedTo },
-          { currentOwnerId: assignedTo }
-        ]
-      });
+    if (status && status !== 'all' && status !== 'undefined') {
+      query.status = status;
+    }
+    if (tag && tag !== 'all' && tag !== 'undefined') {
+      query.tags = tag;
+    }
+    if (projectId && projectId !== 'all' && projectId !== 'undefined' && projectId !== 'null') {
+      if (mongoose.Types.ObjectId.isValid(projectId)) {
+        query.projectId = projectId;
+      }
+    }
+    if (assignedTo && assignedTo !== 'all' && assignedTo !== 'undefined' && assignedTo !== 'null') {
+      if (mongoose.Types.ObjectId.isValid(assignedTo)) {
+        query.$and.push({
+          $or: [
+            { assignedTo: assignedTo },
+            { currentOwnerId: assignedTo }
+          ]
+        });
+      }
+    }
+    if (source && source !== 'all' && source !== 'undefined') {
+      const cleanSrc = String(source).toLowerCase().trim();
+      if (cleanSrc === 'ads') {
+        query.$and.push({
+          $or: [
+            { primarySource: { $in: ['SOURCE_C_ADS', 'ads'] } },
+            { source: { $in: ['ads', 'meta', 'google', 'webhook', 'facebook', 'instagram', 'adwords'] } },
+          ]
+        });
+      } else if (cleanSrc === 'signup') {
+        query.$and.push({
+          $or: [
+            { primarySource: { $in: ['SOURCE_B_SIGNUP', 'signup'] } },
+            { source: { $in: ['signup', 'auto-signup', 'Auto-Signup', 'platform_registration'] } },
+          ]
+        });
+      } else if (cleanSrc === 'manual') {
+        query.$and.push({
+          $or: [
+            { primarySource: { $in: ['SOURCE_A_MANUAL', 'manual'] } },
+            { source: { $in: ['manual', 'agent_manual', 'direct', ''] } },
+          ]
+        });
+      } else {
+        query.source = new RegExp(cleanSrc, 'i');
+      }
+    }
+    if (primarySource && primarySource !== 'all' && primarySource !== 'undefined') {
+      query.primarySource = primarySource;
     }
     if (req.query.unclaimed === 'true') {
       query.$and.push({
@@ -99,8 +141,10 @@ exports.getLeads = async (req, res) => {
       });
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const cap = Math.min(parseInt(limit), 100);
+    const parsedLimit = Math.max(1, parseInt(limit, 10) || 50);
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+    const skip = (parsedPage - 1) * parsedLimit;
+    const cap = Math.min(parsedLimit, 100);
 
     const [leads, total] = await Promise.all([
       Lead.find(query)
@@ -117,12 +161,15 @@ exports.getLeads = async (req, res) => {
       leads,
       pagination: {
         total,
-        page: parseInt(page),
+        page: parsedPage,
         pages: Math.ceil(total / cap),
         limit: cap,
       },
     });
   } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({ message: 'Invalid parameter format' });
+    }
     console.error('getLeads error:', error);
     res.status(500).json({ message: 'Server error fetching leads' });
   }
@@ -133,8 +180,13 @@ exports.getLeads = async (req, res) => {
 // @access Private
 exports.getLead = async (req, res) => {
   try {
+    const { id } = req.params;
+    if (!id || id === 'undefined' || id === 'null' || id === 'placeholder' || id === '[id]' || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid lead ID format' });
+    }
+
     const basePermissionQuery = await buildLeadPermissionQuery(req.user);
-    const lead = await Lead.findOne({ _id: req.params.id, ...basePermissionQuery })
+    const lead = await Lead.findOne({ _id: id, ...basePermissionQuery })
       .populate('projectId')
       .populate('assignedTo', 'name usercode email')
       .lean();
@@ -143,6 +195,7 @@ exports.getLead = async (req, res) => {
     res.json(lead);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'Invalid lead ID format' });
+    console.error('getLead error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -671,28 +724,31 @@ exports.createLead = async (req, res) => {
       });
     }
 
-    // Plan limits check (Handles Solo, Organization, and Free tiers)
-    const { PLAN_LIMITS } = require('../utils/planLimits');
-    const lifecycle = req.user.subscriptionLifecycle;
-    const effectivePlan = lifecycle?.effectivePlan || req.user.plan || 'free';
-    const limits = PLAN_LIMITS[effectivePlan];
-    const maxLeads = limits?.maxLeads ?? 10;
+    // Plan limits check (Handles Solo, Organization, and Free tiers; bypassed for SuperAdmin)
+    const isSuperAdminUser = req.user.role === 'superadmin' || req.user.isAdmin;
+    if (!isSuperAdminUser) {
+      const { PLAN_LIMITS } = require('../utils/planLimits');
+      const lifecycle = req.user.subscriptionLifecycle;
+      const effectivePlan = lifecycle?.effectivePlan || req.user.plan || 'free';
+      const limits = PLAN_LIMITS[effectivePlan];
+      const maxLeads = limits?.maxLeads ?? 10;
 
-    if (maxLeads !== Infinity) {
-      const query = isOwner
-        ? { companyId: req.user._id }
-        : (req.user.companyRole === 'agent' && req.user.companyId
-          ? { companyId: req.user.companyId }
-          : { userId: req.user._id });
+      if (maxLeads !== Infinity) {
+        const query = isOwner
+          ? { companyId: req.user._id }
+          : (req.user.companyRole === 'agent' && req.user.companyId
+            ? { companyId: req.user.companyId }
+            : { userId: req.user._id });
 
-      const count = await Lead.countDocuments(query);
-      if (count >= maxLeads) {
-        return res.status(403).json({
-          code: 'LIMIT_REACHED',
-          message: `You have reached the maximum limit of ${maxLeads} leads on the ${limits?.name || effectivePlan} plan. Please upgrade to add more leads.`,
-          currentCount: count,
-          maxLeads,
-        });
+        const count = await Lead.countDocuments(query);
+        if (count >= maxLeads) {
+          return res.status(403).json({
+            code: 'LIMIT_REACHED',
+            message: `You have reached the maximum limit of ${maxLeads} leads on the ${limits?.name || effectivePlan} plan. Please upgrade to add more leads.`,
+            currentCount: count,
+            maxLeads,
+          });
+        }
       }
     }
 

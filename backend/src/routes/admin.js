@@ -29,6 +29,8 @@ router.patch('/leads/:id/status', managerOrAdminOnly, adminController.updateLead
 router.post('/leads/:id/convert', managerOrAdminOnly, adminController.convertLeadWithPlan);
 router.post('/leads/:id/close-deal', managerOrAdminOnly, adminController.closeLeadWithCommission);
 router.post('/leads/:id/assign-plan', managerOrAdminOnly, adminController.assignLeadPlan);
+router.post('/leads/:id/apply-offer', managerOrAdminOnly, adminController.applyOfferToLead);
+router.post('/offers', adminOnly, adminController.createAdminOffer);
 
 // Follow-ups (Tenant Scoped)
 router.post('/leads/:id/followups', managerOrAdminOnly, adminController.scheduleFollowUp);

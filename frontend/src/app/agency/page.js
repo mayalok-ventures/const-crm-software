@@ -5,10 +5,11 @@ import api from '@/lib/api';
 import { getUser } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import BottomNav from '@/components/BottomNav';
+import FormsModule from '@/components/admin/modules/FormsModule';
 import {
   Users, Shield, Award, FileText, CheckCircle2, XCircle, Plus, Trash2,
   Edit2, Check, X, DollarSign, AlertTriangle, TrendingUp, HelpCircle, UserPlus,
-  ShieldCheck, RefreshCw, BarChart2, Settings, ArrowRight, UserCheck, Clock
+  ShieldCheck, RefreshCw, BarChart2, Settings, ArrowRight, UserCheck, Clock, Sliders
 } from 'lucide-react';
 
 const PERMISSION_OPTIONS = [
@@ -305,6 +306,7 @@ export default function AgencyPage() {
           {[
             { id: 'overview', label: '📊 Metrics Overview', show: true },
             { id: 'roster', label: '👥 Team Roster', show: true },
+            { id: 'forms', label: '📋 Forms & Custom Fields', show: isOwner || isManager },
             { id: 'roles', label: '🛡️ Role Editor', show: isOwner },
             { id: 'incentives', label: '💰 Incentive Policies', show: isOwner || isManager },
             { id: 'logs', label: '📝 Audit Feed', show: isOwner }
@@ -493,6 +495,13 @@ export default function AgencyPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {/* 2.5 FORMS & CUSTOM FIELDS TAB */}
+        {activeTab === 'forms' && (
+          <div style={{ marginTop: 8 }}>
+            <FormsModule theme="light" />
           </div>
         )}
 

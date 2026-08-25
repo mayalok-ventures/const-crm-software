@@ -50,9 +50,10 @@ const generateUsername = () => {
  * @throws {Error} If unable to generate a unique username after 5 attempts
  */
 const generateUniqueUsername = async (UserModel) => {
+  const Model = (UserModel && typeof UserModel.findOne === 'function') ? UserModel : require('../models/User');
   for (let attempt = 0; attempt < 5; attempt++) {
     const username = generateUsername();
-    const exists = await UserModel.findOne({ username }).lean();
+    const exists = await Model.findOne({ username }).lean();
     if (!exists) return username;
   }
   throw new Error('Failed to generate a unique username after 5 attempts. This should not happen at normal scale.');

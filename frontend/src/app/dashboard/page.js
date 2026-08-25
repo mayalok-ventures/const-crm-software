@@ -19,7 +19,7 @@ import LostReasonModal, { isLostStage, LOST_REASON_OPTIONS } from '@/components/
 import PlanStatusWidget from '@/components/PlanStatusWidget';
 import { SourcePill } from '@/lib/sourceHelper';
 import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
-import { isFieldVisible as evaluateFieldVisible, isFieldRequired as evaluateFieldRequired } from '@/components/common/DynamicFormRenderer';
+import DynamicFormRenderer, { isFieldVisible as evaluateFieldVisible, isFieldRequired as evaluateFieldRequired } from '@/components/common/DynamicFormRenderer';
 
 const STAGE_LABELS = {
   new_lead: '🆕 New Lead',
@@ -553,9 +553,16 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
 
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [schema, setSchema] = useState([]);
+  const [formErrors, setFormErrors] = useState({});
 
   useEffect(() => {
     api.get('/projects').then(r => setProjects(r.data)).catch(() => {});
+    api.get('/auth/form-schema?type=lead').then(r => {
+      if (r.data?.schema && Array.isArray(r.data.schema) && r.data.schema.length > 0) {
+        setSchema(r.data.schema);
+      }
+    }).catch(() => {});
   }, []);
 
   const userShowFollowUp = (() => {
@@ -573,22 +580,23 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
   })();
   const showFollowUpOnCreate = userShowFollowUp !== false;
 
-  const rawSchema = (user?.leadFormSchema && Array.isArray(user.leadFormSchema) && user.leadFormSchema.length > 0)
-    ? user.leadFormSchema
-    : defaults.leadFormSchema;
+  const activeSchema = (schema.length > 0)
+    ? schema
+    : ((user?.leadFormSchema && Array.isArray(user.leadFormSchema) && user.leadFormSchema.length > 0)
+      ? user.leadFormSchema
+      : defaults.leadFormSchema);
 
-  // Real-time Conditional Logic Evaluator (Supports 12 operators, AND/OR combinators, dependsOn & showFollowUpOnCreate)
-  const isFieldVisible = (field) => {
-    if (field.fieldId === 'followUpDate' && !showFollowUpOnCreate) return false;
-    return evaluateFieldVisible(field, values);
-  };
+  // Filter out followUpDate if showFollowUpOnCreate is disabled
+  const filteredSchema = activeSchema.filter(f => {
+    if (f.fieldId === 'followUpDate' && !showFollowUpOnCreate) return false;
+    return true;
+  });
 
-  const activeFields = [...rawSchema]
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
-    .filter(isFieldVisible);
-
-  const setVal = (fieldId) => (e) => {
-    setValues(v => ({ ...v, [fieldId]: e.target.value }));
+  const handleFieldChange = (fieldId, value) => {
+    setValues(v => ({ ...v, [fieldId]: value }));
+    if (formErrors[fieldId]) {
+      setFormErrors(errs => ({ ...errs, [fieldId]: null }));
+    }
   };
 
   const handleProjectSelect = (e) => {
@@ -621,16 +629,8 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
       return toast.error('Please select a Lost Reason for this lost stage');
     }
 
-    // Check active mandatory fields (evaluating conditional requiredness)
-    for (const f of activeFields) {
-      if (f.fieldId === 'followUpDate') continue;
-      const isReq = evaluateFieldRequired(f, values);
-      if (isReq && !values[f.fieldId]?.toString().trim()) {
-        return toast.error(`${f.label} is required`);
-      }
-    }
-
     setLoading(true);
+    setFormErrors({});
     try {
       const knownSystem = new Set([
         'name', 'phone', 'email', 'company', 'tags', 'status', 'followUpDate',
@@ -662,10 +662,11 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
         customData: {},
       };
 
-      // Populate extra dynamic fields into customData
+      // Populate extra dynamic fields into customData & top level for validator
       for (const [k, v] of Object.entries(values)) {
         if (!knownSystem.has(k) && v !== undefined && v !== '') {
           payload.customData[k] = v;
+          payload[k] = v;
         }
       }
 
@@ -674,6 +675,9 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
       onCreated(data);
       onClose();
     } catch (err) {
+      if (err.response?.data?.errors) {
+        setFormErrors(err.response.data.errors);
+      }
       if (err.response?.data?.code === 'LIMIT_REACHED') {
         onClose();
         onLimitReached();
@@ -689,7 +693,7 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 540 }}>
+      <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
         <div className="modal-handle" />
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <div>
@@ -701,101 +705,29 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={20} /></button>
         </div>
 
-        <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '68dvh', overflowY: 'auto', paddingRight: 4 }}>
-          {activeFields.map((field) => {
-            const isMandatory = ['name', 'phone', 'followUpDate'].includes(field.fieldId) || field.isRequired;
-            const currentVal = values[field.fieldId] || '';
+        <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '72dvh', overflowY: 'auto', paddingRight: 4 }}>
+          {/* Dynamic Form Layout */}
+          <DynamicFormRenderer
+            schema={filteredSchema}
+            values={values}
+            onChange={handleFieldChange}
+            errors={formErrors}
+            theme="light"
+            gridCols={2}
+          />
 
-            if (field.fieldId === 'projectId') {
-              return (
-                <div key={field.fieldId}>
-                  <label className="label">{field.label} {isMandatory && '*'}</label>
-                  <select className="input" value={values.projectId || ''} onChange={handleProjectSelect} required={isMandatory}>
-                    <option value="">-- Select Offering / Project (Optional) --</option>
-                    {projects.map(p => (
-                      <option key={p._id} value={p._id}>📦 {p.name} ({p.location})</option>
-                    ))}
-                  </select>
-                </div>
-              );
-            }
-
-            if (field.fieldId === 'status') {
-              return (
-                <div key={field.fieldId}>
-                  <label className="label">{field.label} {isMandatory && '*'}</label>
-                  <select className="input" value={values.status || ''} onChange={setVal('status')} required={isMandatory}>
-                    {initialStages.map(s => (
-                      <option key={s} value={s}>{STAGE_LABELS[s] || s}</option>
-                    ))}
-                  </select>
-                </div>
-              );
-            }
-
-            if (field.fieldType === 'dropdown') {
-              const options = field.options || [];
-              return (
-                <div key={field.fieldId}>
-                  <label className="label">{field.label} {isMandatory && '*'}</label>
-                  <select className="input" value={currentVal} onChange={setVal(field.fieldId)} required={isMandatory}>
-                    <option value="">Select {field.label}...</option>
-                    {options.map(opt => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
-                </div>
-              );
-            }
-
-            if (field.fieldType === 'date') {
-              const isDateTime = field.fieldId === 'followUpDate';
-              return (
-                <div key={field.fieldId}>
-                  <label className="label">{field.label} {isMandatory && '*'}</label>
-                  <input
-                    className="input"
-                    type={isDateTime ? 'datetime-local' : 'date'}
-                    value={currentVal}
-                    onChange={setVal(field.fieldId)}
-                    required={isMandatory}
-                  />
-                </div>
-              );
-            }
-
-            if (field.fieldType === 'number') {
-              return (
-                <div key={field.fieldId}>
-                  <label className="label">{field.label} {isMandatory && '*'}</label>
-                  <input
-                    className="input"
-                    type="number"
-                    placeholder={`Enter ${field.label}...`}
-                    value={currentVal}
-                    onChange={setVal(field.fieldId)}
-                    required={isMandatory}
-                  />
-                </div>
-              );
-            }
-
-            // Standard text / tel / email
-            const inputType = field.fieldId === 'phone' ? 'tel' : (field.fieldId === 'email' ? 'email' : 'text');
-            return (
-              <div key={field.fieldId}>
-                <label className="label">{field.label} {isMandatory && '*'}</label>
-                <input
-                  className="input"
-                  type={inputType}
-                  placeholder={`Enter ${field.label}...`}
-                  value={currentVal}
-                  onChange={setVal(field.fieldId)}
-                  required={isMandatory}
-                />
-              </div>
-            );
-          })}
+          {/* Offering / Project Link (Optional) */}
+          {projects.length > 0 && !filteredSchema.some(f => f.fieldId === 'projectId') && (
+            <div>
+              <label className="label">Offering / Project Link (Optional)</label>
+              <select className="input" value={values.projectId || ''} onChange={handleProjectSelect}>
+                <option value="">-- Select Offering / Project (Optional) --</option>
+                {projects.map(p => (
+                  <option key={p._id} value={p._id}>📦 {p.name} ({p.location})</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Conditional Lost Reason Inputs in Add Lead */}
           {isCurrentLostStage && (
@@ -808,7 +740,7 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
                 <select
                   className="input"
                   value={values.lostReason || ''}
-                  onChange={setVal('lostReason')}
+                  onChange={e => handleFieldChange('lostReason', e.target.value)}
                   required
                   style={{ height: 38, fontSize: 13 }}
                 >
@@ -824,18 +756,18 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
                   className="input"
                   placeholder="e.g. Higher pricing than competitor"
                   value={values.lostReasonDetail || ''}
-                  onChange={setVal('lostReasonDetail')}
+                  onChange={e => handleFieldChange('lostReasonDetail', e.target.value)}
                   style={{ height: 38, fontSize: 13 }}
                 />
               </div>
             </div>
           )}
 
-          <div className="modal-actions">
-            <button type="button" className="btn btn-ghost" onClick={onClose} style={{ height: 42 }}>
+          <div className="modal-actions" style={{ marginTop: 8 }}>
+            <button type="button" className="btn btn-ghost" onClick={onClose} style={{ height: 44, borderRadius: 12 }}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary" disabled={loading} style={{ height: 42 }}>
+            <button type="submit" className="btn btn-primary" disabled={loading} style={{ height: 44, borderRadius: 12 }}>
               {loading ? <div className="spinner" style={{ width: 18, height: 18 }} /> : 'Create Prospect Lead'}
             </button>
           </div>
@@ -1343,20 +1275,21 @@ export default function DashboardPage() {
   const fetchLeads = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const params = { page, limit: 30 };
-      if (search) params.search = search;
-      if (statusFilter) params.status = statusFilter;
-      if (projectFilter) params.projectId = projectFilter;
-      if (sourceFilter) params.source = sourceFilter;
+      const params = { page: Math.max(1, parseInt(page, 10) || 1), limit: 30 };
+      if (search && search.trim()) params.search = search.trim();
+      if (statusFilter && statusFilter !== 'all') params.status = statusFilter;
+      if (projectFilter && projectFilter !== 'all' && projectFilter !== 'undefined') params.projectId = projectFilter;
+      if (sourceFilter && sourceFilter !== 'all') params.source = sourceFilter;
       if (ownerFilter === 'unclaimed') {
         params.unclaimed = 'true';
       } else if (ownerFilter === 'me' && user?._id) {
         params.assignedTo = user._id;
       }
       const { data } = await api.get('/leads', { params });
-      setLeads(data.leads);
-      setPagination(data.pagination);
-    } catch {
+      setLeads(data?.leads || []);
+      setPagination(data?.pagination || {});
+    } catch (err) {
+      console.error('Fetch leads error:', err);
       toast.error('Failed to load leads');
     } finally {
       if (!silent) setLoading(false);
@@ -1489,49 +1422,6 @@ export default function DashboardPage() {
         </div>
 
         <div className="page-content">
-          {/* SuperAdmin Quick Switcher Banner */}
-          {isSuperAdmin && (
-            <div style={{
-              background: 'linear-gradient(90deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.06) 100%)',
-              border: '1px solid rgba(245, 158, 11, 0.3)',
-              borderRadius: 14,
-              padding: '12px 16px',
-              marginBottom: 16,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: 12,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 20 }}>👑</span>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: '#f59e0b', letterSpacing: '0.02em' }}>
-                    ADMIN ACCESS ACTIVE
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    You have full platform admin control. Open the Admin Panel anytime.
-                  </div>
-                </div>
-              </div>
-              <Link
-                href="/admin"
-                className="btn btn-primary"
-                style={{
-                  background: '#f59e0b',
-                  borderColor: '#f59e0b',
-                  color: '#000',
-                  fontWeight: 800,
-                  fontSize: 12,
-                  padding: '6px 14px',
-                  borderRadius: 8,
-                }}
-              >
-                Open Admin Panel ⚡
-              </Link>
-            </div>
-          )}
-
           {/* Master Revenue & Performance KPI Banner */}
           <div style={{
             background: 'linear-gradient(135deg, rgba(79,70,229,0.1) 0%, rgba(34,197,94,0.1) 100%)',

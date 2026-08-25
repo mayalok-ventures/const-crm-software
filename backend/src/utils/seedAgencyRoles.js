@@ -83,8 +83,11 @@ const seedSystemRolesForTenant = async (tenantId) => {
  * Migrates existing database users by seeding roles and assigning them safely
  */
 const runAgencyRolesMigration = async () => {
-  console.log('[Migration] Starting agency roles migration...');
-  const users = await User.find({});
+  const users = await User.find({ roleId: null });
+  if (!users.length) return;
+
+  console.log(`[Migration] Starting agency roles migration for ${users.length} users...`);
+  const tenantRoleCache = new Map();
 
   let count = 0;
   for (const user of users) {
@@ -96,11 +99,12 @@ const runAgencyRolesMigration = async () => {
       tenantId = user.companyId;
     }
 
-    // Seed roles for this tenant
-    const seededRoles = await seedSystemRolesForTenant(tenantId);
-
-    // Skip updating if they already have a role
-    if (user.roleId) continue;
+    const tKey = tenantId.toString();
+    let seededRoles = tenantRoleCache.get(tKey);
+    if (!seededRoles) {
+      seededRoles = await seedSystemRolesForTenant(tenantId);
+      tenantRoleCache.set(tKey, seededRoles);
+    }
 
     // Determine target roleType
     let targetType = 'AGENT';

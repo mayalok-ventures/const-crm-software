@@ -58,10 +58,10 @@ const OPERATORS = [
 ];
 
 const DEFAULT_LEAD_FIELDS = [
-  { fieldId: 'name', label: 'Full Name', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 1 },
+  { fieldId: 'name', label: 'Client Name', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 1 },
   { fieldId: 'phone', label: 'Phone Number', fieldType: 'phone', isRequired: true, isSystem: true, isHidden: false, order: 2 },
   { fieldId: 'email', label: 'Email Address', fieldType: 'email', isRequired: false, isSystem: true, isHidden: false, order: 3 },
-  { fieldId: 'company', label: 'Company Name', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 4 },
+  { fieldId: 'company', label: 'Company / Project', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 4 },
   { fieldId: 'budget', label: 'Budget Range', fieldType: 'currency', isRequired: false, isSystem: true, isHidden: false, order: 5 },
   { fieldId: 'location', label: 'Location Preference', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 6 },
   { fieldId: 'followUpDate', label: 'Next Follow-up Date', fieldType: 'date', isRequired: false, isSystem: true, isHidden: false, order: 7 },
@@ -93,6 +93,7 @@ export default function FormsModule({
   formFields = [],
   loading = false,
   error = null,
+  theme = 'light', // 'light' | 'dark'
   onRetry,
   onSaveSchema,
 }) {
@@ -102,35 +103,39 @@ export default function FormsModule({
   const [activeEditingField, setActiveEditingField] = useState(null);
   const [showFieldModal, setShowFieldModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savedSuccess, setSavedSuccess] = useState(false);
   const [previewValues, setPreviewValues] = useState({});
 
   // Sync incoming schema
   useEffect(() => {
-    if (Array.isArray(formFields) && formFields.length > 0) {
-      setLeadFields(formFields);
-    }
-  }, [formFields]);
+    async function loadSchemas() {
+      try {
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        
+        // Fetch active lead schema
+        const resLead = await fetch(`${API_BASE}/auth/form-schema?type=lead`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const dataLead = await resLead.json();
+        if (dataLead.schema && Array.isArray(dataLead.schema) && dataLead.schema.length > 0) {
+          setLeadFields(dataLead.schema);
+        }
 
-  // Load product schema if switching tabs
-  useEffect(() => {
-    async function loadProductSchema() {
-      if (formType === 'product') {
-        try {
-          const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-          const token = localStorage.getItem('token');
-          const res = await fetch(`${API_BASE}/auth/form-schema?type=product`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const data = await res.json();
-          if (data.schema && Array.isArray(data.schema) && data.schema.length > 0) {
-            setProductFields(data.schema);
-          }
-        } catch (e) {}
-      }
+        // Fetch active product schema
+        const resProd = await fetch(`${API_BASE}/auth/form-schema?type=product`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const dataProd = await resProd.json();
+        if (dataProd.schema && Array.isArray(dataProd.schema) && dataProd.schema.length > 0) {
+          setProductFields(dataProd.schema);
+        }
+      } catch (e) {}
     }
-    loadProductSchema();
-  }, [formType]);
+    loadSchemas();
+  }, []);
 
+  const isDark = theme === 'dark';
   const activeFields = formType === 'lead' ? leadFields : productFields;
   const setActiveFields = (updater) => {
     if (formType === 'lead') {
@@ -241,9 +246,10 @@ export default function FormsModule({
 
   const handleSaveLayout = async () => {
     setSaving(true);
+    setSavedSuccess(false);
     try {
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-      const token = localStorage.getItem('token');
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
       const res = await fetch(`${API_BASE}/auth/form-schema?type=${formType}`, {
         method: 'PUT',
@@ -258,8 +264,10 @@ export default function FormsModule({
         }),
       });
       const data = await res.json();
-      if (data.success && onSaveSchema) {
-        onSaveSchema(activeFields, formType);
+      if (data.success) {
+        setSavedSuccess(true);
+        setTimeout(() => setSavedSuccess(false), 3000);
+        if (onSaveSchema) onSaveSchema(activeFields, formType);
       }
     } finally {
       setSaving(false);
@@ -269,49 +277,65 @@ export default function FormsModule({
   return (
     <div className="space-y-6">
       {/* Header & Sub-Tabs Navigation */}
-      <div className="p-4 rounded-2xl bg-[#0b1120] border border-slate-800 flex flex-wrap items-center justify-between gap-4 shadow-xl">
+      <div className={`p-5 rounded-2xl border flex flex-wrap items-center justify-between gap-4 shadow-sm ${
+        isDark ? 'bg-[#0b1120] border-slate-800' : 'bg-white border-slate-200'
+      }`}>
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+          <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${
+            isDark ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-indigo-50 text-indigo-600 border border-indigo-100'
+          }`}>
             <Sliders className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
+            <h3 className={`text-base font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
               Forms & Custom Fields Builder
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono">
+              <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-medium ${
+                isDark ? 'bg-amber-500/20 text-amber-300' : 'bg-indigo-100 text-indigo-700'
+              }`}>
                 Dynamic Engine
               </span>
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
               Customize input fields, add custom attributes, and configure real-time conditional logic
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-3 flex-wrap">
           {/* Form Switcher */}
-          <div className="flex p-1 rounded-xl bg-slate-900 border border-slate-800">
+          <div className={`flex p-1 rounded-xl border ${
+            isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'
+          }`}>
             <button
               type="button"
               onClick={() => setFormType('lead')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all ${
                 formType === 'lead'
-                  ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
-                  : 'text-slate-400 hover:text-white'
+                  ? isDark
+                    ? 'bg-amber-500 text-slate-950 font-bold shadow-md'
+                    : 'bg-white text-indigo-600 font-bold shadow-sm'
+                  : isDark
+                  ? 'text-slate-400 hover:text-white'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <UserPlus className="w-3.5 h-3.5" />
+              <UserPlus className="w-4 h-4" />
               <span>Prospect Lead Form</span>
             </button>
             <button
               type="button"
               onClick={() => setFormType('product')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all ${
                 formType === 'product'
-                  ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
-                  : 'text-slate-400 hover:text-white'
+                  ? isDark
+                    ? 'bg-amber-500 text-slate-950 font-bold shadow-md'
+                    : 'bg-white text-indigo-600 font-bold shadow-sm'
+                  : isDark
+                  ? 'text-slate-400 hover:text-white'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Package className="w-3.5 h-3.5" />
+              <Package className="w-4 h-4" />
               <span>Product / Package Form</span>
             </button>
           </div>
@@ -320,10 +344,14 @@ export default function FormsModule({
             type="button"
             onClick={handleSaveLayout}
             disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all disabled:opacity-50"
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all disabled:opacity-50 ${
+              isDark
+                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
+                : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20'
+            }`}
           >
-            <Save className="w-4 h-4" />
-            <span>{saving ? 'Saving Schema...' : 'Save Configuration'}</span>
+            {savedSuccess ? <CheckCircle2 className="w-4 h-4 text-emerald-300" /> : <Save className="w-4 h-4" />}
+            <span>{saving ? 'Saving Schema...' : (savedSuccess ? 'Saved Successfully! ✅' : 'Save Configuration')}</span>
           </button>
         </div>
       </div>
@@ -333,17 +361,23 @@ export default function FormsModule({
         {/* Left Column: Field Configuration (7 Cols) */}
         <div className="xl:col-span-7 space-y-4">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+            <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${
+              isDark ? 'text-slate-300' : 'text-slate-700'
+            }`}>
               <span>{formType === 'lead' ? 'Prospect Lead Form Fields' : 'Product / Package Fields'}</span>
-              <span className="text-slate-500 font-mono">({activeFields.length})</span>
+              <span className="text-slate-400 font-mono">({activeFields.length})</span>
             </h4>
 
             <button
               type="button"
               onClick={handleOpenAddModal}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 text-xs font-semibold transition-colors"
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                isDark
+                  ? 'bg-slate-800 hover:bg-slate-700 text-amber-400 border-amber-500/30'
+                  : 'bg-white hover:bg-slate-50 text-indigo-600 border-indigo-200 shadow-sm'
+              }`}
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-4 h-4" />
               <span>Add Custom Field</span>
             </button>
           </div>
@@ -362,10 +396,14 @@ export default function FormsModule({
               return (
                 <div
                   key={field.fieldId || idx}
-                  className={`p-3.5 rounded-xl bg-[#0b1120] border transition-all ${
-                    field.isHidden
-                      ? 'border-slate-800/60 opacity-60 bg-slate-950/40'
-                      : 'border-slate-800 hover:border-slate-700 shadow-sm'
+                  className={`p-3.5 rounded-xl border transition-all ${
+                    isDark
+                      ? field.isHidden
+                        ? 'border-slate-800/60 opacity-60 bg-slate-950/40'
+                        : 'bg-[#0b1120] border-slate-800 hover:border-slate-700 shadow-sm'
+                      : field.isHidden
+                      ? 'border-slate-200 opacity-60 bg-slate-100'
+                      : 'bg-white border-slate-200 hover:border-indigo-300 shadow-sm'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
@@ -376,38 +414,42 @@ export default function FormsModule({
                           type="button"
                           onClick={() => handleMoveOrder(idx, -1)}
                           disabled={idx === 0}
-                          className="p-1 text-slate-500 hover:text-white disabled:opacity-20"
+                          className="p-1 text-slate-400 hover:text-slate-800 disabled:opacity-20"
                         >
-                          <ArrowUp className="w-3 h-3" />
+                          <ArrowUp className="w-3.5 h-3.5" />
                         </button>
                         <button
                           type="button"
                           onClick={() => handleMoveOrder(idx, 1)}
                           disabled={idx === activeFields.length - 1}
-                          className="p-1 text-slate-500 hover:text-white disabled:opacity-20"
+                          className="p-1 text-slate-400 hover:text-slate-800 disabled:opacity-20"
                         >
-                          <ArrowDown className="w-3 h-3" />
+                          <ArrowDown className="w-3.5 h-3.5" />
                         </button>
                       </div>
 
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-white text-xs truncate">{field.label}</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 text-amber-300 font-mono border border-slate-700">
+                          <span className={`font-bold text-xs truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{field.label}</span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-md font-mono border ${
+                            isDark
+                              ? 'bg-slate-800 text-amber-300 border-slate-700'
+                              : 'bg-slate-100 text-indigo-700 border-slate-200'
+                          }`}>
                             {field.fieldType || 'text'}
                           </span>
                           {field.isRequired && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20 font-semibold">
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-rose-50 text-rose-600 border border-rose-200 font-semibold">
                               Required
                             </span>
                           )}
                           {hasConditional && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono">
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono">
                               ⚡ Conditional
                             </span>
                           )}
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-2">
+                        <div className="text-[11px] text-slate-400 font-mono mt-0.5 flex items-center gap-2">
                           <span>key: {field.fieldId}</span>
                           {field.helpText && <span>• {field.helpText}</span>}
                         </div>
@@ -421,10 +463,10 @@ export default function FormsModule({
                         type="button"
                         onClick={() => handleToggleHide(idx)}
                         disabled={isMandatorySystem}
-                        className={`p-1.5 rounded-lg border text-xs transition-colors ${
+                        className={`p-2 rounded-lg border text-xs transition-colors ${
                           field.isHidden
-                            ? 'border-slate-800 text-slate-500 hover:text-slate-300'
-                            : 'border-slate-700 text-slate-300 hover:text-white bg-slate-900'
+                            ? 'border-slate-200 text-slate-400 hover:text-slate-600 bg-slate-50'
+                            : 'border-slate-300 text-slate-600 hover:text-slate-900 bg-white shadow-sm'
                         }`}
                         title={field.isHidden ? 'Show Field' : 'Hide Field'}
                       >
@@ -436,10 +478,10 @@ export default function FormsModule({
                         type="button"
                         onClick={() => handleToggleRequired(idx)}
                         disabled={isMandatorySystem}
-                        className={`text-[10px] px-2.5 py-1 rounded-lg border font-semibold transition-colors ${
+                        className={`text-[10px] px-2.5 py-1.5 rounded-lg border font-semibold transition-colors ${
                           field.isRequired
-                            ? 'border-amber-500/40 text-amber-300 bg-amber-500/10'
-                            : 'border-slate-700 text-slate-400 hover:text-white bg-slate-900'
+                            ? 'border-rose-300 text-rose-700 bg-rose-50 shadow-sm'
+                            : 'border-slate-300 text-slate-600 hover:text-slate-900 bg-white shadow-sm'
                         }`}
                       >
                         {field.isRequired ? 'Mandatory' : 'Optional'}
@@ -449,7 +491,7 @@ export default function FormsModule({
                       <button
                         type="button"
                         onClick={() => handleOpenEditModal(field)}
-                        className="p-1.5 rounded-lg border border-slate-700 text-slate-400 hover:text-amber-400 bg-slate-900 transition-colors"
+                        className="p-2 rounded-lg border border-slate-300 text-slate-600 hover:text-indigo-600 bg-white shadow-sm transition-colors"
                         title="Configure Logic & Options"
                       >
                         <Settings2 className="w-3.5 h-3.5" />
@@ -460,7 +502,7 @@ export default function FormsModule({
                         <button
                           type="button"
                           onClick={() => handleDeleteField(idx)}
-                          className="p-1.5 rounded-lg border border-slate-800 text-slate-500 hover:text-rose-400 transition-colors"
+                          className="p-2 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 bg-white shadow-sm transition-colors"
                           title="Remove Custom Field"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -476,11 +518,15 @@ export default function FormsModule({
 
         {/* Right Column: Interactive Live Form Preview (5 Cols) */}
         <div className="xl:col-span-5 sticky top-6 space-y-3">
-          <div className="p-5 rounded-2xl bg-[#0b1120] border border-slate-800 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+          <div className={`p-5 rounded-2xl border shadow-md space-y-4 ${
+            isDark ? 'bg-[#0b1120] border-slate-800' : 'bg-white border-slate-200'
+          }`}>
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div>
-                <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-amber-400" />
+                <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${
+                  isDark ? 'text-white' : 'text-slate-900'
+                }`}>
+                  <Sparkles className="w-4 h-4 text-indigo-600" />
                   Live Interactive Form Preview
                 </h4>
                 <p className="text-[11px] text-slate-400 mt-0.5">
@@ -490,9 +536,9 @@ export default function FormsModule({
               <button
                 type="button"
                 onClick={() => setPreviewValues({})}
-                className="text-[10px] text-slate-400 hover:text-amber-400 transition-colors"
+                className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold transition-colors"
               >
-                Reset Preview
+                Reset
               </button>
             </div>
 
@@ -502,10 +548,11 @@ export default function FormsModule({
                 values={previewValues}
                 onChange={(fieldId, val) => setPreviewValues((v) => ({ ...v, [fieldId]: val }))}
                 gridCols={1}
+                theme={theme}
               />
             </div>
 
-            <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 font-mono">
+            <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500 font-mono">
               <span>Status: Synchronized with builder</span>
               <span>Fields visible: {activeFields.filter((f) => !f.isHidden).length}</span>
             </div>
@@ -518,6 +565,7 @@ export default function FormsModule({
         <FieldConfigModal
           field={activeEditingField}
           allFields={activeFields}
+          theme={theme}
           onClose={() => {
             setShowFieldModal(false);
             setActiveEditingField(null);
@@ -532,11 +580,12 @@ export default function FormsModule({
 // ─────────────────────────────────────────────────────────────
 // FIELD CONFIGURATION & LOGIC MODAL
 // ─────────────────────────────────────────────────────────────
-function FieldConfigModal({ field, allFields, onClose, onSave }) {
+function FieldConfigModal({ field, allFields, theme = 'light', onClose, onSave }) {
   const [form, setForm] = useState({ ...field });
   const [optionInput, setOptionInput] = useState('');
 
   const isSelectType = ['select', 'multiselect', 'radio', 'dropdown'].includes(form.fieldType);
+  const isDark = theme === 'dark';
 
   const handleAddOption = (e) => {
     e.preventDefault();
@@ -584,22 +633,28 @@ function FieldConfigModal({ field, allFields, onClose, onSave }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-[#0b1120] border border-slate-800 rounded-2xl w-full max-w-xl shadow-2xl max-h-[88dvh] flex flex-col text-left animate-fade-in">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className={`rounded-2xl w-full max-w-xl shadow-2xl max-h-[88dvh] flex flex-col text-left border animate-fade-in ${
+        isDark ? 'bg-[#0b1120] border-slate-800' : 'bg-white border-slate-200'
+      }`}>
         {/* Modal Header */}
-        <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+        <div className={`p-5 border-b flex items-center justify-between ${
+          isDark ? 'border-slate-800' : 'border-slate-200'
+        }`}>
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+              isDark ? 'bg-amber-500/10 text-amber-400' : 'bg-indigo-50 text-indigo-600'
+            }`}>
               <Settings2 className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white">
+              <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                 {form.isSystem ? `Configure Field: ${form.label}` : 'Custom Field & Conditional Rules'}
               </h3>
               <p className="text-[11px] text-slate-400">Define label, options, validation, and conditional visibility</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -609,24 +664,24 @@ function FieldConfigModal({ field, allFields, onClose, onSave }) {
           {/* Basic Attributes */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="font-semibold text-slate-300 block mb-1">Field Label *</label>
+              <label className="font-bold text-slate-700 block mb-1">Field Label *</label>
               <input
                 type="text"
                 value={form.label}
                 onChange={(e) => setForm({ ...form, label: e.target.value })}
                 placeholder="e.g. Preferred Location"
                 required
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
+                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-indigo-600 shadow-sm"
               />
             </div>
 
             <div>
-              <label className="font-semibold text-slate-300 block mb-1">Field Type</label>
+              <label className="font-bold text-slate-700 block mb-1">Field Type</label>
               <select
                 disabled={form.isSystem}
                 value={form.fieldType}
                 onChange={(e) => setForm({ ...form, fieldType: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-amber-500 disabled:opacity-50"
+                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-indigo-600 shadow-sm disabled:opacity-50"
               >
                 {FIELD_TYPES.map((t) => (
                   <option key={t.value} value={t.value}>
@@ -637,32 +692,32 @@ function FieldConfigModal({ field, allFields, onClose, onSave }) {
             </div>
 
             <div>
-              <label className="font-semibold text-slate-300 block mb-1">Placeholder Text</label>
+              <label className="font-bold text-slate-700 block mb-1">Placeholder Text</label>
               <input
                 type="text"
                 value={form.placeholder || ''}
                 onChange={(e) => setForm({ ...form, placeholder: e.target.value })}
                 placeholder="e.g. Enter preferred sector..."
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
+                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-indigo-600 shadow-sm"
               />
             </div>
 
             <div>
-              <label className="font-semibold text-slate-300 block mb-1">Help Text / Tooltip</label>
+              <label className="font-bold text-slate-700 block mb-1">Help Text / Tooltip</label>
               <input
                 type="text"
                 value={form.helpText || ''}
                 onChange={(e) => setForm({ ...form, helpText: e.target.value })}
                 placeholder="e.g. Select your primary requirement"
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
+                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-indigo-600 shadow-sm"
               />
             </div>
           </div>
 
           {/* Options Builder for Select / Multi-Select / Radio */}
           {isSelectType && (
-            <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
-              <label className="font-semibold text-amber-300 uppercase tracking-wider block text-[11px]">
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+              <label className="font-bold text-indigo-700 uppercase tracking-wider block text-[11px]">
                 Option Choices ({form.options?.length || 0})
               </label>
 
@@ -672,14 +727,14 @@ function FieldConfigModal({ field, allFields, onClose, onSave }) {
                   value={optionInput}
                   onChange={(e) => setOptionInput(e.target.value)}
                   placeholder="e.g. Residential 3BHK"
-                  className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-white"
+                  className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-slate-900 shadow-sm"
                 />
                 <button
                   type="button"
                   onClick={handleAddOption}
-                  className="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-bold"
+                  className="px-4 py-1.5 rounded-xl bg-indigo-600 text-white font-bold shadow-sm"
                 >
-                  Add Option
+                  Add
                 </button>
               </div>
 
@@ -689,15 +744,15 @@ function FieldConfigModal({ field, allFields, onClose, onSave }) {
                   return (
                     <span
                       key={idx}
-                      className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 flex items-center gap-1.5"
+                      className="px-3 py-1 rounded-lg bg-white text-slate-700 border border-slate-300 flex items-center gap-1.5 shadow-sm"
                     >
                       <span>{label}</span>
                       <button
                         type="button"
                         onClick={() => handleRemoveOption(idx)}
-                        className="text-slate-400 hover:text-rose-400"
+                        className="text-slate-400 hover:text-rose-600"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     </span>
                   );
@@ -707,19 +762,19 @@ function FieldConfigModal({ field, allFields, onClose, onSave }) {
           )}
 
           {/* Conditional Visibility Rules Builder */}
-          <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <h5 className="font-semibold text-indigo-300 uppercase tracking-wider text-[11px]">
+                <h5 className="font-bold text-indigo-700 uppercase tracking-wider text-[11px]">
                   ⚡ Conditional Visibility Rules
                 </h5>
-                <p className="text-[11px] text-slate-400">Show this field only when conditions match</p>
+                <p className="text-[11px] text-slate-500">Show this field only when conditions match</p>
               </div>
 
               <button
                 type="button"
                 onClick={handleAddConditionRule}
-                className="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-semibold hover:bg-indigo-500/30"
+                className="px-3 py-1 rounded-lg bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold hover:bg-indigo-200"
               >
                 + Add Rule
               </button>
@@ -727,7 +782,7 @@ function FieldConfigModal({ field, allFields, onClose, onSave }) {
 
             {form.conditionalRules?.rules?.length > 0 && (
               <div className="space-y-2">
-                <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                <div className="flex items-center gap-2 text-[11px] text-slate-600">
                   <span>Match:</span>
                   <select
                     value={form.conditionalRules?.combinator || 'AND'}
@@ -737,7 +792,7 @@ function FieldConfigModal({ field, allFields, onClose, onSave }) {
                         conditionalRules: { ...form.conditionalRules, combinator: e.target.value },
                       })
                     }
-                    className="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-white"
+                    className="bg-white border border-slate-300 rounded px-2 py-0.5 text-slate-900"
                   >
                     <option value="AND">ALL Rules (AND)</option>
                     <option value="OR">ANY Rule (OR)</option>
@@ -750,7 +805,7 @@ function FieldConfigModal({ field, allFields, onClose, onSave }) {
                       <select
                         value={rule.field}
                         onChange={(e) => handleUpdateConditionRule(rIdx, 'field', e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-slate-200"
+                        className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-slate-800"
                       >
                         {allFields
                           .filter((f) => f.fieldId !== form.fieldId)
@@ -766,7 +821,7 @@ function FieldConfigModal({ field, allFields, onClose, onSave }) {
                       <select
                         value={rule.operator || '='}
                         onChange={(e) => handleUpdateConditionRule(rIdx, 'operator', e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-slate-200"
+                        className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-slate-800"
                       >
                         {OPERATORS.map((op) => (
                           <option key={op.value} value={op.value}>
@@ -782,7 +837,7 @@ function FieldConfigModal({ field, allFields, onClose, onSave }) {
                         value={rule.value}
                         onChange={(e) => handleUpdateConditionRule(rIdx, 'value', e.target.value)}
                         placeholder="Target Value"
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-white"
+                        className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-slate-900"
                       />
                     </div>
 
@@ -790,7 +845,7 @@ function FieldConfigModal({ field, allFields, onClose, onSave }) {
                       <button
                         type="button"
                         onClick={() => handleRemoveConditionRule(rIdx)}
-                        className="text-slate-400 hover:text-rose-400"
+                        className="text-slate-400 hover:text-rose-600"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -803,18 +858,20 @@ function FieldConfigModal({ field, allFields, onClose, onSave }) {
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 border-t border-slate-800 flex items-center justify-end gap-3 bg-[#0b1120]">
+        <div className={`p-4 border-t flex items-center justify-end gap-3 ${
+          isDark ? 'bg-[#0b1120] border-slate-800' : 'bg-slate-50 border-slate-200'
+        }`}>
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl text-slate-400 hover:text-white transition-colors"
+            className="px-4 py-2 rounded-xl text-slate-600 hover:text-slate-900 font-medium transition-colors"
           >
             Cancel
           </button>
           <button
             type="button"
-            onClick={() => handleSaveFieldFromModal(form)}
-            className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold transition-all shadow-md shadow-amber-500/20"
+            onClick={() => onSave(form)}
+            className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition-all shadow-md shadow-indigo-600/20"
           >
             Apply Field Changes
           </button>

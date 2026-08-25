@@ -258,6 +258,7 @@ function RecordingSection({ leadId }) {
 // ── LIVE WHATSAPP CHAT & DUAL SENDER SECTION ──────────────────────────────────
 function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, refreshKey }) {
   const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [chatText, setChatText] = useState('');
   const [senderMode, setSenderMode] = useState('personal'); // 'company' | 'personal'
   const [sending, setSending] = useState(false);
@@ -739,17 +740,17 @@ export default function LeadDetailPage() {
 
   // Extract actual ID from params or window.location for Cloudflare Pages static SPA fallback
   const getActualId = () => {
-    if (params?.id && params.id !== 'placeholder' && params.id !== '[id]' && params.id !== 'undefined') {
+    if (params?.id && params.id !== 'placeholder' && params.id !== '[id]' && params.id !== 'undefined' && params.id !== 'null' && /^[0-9a-fA-F]{24}$/.test(params.id)) {
       return params.id;
     }
     if (typeof window !== 'undefined') {
       const parts = window.location.pathname.split('/').filter(Boolean);
       const idx = parts.indexOf('leads');
-      if (idx !== -1 && parts[idx + 1] && parts[idx + 1] !== 'placeholder') {
+      if (idx !== -1 && parts[idx + 1] && parts[idx + 1] !== 'placeholder' && parts[idx + 1] !== '[id]' && parts[idx + 1] !== 'undefined' && parts[idx + 1] !== 'null' && /^[0-9a-fA-F]{24}$/.test(parts[idx + 1])) {
         return parts[idx + 1];
       }
     }
-    return params?.id || '';
+    return '';
   };
 
   const [leadId, setLeadId] = useState(getActualId());
@@ -860,7 +861,7 @@ export default function LeadDetailPage() {
 
   useEffect(() => {
     const activeId = leadId || getActualId();
-    if (!activeId || activeId === '[id]' || activeId === 'placeholder' || activeId === 'undefined') {
+    if (!activeId || activeId === '[id]' || activeId === 'placeholder' || activeId === 'undefined' || activeId === 'null' || !/^[0-9a-fA-F]{24}$/.test(activeId)) {
       setLoading(false);
       return;
     }
@@ -880,7 +881,7 @@ export default function LeadDetailPage() {
     }).finally(() => {
       setLoading(false);
     });
-  }, [id]);
+  }, [id, leadId]);
 
   const industryDefaults = getIndustryDefaults(currentUser?.industryType);
 

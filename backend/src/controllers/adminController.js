@@ -636,9 +636,22 @@ exports.getAdminLeads = async (req, res) => {
         .lean(),
     ]);
 
+    const enrichedLeads = leads.map(l => {
+      let nextFollowUp = null;
+      if (l.followUpDate || (l.activeFollowUp && l.activeFollowUp.scheduledAt)) {
+        nextFollowUp = {
+          _id: l._id,
+          scheduled_at: l.followUpDate || l.activeFollowUp?.scheduledAt,
+          note: l.followUpNote || l.activeFollowUp?.note,
+          status: l.followUpStatus || l.activeFollowUp?.status || 'open',
+        };
+      }
+      return { ...l, nextFollowUp };
+    });
+
     res.json({
       success: true,
-      leads,
+      leads: enrichedLeads,
       pagination: {
         total,
         page: parsedPage,
@@ -674,6 +687,9 @@ exports.createAdminLead = async (req, res) => {
 
     if (!name || !phone) {
       return res.status(400).json({ success: false, message: 'Name and phone are required' });
+    }
+    if (!req.body.source) {
+      return res.status(400).json({ success: false, message: 'Source is required' });
     }
 
     // Auto-assignment check if assignedTo is not specified
@@ -817,11 +833,25 @@ exports.updateAdminLead = async (req, res) => {
 exports.updateLeadStage = async (req, res) => {
   try {
     const { id } = req.params;
-    const { stage, status } = req.body;
+    const { stage, status, payment_amount, method, payment_method, transaction_id } = req.body;
     const targetStage = stage || status;
 
     const lead = await Lead.findById(id);
     if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+
+    if (['payment_done', 'converted'].includes(targetStage)) {
+      const paymentAmount = Number(payment_amount);
+      if (!paymentAmount || isNaN(paymentAmount) || paymentAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          code: 'PAYMENT_REQUIRED_FOR_CONVERSION',
+          message: 'Payment verification and amount are required to mark lead as converted/payment done',
+        });
+      }
+      lead.paid_amount = paymentAmount;
+      lead.payable_amount = paymentAmount;
+      lead.payment_method = method || payment_method || 'bank_transfer';
+    }
 
     const oldStage = lead.status;
     lead.status = targetStage;
@@ -854,39 +884,75 @@ exports.updateLeadStatus = exports.updateLeadStage;
 exports.convertLeadWithPlan = async (req, res) => {
   try {
     const { id } = req.params;
-    const { payment_amount, payment_method, transaction_id } = req.body;
+    const { payment_amount, custom_payment_amount, custom_price_reason, payment_method, transaction_id } = req.body;
+    const finalAmount = Number(custom_payment_amount || payment_amount);
 
-    if (!payment_amount || Number(payment_amount) <= 0) {
+    if (!finalAmount || finalAmount <= 0) {
       return res.status(400).json({ success: false, message: 'Payment amount is required to convert lead' });
     }
 
     const lead = await Lead.findById(id);
     if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
 
-    lead.status = 'payment_done';
-    lead.paid_amount = Number(payment_amount);
+    lead.status = 'converted';
+    lead.paid_amount = finalAmount;
     lead.payment_method = payment_method || 'bank_transfer';
-    lead.closedDealAmount = Number(payment_amount);
+    lead.closedDealAmount = finalAmount;
+
+    if (custom_price_reason) {
+      lead.metadata = lead.metadata || {};
+      lead.metadata.admin_flag = true;
+      lead.metadata.custom_price_reason = custom_price_reason;
+    }
 
     lead.leadActivities.push({
       action: 'status_changed',
       performedBy: req.user._id,
       performerName: req.user.name,
-      details: `Lead converted with ₹${payment_amount} payment recorded (${payment_method})`,
+      details: `Lead converted with ₹${finalAmount} payment recorded (${payment_method || 'bank_transfer'})`,
       timestamp: new Date(),
     });
 
     await lead.save();
 
+    let incentive_amount = 0;
+    let incentivePct = 10;
+    if (lead.assignedTo) {
+      const agent = await User.findById(lead.assignedTo).lean();
+      if (agent) {
+        incentivePct = Number(agent.incentive_pct) || 10;
+        incentive_amount = Math.round((finalAmount * incentivePct) / 100);
+      }
+    }
+
     // Trigger Commission Engine
     await commissionService.processCommission({
       lead,
-      dealAmount: payment_amount,
-      stageId: 'payment_done',
+      dealAmount: finalAmount,
+      stageId: 'converted',
       performedBy: req.user._id,
     });
 
-    res.json({ success: true, message: 'Lead converted & payment recorded successfully', lead });
+    res.json({
+      success: true,
+      message: 'Lead converted & payment recorded successfully',
+      lead,
+      adminFlagged: Boolean(custom_price_reason),
+      incentive: { incentive_amount, incentivePct },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getAdminAlerts = async (req, res) => {
+  try {
+    const flaggedLeads = await Lead.find({
+      'metadata.admin_flag': true,
+      deletedAt: null,
+    }).sort({ updatedAt: -1 }).lean();
+
+    res.json({ success: true, flaggedLeads, alerts: flaggedLeads });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -1235,8 +1301,8 @@ exports.createAdminAgent = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Name, password, and Email or Phone are required' });
     }
 
-    const username = await generateUniqueUsername(name);
-    const usercode = await generateUniqueUsercode(role === 'manager' ? 'company' : 'agent');
+    const username = await generateUniqueUsername();
+    const usercode = await generateUniqueUsercode(role === 'manager' ? 'CMP' : 'REA');
 
     let managerName = '';
     if (managerId) {
@@ -1277,8 +1343,9 @@ exports.createAdminAgent = async (req, res) => {
       ipAddress: req.ip,
     });
 
-    res.status(201).json({ success: true, message: `${role.toUpperCase()} created successfully`, user });
+    res.status(201).json({ success: true, message: `${role.toUpperCase()} created successfully`, user, agent: user });
   } catch (error) {
+    console.error('createAdminAgent error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -1337,7 +1404,12 @@ exports.getAgentActivityLogs = async (req, res) => {
 
 exports.getAgentsPerformance = async (req, res) => {
   try {
-    const agents = await User.find({ role: { $in: ['agent', 'manager'] } }).select('name role managerName leadCap isAvailableForRouting isActive').lean();
+    const agents = await User.find({
+      $or: [
+        { role: { $in: ['agent', 'manager', 'sales_rep'] } },
+        { companyRole: { $in: ['agent', 'manager', 'sales_rep'] } },
+      ],
+    }).select('name role managerName leadCap isAvailableForRouting isActive incentive_pct email').lean();
     const performance = [];
 
     for (const agent of agents) {
@@ -1355,18 +1427,26 @@ exports.getAgentsPerformance = async (req, res) => {
       ]);
 
       const salesRevenue = revenueAgg[0]?.total || 0;
-      const commissionEarned = commissionAgg[0]?.earned || 0;
+      const incentiveRate = Number(agent.incentive_pct) || 10;
+      const commissionEarned = commissionAgg[0]?.earned || Math.round((salesRevenue * incentiveRate) / 100);
       const conversionRate = totalAssigned > 0 ? ((convertedCount / totalAssigned) * 100).toFixed(1) : 0;
 
       performance.push({
         id: agent._id,
+        agentId: agent._id,
         name: agent.name,
+        agentName: agent.name,
+        email: agent.email,
+        agentEmail: agent.email,
         role: agent.role,
         managerName: agent.managerName || 'None',
         totalLeads: totalAssigned,
         convertedLeads: convertedCount,
         conversionRate: `${conversionRate}%`,
         salesRevenue,
+        totalSales: salesRevenue,
+        incentivePct: incentiveRate,
+        totalIncentives: commissionEarned,
         commissionEarned,
       });
     }
@@ -2434,6 +2514,22 @@ exports.getActivityLogs = async (req, res) => {
       if (endDate) query.timestamp.$lte = new Date(endDate);
     }
 
+    if (String(req.query.format).toLowerCase() === 'csv') {
+      const allLogs = await ActivityLog.find(query).sort({ timestamp: -1, createdAt: -1 }).limit(1000).lean();
+      let csv = 'Timestamp,Actor,Role,Action,Details\n';
+      for (const log of allLogs) {
+        const ts = log.timestamp || log.createdAt ? new Date(log.timestamp || log.createdAt).toISOString() : new Date().toISOString();
+        const actor = `"${String(log.userName || log.actorName || log.actor || 'System').replace(/"/g, '""')}"`;
+        const role = `"${String(log.role || log.actorRole || 'System').replace(/"/g, '""')}"`;
+        const act = `"${String(log.action || '').replace(/"/g, '""')}"`;
+        const details = `"${String(log.details || '').replace(/"/g, '""')}"`;
+        csv += `${ts},${actor},${role},${act},${details}\n`;
+      }
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="activity-logs.csv"');
+      return res.status(200).send(csv);
+    }
+
     const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
     const skip = (parsedPage - 1) * parsedLimit;
@@ -2560,6 +2656,9 @@ exports.scheduleFollowUp = async (req, res) => {
   try {
     const { id } = req.params;
     const { scheduled_at, note } = req.body;
+    if (!note || !String(note).trim()) {
+      return res.status(400).json({ success: false, message: 'Follow-up note is mandatory' });
+    }
     const lead = await Lead.findById(id);
     if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
 
@@ -2573,7 +2672,14 @@ exports.scheduleFollowUp = async (req, res) => {
     lead.followUpStatus = 'scheduled';
     await lead.save();
 
-    res.json({ success: true, message: 'Follow-up scheduled', lead });
+    const followUp = {
+      _id: lead._id,
+      scheduled_at: lead.followUpDate,
+      note: lead.followUpNote,
+      status: 'open',
+    };
+
+    res.status(201).json({ success: true, message: 'Follow-up scheduled', lead, followUp });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }
@@ -2582,15 +2688,34 @@ exports.scheduleFollowUp = async (req, res) => {
 exports.postponeFollowUp = async (req, res) => {
   try {
     const { id } = req.params;
-    const { new_scheduled_at, reason } = req.body;
+    const { new_scheduled_at, new_date, reason, postpone_remark } = req.body;
+    const finalRemark = postpone_remark || reason;
+    if (!finalRemark || !String(finalRemark).trim()) {
+      return res.status(400).json({ success: false, message: 'Postpone remark is mandatory' });
+    }
     const lead = await Lead.findById(id);
     if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
 
-    lead.followUpDate = new Date(new_scheduled_at);
-    lead.followUpNote = reason ? `Postponed: ${reason}` : lead.followUpNote;
+    const targetDate = new Date(new_date || new_scheduled_at || Date.now());
+    lead.followUpDate = targetDate;
+    lead.followUpNote = finalRemark;
+    lead.followUpStatus = 'postponed';
+    if (lead.activeFollowUp) {
+      lead.activeFollowUp.scheduledAt = targetDate;
+      lead.activeFollowUp.note = finalRemark;
+      lead.activeFollowUp.status = 'postponed';
+    }
     await lead.save();
 
-    res.json({ success: true, message: 'Follow-up postponed', lead });
+    const followUp = {
+      _id: lead._id,
+      scheduled_at: lead.followUpDate,
+      note: lead.followUpNote,
+      status: 'postponed',
+      postpone_remark: finalRemark,
+    };
+
+    res.json({ success: true, message: 'Follow-up postponed', lead, followUp });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }
@@ -2599,7 +2724,8 @@ exports.postponeFollowUp = async (req, res) => {
 exports.completeFollowUp = async (req, res) => {
   try {
     const { id } = req.params;
-    const { completion_note } = req.body;
+    const { completion_note, note } = req.body;
+    const finalNote = completion_note || note || 'Follow-up marked completed';
     const lead = await Lead.findById(id);
     if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
 
@@ -2608,21 +2734,25 @@ exports.completeFollowUp = async (req, res) => {
     if (lead.activeFollowUp) {
       lead.activeFollowUp.status = 'completed';
       lead.activeFollowUp.completedAt = new Date();
-      lead.activeFollowUp.completionNote = completion_note || 'Completed by Admin';
+      lead.activeFollowUp.completionNote = finalNote;
     }
-    if (completion_note) {
-      lead.notes.push({ text: `Follow-up completed: ${completion_note}`, createdBy: req.user._id, authorName: req.user.name });
-    }
+    lead.notes.push({ text: `Follow-up completed: ${finalNote}`, createdBy: req.user._id, authorName: req.user.name });
     lead.leadActivities.push({
       action: 'followup_completed',
       performedBy: req.user._id,
       performerName: req.user.name || 'Admin',
-      details: completion_note || 'Follow-up marked completed',
+      details: finalNote,
       timestamp: new Date(),
     });
     await lead.save();
 
-    res.json({ success: true, message: 'Follow-up completed', lead });
+    const followUp = {
+      _id: lead._id,
+      status: 'done',
+      note: finalNote,
+    };
+
+    res.json({ success: true, message: 'Follow-up completed', lead, followUp });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }
@@ -3162,10 +3292,50 @@ exports.refundPayment = async (req, res) => {
   res.json({ success: true, message: 'Refund simulated' });
 };
 exports.createAdminOffer = async (req, res) => {
-  res.json({ success: true, message: 'Offer created' });
+  try {
+    const { title, code, discount_pct, description, validUntil, terms } = req.body;
+    const offer = await Offer.create({
+      title: title || 'Special Offer',
+      code: code || `OFFER_${Date.now()}`,
+      discount_pct: Number(discount_pct) || 0,
+      description: description || '',
+      validUntil: validUntil ? new Date(validUntil) : new Date(Date.now() + 30 * 86400000),
+      terms: terms || [],
+      createdBy: req.user._id,
+    });
+    res.status(201).json({ success: true, message: 'Offer created', offer });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 };
+
 exports.applyOfferToLead = async (req, res) => {
-  res.json({ success: true, message: 'Offer applied' });
+  try {
+    const { id } = req.params;
+    const { offer_id } = req.body;
+    const [lead, offer] = await Promise.all([
+      Lead.findById(id),
+      Offer.findById(offer_id),
+    ]);
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+    if (!offer) return res.status(404).json({ success: false, message: 'Offer not found' });
+
+    const baseBudget = parseFloat(lead.budget) || parseFloat(lead.monthly_spend) || 100000;
+    const discountPct = Number(offer.discount_pct) || 0;
+    const discountAmount = (baseBudget * discountPct) / 100;
+    const payable_amount = Math.max(0, baseBudget - discountAmount);
+
+    lead.payable_amount = payable_amount;
+    lead.metadata = lead.metadata || {};
+    lead.metadata.offers_applied = lead.metadata.offers_applied || [];
+    lead.metadata.offers_applied.push(offer._id);
+    lead.metadata.payable_amount = payable_amount;
+    await lead.save();
+
+    res.json({ success: true, message: 'Offer applied', lead, offer, payable_amount });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 };
 
 exports.getUsers = async (req, res) => {

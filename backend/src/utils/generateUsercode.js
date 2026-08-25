@@ -16,13 +16,23 @@ const generateUsercode = (prefix = 'REA') => {
 };
 
 const generateUniqueUsercode = async (UserModel, prefix = 'REA') => {
+  let Model = UserModel;
+  let targetPrefix = prefix;
+
+  if (typeof UserModel === 'string') {
+    targetPrefix = UserModel;
+    Model = require('../models/User');
+  } else if (!Model || typeof Model.findOne !== 'function') {
+    Model = require('../models/User');
+  }
+
   for (let attempt = 0; attempt < 10; attempt++) {
-    const code = generateUsercode(prefix);
-    const exists = await UserModel.findOne({ usercode: code }).lean();
+    const code = generateUsercode(targetPrefix);
+    const exists = await Model.findOne({ usercode: code }).lean();
     if (!exists) return code;
   }
   // Fallback timestamp based
-  return `${prefix}-${Date.now().toString().slice(-6)}`;
+  return `${targetPrefix}-${Date.now().toString().slice(-6)}`;
 };
 
 module.exports = {

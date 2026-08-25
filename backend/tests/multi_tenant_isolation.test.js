@@ -95,10 +95,12 @@ async function runMultiTenantIsolationTests() {
     const userDave = resDaveLogin.data;
 
     // 5. SuperAdmin Login
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@yourapp.com';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@123';
     const resAdmin = await axios.post(`${API_URL}/auth/login`, {
-      identifier: 'admin@crm.com',
-      email: 'admin@crm.com',
-      password: 'Admin@123',
+      identifier: adminEmail,
+      email: adminEmail,
+      password: adminPassword,
     });
     const tokenAdmin = resAdmin.data.token;
     const userAdmin = resAdmin.data;

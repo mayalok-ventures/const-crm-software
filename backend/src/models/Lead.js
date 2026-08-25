@@ -259,7 +259,7 @@ const leadSchema = new mongoose.Schema({
   activeFollowUp: {
     scheduledAt: { type: Date, default: null },
     note: { type: String, default: '', trim: true },
-    status: { type: String, enum: ['none', 'scheduled', 'due', 'completed'], default: 'none' },
+    status: { type: String, enum: ['none', 'scheduled', 'due', 'completed', 'postponed', 'cancelled'], default: 'none' },
     delayCount: { type: Number, default: 0, min: 0, max: 2 },
     delayHistory: [{
       delayedAt: { type: Date, default: Date.now },
@@ -275,7 +275,7 @@ const leadSchema = new mongoose.Schema({
   },
   followUpDate: { type: Date, default: null },
   followUpNote: { type: String, default: '', trim: true },
-  followUpStatus: { type: String, enum: ['none', 'scheduled', 'due', 'completed'], default: 'none' },
+  followUpStatus: { type: String, enum: ['none', 'scheduled', 'due', 'completed', 'postponed', 'cancelled'], default: 'none' },
   followUpDelayCount: { type: Number, default: 0, min: 0, max: 2 },
   followUpNotified: { type: Boolean, default: false },
   lastContactedAt: { type: Date, default: null },

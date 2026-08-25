@@ -17,10 +17,12 @@ const runTests = async () => {
 
   // 1. Authenticate as SuperAdmin
   console.log('1. Testing SuperAdmin Authentication & Session Setup...');
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@yourapp.com';
+  const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@123';
   const loginRes = await fetch(`${BASE_URL}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ identifier: 'admin@crm.com', password: 'Admin@123' })
+    body: JSON.stringify({ identifier: adminEmail, password: adminPassword })
   });
   const loginData = await loginRes.json();
   console.log('   Login response status:', loginRes.status, loginData);
@@ -232,6 +234,7 @@ const runTests = async () => {
   });
   assert.strictEqual(csvRes.status, 200);
   const csvText = await csvRes.text();
+  console.log('   Received CSV preview:', JSON.stringify(csvText.slice(0, 80)));
   assert.ok(csvText.startsWith('Timestamp,Actor,Role,Action'), 'CSV must contain standard headers');
   console.log('   ✓ CSV Activity Logs exported successfully (' + csvText.split('\n').length + ' lines).');
 

@@ -271,7 +271,8 @@ function validateFormData(schema = [], values = {}) {
     const val = values[fieldKey];
     const isValEmpty = val === undefined || val === null || String(val).trim() === '' || (Array.isArray(val) && val.length === 0);
 
-    if (required && isValEmpty) {
+    // followUpDate is optional unless user enforces follow-up preference
+    if (required && isValEmpty && fieldKey !== 'followUpDate') {
       errors[fieldKey] = `${field.label || fieldKey} is required.`;
       continue;
     }

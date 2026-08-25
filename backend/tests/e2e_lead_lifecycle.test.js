@@ -2,6 +2,7 @@
  * End-to-End Acceptance Test Suite: Complete Lead Lifecycle Journey
  */
 
+require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 const axios = require('axios');
 const BASE_URL = 'http://localhost:5000';
 
@@ -26,8 +27,8 @@ const runE2ETests = async () => {
   try {
     // 1. SuperAdmin Login
     const loginRes = await axios.post(`${BASE_URL}/api/auth/login`, {
-      identifier: 'admin@crm.com',
-      password: 'Admin@123'
+      identifier: process.env.ADMIN_EMAIL || 'admin@yourapp.com',
+      password: process.env.ADMIN_PASSWORD || 'Admin@123456'
     });
     const adminToken = loginRes.data.token;
     assert(!!adminToken, 'Step 1: SuperAdmin authenticates');

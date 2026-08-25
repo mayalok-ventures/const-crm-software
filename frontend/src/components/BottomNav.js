@@ -7,7 +7,7 @@ import { getUser } from '@/lib/auth';
 import {
   Home, FileText, Users, BarChart2, User, MessageCircle,
   Package, Send, Zap, Shield, Crown, GraduationCap,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Sliders
 } from 'lucide-react';
 import PlanStatusWidget from '@/components/PlanStatusWidget';
 
@@ -22,6 +22,7 @@ const MOBILE_ITEMS = [
 const DESKTOP_ITEMS = [
   { href: '/dashboard', label: 'Leads Pipeline', icon: Home, key: 'dashboard' },
   { href: '/catalogue', label: 'Colleges & Courses', icon: GraduationCap, key: 'catalogue' },
+  { href: '/forms', label: 'Form Center', icon: Sliders, key: 'forms' },
   { href: '/integrations', label: 'Ads & Lead Integrations', icon: Zap, key: 'integrations' },
   { href: '/projects', label: 'Products & Packages', icon: Package, key: 'projects' },
   { href: '/whatsapp', label: 'WhatsApp Hub', icon: MessageCircle, key: 'whatsapp' },
@@ -71,13 +72,12 @@ export default function BottomNav({ active }) {
     const user = getUser();
     if (user?.role === 'superadmin') {
       setProfileHref('/superadmin-dashboard');
+      setIsAdminUser(true);
     } else {
       setProfileHref('/profile');
+      setIsAdminUser(false);
     }
-    if (user && (user.role === 'admin' || user.companyRole === 'owner' || user.workStatus === 'company_owner')) {
-      setIsAdminUser(true);
-    }
-    if (user && (user.role === 'admin' || user.companyRole === 'owner' || user.companyRole === 'manager' || user.workStatus === 'company_owner')) {
+    if (user && (user.companyRole === 'owner' || user.companyRole === 'manager' || user.workStatus === 'company_owner' || user.role === 'admin' || user.role === 'superadmin')) {
       setIsAgencyAdmin(true);
     }
     if (String(user?.industryType || '').trim().toLowerCase() === 'education') {
@@ -111,6 +111,7 @@ export default function BottomNav({ active }) {
     ...(isEducation
       ? [{ href: '/catalogue', label: 'Colleges & Courses', icon: GraduationCap, key: 'catalogue' }]
       : [{ href: '/projects', label: 'Products & Packages', icon: Package, key: 'projects' }]),
+    { href: '/forms', label: 'Form Center', icon: Sliders, key: 'forms' },
     { href: '/integrations', label: 'Ads & Lead Integrations', icon: Zap, key: 'integrations' },
     { href: '/whatsapp', label: 'WhatsApp Hub', icon: MessageCircle, key: 'whatsapp' },
     { href: '/campaigns', label: 'Broadcast Campaigns', icon: Send, key: 'campaigns' },

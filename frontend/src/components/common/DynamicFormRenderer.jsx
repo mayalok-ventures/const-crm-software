@@ -154,7 +154,7 @@ export default function DynamicFormRenderer({
   errors = {},
   disabled = false,
   gridCols = 2,
-  theme = 'dark', // 'dark' | 'light'
+  theme = 'light', // 'light' (default) | 'dark'
 }) {
   const sortedFields = useMemo(() => {
     if (!Array.isArray(schema)) return [];
@@ -183,14 +183,14 @@ export default function DynamicFormRenderer({
   const isDark = theme === 'dark';
   const inputClass = isDark
     ? 'w-full bg-[#0d1424] border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors'
-    : 'w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition-colors';
+    : 'w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-all shadow-sm';
 
   const labelClass = isDark
     ? 'text-xs font-semibold text-slate-300 flex items-center justify-between'
-    : 'text-xs font-semibold text-slate-700 flex items-center justify-between';
+    : 'text-xs font-bold text-slate-700 flex items-center justify-between';
 
   return (
-    <div className={`grid grid-cols-1 ${gridCols === 2 ? 'sm:grid-cols-2' : ''} gap-4`}>
+    <div className={`grid grid-cols-1 ${gridCols === 2 ? 'sm:grid-cols-2' : ''} gap-3.5`}>
       {visibleFields.map((field) => {
         const fieldKey = field.fieldId || field.name;
         const required = isFieldRequired(field, values);
@@ -214,14 +214,14 @@ export default function DynamicFormRenderer({
         const isFullWidth = ['textarea', 'multiselect', 'radio'].includes(fieldType) || field.fullWidth;
 
         return (
-          <div key={fieldKey} className={`space-y-1.5 ${isFullWidth ? 'sm:col-span-2' : ''}`}>
+          <div key={fieldKey} className={`space-y-1 ${isFullWidth ? 'sm:col-span-2' : ''}`}>
             <label className={labelClass}>
-              <span className="flex items-center gap-1.5">
+              <span className="flex items-center gap-1">
                 {field.label || fieldKey}
-                {required && <span className="text-rose-400 text-sm">*</span>}
+                {required && <span className={isDark ? 'text-rose-400' : 'text-rose-600 font-bold'}>*</span>}
               </span>
               {field.helpText && (
-                <span className="text-[10px] text-slate-400 font-normal flex items-center gap-1" title={field.helpText}>
+                <span className="text-[11px] text-slate-400 font-normal flex items-center gap-1" title={field.helpText}>
                   <HelpCircle className="w-3 h-3 text-slate-400" />
                   <span className="hidden sm:inline">{field.helpText}</span>
                 </span>
@@ -258,7 +258,7 @@ export default function DynamicFormRenderer({
                 </div>
               </div>
             ) : fieldType === 'multiselect' ? (
-              <div className="flex flex-wrap gap-2 p-2 rounded-xl bg-slate-900/40 border border-slate-800">
+              <div className={`flex flex-wrap gap-2 p-2 rounded-xl border ${isDark ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
                 {optionsList.map((opt, idx) => {
                   const selected = Array.isArray(value) && value.includes(opt.value);
                   return (
@@ -269,11 +269,15 @@ export default function DynamicFormRenderer({
                       onClick={() => handleMultiSelectToggle(fieldKey, opt.value)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
                         selected
-                          ? 'bg-amber-500 text-slate-950 font-bold shadow-sm shadow-amber-500/20'
-                          : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700/60'
+                          ? isDark
+                            ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
+                            : 'bg-indigo-600 text-white font-bold shadow-sm'
+                          : isDark
+                          ? 'bg-slate-800 text-slate-300 border border-slate-700'
+                          : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100 shadow-sm'
                       }`}
                     >
-                      <CheckSquare className={`w-3.5 h-3.5 ${selected ? 'text-slate-950' : 'text-slate-500'}`} />
+                      <CheckSquare className={`w-3.5 h-3.5 ${selected ? (isDark ? 'text-slate-950' : 'text-white') : 'text-slate-400'}`} />
                       {opt.name}
                     </button>
                   );
@@ -282,7 +286,7 @@ export default function DynamicFormRenderer({
             ) : fieldType === 'radio' ? (
               <div className="flex flex-wrap gap-3 pt-1">
                 {optionsList.map((opt, idx) => (
-                  <label key={idx} className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                  <label key={idx} className={`flex items-center gap-2 cursor-pointer text-xs ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>
                     <input
                       type="radio"
                       name={fieldKey}
@@ -290,22 +294,22 @@ export default function DynamicFormRenderer({
                       value={opt.value}
                       checked={String(value) === String(opt.value)}
                       onChange={(e) => handleInputChange(fieldKey, e.target.value)}
-                      className="text-amber-500 focus:ring-0 bg-slate-900 border-slate-700"
+                      className={isDark ? 'text-amber-500 focus:ring-0 bg-slate-900 border-slate-700' : 'text-indigo-600 focus:ring-0'}
                     />
                     <span>{opt.name}</span>
                   </label>
                 ))}
               </div>
             ) : fieldType === 'checkbox' ? (
-              <label className="flex items-center gap-2.5 pt-2 cursor-pointer">
+              <label className="flex items-center gap-2.5 pt-1.5 cursor-pointer">
                 <input
                   type="checkbox"
                   disabled={disabled}
                   checked={Boolean(value)}
                   onChange={(e) => handleInputChange(fieldKey, e.target.checked)}
-                  className="rounded border-slate-700 text-amber-500 focus:ring-0 bg-slate-900 w-4 h-4 cursor-pointer"
+                  className={`rounded w-4 h-4 cursor-pointer ${isDark ? 'border-slate-700 text-amber-500 bg-slate-900' : 'border-slate-300 text-indigo-600'}`}
                 />
-                <span className="text-xs text-slate-300">{field.placeholder || `Enable ${field.label}`}</span>
+                <span className={`text-xs ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>{field.placeholder || `Enable ${field.label}`}</span>
               </label>
             ) : fieldType === 'date' ? (
               <div className="relative">
@@ -329,7 +333,7 @@ export default function DynamicFormRenderer({
               </div>
             ) : fieldType === 'currency' ? (
               <div className="relative">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-400 font-bold text-xs">
+                <div className={`absolute left-3 top-1/2 -translate-y-1/2 font-bold text-xs ${isDark ? 'text-amber-400' : 'text-indigo-600'}`}>
                   ₹
                 </div>
                 <input
@@ -424,7 +428,7 @@ export default function DynamicFormRenderer({
 
             {/* Validation Error Message */}
             {error && (
-              <p className="text-[11px] font-medium text-rose-400 animate-fade-in flex items-center gap-1 mt-1">
+              <p className={`text-[11px] font-semibold flex items-center gap-1 mt-1 ${isDark ? 'text-rose-400' : 'text-rose-600'}`}>
                 <span>⚠️</span>
                 <span>{error}</span>
               </p>
