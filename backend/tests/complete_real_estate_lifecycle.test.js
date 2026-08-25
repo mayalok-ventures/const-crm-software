@@ -18,6 +18,7 @@
  */
 
 const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
 require('dotenv').config();
 
 const User = require('../src/models/User');
@@ -57,6 +58,8 @@ const mockRes = () => {
   return res;
 };
 
+let mongoServer;
+
 async function runCompleteRealEstateTestSuite() {
   console.log('\n======================================================');
   console.log('🏗️  CORESETU REAL ESTATE CRM — COMPLETE LIFECYCLE TEST SUITE');
@@ -64,9 +67,17 @@ async function runCompleteRealEstateTestSuite() {
 
   try {
     if (mongoose.connection.readyState === 0) {
-      await mongoose.connect(process.env.MONGO_URI, {
-        serverSelectionTimeoutMS: 5000,
-      });
+      if (process.env.MONGO_URI && process.env.MONGO_URI.startsWith('mongodb')) {
+        try {
+          await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 2000 });
+        } catch {
+          mongoServer = await MongoMemoryServer.create();
+          await mongoose.connect(mongoServer.getUri());
+        }
+      } else {
+        mongoServer = await MongoMemoryServer.create();
+        await mongoose.connect(mongoServer.getUri());
+      }
     }
 
     const tenantAId = new mongoose.Types.ObjectId();
@@ -555,6 +566,7 @@ async function runCompleteRealEstateTestSuite() {
     process.exit(1);
   } finally {
     await mongoose.connection.close();
+    if (mongoServer) await mongoServer.stop();
   }
 }
 

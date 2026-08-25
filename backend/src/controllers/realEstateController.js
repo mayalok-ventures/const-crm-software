@@ -722,6 +722,17 @@ const createInventory = async (req, res) => {
     });
     if (!project) return res.status(404).json({ message: 'Project not found in this organization' });
 
+    // Explicit duplicate check for deterministic 409 response
+    const existingUnit = await Inventory.findOne({
+      companyId,
+      projectId,
+      tower: tower || 'Tower A',
+      unitNumber: String(unitNumber).trim(),
+    });
+    if (existingUnit) {
+      return res.status(409).json({ message: 'Unit with this Number and Tower already exists in this project.' });
+    }
+
     const calculatedTotal = totalPrice || (Number(basePrice || 0) + Number(additionalCharges || 0));
 
     const unit = await Inventory.create({
