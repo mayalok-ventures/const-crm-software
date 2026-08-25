@@ -1,5 +1,16 @@
 require('dotenv').config();
-process.env.JWT_SECRET = process.env.JWT_SECRET || 'crm_jwt_secret_dev_key_2026';
+const { validateEnvironment } = require('./src/config/envValidator');
+validateEnvironment();
+
+// Process-level uncaught exception & unhandled rejection resilience
+process.on('uncaughtException', (err) => {
+  console.error('💥 [Fatal] Uncaught Exception:', err.message);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️ [Warning] Unhandled Promise Rejection:', reason instanceof Error ? reason.message : reason);
+});
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -97,6 +108,16 @@ app.use('/api', apiPerformance);
 // Register public monitoring routes
 app.use('/api/monitoring', monitoringRoutes);
 
+// Request ID & Correlation middleware
+app.use((req, res, next) => {
+  const incomingId = req.headers['x-request-id'];
+  req.requestId = (typeof incomingId === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(incomingId))
+    ? incomingId
+    : `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  res.setHeader('X-Request-Id', req.requestId);
+  next();
+});
+
 // Structured Request logger with duration measurement
 app.use((req, res, next) => {
   const start = Date.now();
@@ -153,6 +174,13 @@ app.use((req, res) => res.status(404).json({ message: 'Route not found' }));
 // Error Tracking interceptor & Global error handler
 app.use(errorTracker.expressMiddleware);
 app.use((err, req, res, next) => {
+  if (err.name === 'CastError') {
+    return res.status(400).json({ message: `Invalid identifier format` });
+  }
+  if (process.env.NODE_ENV === 'production' && (!err.status || err.status >= 500)) {
+    console.error(err.stack);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
   console.error(err.stack);
   res.status(err.status || 500).json({ message: err.message || 'Internal server error' });
 });
@@ -188,7 +216,7 @@ connectDB().then(async () => {
   startFollowUpCron();
 
   const PORT = process.env.PORT || 5000;
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🚀 Real Estate CRM Backend running on http://localhost:${PORT}`);
     console.log(`📦 Environment: ${process.env.NODE_ENV || 'development'}\n`);
     
@@ -198,6 +226,11 @@ connectDB().then(async () => {
     // Start campaign background worker
     campaignWorker.startWorker();
 
+    let agent, heartbeat, statusEvaluator, aggregator;
+    let databaseMonitorWorker, backupMonitorWorker, alertMonitorWorker;
+    let integrationMonitorWorker, usageMonitorWorker, apiKeySecurityWorker;
+    let deploymentMonitorWorker, healthScoreWorker;
+
     // Start background monitoring agents and workers (except in testing)
     if (process.env.NODE_ENV !== 'test') {
       const MonitoringAgent = require('./src/monitoring/MonitoringAgent').default;
@@ -205,33 +238,33 @@ connectDB().then(async () => {
       const StatusEvaluator = require('./src/monitoring/StatusEvaluator').default;
       const MetricsAggregator = require('./src/monitoring/MetricsAggregator').default;
       const dbWorkerMod = require('./src/monitoring/database/DatabaseMonitorWorker');
-      const databaseMonitorWorker = dbWorkerMod.databaseMonitorWorker || (dbWorkerMod.DatabaseMonitorWorker && dbWorkerMod.DatabaseMonitorWorker.getInstance()) || dbWorkerMod.default;
+      databaseMonitorWorker = dbWorkerMod.databaseMonitorWorker || (dbWorkerMod.DatabaseMonitorWorker && dbWorkerMod.DatabaseMonitorWorker.getInstance()) || dbWorkerMod.default;
 
       const bkWorkerMod = require('./src/monitoring/backup/BackupMonitorWorker');
-      const backupMonitorWorker = bkWorkerMod.backupMonitorWorker || (bkWorkerMod.BackupMonitorWorker && bkWorkerMod.BackupMonitorWorker.getInstance()) || bkWorkerMod.default;
+      backupMonitorWorker = bkWorkerMod.backupMonitorWorker || (bkWorkerMod.BackupMonitorWorker && bkWorkerMod.BackupMonitorWorker.getInstance()) || bkWorkerMod.default;
 
       const alWorkerMod = require('./src/monitoring/alerts/AlertMonitorWorker');
-      const alertMonitorWorker = alWorkerMod.alertMonitorWorker || (alWorkerMod.AlertMonitorWorker && alWorkerMod.AlertMonitorWorker.getInstance()) || alWorkerMod.default;
+      alertMonitorWorker = alWorkerMod.alertMonitorWorker || (alWorkerMod.AlertMonitorWorker && alWorkerMod.AlertMonitorWorker.getInstance()) || alWorkerMod.default;
 
       const intWorkerMod = require('./src/monitoring/integrations/IntegrationMonitorWorker');
-      const integrationMonitorWorker = intWorkerMod.integrationMonitorWorker || (intWorkerMod.IntegrationMonitorWorker && intWorkerMod.IntegrationMonitorWorker.getInstance()) || intWorkerMod.default;
+      integrationMonitorWorker = intWorkerMod.integrationMonitorWorker || (intWorkerMod.IntegrationMonitorWorker && intWorkerMod.IntegrationMonitorWorker.getInstance()) || intWorkerMod.default;
 
       const usWorkerMod = require('./src/monitoring/usage/UsageMonitorWorker');
-      const usageMonitorWorker = usWorkerMod.usageMonitorWorker || (usWorkerMod.UsageMonitorWorker && usWorkerMod.UsageMonitorWorker.getInstance()) || usWorkerMod.default;
+      usageMonitorWorker = usWorkerMod.usageMonitorWorker || (usWorkerMod.UsageMonitorWorker && usWorkerMod.UsageMonitorWorker.getInstance()) || usWorkerMod.default;
 
       const akWorkerMod = require('./src/monitoring/apikeys/ApiKeySecurityWorker');
-      const apiKeySecurityWorker = akWorkerMod.apiKeySecurityWorker || (akWorkerMod.ApiKeySecurityWorker && akWorkerMod.ApiKeySecurityWorker.getInstance()) || akWorkerMod.default;
+      apiKeySecurityWorker = akWorkerMod.apiKeySecurityWorker || (akWorkerMod.ApiKeySecurityWorker && akWorkerMod.ApiKeySecurityWorker.getInstance()) || akWorkerMod.default;
 
       const depWorkerMod = require('./src/monitoring/deployment/DeploymentMonitorWorker');
-      const deploymentMonitorWorker = depWorkerMod.deploymentMonitorWorker || (depWorkerMod.DeploymentMonitorWorker && depWorkerMod.DeploymentMonitorWorker.getInstance()) || depWorkerMod.default;
+      deploymentMonitorWorker = depWorkerMod.deploymentMonitorWorker || (depWorkerMod.DeploymentMonitorWorker && depWorkerMod.DeploymentMonitorWorker.getInstance()) || depWorkerMod.default;
 
       const hlthWorkerMod = require('./src/monitoring/health/HealthScoreWorker');
-      const healthScoreWorker = hlthWorkerMod.healthScoreWorker || (hlthWorkerMod.HealthScoreWorker && hlthWorkerMod.HealthScoreWorker.getInstance()) || hlthWorkerMod.default;
+      healthScoreWorker = hlthWorkerMod.healthScoreWorker || (hlthWorkerMod.HealthScoreWorker && hlthWorkerMod.HealthScoreWorker.getInstance()) || hlthWorkerMod.default;
 
-      const agent = new MonitoringAgent();
-      const heartbeat = new ServerHeartbeat();
-      const statusEvaluator = new StatusEvaluator();
-      const aggregator = new MetricsAggregator();
+      agent = new MonitoringAgent();
+      heartbeat = new ServerHeartbeat();
+      statusEvaluator = new StatusEvaluator();
+      aggregator = new MetricsAggregator();
 
       agent.start();
       heartbeat.start();
@@ -245,13 +278,25 @@ connectDB().then(async () => {
       if (apiKeySecurityWorker && typeof apiKeySecurityWorker.start === 'function') apiKeySecurityWorker.start(60000);
       if (deploymentMonitorWorker && typeof deploymentMonitorWorker.start === 'function') deploymentMonitorWorker.start(60000);
       if (healthScoreWorker && typeof healthScoreWorker.start === 'function') healthScoreWorker.start(60000);
+    }
 
-      const shutdownWorkers = () => {
-        console.log('Stopping background monitoring workers...');
-        agent.stop();
-        heartbeat.stop();
-        statusEvaluator.stop();
-        aggregator.stop();
+    let isShuttingDown = false;
+    const gracefulShutdown = async (signal) => {
+      if (isShuttingDown) return;
+      isShuttingDown = true;
+      console.log(`\n🛑 [Shutdown] Received ${signal}. Starting graceful shutdown...`);
+
+      const forceTimer = setTimeout(() => {
+        console.error('⚠️ [Shutdown] Timeout reached. Forcefully exiting.');
+        process.exit(1);
+      }, 10000);
+      forceTimer.unref();
+
+      try {
+        if (agent) agent.stop();
+        if (heartbeat) heartbeat.stop();
+        if (statusEvaluator) statusEvaluator.stop();
+        if (aggregator) aggregator.stop();
         if (databaseMonitorWorker && typeof databaseMonitorWorker.stop === 'function') databaseMonitorWorker.stop();
         if (backupMonitorWorker && typeof backupMonitorWorker.stop === 'function') backupMonitorWorker.stop();
         if (alertMonitorWorker && typeof alertMonitorWorker.stop === 'function') alertMonitorWorker.stop();
@@ -260,10 +305,31 @@ connectDB().then(async () => {
         if (apiKeySecurityWorker && typeof apiKeySecurityWorker.stop === 'function') apiKeySecurityWorker.stop();
         if (deploymentMonitorWorker && typeof deploymentMonitorWorker.stop === 'function') deploymentMonitorWorker.stop();
         if (healthScoreWorker && typeof healthScoreWorker.stop === 'function') healthScoreWorker.stop();
-      };
-      process.on('SIGTERM', shutdownWorkers);
-      process.on('SIGINT', shutdownWorkers);
-    }
+
+        if (campaignWorker && typeof campaignWorker.stopWorker === 'function') {
+          campaignWorker.stopWorker();
+        }
+
+        if (server && typeof server.close === 'function') {
+          await new Promise((resolve) => server.close(resolve));
+          console.log('✅ [Shutdown] HTTP server closed.');
+        }
+
+        if (mongoose.connection.readyState !== 0) {
+          await mongoose.connection.close(false);
+          console.log('✅ [Shutdown] MongoDB connection closed.');
+        }
+
+        console.log('✅ [Shutdown] Cleanup completed cleanly.');
+        process.exit(0);
+      } catch (err) {
+        console.error('❌ [Shutdown] Error during shutdown:', err.message);
+        process.exit(1);
+      }
+    };
+
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
   });
 }).catch(err => {
   console.error('Failed to initialize database:', err);

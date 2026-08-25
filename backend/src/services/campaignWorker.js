@@ -213,7 +213,7 @@ const startWorker = () => {
   );
 
   let isPolling = false;
-  setInterval(async () => {
+  pollInterval = setInterval(async () => {
     if (isPolling) return;
     isPolling = true;
     try {
@@ -250,4 +250,13 @@ const startWorker = () => {
   console.log(`[CampaignWorker] Started. Polling every ${POLL_INTERVAL_MS / 1000}s for queued campaigns.`);
 };
 
-module.exports = { startWorker };
+let pollInterval = null;
+const stopWorker = () => {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+    console.log('[CampaignWorker] Stopped.');
+  }
+};
+
+module.exports = { startWorker, stopWorker };

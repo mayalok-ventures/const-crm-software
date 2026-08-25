@@ -92,6 +92,7 @@ exports.getAssets = async (req, res) => {
           fields: 'id,name,access_token,tasks',
           access_token: accessToken,
         },
+        timeout: 15000,
       }
     );
 
@@ -108,6 +109,7 @@ exports.getAssets = async (req, res) => {
               fields: 'id,name,status,leads_count',
               access_token: page.access_token || accessToken,
             },
+            timeout: 15000,
           }
         );
         forms = formsResponse.data.data || [];

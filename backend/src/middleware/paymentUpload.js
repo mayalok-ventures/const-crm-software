@@ -32,7 +32,9 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `temp-${unique}-${file.originalname}`);
+    const ext = path.extname(file.originalname).toLowerCase() || '.png';
+    const cleanExt = /^\.[a-z0-9]+$/i.test(ext) ? ext : '.png';
+    cb(null, `temp-${unique}${cleanExt}`);
   },
 });
 

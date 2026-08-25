@@ -56,10 +56,12 @@ class IpBlockerEngine {
     isIpBlocked(ip) {
         if (!ip)
             return false;
+        if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost' || ip === '::ffff:127.0.0.1')
+            return false;
         return this.blockedIpsSet.has(ip);
     }
     async blockIp(ip, reason, blockedBy = 'SYSTEM_AUTO', durationMinutes = 60, adminUser) {
-        if (!ip)
+        if (!ip || ip === '127.0.0.1' || ip === '::1' || ip === 'localhost' || ip === '::ffff:127.0.0.1')
             return;
         // Calculate expiry
         const expiresAt = durationMinutes ? new Date(Date.now() + durationMinutes * 60 * 1000) : null;

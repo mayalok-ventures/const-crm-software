@@ -219,6 +219,7 @@ exports.callback = async (req, res) => {
           redirect_uri: redirectUri,
           code,
         },
+        timeout: 15000,
       }
     );
 
@@ -240,6 +241,7 @@ exports.callback = async (req, res) => {
             client_secret: appSecret,
             fb_exchange_token: shortLivedToken,
           },
+          timeout: 15000,
         }
       );
       if (longTokenResponse.data.access_token) {

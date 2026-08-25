@@ -142,6 +142,7 @@ exports.getLead = async (req, res) => {
     if (!lead) return res.status(404).json({ message: 'Lead not found or unauthorized' });
     res.json(lead);
   } catch (error) {
+    if (error.name === 'CastError') return res.status(400).json({ message: 'Invalid lead ID format' });
     res.status(500).json({ message: 'Server error' });
   }
 };

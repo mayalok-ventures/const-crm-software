@@ -57,10 +57,19 @@ exports.uploadRecording = async (req, res) => {
       return res.status(400).json({ message: 'File too large. Max size is 20MB.' });
     }
 
-    const lead = await Lead.findOne({ _id: req.params.leadId, userId: req.user._id }).lean();
+    const companyId = req.user.companyId || (req.user.companyRole === 'owner' ? req.user._id : null);
+    const leadPermission = {
+      _id: req.params.leadId,
+      $or: [
+        { userId: req.user._id },
+        ...(companyId ? [{ companyId }, { userId: companyId }] : [])
+      ]
+    };
+
+    const lead = await Lead.findOne(leadPermission).lean();
     if (!lead) {
       if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-      return res.status(404).json({ message: 'Lead not found' });
+      return res.status(404).json({ message: 'Lead not found or unauthorized' });
     }
 
     // Upload to Cloudinary with retry (max 3 attempts total)
@@ -105,8 +114,17 @@ exports.uploadRecording = async (req, res) => {
 // @access Private
 exports.getRecordings = async (req, res) => {
   try {
-    const lead = await Lead.findOne({ _id: req.params.leadId, userId: req.user._id }).lean();
-    if (!lead) return res.status(404).json({ message: 'Lead not found' });
+    const companyId = req.user.companyId || (req.user.companyRole === 'owner' ? req.user._id : null);
+    const leadPermission = {
+      _id: req.params.leadId,
+      $or: [
+        { userId: req.user._id },
+        ...(companyId ? [{ companyId }, { userId: companyId }] : [])
+      ]
+    };
+
+    const lead = await Lead.findOne(leadPermission).lean();
+    if (!lead) return res.status(404).json({ message: 'Lead not found or unauthorized' });
 
     const recordings = await Recording.find({ leadId: req.params.leadId })
       .sort({ createdAt: -1 })
@@ -123,8 +141,15 @@ exports.getRecordings = async (req, res) => {
 // @access Private
 exports.deleteRecording = async (req, res) => {
   try {
-    const recording = await Recording.findOne({ _id: req.params.id, userId: req.user._id });
-    if (!recording) return res.status(404).json({ message: 'Recording not found' });
+    const companyId = req.user.companyId || (req.user.companyRole === 'owner' ? req.user._id : null);
+    const recording = await Recording.findOne({
+      _id: req.params.id,
+      $or: [
+        { userId: req.user._id },
+        ...(companyId ? [{ userId: { $in: [req.user._id, companyId] } }] : [])
+      ]
+    });
+    if (!recording) return res.status(404).json({ message: 'Recording not found or unauthorized' });
 
     // Delete from Cloudinary if publicId exists, otherwise fall back to local disk
     if (recording.publicId) {
@@ -133,8 +158,9 @@ exports.deleteRecording = async (req, res) => {
       } catch (cloudinaryError) {
         console.error(`Failed to delete Cloudinary asset ${recording.publicId}:`, cloudinaryError);
       }
-    } else {
-      const filePath = path.join(__dirname, '../../uploads/recordings', recording.filename);
+    } else if (recording.filename) {
+      const safeFilename = path.basename(recording.filename);
+      const filePath = path.join(__dirname, '../../uploads/recordings', safeFilename);
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     }
 

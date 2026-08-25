@@ -81,6 +81,7 @@ exports.getAccounts = async (req, res) => {
           Authorization: `Bearer ${accessToken}`,
           'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN || 'mock_dev_token',
         },
+        timeout: 15000,
       }
     );
 

@@ -205,18 +205,19 @@ exports.getCampaignLogs = async (req, res) => {
     }).lean();
     if (!campaign) return res.status(404).json({ message: 'Campaign not found' });
 
-    const { page = 1, limit = 100 } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 100));
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+    const skip = (parsedPage - 1) * parsedLimit;
 
     const logs = await CampaignLog.find({ campaignId: req.params.id })
       .sort({ timestamp: 1 })
       .skip(skip)
-      .limit(parseInt(limit))
+      .limit(parsedLimit)
       .lean();
 
     const total = await CampaignLog.countDocuments({ campaignId: req.params.id });
 
-    res.json({ logs, total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) });
+    res.json({ logs, total, page: parsedPage, pages: Math.ceil(total / parsedLimit) });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }

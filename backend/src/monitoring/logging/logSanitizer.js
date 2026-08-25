@@ -25,6 +25,7 @@ const SENSITIVE_KEY_PATTERNS = [
     /encryption_?key/i,
     /private_?key/i,
     /bearer/i,
+    /sig(nature)?/i,
 ];
 const REDACTED_MASK = '[REDACTED]';
 function isSensitiveKey(key) {

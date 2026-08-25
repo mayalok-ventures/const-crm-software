@@ -518,8 +518,9 @@ exports.getAdminLeads = async (req, res) => {
       });
     }
 
-    if (search) {
-      const regex = new RegExp(search.trim(), 'i');
+    if (search && String(search).trim()) {
+      const safeSearch = String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(safeSearch, 'i');
       query.$or = [{ name: regex }, { phone: regex }, { email: regex }, { company: regex }];
     }
 
@@ -594,7 +595,9 @@ exports.getAdminLeads = async (req, res) => {
       if (endDate) query.createdAt.$lte = new Date(endDate);
     }
 
-    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+    const skip = (parsedPage - 1) * parsedLimit;
     const [total, leads] = await Promise.all([
       Lead.countDocuments(query),
       Lead.find(query)
@@ -602,7 +605,7 @@ exports.getAdminLeads = async (req, res) => {
         .populate('assignedManager', 'name email')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(parseInt(limit, 10))
+        .limit(parsedLimit)
         .lean(),
     ]);
 
@@ -611,9 +614,9 @@ exports.getAdminLeads = async (req, res) => {
       leads,
       pagination: {
         total,
-        page: parseInt(page, 10),
-        pages: Math.ceil(total / parseInt(limit, 10)),
-        limit: parseInt(limit, 10),
+        page: parsedPage,
+        pages: Math.ceil(total / parsedLimit),
+        limit: parsedLimit,
       },
     });
   } catch (error) {
@@ -1927,7 +1930,9 @@ exports.getCommissionPayouts = async (req, res) => {
     if (userId) query.userId = userId;
     if (status && status !== 'all') query.status = String(status).toUpperCase();
 
-    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+    const skip = (parsedPage - 1) * parsedLimit;
     const [total, payouts] = await Promise.all([
       CommissionPayout.countDocuments(query),
       CommissionPayout.find(query)
@@ -1936,7 +1941,7 @@ exports.getCommissionPayouts = async (req, res) => {
         .populate('appliedRuleId', 'ruleName targetRole commissionType value')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(parseInt(limit, 10))
+        .limit(parsedLimit)
         .lean(),
     ]);
 
@@ -2352,8 +2357,10 @@ exports.getActivityLogs = async (req, res) => {
     if (userId) query.userId = userId;
     if (severity && severity !== 'all') query.severity = severity;
 
-    if (search) {
-      query.$or = [{ details: new RegExp(search, 'i') }, { userName: new RegExp(search, 'i') }, { action: new RegExp(search, 'i') }];
+    if (search && String(search).trim()) {
+      const safeSearch = String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const rx = new RegExp(safeSearch, 'i');
+      query.$or = [{ details: rx }, { userName: rx }, { action: rx }];
     }
 
     if (startDate || endDate) {
@@ -2362,12 +2369,14 @@ exports.getActivityLogs = async (req, res) => {
       if (endDate) query.timestamp.$lte = new Date(endDate);
     }
 
-    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+    const skip = (parsedPage - 1) * parsedLimit;
     const total = await ActivityLog.countDocuments(query);
     const logs = await ActivityLog.find(query)
       .sort({ timestamp: -1 })
       .skip(skip)
-      .limit(parseInt(limit, 10))
+      .limit(parsedLimit)
       .lean();
 
     res.json({
@@ -2375,8 +2384,9 @@ exports.getActivityLogs = async (req, res) => {
       logs,
       pagination: {
         total,
-        page: parseInt(page, 10),
-        pages: Math.ceil(total / parseInt(limit, 10)),
+        page: parsedPage,
+        pages: Math.ceil(total / parsedLimit),
+        limit: parsedLimit,
       },
     });
   } catch (error) {
