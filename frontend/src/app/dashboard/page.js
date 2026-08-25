@@ -1280,7 +1280,7 @@ export default function DashboardPage() {
   const { dismissAlarm } = useAlarm();
 
   const isCompanyOwner = user?.workStatus === 'company_owner' || user?.companyRole === 'owner';
-  const isSuperAdmin = user?.role === 'superadmin' || user?.isAdmin;
+  const isSuperAdmin = user?.role === 'superadmin';
 
   useEffect(() => {
     try {
@@ -1326,12 +1326,20 @@ export default function DashboardPage() {
     api.get('/projects').then(r => setProjects(r.data)).catch(() => {});
   }, [router]);
 
+  const [reAnalytics, setReAnalytics] = useState(null);
+
   const fetchMetrics = useCallback(async () => {
     try {
       const { data } = await api.get('/analytics');
       setAnalyticsData(data);
     } catch {}
-  }, []);
+    if (String(user?.industryType || '').toLowerCase() === 'real estate') {
+      try {
+        const { data } = await api.get('/real-estate/analytics/summary');
+        if (data?.success) setReAnalytics(data.data);
+      } catch {}
+    }
+  }, [user]);
 
   const fetchLeads = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -1585,6 +1593,61 @@ export default function DashboardPage() {
                   </h3>
                 </div>
               </div>
+
+              {/* Real Estate Domain Badges */}
+              {reAnalytics && (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 10,
+                      background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                      color: 'white',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 3px 8px rgba(239,68,68,0.3)',
+                      flexShrink: 0
+                    }}>
+                      🔥
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: '#ef4444', letterSpacing: 0.3 }}>
+                        Hot Leads
+                      </p>
+                      <h3 style={{ margin: '1px 0 0', fontSize: 'clamp(15px, 3.5vw, 19px)', fontWeight: 800, color: 'var(--text)' }}>
+                        {reAnalytics.leads?.hot || 0} <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)' }}>({reAnalytics.leads?.warm || 0} Warm)</span>
+                      </h3>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 10,
+                      background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)',
+                      color: 'white',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 3px 8px rgba(139,92,246,0.3)',
+                      flexShrink: 0
+                    }}>
+                      🏢
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: '#8b5cf6', letterSpacing: 0.3 }}>
+                        Site Visits
+                      </p>
+                      <h3 style={{ margin: '1px 0 0', fontSize: 'clamp(15px, 3.5vw, 19px)', fontWeight: 800, color: 'var(--text)' }}>
+                        {reAnalytics.siteVisits?.completed || 0}/{reAnalytics.siteVisits?.total || 0} <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)' }}>({reAnalytics.siteVisits?.conversionRate || '0%'})</span>
+                      </h3>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 

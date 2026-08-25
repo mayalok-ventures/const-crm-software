@@ -52,7 +52,7 @@ const eoiSchema = new mongoose.Schema({
   },
   paymentMode: {
     type: String,
-    enum: ['UPI', 'Cheque', 'Bank Transfer', 'Credit Card', 'Cash', 'Other'],
+    enum: ['UPI', 'Cheque', 'Bank Transfer', 'NEFT', 'RTGS', 'IMPS', 'Net Banking', 'Credit Card', 'Debit Card', 'Cash', 'Other', null],
     default: 'UPI',
   },
   status: {

@@ -97,6 +97,7 @@ const followUpSchema = new mongoose.Schema({
     outcome: {
       type: String,
       enum: ['interested', 'highly_interested', 'not_interested', 'budget_mismatch', 'location_mismatch', 'rescheduled', 'no_show', null],
+      set: (v) => (v ? String(v).toLowerCase().trim() : null),
       default: null,
     },
     clientFeedback: { type: String, default: '', trim: true },

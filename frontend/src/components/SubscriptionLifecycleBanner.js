@@ -36,7 +36,7 @@ export default function SubscriptionLifecycleBanner() {
     return () => window.removeEventListener('user-updated', handleUpdate);
   }, [pathname]);
 
-  if (!lifecycle || lifecycle.state === 'ACTIVE' || user?.isAdmin || user?.role === 'superadmin') {
+  if (!lifecycle || lifecycle.state === 'ACTIVE' || user?.role === 'superadmin') {
     return null;
   }
 

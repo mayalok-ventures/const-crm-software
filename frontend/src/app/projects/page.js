@@ -4,6 +4,7 @@ import Link from 'next/link';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
+import InventoryManagerModal from '@/components/InventoryManagerModal';
 import {
   Package, Plus, Search, MapPin, Tag, Calendar, ShieldCheck,
   ExternalLink, Edit2, Trash2, X, Check, ArrowRight, Layers,
@@ -181,6 +182,8 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [activeModal, setActiveModal] = useState(false);
   const [selectedProject, setSelectedProject] = useState(null);
+  const [showInventoryModal, setShowInventoryModal] = useState(false);
+  const [selectedInventoryProject, setSelectedInventoryProject] = useState(null);
 
   const fetchProjects = async () => {
     setLoading(true);
@@ -377,13 +380,25 @@ export default function ProjectsPage() {
                     </div>
 
                     {/* Footer Action Links */}
-                    <div style={{ display: 'flex', gap: 8, marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                      <button
+                        onClick={() => {
+                          setSelectedInventoryProject(p);
+                          setShowInventoryModal(true);
+                        }}
+                        className="btn btn-primary btn-sm"
+                        style={{ flex: 1, minWidth: 120, justifyContent: 'center', fontSize: 11, gap: 4, borderRadius: 8, background: '#4f46e5' }}
+                        title="Manage Towers, Floors & Saleable Units"
+                      >
+                        <Building2 size={12} /> Inventory ({p.availableUnits || 0}/{p.totalUnits || 0})
+                      </button>
+
                       <Link
                         href={`/dashboard?projectId=${p._id}`}
                         className="btn btn-secondary btn-sm"
-                        style={{ flex: 1, justifyContent: 'center', fontSize: 11, gap: 4, borderRadius: 8 }}
+                        style={{ flex: 1, minWidth: 100, justifyContent: 'center', fontSize: 11, gap: 4, borderRadius: 8 }}
                       >
-                        View Leads <ArrowRight size={12} />
+                        Leads <ArrowRight size={12} />
                       </Link>
                       {p.brochureUrl && (
                         <a
@@ -411,6 +426,14 @@ export default function ProjectsPage() {
           project={selectedProject}
           onClose={() => setActiveModal(false)}
           onSaved={handleSaved}
+        />
+      )}
+
+      {showInventoryModal && selectedInventoryProject && (
+        <InventoryManagerModal
+          project={selectedInventoryProject}
+          onClose={() => setShowInventoryModal(false)}
+          onUpdated={fetchProjects}
         />
       )}
 

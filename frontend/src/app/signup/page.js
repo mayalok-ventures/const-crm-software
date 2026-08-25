@@ -126,9 +126,8 @@ export default function SignupPage() {
       });
       setAuth(data, data.token);
       toast.success(`Account registered! Welcome, ${data.name} 🎉`);
-
-      if (data.role === 'superadmin' || data.isAdmin) {
-        router.replace('/admin');
+      if (data.role === 'superadmin') {
+        router.replace('/superadmin-dashboard');
       } else {
         router.replace('/dashboard');
       }

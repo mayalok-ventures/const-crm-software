@@ -77,7 +77,7 @@ export default function PlanStatusWidget({ className = '', style = {} }) {
       .catch(() => { });
   }, []);
 
-  if (!user || user.role === 'superadmin' || user.isAdmin) return null;
+  if (!user || user.role === 'superadmin') return null;
 
   const { isFree, isMidTier, isHighest, daysLeft, formattedName } = getPlanTierInfo(user);
 

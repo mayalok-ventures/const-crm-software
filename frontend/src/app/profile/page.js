@@ -23,10 +23,6 @@ export default function ProfilePage() {
       router.replace('/superadmin-dashboard');
       return;
     }
-    if (user.companyRole === 'owner' || user.workStatus === 'company_owner' || user.role === 'admin') {
-      router.replace('/admin?tab=profile');
-      return;
-    }
     setCurrentUser(user);
     setLoading(false);
   }, [router]);

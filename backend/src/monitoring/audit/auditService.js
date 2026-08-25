@@ -23,10 +23,10 @@ class AuditServiceEngine {
                 params.req?.socket?.remoteAddress ||
                 '127.0.0.1';
             const userAgent = params.userAgent ||
-                params.req?.headers['user-agent'] ||
+                params.req?.headers?.['user-agent'] ||
                 'internal';
             const requestId = params.requestId ||
-                params.req?.headers['x-request-id'] ||
+                params.req?.headers?.['x-request-id'] ||
                 params.req?.id ||
                 null;
             // Sanitize snapshots before storing

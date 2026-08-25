@@ -327,14 +327,16 @@ function AdminControlCenterContent() {
   // Initial load of auxiliary datasets (plans and hierarchy) for dropdowns
   useEffect(() => {
     if (token) {
-      authFetch('/admin/plans').then((res) => {
-        if (res?.success) setAllPlans(res.plans || []);
-      });
+      if (currentUser?.role === 'superadmin') {
+        authFetch('/admin/plans').then((res) => {
+          if (res?.success) setAllPlans(res.plans || []);
+        });
+      }
       authFetch('/admin/agents').then((res) => {
         if (res?.success) setHierarchy(res.hierarchy || { managers: [], unassignedAgents: [] });
       });
     }
-  }, [token, authFetch]);
+  }, [token, authFetch, currentUser]);
 
   useEffect(() => {
     if (token) {

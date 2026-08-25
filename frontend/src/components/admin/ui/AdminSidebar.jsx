@@ -111,34 +111,47 @@ export default function AdminSidebar({
 
       {/* Navigation Category Groups (Scrollable) */}
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4 custom-scrollbar">
-        {NAV_CATEGORIES.map((cat) => (
-          <div key={cat.name} className="space-y-1">
-            <div className="px-2 py-1 text-[10px] font-bold text-slate-400 tracking-wider">
-              {cat.name}
+        {NAV_CATEGORIES.map((cat) => {
+          const isSuperAdmin = currentUser?.role === 'superadmin';
+          const platformOnlyIds = ['plans', 'coupons', 'health'];
+          const filteredItems = cat.items.filter((item) => {
+            if (platformOnlyIds.includes(item.id)) {
+              return isSuperAdmin;
+            }
+            return true;
+          });
+
+          if (filteredItems.length === 0) return null;
+
+          return (
+            <div key={cat.name} className="space-y-1">
+              <div className="px-2 py-1 text-[10px] font-bold text-slate-400 tracking-wider">
+                {cat.name}
+              </div>
+              {filteredItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      onSelectTab(item.id);
+                      if (onCloseMobile) onCloseMobile();
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                      isActive
+                        ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-sm shadow-amber-500/10'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
+                    }`}
+                  >
+                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                );
+              })}
             </div>
-            {cat.items.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    onSelectTab(item.id);
-                    if (onCloseMobile) onCloseMobile();
-                  }}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                    isActive
-                      ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-sm shadow-amber-500/10'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
-                  <span className="truncate">{item.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* User Profile Footer */}

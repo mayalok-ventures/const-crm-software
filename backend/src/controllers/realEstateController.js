@@ -8,7 +8,11 @@ const Inventory = require('../models/Inventory');
 const EOI = require('../models/EOI');
 const Booking = require('../models/Booking');
 const PaymentSchedule = require('../models/PaymentSchedule');
-const Pipeline = require('../models/Pipeline');
+const Offer = require('../models/Offer');
+const CommissionRule = require('../models/CommissionRule');
+const CommissionPayout = require('../models/CommissionPayout');
+const Notification = require('../models/Notification');
+const ActivityLog = require('../models/ActivityLog');
 const { auditService } = require('../monitoring/audit/auditService');
 
 // Helper to resolve canonical tenant ID
@@ -19,7 +23,7 @@ const getTenantId = (user) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// 1. LEAD SCORING & TEMPERATURE ENGINE
+// 1. LEAD SCORING & DETERMINISTIC TEMPERATURE ENGINE
 // ─────────────────────────────────────────────────────────────
 const calculateLeadScoreInternal = async (leadId, companyId) => {
   const leadQuery = { _id: leadId };
@@ -100,7 +104,7 @@ const calculateLeadScoreInternal = async (leadId, companyId) => {
     breakdown.push({ factor: 'Deal Lost / Inactive', points: -25 });
   }
 
-  // Bound score between 0 and 100
+  // Bound score strictly between 0 and 100
   score = Math.max(0, Math.min(100, score));
 
   // Determine temperature
@@ -150,6 +154,7 @@ const matchProperties = async (req, res) => {
     let targetBudgetMin = budgetMin ? Number(budgetMin) : 0;
     let targetBudgetMax = budgetMax ? Number(budgetMax) : Infinity;
     let targetLocation = location ? String(location).trim().toLowerCase() : '';
+    let targetLocations = [];
     let targetConfigs = Array.isArray(configurations) ? configurations.map((c) => String(c).trim().toUpperCase()) : [];
     let targetPropertyType = propertyType ? String(propertyType).trim() : '';
 
@@ -160,6 +165,7 @@ const matchProperties = async (req, res) => {
         if (reqDoc.budgetMin) targetBudgetMin = reqDoc.budgetMin;
         if (reqDoc.budgetMax) targetBudgetMax = reqDoc.budgetMax;
         if (reqDoc.preferredLocations && reqDoc.preferredLocations.length) {
+          targetLocations = reqDoc.preferredLocations;
           targetLocation = reqDoc.preferredLocations.join(' ').toLowerCase();
         }
         if (reqDoc.configurations && reqDoc.configurations.length) {
@@ -173,6 +179,9 @@ const matchProperties = async (req, res) => {
         if (lead.budgetMin) targetBudgetMin = lead.budgetMin;
         if (lead.budgetMax) targetBudgetMax = lead.budgetMax;
         if (lead.location) targetLocation = lead.location.toLowerCase();
+        if (lead.areasOfInterest && lead.areasOfInterest.length) {
+          targetLocations = lead.areasOfInterest;
+        }
         if (lead.preferredConfigurations && lead.preferredConfigurations.length) {
           targetConfigs = lead.preferredConfigurations.map((c) => String(c).trim().toUpperCase());
         }
@@ -198,10 +207,20 @@ const matchProperties = async (req, res) => {
       const projConfigs = (project.configuration || project.productCategory || []).map((c) => String(c).trim().toUpperCase());
 
       // 1. Location Match (+35 pts)
-      if (targetLocation && (projLocation.includes(targetLocation) || targetLocation.includes(projLocation))) {
+      let locationMatched = false;
+      if (targetLocations.length > 0) {
+        locationMatched = targetLocations.some((loc) => {
+          const l = loc.toLowerCase().trim();
+          return l && (projLocation.includes(l) || l.includes(projLocation));
+        });
+      } else if (targetLocation) {
+        locationMatched = projLocation.includes(targetLocation) || targetLocation.includes(projLocation);
+      }
+
+      if (locationMatched) {
         matchScore += 35;
         matchedFactors.push('Location Match');
-      } else if (!targetLocation) {
+      } else if (!targetLocation && targetLocations.length === 0) {
         matchScore += 15;
       }
 
@@ -217,11 +236,9 @@ const matchProperties = async (req, res) => {
       }
 
       // 3. Configuration / BHK Match (+30 pts)
-      let configMatch = false;
       if (targetConfigs.length > 0) {
         const commonConfigs = targetConfigs.filter((c) => projConfigs.some((pc) => pc.includes(c) || c.includes(pc)));
         if (commonConfigs.length > 0) {
-          configMatch = true;
           matchScore += 30;
           matchedFactors.push(`Configuration (${commonConfigs.join(', ')})`);
         }
@@ -229,12 +246,11 @@ const matchProperties = async (req, res) => {
         matchScore += 10;
       }
 
-      // Find available inventory count for this project
-      const availableInventoryCount = await Inventory.countDocuments({
-        companyId,
-        projectId: project._id,
-        status: 'AVAILABLE',
-      });
+      // Find available inventory units for this project
+      const [availableInventoryCount, matchingUnits] = await Promise.all([
+        Inventory.countDocuments({ companyId, projectId: project._id, status: 'AVAILABLE' }),
+        Inventory.find({ companyId, projectId: project._id, status: 'AVAILABLE' }).limit(5).lean(),
+      ]);
 
       if (matchScore >= 40) {
         matches.push({
@@ -255,6 +271,15 @@ const matchProperties = async (req, res) => {
           matchScore,
           matchedFactors,
           availableInventoryCount,
+          matchingUnits: matchingUnits.map((u) => ({
+            _id: u._id,
+            unitNumber: u.unitNumber,
+            tower: u.tower,
+            floor: u.floor,
+            configuration: u.configuration,
+            totalPrice: u.totalPrice,
+            carpetArea: u.carpetArea,
+          })),
         });
       }
     }
@@ -298,7 +323,23 @@ const getRequirements = async (req, res) => {
 const createRequirement = async (req, res) => {
   try {
     const companyId = getTenantId(req.user);
-    const { leadId, title, propertyType, configurations, preferredLocations, budgetMin, budgetMax, areaMin, areaMax, purpose, possessionPreference, furnishing, financingRequired, timeline, notes } = req.body;
+    const {
+      leadId,
+      title,
+      propertyType,
+      configurations,
+      preferredLocations,
+      budgetMin,
+      budgetMax,
+      areaMin,
+      areaMax,
+      purpose,
+      possessionPreference,
+      furnishing,
+      financingRequired,
+      timeline,
+      notes,
+    } = req.body;
 
     if (!leadId) {
       return res.status(400).json({ message: 'Lead ID is required' });
@@ -328,10 +369,23 @@ const createRequirement = async (req, res) => {
       financingRequired: Boolean(financingRequired),
       timeline: timeline || 'Immediate (15-30 days)',
       notes: notes || '',
+      status: 'ACTIVE',
     });
 
     // Auto-recalculate lead score
     await calculateLeadScoreInternal(leadId, companyId);
+
+    // Audit Log
+    try {
+      await auditService.record({
+        req,
+        action: 'CREATE',
+        resourceType: 'Requirement',
+        resourceId: requirement._id,
+        organizationId: companyId,
+        metadata: { leadId, title: requirement.title, budgetMin, budgetMax },
+      });
+    } catch {}
 
     return res.status(201).json({ success: true, data: requirement });
   } catch (error) {
@@ -359,6 +413,34 @@ const updateRequirement = async (req, res) => {
     return res.status(200).json({ success: true, data: requirement });
   } catch (error) {
     return res.status(500).json({ message: 'Failed to update requirement', error: error.message });
+  }
+};
+
+const toggleRequirementStatus = async (req, res) => {
+  try {
+    const companyId = getTenantId(req.user);
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['ACTIVE', 'INACTIVE', 'FULFILLED', 'CANCELLED'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid requirement status' });
+    }
+
+    const requirement = await Requirement.findOneAndUpdate(
+      { _id: id, companyId },
+      { $set: { status } },
+      { new: true }
+    );
+
+    if (!requirement) {
+      return res.status(404).json({ message: 'Requirement not found' });
+    }
+
+    await calculateLeadScoreInternal(requirement.leadId, companyId);
+
+    return res.status(200).json({ success: true, data: requirement });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to toggle requirement status', error: error.message });
   }
 };
 
@@ -412,7 +494,20 @@ const getOpportunities = async (req, res) => {
 const createOpportunity = async (req, res) => {
   try {
     const companyId = getTenantId(req.user);
-    const { leadId, requirementId, projectId, inventoryId, title, pipelineId, stage, expectedValue, probability, assignedTo, expectedClosingDate, notes } = req.body;
+    const {
+      leadId,
+      requirementId,
+      projectId,
+      inventoryId,
+      title,
+      pipelineId,
+      stage,
+      expectedValue,
+      probability,
+      assignedTo,
+      expectedClosingDate,
+      notes,
+    } = req.body;
 
     if (!leadId || !projectId) {
       return res.status(400).json({ message: 'Lead ID and Project ID are mandatory' });
@@ -427,6 +522,9 @@ const createOpportunity = async (req, res) => {
     if (!lead) return res.status(404).json({ message: 'Lead not found in this organization' });
     if (!project) return res.status(404).json({ message: 'Project not found in this organization' });
 
+    const val = Number(expectedValue) || project.minPrice || 0;
+    const prob = Number(probability) !== undefined ? Number(probability) : 50;
+
     const opportunity = await Opportunity.create({
       companyId,
       leadId,
@@ -436,8 +534,8 @@ const createOpportunity = async (req, res) => {
       title: title || `${lead.name} - ${project.name}`,
       pipelineId: pipelineId || null,
       stage: stage || 'Site Visit Scheduled',
-      expectedValue: Number(expectedValue) || project.minPrice || 0,
-      probability: Number(probability) !== undefined ? Number(probability) : 50,
+      expectedValue: val,
+      probability: prob,
       assignedTo: assignedTo || lead.assignedTo || req.user._id,
       expectedClosingDate: expectedClosingDate ? new Date(expectedClosingDate) : null,
       notes: notes || '',
@@ -461,7 +559,7 @@ const updateOpportunityStage = async (req, res) => {
   try {
     const companyId = getTenantId(req.user);
     const { id } = req.params;
-    const { stage, probability, remark } = req.body;
+    const { stage, probability, remark, lostReason } = req.body;
 
     if (!stage) {
       return res.status(400).json({ message: 'Target stage is required' });
@@ -501,7 +599,7 @@ const updateOpportunityStage = async (req, res) => {
       opportunity.status = 'WON';
     } else if (stage === 'Closed Lost') {
       opportunity.status = 'LOST';
-      opportunity.lostReason = req.body.lostReason || 'Other';
+      opportunity.lostReason = lostReason || 'Other';
       opportunity.lostRemarks = remark || '';
     } else {
       opportunity.status = 'OPEN';
@@ -518,29 +616,73 @@ const updateOpportunityStage = async (req, res) => {
     await opportunity.save();
     await calculateLeadScoreInternal(opportunity.leadId, companyId);
 
+    // Audit Log
+    try {
+      await auditService.record({
+        req,
+        action: 'UPDATE',
+        resourceType: 'Opportunity',
+        resourceId: opportunity._id,
+        organizationId: companyId,
+        metadata: { fromStage: previousStage, toStage: stage, leadId: opportunity.leadId },
+      });
+    } catch {}
+
     return res.status(200).json({ success: true, data: opportunity });
   } catch (error) {
     return res.status(500).json({ message: 'Failed to update opportunity stage', error: error.message });
   }
 };
 
+const deleteOpportunity = async (req, res) => {
+  try {
+    const companyId = getTenantId(req.user);
+    const { id } = req.params;
+
+    const opportunity = await Opportunity.findOneAndDelete({ _id: id, companyId });
+    if (!opportunity) {
+      return res.status(404).json({ message: 'Opportunity not found' });
+    }
+
+    await calculateLeadScoreInternal(opportunity.leadId, companyId);
+
+    return res.status(200).json({ success: true, message: 'Opportunity deleted' });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to delete opportunity', error: error.message });
+  }
+};
+
 // ─────────────────────────────────────────────────────────────
-// 5. INVENTORY MANAGEMENT & CONCURRENCY
+// 5. INVENTORY MANAGEMENT & ATOMIC HOLD CONCURRENCY
 // ─────────────────────────────────────────────────────────────
 const getInventory = async (req, res) => {
   try {
     const companyId = getTenantId(req.user);
-    const { projectId, tower, configuration, status } = req.query;
+    const { projectId, tower, configuration, status, facing, minPrice, maxPrice, minArea, maxArea } = req.query;
 
     const query = { companyId };
     if (projectId) query.projectId = projectId;
     if (tower) query.tower = tower;
     if (configuration) query.configuration = configuration;
     if (status) query.status = status;
+    if (facing) query.facing = facing;
+
+    if (minPrice || maxPrice) {
+      query.totalPrice = {};
+      if (minPrice) query.totalPrice.$gte = Number(minPrice);
+      if (maxPrice) query.totalPrice.$lte = Number(maxPrice);
+    }
+
+    if (minArea || maxArea) {
+      query.carpetArea = {};
+      if (minArea) query.carpetArea.$gte = Number(minArea);
+      if (maxArea) query.carpetArea.$lte = Number(maxArea);
+    }
 
     const inventory = await Inventory.find(query)
       .populate('projectId', 'name location developer')
       .populate('bookedByLeadId', 'name phone')
+      .populate('holdByLeadId', 'name phone')
       .sort({ tower: 1, floor: 1, unitNumber: 1 })
       .lean();
 
@@ -553,7 +695,21 @@ const getInventory = async (req, res) => {
 const createInventory = async (req, res) => {
   try {
     const companyId = getTenantId(req.user);
-    const { projectId, tower, floor, unitNumber, configuration, facing, carpetArea, builtUpArea, superArea, basePrice, additionalCharges, totalPrice, notes } = req.body;
+    const {
+      projectId,
+      tower,
+      floor,
+      unitNumber,
+      configuration,
+      facing,
+      carpetArea,
+      builtUpArea,
+      superArea,
+      basePrice,
+      additionalCharges,
+      totalPrice,
+      notes,
+    } = req.body;
 
     if (!projectId || !unitNumber) {
       return res.status(400).json({ message: 'Project ID and Unit Number are mandatory' });
@@ -603,6 +759,199 @@ const createInventory = async (req, res) => {
   }
 };
 
+const bulkCreateInventory = async (req, res) => {
+  try {
+    const companyId = getTenantId(req.user);
+    const { projectId, units } = req.body;
+
+    if (!projectId || !Array.isArray(units) || units.length === 0) {
+      return res.status(400).json({ message: 'Project ID and an array of units are required' });
+    }
+
+    const project = await Project.findOne({
+      _id: projectId,
+      $or: [{ companyId }, { userId: companyId }, { userId: req.user._id }],
+    });
+    if (!project) return res.status(404).json({ message: 'Project not found in this organization' });
+
+    const docsToInsert = units.map((u) => ({
+      companyId,
+      projectId,
+      tower: u.tower || 'Tower A',
+      floor: Number(u.floor) || 1,
+      unitNumber: String(u.unitNumber).trim(),
+      configuration: u.configuration || '3BHK',
+      facing: u.facing || 'East',
+      carpetArea: Number(u.carpetArea) || 0,
+      builtUpArea: Number(u.builtUpArea) || 0,
+      superArea: Number(u.superArea) || 0,
+      basePrice: Number(u.basePrice) || 0,
+      additionalCharges: Number(u.additionalCharges) || 0,
+      totalPrice: Number(u.totalPrice || (Number(u.basePrice || 0) + Number(u.additionalCharges || 0))),
+      status: 'AVAILABLE',
+      notes: u.notes || '',
+    }));
+
+    const inserted = await Inventory.insertMany(docsToInsert, { ordered: false });
+
+    // Refresh project counters
+    const [totalUnits, availableUnits] = await Promise.all([
+      Inventory.countDocuments({ companyId, projectId }),
+      Inventory.countDocuments({ companyId, projectId, status: 'AVAILABLE' }),
+    ]);
+
+    await Project.updateOne({ _id: projectId }, { $set: { totalUnits, availableUnits } });
+
+    return res.status(201).json({ success: true, count: inserted.length, data: inserted });
+  } catch (error) {
+    return res.status(500).json({ message: 'Bulk inventory creation failed', error: error.message });
+  }
+};
+
+// Atomic Hold Endpoint
+const holdInventoryUnit = async (req, res) => {
+  try {
+    const companyId = getTenantId(req.user);
+    const { id } = req.params;
+    const { leadId, durationMinutes } = req.body;
+
+    if (!leadId) {
+      return res.status(400).json({ message: 'leadId is required to place a unit on hold' });
+    }
+
+    // Validate Lead
+    const lead = await Lead.findOne({ _id: leadId, companyId });
+    if (!lead) return res.status(404).json({ message: 'Lead not found in this organization' });
+
+    const minutes = Number(durationMinutes) || 1440; // Default 24 hours
+    const expiresAt = new Date(Date.now() + minutes * 60 * 1000);
+
+    // ATOMIC conditional update: Must be strictly AVAILABLE
+    const unit = await Inventory.findOneAndUpdate(
+      {
+        _id: id,
+        companyId,
+        status: 'AVAILABLE',
+      },
+      {
+        $set: {
+          status: 'HOLD',
+          holdExpiresAt: expiresAt,
+          holdByLeadId: leadId,
+        },
+      },
+      { new: true }
+    );
+
+    if (!unit) {
+      return res.status(409).json({
+        code: 'INVENTORY_NOT_AVAILABLE',
+        message: 'Conflict: This unit is not currently AVAILABLE. It may be already on HOLD or BOOKED.',
+      });
+    }
+
+    // Sync project counters
+    const availableUnits = await Inventory.countDocuments({ companyId, projectId: unit.projectId, status: 'AVAILABLE' });
+    await Project.updateOne({ _id: unit.projectId }, { $set: { availableUnits } });
+
+    // Audit Log
+    try {
+      await auditService.record({
+        req,
+        action: 'UPDATE',
+        resourceType: 'Inventory',
+        resourceId: unit._id,
+        organizationId: companyId,
+        metadata: { leadId, expiresAt, unitNumber: unit.unitNumber },
+      });
+    } catch {}
+
+    return res.status(200).json({ success: true, data: unit });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to hold unit', error: error.message });
+  }
+};
+
+// Atomic Release Endpoint
+const releaseInventoryHold = async (req, res) => {
+  try {
+    const companyId = getTenantId(req.user);
+    const { id } = req.params;
+
+    const unit = await Inventory.findOneAndUpdate(
+      {
+        _id: id,
+        companyId,
+        status: { $in: ['HOLD', 'BLOCKED'] },
+      },
+      {
+        $set: {
+          status: 'AVAILABLE',
+          holdExpiresAt: null,
+          holdByLeadId: null,
+        },
+      },
+      { new: true }
+    );
+
+    if (!unit) {
+      return res.status(404).json({ message: 'Unit not found or was not on HOLD/BLOCKED status' });
+    }
+
+    const availableUnits = await Inventory.countDocuments({ companyId, projectId: unit.projectId, status: 'AVAILABLE' });
+    await Project.updateOne({ _id: unit.projectId }, { $set: { availableUnits } });
+
+    return res.status(200).json({ success: true, data: unit });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to release unit', error: error.message });
+  }
+};
+
+// Release Expired Holds Job
+const releaseExpiredHolds = async (req, res) => {
+  try {
+    const companyId = getTenantId(req.user);
+    const now = new Date();
+
+    const expiredUnits = await Inventory.find({
+      companyId,
+      status: 'HOLD',
+      holdExpiresAt: { $lt: now },
+    });
+
+    if (expiredUnits.length > 0) {
+      const projectIds = [...new Set(expiredUnits.map((u) => String(u.projectId)))];
+
+      await Inventory.updateMany(
+        {
+          companyId,
+          status: 'HOLD',
+          holdExpiresAt: { $lt: now },
+        },
+        {
+          $set: {
+            status: 'AVAILABLE',
+            holdExpiresAt: null,
+            holdByLeadId: null,
+          },
+        }
+      );
+
+      for (const pId of projectIds) {
+        const availableUnits = await Inventory.countDocuments({ companyId, projectId: pId, status: 'AVAILABLE' });
+        await Project.updateOne({ _id: pId }, { $set: { availableUnits } });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      releasedCount: expiredUnits.length,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to release expired holds', error: error.message });
+  }
+};
+
 const updateInventoryStatus = async (req, res) => {
   try {
     const companyId = getTenantId(req.user);
@@ -614,9 +963,19 @@ const updateInventoryStatus = async (req, res) => {
       return res.status(400).json({ message: `Invalid status. Must be one of ${allowedStatuses.join(', ')}` });
     }
 
+    const currentUnit = await Inventory.findOne({ _id: id, companyId });
+    if (!currentUnit) {
+      return res.status(404).json({ message: 'Inventory unit not found' });
+    }
+
+    // Controlled State Machine Rules
+    if (currentUnit.status === 'SOLD') {
+      return res.status(409).json({ message: 'Cannot mutate unit in SOLD status.' });
+    }
+
     const updateDoc = { status };
     if (status === 'HOLD') {
-      const minutes = Number(holdExpiresInMinutes) || 1440; // Default 24 hours
+      const minutes = Number(holdExpiresInMinutes) || 1440;
       updateDoc.holdExpiresAt = new Date(Date.now() + minutes * 60 * 1000);
       if (leadId) updateDoc.holdByLeadId = leadId;
     } else if (status === 'AVAILABLE') {
@@ -630,10 +989,6 @@ const updateInventoryStatus = async (req, res) => {
       { $set: updateDoc },
       { new: true }
     );
-
-    if (!unit) {
-      return res.status(404).json({ message: 'Inventory unit not found' });
-    }
 
     // Refresh Project availableUnits counter
     const availableUnits = await Inventory.countDocuments({ companyId, projectId: unit.projectId, status: 'AVAILABLE' });
@@ -731,9 +1086,82 @@ const createEOI = async (req, res) => {
     // Recalculate lead score & temperature
     await calculateLeadScoreInternal(leadId, companyId);
 
+    // Audit Log
+    try {
+      await auditService.record({
+        req,
+        action: 'CREATE',
+        resourceType: 'EOI',
+        resourceId: eoi._id,
+        organizationId: companyId,
+        metadata: { leadId, eoiNumber, tokenAmount },
+      });
+    } catch {}
+
     return res.status(201).json({ success: true, data: eoi });
   } catch (error) {
     return res.status(500).json({ message: 'Failed to create EOI', error: error.message });
+  }
+};
+
+const confirmEOI = async (req, res) => {
+  try {
+    const companyId = getTenantId(req.user);
+    const { id } = req.params;
+    const { paymentReference, paymentMode } = req.body;
+
+    const eoi = await EOI.findOneAndUpdate(
+      { _id: id, companyId },
+      {
+        $set: {
+          status: 'CONFIRMED',
+          paymentStatus: 'PAID',
+          paymentReference: paymentReference || '',
+          paymentMode: paymentMode || 'UPI',
+        },
+      },
+      { new: true }
+    );
+
+    if (!eoi) return res.status(404).json({ message: 'EOI not found' });
+
+    await calculateLeadScoreInternal(eoi.leadId, companyId);
+
+    return res.status(200).json({ success: true, data: eoi });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to confirm EOI', error: error.message });
+  }
+};
+
+const cancelEOI = async (req, res) => {
+  try {
+    const companyId = getTenantId(req.user);
+    const { id } = req.params;
+    const { cancellationReason } = req.body;
+
+    const eoi = await EOI.findOne({ _id: id, companyId });
+    if (!eoi) return res.status(404).json({ message: 'EOI not found' });
+
+    eoi.status = 'CANCELLED';
+    eoi.notes = (eoi.notes ? `${eoi.notes}\n` : '') + `Cancelled: ${cancellationReason || 'User request'}`;
+    await eoi.save();
+
+    // Release held inventory unit safely
+    if (eoi.inventoryId) {
+      await Inventory.updateOne(
+        { _id: eoi.inventoryId, companyId, holdByLeadId: eoi.leadId },
+        { $set: { status: 'AVAILABLE', holdExpiresAt: null, holdByLeadId: null } }
+      );
+
+      const availableUnits = await Inventory.countDocuments({ companyId, projectId: eoi.projectId, status: 'AVAILABLE' });
+      await Project.updateOne({ _id: eoi.projectId }, { $set: { availableUnits } });
+    }
+
+    await calculateLeadScoreInternal(eoi.leadId, companyId);
+
+    return res.status(200).json({ success: true, message: 'EOI cancelled and inventory released' });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to cancel EOI', error: error.message });
   }
 };
 
@@ -766,7 +1194,17 @@ const getBookings = async (req, res) => {
 const createBooking = async (req, res) => {
   try {
     const companyId = getTenantId(req.user);
-    const { leadId, opportunityId, projectId, inventoryId, eoiId, bookingAmount, agreementValue, paymentPlan, notes } = req.body;
+    const {
+      leadId,
+      opportunityId,
+      projectId,
+      inventoryId,
+      eoiId,
+      bookingAmount,
+      agreementValue,
+      paymentPlan,
+      notes,
+    } = req.body;
 
     if (!leadId || !projectId || !inventoryId || !bookingAmount || !agreementValue) {
       return res.status(400).json({ message: 'Lead, Project, Inventory, Booking Amount, and Agreement Value are mandatory.' });
@@ -805,6 +1243,38 @@ const createBooking = async (req, res) => {
     const numBookingAmount = Number(bookingAmount);
     const numAgreementValue = Number(agreementValue);
 
+    // Calculate Commission if active rule exists
+    let calculatedCommissionAmount = 0;
+    let commissionRuleApplied = null;
+
+    try {
+      const activeRule = await CommissionRule.findOne({
+        isActive: true,
+      });
+
+      if (activeRule) {
+        commissionRuleApplied = activeRule._id;
+        if (activeRule.commissionType === 'PERCENTAGE') {
+          calculatedCommissionAmount = (numAgreementValue * activeRule.value) / 100;
+        } else {
+          calculatedCommissionAmount = activeRule.value;
+        }
+
+        // Record payout
+        await CommissionPayout.create({
+          userId: req.user._id,
+          leadId,
+          saleValue: numAgreementValue,
+          commissionEarned: calculatedCommissionAmount,
+          appliedRuleId: activeRule._id,
+          ruleNameSnapshot: activeRule.ruleName,
+          status: 'PENDING',
+        });
+      }
+    } catch (e) {
+      console.warn('Commission rule evaluation skipped:', e.message);
+    }
+
     const booking = await Booking.create({
       companyId,
       leadId,
@@ -817,6 +1287,8 @@ const createBooking = async (req, res) => {
       agreementValue: numAgreementValue,
       paymentPlan: paymentPlan || 'CLP',
       totalPaid: numBookingAmount,
+      commissionCalculated: Boolean(calculatedCommissionAmount),
+      commissionAmount: calculatedCommissionAmount,
       status: 'CONFIRMED',
       createdBy: req.user._id,
       notes: notes || '',
@@ -898,12 +1370,99 @@ const createBooking = async (req, res) => {
     const availableUnits = await Inventory.countDocuments({ companyId, projectId, status: 'AVAILABLE' });
     await Project.updateOne({ _id: projectId }, { $set: { availableUnits } });
 
+    // Audit Log
+    try {
+      await auditService.record({
+        req,
+        action: 'CREATE',
+        resourceType: 'Booking',
+        resourceId: booking._id,
+        organizationId: companyId,
+        metadata: { bookingNumber, agreementValue: numAgreementValue, leadId },
+      });
+    } catch {}
+
     return res.status(201).json({ success: true, data: booking });
   } catch (error) {
     return res.status(500).json({ message: 'Failed to create booking', error: error.message });
   }
 };
 
+const updateBookingStatus = async (req, res) => {
+  try {
+    const companyId = getTenantId(req.user);
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const allowed = ['CONFIRMED', 'AGREEMENT_SIGNED', 'REGISTERED'];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({ message: `Status must be one of: ${allowed.join(', ')}` });
+    }
+
+    const booking = await Booking.findOneAndUpdate(
+      { _id: id, companyId },
+      { $set: { status } },
+      { new: true }
+    );
+
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+    return res.status(200).json({ success: true, data: booking });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to update booking status', error: error.message });
+  }
+};
+
+const cancelBooking = async (req, res) => {
+  try {
+    const companyId = getTenantId(req.user);
+    const { id } = req.params;
+    const { cancellationReason } = req.body;
+
+    const booking = await Booking.findOne({ _id: id, companyId });
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+    booking.status = 'CANCELLED';
+    booking.cancelledAt = new Date();
+    booking.cancelledBy = req.user._id;
+    booking.cancellationReason = cancellationReason || 'Cancellation requested';
+    await booking.save();
+
+    // Release Inventory unit back to AVAILABLE
+    if (booking.inventoryId) {
+      await Inventory.updateOne(
+        { _id: booking.inventoryId, companyId },
+        { $set: { status: 'AVAILABLE', bookedByLeadId: null, holdExpiresAt: null, holdByLeadId: null } }
+      );
+
+      const availableUnits = await Inventory.countDocuments({ companyId, projectId: booking.projectId, status: 'AVAILABLE' });
+      await Project.updateOne({ _id: booking.projectId }, { $set: { availableUnits } });
+    }
+
+    // Recalculate lead score
+    await calculateLeadScoreInternal(booking.leadId, companyId);
+
+    // Audit Log
+    try {
+      await auditService.record({
+        req,
+        action: 'UPDATE',
+        resourceType: 'Booking',
+        resourceId: booking._id,
+        organizationId: companyId,
+        metadata: { bookingNumber: booking.bookingNumber, cancellationReason },
+      });
+    } catch {}
+
+    return res.status(200).json({ success: true, message: 'Booking cancelled and inventory released.' });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to cancel booking', error: error.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// 8. PAYMENT SCHEDULE & RECEIPTS
+// ─────────────────────────────────────────────────────────────
 const getBookingPaymentSchedule = async (req, res) => {
   try {
     const companyId = getTenantId(req.user);
@@ -952,14 +1511,144 @@ const recordPaymentReceipt = async (req, res) => {
       { $inc: { totalPaid: numPaid } }
     );
 
+    // Audit Log
+    try {
+      await auditService.record({
+        req,
+        action: 'UPDATE',
+        resourceType: 'PaymentSchedule',
+        resourceId: schedule._id,
+        organizationId: companyId,
+        metadata: { paidAmount: numPaid, milestoneName: schedule.milestoneName },
+      });
+    } catch {}
+
     return res.status(200).json({ success: true, data: schedule });
   } catch (error) {
     return res.status(500).json({ message: 'Failed to record payment', error: error.message });
   }
 };
 
+const getPaymentsSummary = async (req, res) => {
+  try {
+    const companyId = getTenantId(req.user);
+    const now = new Date();
+
+    const [allSchedules, bookings] = await Promise.all([
+      PaymentSchedule.find({ companyId }).lean(),
+      Booking.find({ companyId, status: { $ne: 'CANCELLED' } }).select('agreementValue totalPaid').lean(),
+    ]);
+
+    let totalCollected = 0;
+    let upcomingAmount = 0;
+    let dueAmount = 0;
+    let overdueAmount = 0;
+
+    for (const s of allSchedules) {
+      const remaining = Math.max(0, s.amount - (s.paidAmount || 0));
+      if (s.status === 'PAID') {
+        totalCollected += s.paidAmount || 0;
+      } else {
+        totalCollected += s.paidAmount || 0;
+        if (new Date(s.dueDate) < now) {
+          overdueAmount += remaining;
+        } else if (new Date(s.dueDate) <= new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000)) {
+          dueAmount += remaining;
+        } else {
+          upcomingAmount += remaining;
+        }
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        totalCollected,
+        upcomingAmount,
+        dueAmount,
+        overdueAmount,
+        totalMilestones: allSchedules.length,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to fetch payments summary', error: error.message });
+  }
+};
+
 // ─────────────────────────────────────────────────────────────
-// 8. REAL ESTATE ANALYTICS SUMMARY
+// 9. OFFERS / SCHEMES ENGINE
+// ─────────────────────────────────────────────────────────────
+const getOffers = async (req, res) => {
+  try {
+    const companyId = getTenantId(req.user);
+    const { projectId, status } = req.query;
+
+    const query = { companyId };
+    if (projectId) query.applicableProjects = projectId;
+    if (status) query.status = status;
+
+    const offers = await Offer.find(query)
+      .populate('applicableProjects', 'name location')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({ success: true, count: offers.length, data: offers });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to fetch offers', error: error.message });
+  }
+};
+
+const createOffer = async (req, res) => {
+  try {
+    const companyId = getTenantId(req.user);
+    const {
+      title,
+      code,
+      schemeType,
+      discountPct,
+      discountFixed,
+      applicableProjects,
+      validFrom,
+      validUntil,
+    } = req.body;
+
+    if (!title) return res.status(400).json({ message: 'Offer title is required' });
+
+    const offer = await Offer.create({
+      companyId,
+      title,
+      code: code ? String(code).toUpperCase() : `SCHEME-${Date.now().toString().slice(-4)}`,
+      schemeType: schemeType || 'flat_discount',
+      discountPct: Number(discountPct) || null,
+      discountFixed: Number(discountFixed) || null,
+      applicableProjects: Array.isArray(applicableProjects) ? applicableProjects : [],
+      validFrom: validFrom ? new Date(validFrom) : new Date(),
+      validUntil: validUntil ? new Date(validUntil) : null,
+      status: 'ACTIVE',
+    });
+
+    return res.status(201).json({ success: true, data: offer });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to create offer', error: error.message });
+  }
+};
+
+const deleteOffer = async (req, res) => {
+  try {
+    const companyId = getTenantId(req.user);
+    const { id } = req.params;
+
+    const offer = await Offer.findOneAndDelete({ _id: id, companyId });
+    if (!offer) return res.status(404).json({ message: 'Offer not found' });
+
+    return res.status(200).json({ success: true, message: 'Offer removed' });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to delete offer', error: error.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// 10. REAL ESTATE ANALYTICS SUMMARY
 // ─────────────────────────────────────────────────────────────
 const getRealEstateAnalytics = async (req, res) => {
   try {
@@ -1080,19 +1769,33 @@ module.exports = {
   getRequirements,
   createRequirement,
   updateRequirement,
+  toggleRequirementStatus,
   deleteRequirement,
   getOpportunities,
   createOpportunity,
   updateOpportunityStage,
+  deleteOpportunity,
   getInventory,
   createInventory,
+  bulkCreateInventory,
   updateInventoryStatus,
+  holdInventoryUnit,
+  releaseInventoryHold,
+  releaseExpiredHolds,
   getEOIs,
   createEOI,
+  confirmEOI,
+  cancelEOI,
   getBookings,
   createBooking,
+  updateBookingStatus,
+  cancelBooking,
   getBookingPaymentSchedule,
   recordPaymentReceipt,
+  getPaymentsSummary,
+  getOffers,
+  createOffer,
+  deleteOffer,
   getRealEstateAnalytics,
   calculateLeadScoreInternal,
 };

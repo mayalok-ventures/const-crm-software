@@ -127,79 +127,106 @@ const normalizeLeadStage = (rawStatus) => {
 // Helper: Robust Multi-Tenant Query Scoper
 const getTenantScope = (user) => {
   if (!user) return { _id: null };
-  // Super Admin / Platform Admin with no companyId constraint has global oversight
-  if (user.role === 'superadmin' || (user.isAdmin && !user.companyId)) {
+  // ONLY true platform SuperAdmin may bypass tenant scoping
+  if (user.role === 'superadmin') {
     return {};
   }
+  const tenantId = user.companyId
+    ? new mongoose.Types.ObjectId(String(user.companyId))
+    : new mongoose.Types.ObjectId(String(user._id));
+
+  if (!tenantId) {
+    return { _id: null };
+  }
+
   if (user.companyId) {
-    const cid = new mongoose.Types.ObjectId(String(user.companyId));
+    if (user.role === 'manager' || user.companyRole === 'manager') {
+      const uid = new mongoose.Types.ObjectId(String(user._id));
+      return {
+        $and: [
+          { $or: [{ companyId: tenantId }, { userId: tenantId }, { sharedWithCompanyId: tenantId }] },
+          { $or: [{ assignedManager: uid }, { assignedTo: uid }, { userId: uid }] },
+        ],
+      };
+    }
+    if (user.role === 'agent' || user.companyRole === 'agent' || user.companyRole === 'sales_rep' || user.companyRole === 'telecaller') {
+      const uid = new mongoose.Types.ObjectId(String(user._id));
+      return {
+        $and: [
+          { $or: [{ companyId: tenantId }, { userId: tenantId }, { sharedWithCompanyId: tenantId }] },
+          { assignedTo: uid },
+        ],
+      };
+    }
     return {
       $or: [
-        { companyId: cid },
-        { userId: cid },
-        { sharedWithCompanyId: cid },
+        { companyId: tenantId },
+        { userId: tenantId },
+        { sharedWithCompanyId: tenantId },
       ],
     };
   }
-  if (user.workStatus === 'company_owner' || user.companyRole === 'owner' || user.role === 'admin') {
-    const uid = new mongoose.Types.ObjectId(String(user._id));
-    return {
-      $or: [
-        { companyId: uid },
-        { userId: uid },
-        { sharedWithCompanyId: uid },
-      ],
-    };
-  }
-  if (user.role === 'manager') {
-    const uid = new mongoose.Types.ObjectId(String(user._id));
-    return {
-      $or: [
-        { assignedManager: uid },
-        { assignedTo: uid },
-        { userId: uid },
-      ],
-    };
-  }
-  return { assignedTo: new mongoose.Types.ObjectId(String(user._id)) };
+
+  // Tenant owner or solo professional (where tenantId === user._id)
+  return {
+    $or: [
+      { companyId: tenantId },
+      { userId: tenantId },
+      { sharedWithCompanyId: tenantId },
+    ],
+  };
 };
 
 const getTenantUserScope = (user) => {
   if (!user) return { _id: null };
-  // Super Admin / Platform Admin with no companyId constraint has global oversight
-  if (user.role === 'superadmin' || (user.isAdmin && !user.companyId)) {
+  // ONLY true platform SuperAdmin may bypass tenant user scoping
+  if (user.role === 'superadmin') {
     return {};
   }
+  const tenantId = user.companyId
+    ? new mongoose.Types.ObjectId(String(user.companyId))
+    : new mongoose.Types.ObjectId(String(user._id));
+
+  if (!tenantId) {
+    return { _id: null };
+  }
+
   if (user.companyId) {
-    const cid = new mongoose.Types.ObjectId(String(user.companyId));
+    if (user.role === 'manager' || user.companyRole === 'manager') {
+      const uid = new mongoose.Types.ObjectId(String(user._id));
+      return {
+        $and: [
+          { $or: [{ companyId: tenantId }, { _id: tenantId }] },
+          { $or: [{ managerId: uid }, { _id: uid }] },
+        ],
+      };
+    }
+    if (user.role === 'agent' || user.companyRole === 'agent') {
+      const uid = new mongoose.Types.ObjectId(String(user._id));
+      return {
+        $and: [
+          { $or: [{ companyId: tenantId }, { _id: tenantId }] },
+          { _id: uid },
+        ],
+      };
+    }
     return {
       $or: [
-        { companyId: cid },
-        { managerId: cid },
-        { _id: cid },
+        { companyId: tenantId },
+        { managerId: tenantId },
+        { _id: tenantId },
       ],
     };
   }
-  if (user.workStatus === 'company_owner' || user.companyRole === 'owner' || user.role === 'admin') {
-    const uid = new mongoose.Types.ObjectId(String(user._id));
-    return {
-      $or: [
-        { companyId: uid },
-        { managerId: uid },
-        { _id: uid },
-      ],
-    };
-  }
-  if (user.role === 'manager') {
-    const uid = new mongoose.Types.ObjectId(String(user._id));
-    return {
-      $or: [
-        { managerId: uid },
-        { _id: uid },
-      ],
-    };
-  }
-  return { _id: new mongoose.Types.ObjectId(String(user._id)) };
+
+  // Tenant owner (where tenantId === user._id)
+  return {
+    $or: [
+      { companyId: tenantId },
+      { managerId: tenantId },
+      { _id: tenantId },
+    ],
+  };
 };
 
 // ─────────────────────────────────────────────────────────────

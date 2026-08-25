@@ -77,8 +77,8 @@ export default function LoginPage() {
 
       setAuth(data, data.token);
       toast.success(`Welcome back, ${data.name}! 👋`);
-      if (data.role === 'superadmin' || data.isAdmin) {
-        router.replace('/admin');
+      if (data.role === 'superadmin') {
+        router.replace('/superadmin-dashboard');
       } else {
         router.replace('/dashboard');
       }
@@ -109,8 +109,8 @@ export default function LoginPage() {
       const { data } = await api.post('/auth/verify-2fa', payload);
       setAuth(data, data.token);
       toast.success(`Security check passed! Welcome, ${data.name}! 🚀`);
-      if (data.role === 'superadmin' || data.isAdmin) {
-        router.replace('/admin');
+      if (data.role === 'superadmin') {
+        router.replace('/superadmin-dashboard');
       } else {
         router.replace('/dashboard');
       }
@@ -131,8 +131,8 @@ export default function LoginPage() {
       });
       setAuth(data, data.token);
       toast.success('2FA successfully removed! Welcome back! 🎉');
-      if (data.role === 'superadmin' || data.isAdmin) {
-        router.replace('/admin');
+      if (data.role === 'superadmin') {
+        router.replace('/superadmin-dashboard');
       } else {
         router.replace('/dashboard');
       }

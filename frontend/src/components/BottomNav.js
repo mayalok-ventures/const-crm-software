@@ -16,7 +16,7 @@ const MOBILE_ITEMS = [
   { href: '/integrations', label: 'Ads & APIs', icon: Zap, key: 'integrations' },
   { href: '/catalogue', label: 'Colleges', icon: GraduationCap, key: 'catalogue' },
   { href: '/whatsapp', label: 'Inbox', icon: MessageCircle, key: 'whatsapp' },
-  { href: '/admin?tab=profile', label: 'Profile', icon: User, key: 'profile' },
+  { href: '/profile', label: 'Profile', icon: User, key: 'profile' },
 ];
 
 const DESKTOP_ITEMS = [
@@ -29,7 +29,7 @@ const DESKTOP_ITEMS = [
   { href: '/templates', label: 'Message Templates', icon: FileText, key: 'templates' },
   { href: '/groups', label: 'Audience Groups', icon: Users, key: 'groups' },
   { href: '/analytics', label: 'Sales Analytics', icon: BarChart2, key: 'analytics' },
-  { href: '/admin?tab=profile', label: 'Organization & Profile', icon: User, key: 'profile' },
+  { href: '/profile', label: 'Organization & Profile', icon: User, key: 'profile' },
 ];
 
 export default function BottomNav({ active }) {
@@ -40,7 +40,7 @@ export default function BottomNav({ active }) {
   const [isEducation, setIsEducation] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  const [profileHref, setProfileHref] = useState('/admin?tab=profile');
+  const [profileHref, setProfileHref] = useState('/profile');
 
   useEffect(() => {
     try {
@@ -71,15 +71,13 @@ export default function BottomNav({ active }) {
     const user = getUser();
     if (user?.role === 'superadmin') {
       setProfileHref('/superadmin-dashboard');
-    } else if (user?.companyRole === 'owner' || user?.workStatus === 'company_owner' || user?.role === 'admin') {
-      setProfileHref('/admin?tab=profile');
     } else {
       setProfileHref('/profile');
     }
-    if (user && (user.role === 'admin' || user.role === 'superadmin' || user.companyRole === 'owner' || user.workStatus === 'company_owner')) {
+    if (user && (user.role === 'admin' || user.companyRole === 'owner' || user.workStatus === 'company_owner')) {
       setIsAdminUser(true);
     }
-    if (user && (user.role === 'admin' || user.role === 'superadmin' || user.companyRole === 'owner' || user.companyRole === 'manager' || user.workStatus === 'company_owner')) {
+    if (user && (user.role === 'admin' || user.companyRole === 'owner' || user.companyRole === 'manager' || user.workStatus === 'company_owner')) {
       setIsAgencyAdmin(true);
     }
     if (String(user?.industryType || '').trim().toLowerCase() === 'education') {
@@ -94,15 +92,6 @@ export default function BottomNav({ active }) {
     if (!pathname) return false;
     const normPath = normalize(pathname);
     const normHref = normalize(href?.split('?')[0]);
-    if (key === 'profile') {
-      if (href?.includes('tab=profile')) {
-        return normPath === '/admin' && (typeof window !== 'undefined' && window.location.search.includes('tab=profile'));
-      }
-      return normPath === normHref;
-    }
-    if (key === 'admin') {
-      return normPath === '/admin' && (typeof window === 'undefined' || !window.location.search.includes('tab=profile'));
-    }
     return normPath === normHref;
   };
 
