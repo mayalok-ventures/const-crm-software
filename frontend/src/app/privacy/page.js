@@ -417,8 +417,8 @@ export default function PrivacyPolicyPage() {
             <div className="bg-slate-950/90 border border-slate-800 p-5 rounded-xl text-xs sm:text-sm space-y-2">
               <p><strong className="text-white">Grievance & Privacy Officer:</strong> CoreSetu Legal & Compliance Team</p>
               <p><strong className="text-white">Entity:</strong> CoreSetu Technologies</p>
-              <p><strong className="text-white">Email:</strong> <a href="mailto:privacy@coresetu.com" className="text-indigo-400 hover:underline">privacy@coresetu.com</a></p>
-              <p><strong className="text-white">Support Desk:</strong> <a href="mailto:support@coresetu.com" className="text-indigo-400 hover:underline">support@coresetu.com</a></p>
+              <p><strong className="text-white">Email:</strong> <a href="mailto:privacy@sahyak.com" className="text-indigo-400 hover:underline">privacy@sahyak.com</a></p>
+              <p><strong className="text-white">Support Desk:</strong> <a href="mailto:support@sahyak.com" className="text-indigo-400 hover:underline">support@sahyak.com</a></p>
               <p><strong className="text-white">Response Window:</strong> Within 48 business hours.</p>
             </div>
           </section>

@@ -1,15 +1,18 @@
 import axios from 'axios';
 
 const getBaseUrl = () => {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
   if (typeof window !== 'undefined') {
-    // If running on production domain (crm.coresetu.com or any public domain)
-    if (window.location.hostname === 'crm.coresetu.com' || (!window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1'))) {
-      return 'https://api.coresetu.com/api';
+    // If running on production domain (crm.sahyak.com or any public domain)
+    if (window.location.hostname === 'crm.sahyak.com' || (!window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1'))) {
+      return 'https://api.sahyak.com/api';
     }
     // If running locally in browser
-    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+    return 'http://localhost:5000/api';
   }
-  return process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV === 'production' ? 'https://api.coresetu.com/api' : 'http://localhost:5000/api');
+  return process.env.NODE_ENV === 'production' ? 'https://api.sahyak.com/api' : 'http://localhost:5000/api';
 };
 
 export const API_URL = getBaseUrl();

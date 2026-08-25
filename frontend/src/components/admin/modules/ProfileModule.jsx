@@ -193,7 +193,7 @@ export default function ProfileModule({
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-3">
-              <span>{profileForm.email || 'admin@coresetu.com'}</span>
+              <span>{profileForm.email || 'admin@sahyak.com'}</span>
               <span>•</span>
               <span>{companyForm.companyName || 'CoreSetu OS Command Center'}</span>
             </p>

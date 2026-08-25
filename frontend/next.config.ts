@@ -20,6 +20,16 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
+        hostname: 'api.sahyak.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'crm.sahyak.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
         hostname: 'api.coresetu.com',
         pathname: '/**',
       },

@@ -14,7 +14,7 @@ function getGoogleRedirectUri(req) {
   if (process.env.BACKEND_URL && !process.env.BACKEND_URL.includes('localhost')) {
     return `${process.env.BACKEND_URL}/api/integrations/google/oauth/callback`;
   }
-  return 'https://api.coresetu.com/api/integrations/google/oauth/callback';
+  return 'https://api.sahyak.com/api/integrations/google/oauth/callback';
 }
 
 const GOOGLE_SCOPES = [
@@ -28,43 +28,25 @@ function generateOAuthState(userId, companyId, frontendUrl) {
   const payload = {
     userId: String(userId),
     companyId: companyId ? String(companyId) : null,
-    frontendUrl: frontendUrl || null,
-    nonce: crypto.randomBytes(16).toString('hex'),
-    createdAt: Date.now(),
+    frontendUrl: frontendUrl || process.env.FRONTEND_URL || 'https://crm.sahyak.com',
+    timestamp: Date.now(),
   };
-  const dataStr = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const sig = crypto
-    .createHmac('sha256', secret)
-    .update(dataStr)
-    .digest('base64url');
-
-  return `${dataStr}.${sig}`;
+  const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
+  return `${data}.${sig}`;
 }
 
 function verifyOAuthState(state) {
   if (!state || typeof state !== 'string') return null;
   const parts = state.split('.');
   if (parts.length !== 2) return null;
-
-  const [dataStr, sig] = parts;
+  const [data, sig] = parts;
   const secret = process.env.JWT_SECRET || 'crm_oauth_state_hmac_secret';
-  const expectedSig = crypto
-    .createHmac('sha256', secret)
-    .update(dataStr)
-    .digest('base64url');
-
+  const expectedSig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
   if (sig !== expectedSig) return null;
-
   try {
-    const payload = JSON.parse(
-      Buffer.from(dataStr, 'base64url').toString('utf8')
-    );
-    if (!payload.userId || !payload.createdAt) return null;
-
-    if (Date.now() - Number(payload.createdAt) > 15 * 60 * 1000) {
-      return null;
-    }
-
+    const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf8'));
+    if (Date.now() - payload.timestamp > 15 * 60 * 1000) return null;
     return payload;
   } catch {
     return null;
@@ -72,9 +54,9 @@ function verifyOAuthState(state) {
 }
 
 /**
- * GET /api/integrations/google/oauth
+ * GET /api/integrations/google/oauth/start
  */
-exports.startOAuth = async (req, res) => {
+exports.start = async (req, res) => {
   try {
     if (!req.user?._id) {
       return res.status(401).json({
@@ -84,8 +66,8 @@ exports.startOAuth = async (req, res) => {
       });
     }
 
-    const clientId = (process.env.GOOGLE_CLIENT_ID || '').trim();
-    const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').trim();
+    const clientId = GOOGLE_CLIENT_ID || (req.query && req.query.client_id) || null;
+    const clientSecret = GOOGLE_CLIENT_SECRET || null;
     const redirectUri = getGoogleRedirectUri(req);
 
     // Extract frontendUrl dynamically
@@ -98,7 +80,7 @@ exports.startOAuth = async (req, res) => {
     }
     if (!frontendUrl) {
       const isLocal = !process.env.NODE_ENV || process.env.NODE_ENV === 'development' || (req && req.headers && req.headers.host && req.headers.host.includes('localhost'));
-      frontendUrl = isLocal ? 'http://localhost:3000' : (process.env.FRONTEND_URL || 'https://crm.coresetu.com');
+      frontendUrl = isLocal ? 'http://localhost:3000' : (process.env.FRONTEND_URL || 'https://crm.sahyak.com');
     }
 
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? req.user._id : null);
@@ -190,7 +172,7 @@ exports.startOAuth = async (req, res) => {
  */
 exports.callback = async (req, res) => {
   const isLocal = !process.env.NODE_ENV || process.env.NODE_ENV === 'development' || (req && req.headers && req.headers.host && req.headers.host.includes('localhost'));
-  let resolvedFrontendUrl = isLocal ? 'http://localhost:3000' : (process.env.FRONTEND_URL || 'https://crm.coresetu.com');
+  let resolvedFrontendUrl = isLocal ? 'http://localhost:3000' : (process.env.FRONTEND_URL || 'https://crm.sahyak.com');
   const redirectUri = getGoogleRedirectUri(req);
   try {
     const { code, state, error, error_description } = req.query;

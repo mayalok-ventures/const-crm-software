@@ -107,21 +107,21 @@ export default function IntegrationsModule({
               </span>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Auto-ingest leads from Instagram and Facebook Instant Forms into Source C pipeline with real-time attribution.
+              Auto-ingest leads from Instagram and Facebook Instant Forms into Sahyak pipeline with real-time attribution.
             </p>
 
             <div className="mt-3 space-y-2 text-[11px] bg-slate-900/60 p-3 rounded-lg border border-slate-800 font-mono">
               <div className="flex items-center justify-between">
                 <span className="text-slate-400">Webhook URL:</span>
                 <button
-                  onClick={() => handleCopy(metaData.webhookUrl || 'https://api.coresetu.com/api/integrations/meta/webhook', 'metaUrl')}
+                  onClick={() => handleCopy(metaData.webhookUrl || 'https://api.sahyak.com/api/integrations/meta/webhook', 'metaUrl')}
                   className="text-amber-400 hover:text-white flex items-center gap-1"
                 >
                   {copiedKey === 'metaUrl' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                   <span>Copy</span>
                 </button>
               </div>
-              <div className="text-slate-300 truncate">{metaData.webhookUrl || 'https://api.coresetu.com/api/integrations/meta/webhook'}</div>
+              <div className="text-slate-300 truncate">{metaData.webhookUrl || 'https://api.sahyak.com/api/integrations/meta/webhook'}</div>
             </div>
           </div>
 
@@ -169,14 +169,14 @@ export default function IntegrationsModule({
               <div className="flex items-center justify-between">
                 <span className="text-slate-400">Webhook Endpoint:</span>
                 <button
-                  onClick={() => handleCopy(googleData.webhookUrl || 'https://api.coresetu.com/api/integrations/google/webhook', 'googleUrl')}
+                  onClick={() => handleCopy(googleData.webhookUrl || 'https://api.sahyak.com/api/integrations/google/webhook', 'googleUrl')}
                   className="text-amber-400 hover:text-white flex items-center gap-1"
                 >
                   {copiedKey === 'googleUrl' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                   <span>Copy</span>
                 </button>
               </div>
-              <div className="text-slate-300 truncate">{googleData.webhookUrl || 'https://api.coresetu.com/api/integrations/google/webhook'}</div>
+              <div className="text-slate-300 truncate">{googleData.webhookUrl || 'https://api.sahyak.com/api/integrations/google/webhook'}</div>
             </div>
           </div>
 
@@ -247,21 +247,21 @@ export default function IntegrationsModule({
               </span>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Send JSON payloads from WordPress, Zapier, Webflow, or Make directly to ingest leads into CoreSetu CRM.
+              Send JSON payloads from WordPress, Zapier, Webflow, or Make directly to ingest leads into Sahyak CRM.
             </p>
 
             <div className="mt-3 space-y-2 text-[11px] bg-slate-900/60 p-3 rounded-lg border border-slate-800 font-mono">
               <div className="flex items-center justify-between">
                 <span className="text-slate-400">POST Endpoint:</span>
                 <button
-                  onClick={() => handleCopy(genericData.webhookUrl || 'https://api.coresetu.com/api/integrations/generic/webhook', 'genericUrl')}
+                  onClick={() => handleCopy(genericData.webhookUrl || 'https://api.sahyak.com/api/integrations/generic/webhook', 'genericUrl')}
                   className="text-amber-400 hover:text-white flex items-center gap-1"
                 >
                   {copiedKey === 'genericUrl' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                   <span>Copy</span>
                 </button>
               </div>
-              <div className="text-slate-300 truncate">{genericData.webhookUrl || 'https://api.coresetu.com/api/integrations/generic/webhook'}</div>
+              <div className="text-slate-300 truncate">{genericData.webhookUrl || 'https://api.sahyak.com/api/integrations/generic/webhook'}</div>
             </div>
           </div>
 

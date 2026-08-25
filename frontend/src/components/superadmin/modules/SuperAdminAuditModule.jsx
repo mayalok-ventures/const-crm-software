@@ -48,7 +48,7 @@ export default function SuperAdminAuditModule({
                   <td className="px-4 py-3 font-mono font-bold text-amber-400 text-[11px]">[{log.action}]</td>
                   <td className="px-4 py-3">
                     <div className="font-semibold text-white">{log.actorName || 'SuperAdmin'}</div>
-                    <div className="text-[10px] text-slate-400 font-mono">{log.actorEmail || 'admin@coresetu.com'}</div>
+                    <div className="text-[10px] text-slate-400 font-mono">{log.actorEmail || 'admin@sahyak.com'}</div>
                   </td>
                   <td className="px-4 py-3 text-slate-300">{log.resourceName || log.resourceType}</td>
                   <td className="px-4 py-3 font-mono text-[11px] text-slate-400">{log.organizationId ? String(log.organizationId).slice(-8) : 'Platform'}</td>

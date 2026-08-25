@@ -115,7 +115,7 @@ exports.startOAuth = async (req, res) => {
     }
     if (!frontendUrl) {
       const isLocal = !process.env.NODE_ENV || process.env.NODE_ENV === 'development' || (req && req.headers && req.headers.host && req.headers.host.includes('localhost'));
-      frontendUrl = isLocal ? 'http://localhost:3000' : (process.env.FRONTEND_URL || 'https://crm.coresetu.com');
+      frontendUrl = isLocal ? 'http://localhost:3000' : (process.env.FRONTEND_URL || 'https://crm.sahyak.com');
     }
 
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? req.user._id : null);
@@ -167,7 +167,7 @@ exports.startOAuth = async (req, res) => {
  */
 exports.callback = async (req, res) => {
   const isLocal = !process.env.NODE_ENV || process.env.NODE_ENV === 'development' || (req && req.headers && req.headers.host && req.headers.host.includes('localhost'));
-  let resolvedFrontendUrl = isLocal ? 'http://localhost:3000' : (process.env.FRONTEND_URL || 'https://crm.coresetu.com');
+  let resolvedFrontendUrl = isLocal ? 'http://localhost:3000' : (process.env.FRONTEND_URL || 'https://crm.sahyak.com');
   const redirectUri = getMetaRedirectUri(req);
   const appId = getMetaAppId();
   const appSecret = getMetaAppSecret();

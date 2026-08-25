@@ -150,7 +150,7 @@ export default function TermsOfServicePage() {
               5. Contact & Support
             </h2>
             <p>
-              For legal notices, terms inquiries, or enterprise agreement requests, email <a href="mailto:support@coresetu.com" className="text-indigo-400 hover:underline">support@coresetu.com</a>.
+              For legal notices, terms inquiries, or enterprise agreement requests, email <a href="mailto:support@sahyak.com" className="text-indigo-400 hover:underline">support@sahyak.com</a>.
             </p>
           </section>
 

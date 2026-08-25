@@ -167,7 +167,7 @@ async function processAbandonedCartLead(leadId, tenantUserId) {
   const leadPhone = lead.phone;
   const learnerName = lead.name || 'Learner';
   const courseName = lead.customData?.courseInterest || lead.customData?.programName || 'our Course';
-  const frontendUrl = process.env.FRONTEND_URL || 'https://crm.coresetu.com';
+  const frontendUrl = process.env.FRONTEND_URL || 'https://crm.sahyak.com';
   const paymentLink = `${frontendUrl}/pay/${lead._id}`;
 
   const recoveryMessage = `Hi ${learnerName}! 👋 We noticed you started your trial/enrollment for *${courseName}* but haven't completed your enrollment yet.\n\nYour reserved seat and scholarship discount are active for a limited time. 🚀\n\n👉 Complete your enrollment here:\n${paymentLink}\n\nFeel free to reply if you have any questions!`;
