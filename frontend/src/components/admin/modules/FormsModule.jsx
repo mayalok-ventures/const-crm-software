@@ -266,14 +266,19 @@ export default function FormsModule({
     setSaving(true);
     setSavedSuccess(false);
     try {
-      const res = await api.put(`/auth/form-schema?type=${formType}`, {
+      const payload = {
         formType,
         schema: activeFields,
         fields: activeFields,
-        productFormSchema: formType === 'product' ? activeFields : undefined,
-        leadFormSchema: formType === 'lead' ? activeFields : undefined,
-        customLeadFields: activeFields,
-      });
+      };
+      if (formType === 'product') {
+        payload.productFormSchema = activeFields;
+      } else {
+        payload.leadFormSchema = activeFields;
+        payload.customLeadFields = activeFields;
+      }
+
+      const res = await api.put(`/auth/form-schema?type=${formType}`, payload);
 
       if (res.data?.success || res.status === 200) {
         const returnedSchema = formType === 'lead'
