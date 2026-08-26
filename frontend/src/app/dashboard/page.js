@@ -4,12 +4,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
-import { waLink } from '@/lib/auth';
+import { waLink, isOwner, isManager, isAgent } from '@/lib/auth';
 import BottomNav from '@/components/BottomNav';
 import { useAlarm } from '@/lib/AlarmContext';
 import {
   Plus, Search, Bell, MessageCircle, Phone, Calendar, Package,
-  User, ChevronRight, Filter, X, ShieldAlert, CheckCircle, Volume2, Mic, AlertTriangle, ArrowRight, MapPin, Briefcase,
+  User, Users, Home, ChevronRight, Filter, X, ShieldAlert, CheckCircle, Volume2, Mic, AlertTriangle, ArrowRight, MapPin, Briefcase,
   Download, Upload, FileSpreadsheet, FileText, ChevronDown, Check, TrendingUp, DollarSign, Award, BarChart2,
   Edit2, Clock, CheckCircle2, RotateCcw, Zap, GraduationCap
 } from 'lucide-react';
@@ -1227,9 +1227,29 @@ export default function DashboardPage() {
   const [user, setUser] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const { dismissAlarm } = useAlarm();
+  const [activeTab, setActiveTab] = useState('overview');
 
-  const isCompanyOwner = user?.workStatus === 'company_owner' || user?.companyRole === 'owner';
-  const isSuperAdmin = user?.role === 'superadmin';
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const updateTab = () => {
+        const params = new URLSearchParams(window.location.search);
+        setActiveTab(params.get('tab') || 'overview');
+      };
+      updateTab();
+      window.addEventListener('popstate', updateTab);
+      return () => window.removeEventListener('popstate', updateTab);
+    }
+  }, []);
+
+  const [unclaimedLeads, setUnclaimedLeads] = useState([]);
+  const [loadingUnclaimed, setLoadingUnclaimed] = useState(false);
+  const [allFollowUps, setAllFollowUps] = useState([]);
+  const [fuSubTab, setFuSubTab] = useState('today');
+  const [svSubTab, setSvSubTab] = useState('scheduled');
+
+  const isTenantAgent = isAgent(user);
+  const isTenantManager = isManager(user);
+  const isTenantOwner = isOwner(user) || user?.role === 'superadmin';
 
   useEffect(() => {
     try {
@@ -1314,15 +1334,54 @@ export default function DashboardPage() {
     }
   }, [search, statusFilter, projectFilter, sourceFilter, ownerFilter, page, user]);
 
+  const fetchUnclaimedLeads = useCallback(async () => {
+    setLoadingUnclaimed(true);
+    try {
+      const { data } = await api.get('/leads', { params: { unclaimed: 'true', limit: 50 } });
+      setUnclaimedLeads(data?.leads || []);
+    } catch {
+      setUnclaimedLeads([]);
+    } finally {
+      setLoadingUnclaimed(false);
+    }
+  }, []);
+
+  const handleClaimLead = async (leadId) => {
+    try {
+      toast.loading('Claiming lead...', { id: 'claim-toast' });
+      await api.put(`/leads/${leadId}/reassign`, {
+        toAgentId: user?._id,
+        reason: 'Claimed by Agent from common pool',
+      });
+      toast.success('Lead claimed and added to your pipeline! 🎯', { id: 'claim-toast' });
+      fetchLeads(true);
+      fetchMetrics();
+      fetchUnclaimedLeads();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to claim lead', { id: 'claim-toast' });
+    }
+  };
+
+  const fetchAllFollowUps = useCallback(async () => {
+    try {
+      const [todayRes, dueRes] = await Promise.allSettled([
+        api.get('/leads/follow-ups/today'),
+        api.get('/leads/follow-ups/due'),
+      ]);
+      const todayData = todayRes.status === 'fulfilled' ? (todayRes.value.data || []) : [];
+      const dueData = dueRes.status === 'fulfilled' ? (dueRes.value.data || []) : [];
+      setFollowUps(todayData);
+      setAllFollowUps([...todayData, ...dueData]);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     fetchLeads(false);
     fetchMetrics();
-  }, [fetchLeads, fetchMetrics]);
-
-  useEffect(() => {
-    api.get('/leads/follow-ups/today').then(r => setFollowUps(r.data)).catch(() => {});
+    fetchUnclaimedLeads();
+    fetchAllFollowUps();
     api.get('/notifications').then(r => setUnread(r.data.unreadCount || 0)).catch(() => {});
-  }, []);
+  }, [fetchLeads, fetchMetrics, fetchUnclaimedLeads, fetchAllFollowUps]);
 
   const [eventPipelineMode, setEventPipelineMode] = useState('stall'); // 'stall' | 'corporate'
   const isEventManagement = String(user?.industryType || '').toLowerCase().includes('event');
@@ -1358,6 +1417,36 @@ export default function DashboardPage() {
     );
   }
 
+  const pageTitle = (() => {
+    if (activeTab === 'unclaimed') return 'New / Unclaimed Leads Pool';
+    if (activeTab === 'my_leads') return 'My Leads Pipeline';
+    if (activeTab === 'follow_ups') return 'Follow-ups & Action Schedule';
+    if (activeTab === 'pipeline') return 'Sales Pipeline Stages';
+    if (activeTab === 'deals') return 'Deals & Opportunities';
+    if (activeTab === 'site_visits') return 'Site Visits & Property Tours';
+    if (isTenantAgent) return 'Agent Dashboard';
+    return 'Sales Pipeline & Leads';
+  })();
+
+  const pageSubtitle = (() => {
+    if (activeTab === 'unclaimed') return `Available unassigned prospects (${unclaimedLeads.length}) ready to claim`;
+    if (activeTab === 'my_leads') return `Active assigned prospects (${pagination.total || leads.length})`;
+    if (activeTab === 'follow_ups') return `Scheduled demos, client calls & follow-ups (${followUps.length} today)`;
+    if (activeTab === 'pipeline') return 'Visual stage-by-stage conversion workflow';
+    if (activeTab === 'deals') return `Closed revenue and active negotiation deals (${analyticsData?.byStatus?.closed || 0} won)`;
+    if (activeTab === 'site_visits') return 'Scheduled client property visits and outcome logs';
+    if (isTenantAgent) return 'Welcome to your daily sales operational workspace';
+    return `Active prospects (${pagination.total || leads.length})`;
+  })();
+
+  const getGreeting = (name) => {
+    const hour = new Date().getHours();
+    let timeStr = 'Good morning';
+    if (hour >= 12 && hour < 17) timeStr = 'Good afternoon';
+    else if (hour >= 17) timeStr = 'Good evening';
+    return `${timeStr}, ${name || 'Agent'}! 👋`;
+  };
+
   return (
     <div className="app-shell">
       <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
@@ -1366,13 +1455,15 @@ export default function DashboardPage() {
           {/* Top Row: Title + Plan Status & Notifications */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 10 }}>
             <div>
-              <h1 className="page-title" style={{ fontSize: 'clamp(17px, 4vw, 22px)' }}>Sales Pipeline & Leads</h1>
+              <h1 className="page-title" style={{ fontSize: 'clamp(17px, 4vw, 22px)' }}>
+                {pageTitle}
+              </h1>
               <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-muted)' }}>
-                Active prospects ({pagination.total || leads.length})
+                {pageSubtitle}
               </p>
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-              {/* Dynamic Plan & Upgrade Widget */}
+              {/* Dynamic Plan & Upgrade Widget (Only for Tenant Owners) */}
               <PlanStatusWidget />
 
               {/* Notification Bell */}
@@ -1414,9 +1505,12 @@ export default function DashboardPage() {
               <Download size={13} /> Export
             </button>
 
-            <Link href="/integrations" className="btn btn-secondary btn-sm" style={{ gap: 4, borderRadius: 8, flexShrink: 0, color: '#2563eb', borderColor: 'rgba(37,99,235,0.3)' }} title="Meta & Google Ads Integrations">
-              <Zap size={13} /> Ads & APIs
-            </Link>
+            {/* Ads & Lead Integrations (Strictly for Tenant Owners) */}
+            {isTenantOwner && (
+              <Link href="/integrations" className="btn btn-secondary btn-sm" style={{ gap: 4, borderRadius: 8, flexShrink: 0, color: '#2563eb', borderColor: 'rgba(37,99,235,0.3)' }} title="Meta & Google Ads Integrations">
+                <Zap size={13} /> Ads & APIs
+              </Link>
+            )}
 
             <button
               onClick={() => setShowExportAnalyticsModal(true)}
@@ -1437,528 +1531,962 @@ export default function DashboardPage() {
               </Link>
             )}
           </div>
+
+          {/* Sub-tab Navigation Bar for Agents */}
+          {isTenantAgent && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                overflowX: 'auto',
+                paddingBottom: 4,
+                scrollbarWidth: 'none',
+                marginTop: 6,
+                borderTop: '1px solid var(--border)',
+                paddingTop: 8,
+              }}
+            >
+              {[
+                { id: 'overview', label: 'Dashboard', icon: Home, href: '/dashboard' },
+                { id: 'unclaimed', label: 'New / Unclaimed', icon: Plus, badge: unclaimedLeads.length || null, href: '/dashboard?tab=unclaimed' },
+                { id: 'my_leads', label: 'My Leads', icon: Users, badge: pagination.total || leads.length, href: '/dashboard?tab=my_leads' },
+                { id: 'follow_ups', label: 'Follow-ups', icon: Calendar, badge: followUps.length || null, href: '/dashboard?tab=follow_ups' },
+                { id: 'pipeline', label: 'Pipeline', icon: TrendingUp, href: '/dashboard?tab=pipeline' },
+                { id: 'deals', label: 'Deals', icon: Award, href: '/dashboard?tab=deals' },
+                { id: 'site_visits', label: 'Site Visits', icon: MapPin, href: '/dashboard?tab=site_visits' },
+              ].map(tab => {
+                const isActive = activeTab === tab.id;
+                const TabIcon = tab.icon;
+                return (
+                  <Link
+                    key={tab.id}
+                    href={tab.href}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '6px 12px',
+                      borderRadius: 10,
+                      fontSize: 12,
+                      fontWeight: isActive ? 700 : 500,
+                      textDecoration: 'none',
+                      whiteSpace: 'nowrap',
+                      background: isActive ? 'var(--accent)' : 'var(--surface)',
+                      color: isActive ? '#ffffff' : 'var(--text)',
+                      border: `1px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
+                      transition: 'all 0.15s ease',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <TabIcon size={14} color={isActive ? '#ffffff' : 'currentColor'} />
+                    <span>{tab.label}</span>
+                    {tab.badge !== null && tab.badge !== undefined && tab.badge > 0 && (
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          padding: '1px 6px',
+                          borderRadius: 10,
+                          background: isActive ? 'rgba(255,255,255,0.25)' : 'rgba(79,70,229,0.12)',
+                          color: isActive ? '#ffffff' : 'var(--accent)',
+                        }}
+                      >
+                        {tab.badge}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className="page-content">
-          {/* Master Revenue & Performance KPI Banner */}
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(79,70,229,0.1) 0%, rgba(34,197,94,0.1) 100%)',
-            border: '1px solid rgba(79,70,229,0.2)',
-            borderRadius: 14,
-            padding: '12px 14px',
-            marginBottom: 16,
-          }}>
-            <div className="kpi-grid-mobile" style={{ alignItems: 'center' }}>
-              {/* Total Revenue Generated Card */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                  color: 'white',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: '0 3px 8px rgba(16,185,129,0.3)',
-                  flexShrink: 0
-                }}>
-                  <Award size={18} />
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: '#10b981', letterSpacing: 0.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    Revenue Won
-                  </p>
-                  <h3 style={{ margin: '1px 0 0', fontSize: 'clamp(15px, 3.5vw, 19px)', fontWeight: 800, color: 'var(--text)' }}>
-                    {user?.localization?.currencySymbol || '₹'}{Number(analyticsData?.totalRevenue || 0).toLocaleString()}
-                  </h3>
-                </div>
-              </div>
-
-              {/* Conversion Rate */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                  color: 'white',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: '0 3px 8px rgba(79,70,229,0.3)',
-                  flexShrink: 0
-                }}>
-                  <TrendingUp size={18} />
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--accent)', letterSpacing: 0.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    Win Rate
-                  </p>
-                  <h3 style={{ margin: '1px 0 0', fontSize: 'clamp(15px, 3.5vw, 19px)', fontWeight: 800, color: 'var(--text)' }}>
-                    {analyticsData?.conversionRate || 0}%
-                  </h3>
-                </div>
-              </div>
-
-              {/* Real Estate Domain Badges */}
-              {reAnalytics && (
-                <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 10,
-                      background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                      color: 'white',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 3px 8px rgba(239,68,68,0.3)',
-                      flexShrink: 0
-                    }}>
-                      🔥
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: '#ef4444', letterSpacing: 0.3 }}>
-                        Hot Leads
-                      </p>
-                      <h3 style={{ margin: '1px 0 0', fontSize: 'clamp(15px, 3.5vw, 19px)', fontWeight: 800, color: 'var(--text)' }}>
-                        {reAnalytics.leads?.hot || 0} <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)' }}>({reAnalytics.leads?.warm || 0} Warm)</span>
-                      </h3>
-                    </div>
+          {/* ───────────────────────────────────────────────────────────── */}
+          {/* TAB 1: AGENT DASHBOARD (OVERVIEW HOME)                        */}
+          {/* ───────────────────────────────────────────────────────────── */}
+          {activeTab === 'overview' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Welcome & Agent Summary Card */}
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(79,70,229,0.08) 0%, rgba(99,102,241,0.04) 100%)',
+                border: '1px solid rgba(79,70,229,0.18)',
+                borderRadius: 16,
+                padding: '18px 20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 12,
+              }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>
+                      {getGreeting(user?.name)}
+                    </h2>
+                    <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(16,185,129,0.12)', color: '#059669', border: '1px solid rgba(16,185,129,0.25)' }}>
+                      ● Active Agent Workspace
+                    </span>
                   </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 10,
-                      background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)',
-                      color: 'white',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 3px 8px rgba(139,92,246,0.3)',
-                      flexShrink: 0
-                    }}>
-                      🏢
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: '#8b5cf6', letterSpacing: 0.3 }}>
-                        Site Visits
-                      </p>
-                      <h3 style={{ margin: '1px 0 0', fontSize: 'clamp(15px, 3.5vw, 19px)', fontWeight: 800, color: 'var(--text)' }}>
-                        {reAnalytics.siteVisits?.completed || 0}/{reAnalytics.siteVisits?.total || 0} <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)' }}>({reAnalytics.siteVisits?.conversionRate || '0%'})</span>
-                      </h3>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Today's Follow-ups / Scheduled Meetings */}
-          {followUps.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <p className="section-title" style={{ margin: '0 0 8px' }}>📅 Today's Actions & Scheduled Demos ({followUps.length})</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
-                {followUps.map(lead => (
-                  <Link key={lead._id} href={`/leads/${lead._id}`} style={{ textDecoration: 'none' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.25)', borderRadius: 12 }}>
-                      <Calendar size={18} color="#f97316" />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, fontWeight: 600, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {lead.name} {lead.project ? `• ${lead.project}` : ''}
-                        </p>
-                        <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>+{lead.phone}</p>
-                      </div>
-                      <span className={`badge ${STATUS_COLORS[lead.status] || 'badge-tag'}`} style={{ fontSize: 10 }}>
-                        {STAGE_LABELS[lead.status] || lead.status}
-                      </span>
-                    </div>
+                  <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--text-muted)' }}>
+                    Here is your real-time pipeline status, scheduled follow-ups, and lead pool for today.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => setShowAdd(true)}
+                    className="btn btn-primary btn-sm"
+                    style={{ gap: 6, borderRadius: 10, fontSize: 12 }}
+                  >
+                    <Plus size={14} /> Add Prospect
+                  </button>
+                  <Link
+                    href="/dashboard?tab=unclaimed"
+                    className="btn btn-secondary btn-sm"
+                    style={{ gap: 6, borderRadius: 10, fontSize: 12, color: 'var(--accent)', borderColor: 'rgba(79,70,229,0.3)' }}
+                  >
+                    Claim Leads ({unclaimedLeads.length})
                   </Link>
-                ))}
+                </div>
               </div>
-            </div>
-          )}
 
-          {/* Search & Filter Bar */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 14, width: '100%' }}>
-            <div className="search-bar" style={{ flex: '1 1 200px', minWidth: 160, position: 'relative' }}>
-              <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: 12, top: 13 }} />
-              <input
-                className="input"
-                type="search"
-                placeholder="Search leads by name, phone, package..."
-                value={search}
-                onChange={e => { setSearch(e.target.value); setPage(1); }}
-                style={{ paddingLeft: 36, height: 42, fontSize: 13, borderRadius: 10 }}
-              />
-              {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}><X size={16} /></button>}
-            </div>
+              {/* 4 Top KPI Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+                {/* 1. My Leads */}
+                <Link href="/dashboard?tab=my_leads" style={{ textDecoration: 'none' }}>
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px', transition: 'all 0.15s ease' }} className="hover:border-indigo-500">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>My Leads</span>
+                      <Users size={16} color="var(--accent)" />
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--text)' }}>
+                      {pagination.total || leads.length}
+                    </div>
+                    <span style={{ fontSize: 10.5, color: 'var(--accent)', fontWeight: 600 }}>Active in pipeline →</span>
+                  </div>
+                </Link>
 
-            <select
-              value={ownerFilter}
-              onChange={e => { setOwnerFilter(e.target.value); setPage(1); }}
-              className="input"
-              style={{ flex: '1 1 140px', minWidth: 130, height: 42, fontSize: 12, borderRadius: 10 }}
-            >
-              <option value="">All Pipeline Leads</option>
-              <option value="me">Owned by Me</option>
-              <option value="unclaimed">Unclaimed Pool</option>
-            </select>
+                {/* 2. Follow-ups Today */}
+                <Link href="/dashboard?tab=follow_ups" style={{ textDecoration: 'none' }}>
+                  <div style={{ background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.25)', borderRadius: 14, padding: '14px', transition: 'all 0.15s ease' }} className="hover:border-orange-500">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#c2410c', textTransform: 'uppercase' }}>Follow-ups</span>
+                      <Calendar size={16} color="#ea580c" />
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 900, color: '#9a3412' }}>
+                      {followUps.length}
+                    </div>
+                    <span style={{ fontSize: 10.5, color: '#c2410c', fontWeight: 600 }}>Scheduled today →</span>
+                  </div>
+                </Link>
 
-            <select
-              value={sourceFilter}
-              onChange={e => { setSourceFilter(e.target.value); setPage(1); }}
-              className="input"
-              style={{ flex: '1 1 140px', minWidth: 130, height: 42, fontSize: 12, borderRadius: 10 }}
-            >
-              <option value="">All Sources</option>
-              <option value="meta">Meta Ads</option>
-              <option value="google">Google Ads</option>
-              <option value="website">Organic / Web</option>
-              <option value="referral">Referral</option>
-              <option value="import">Import / CSV</option>
-              <option value="direct">Direct / Manual</option>
-            </select>
+                {/* 3. Site Visits */}
+                <Link href="/dashboard?tab=site_visits" style={{ textDecoration: 'none' }}>
+                  <div style={{ background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.25)', borderRadius: 14, padding: '14px', transition: 'all 0.15s ease' }} className="hover:border-purple-500">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#6d28d9', textTransform: 'uppercase' }}>Site Visits</span>
+                      <MapPin size={16} color="#7c3aed" />
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 900, color: '#5b21b6' }}>
+                      {reAnalytics?.siteVisits?.total || (followUps.filter(f => f.type === 'site_visit').length)}
+                    </div>
+                    <span style={{ fontSize: 10.5, color: '#6d28d9', fontWeight: 600 }}>Property tours →</span>
+                  </div>
+                </Link>
 
-            {projects.length > 0 && (
-              <select
-                value={projectFilter}
-                onChange={e => { setProjectFilter(e.target.value); setPage(1); }}
-                className="input"
-                style={{ flex: '1 1 140px', minWidth: 130, height: 42, fontSize: 12, borderRadius: 10 }}
-              >
-                <option value="">All Packages</option>
-                {projects.map(p => (
-                  <option key={p._id} value={p._id}>{p.name}</option>
-                ))}
-              </select>
-            )}
-          </div>
-
-          {/* Event Management Dual Pipeline Switcher */}
-          {isEventManagement && (
-            <div style={{ display: 'flex', gap: 6, marginBottom: 12, background: 'var(--surface)', padding: 4, borderRadius: 10, border: '1px solid var(--border)' }}>
-              <button
-                type="button"
-                onClick={() => { setEventPipelineMode('stall'); setStatusFilter(''); setPage(1); }}
-                style={{
-                  flex: 1,
-                  padding: '8px 12px',
-                  borderRadius: 8,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  border: 'none',
-                  cursor: 'pointer',
-                  background: eventPipelineMode === 'stall' ? 'var(--accent)' : 'transparent',
-                  color: eventPipelineMode === 'stall' ? 'white' : 'var(--text-muted)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                }}
-              >
-                🏢 Stall Booking Pipeline
-              </button>
-              <button
-                type="button"
-                onClick={() => { setEventPipelineMode('corporate'); setStatusFilter(''); setPage(1); }}
-                style={{
-                  flex: 1,
-                  padding: '8px 12px',
-                  borderRadius: 8,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  border: 'none',
-                  cursor: 'pointer',
-                  background: eventPipelineMode === 'corporate' ? '#9333ea' : 'transparent',
-                  color: eventPipelineMode === 'corporate' ? 'white' : 'var(--text-muted)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                }}
-              >
-                🤝 Corporate Sponsorship Pipeline
-              </button>
-            </div>
-          )}
-
-          {/* Pipeline Stage Filter Chips */}
-          <div className="filter-chips" style={{ marginBottom: 20 }}>
-            <button className={`chip ${statusFilter === '' ? 'active' : ''}`} onClick={() => { setStatusFilter(''); setPage(1); }}>
-              All Stages ({pagination.total || leads.length})
-            </button>
-            {availableStages.map(stage => (
-              <button
-                key={stage}
-                className={`chip ${statusFilter === stage ? 'active' : ''}`}
-                onClick={() => { setStatusFilter(stage); setPage(1); }}
-              >
-                {STAGE_LABELS[stage] || stage}
-              </button>
-            ))}
-          </div>
-
-          {/* Leads Listing */}
-          {loading ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}><div className="spinner" /></div>
-          ) : leads.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state-icon">📋</div>
-              <h3>No client leads found</h3>
-              <p>Add your first prospect, import a spreadsheet, or adjust filters.</p>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 10 }}>
-                <button onClick={() => setShowAdd(true)} className="btn btn-primary">Add Lead</button>
-                <button onClick={() => setShowImport(true)} className="btn btn-secondary">Import Spreadsheet</button>
+                {/* 4. Deals Won */}
+                <Link href="/dashboard?tab=deals" style={{ textDecoration: 'none' }}>
+                  <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 14, padding: '14px', transition: 'all 0.15s ease' }} className="hover:border-emerald-500">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#047857', textTransform: 'uppercase' }}>Deals Won</span>
+                      <Award size={16} color="#059669" />
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 900, color: '#065f46' }}>
+                      {analyticsData?.byStatus?.closed || 0}
+                    </div>
+                    <span style={{ fontSize: 10.5, color: '#047857', fontWeight: 600 }}>Closed revenue →</span>
+                  </div>
+                </Link>
               </div>
-            </div>
-          ) : (
-            <div className="leads-list" style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
-              {leads.map(lead => (
-                <div
-                  key={lead._id}
-                  onClick={() => router.push(`/leads/${lead._id}`)}
-                  style={{ textDecoration: 'none', display: 'block', width: '100%', cursor: 'pointer' }}
-                >
-                  <div className="lead-card">
-                    {/* Header Row: Lead Name + Source Badge + Stage Dropdown */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, width: '100%', minWidth: 0, marginBottom: 6 }}>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <h3 className="lead-name truncate" style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
-                            {lead.name}
-                          </h3>
-                          <SourcePill lead={lead} showDetail={false} />
+
+              {/* 2-Column Responsive Dashboard Layout */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+                {/* Left Column: Unclaimed Leads Preview + Today's Follow-up Schedule */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {/* NEW / UNCLAIMED LEADS WIDGET */}
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(79,70,229,0.12)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Plus size={16} />
                         </div>
-                        <p className="truncate" style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
-                          +{lead.phone} {lead.company ? `• ${lead.company}` : ''}
-                        </p>
+                        <h3 style={{ margin: 0, fontSize: 13.5, fontWeight: 700 }}>New / Unclaimed Leads ({unclaimedLeads.length})</h3>
                       </div>
+                      <Link href="/dashboard?tab=unclaimed" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent)', textDecoration: 'none' }}>
+                        View All →
+                      </Link>
+                    </div>
 
-                      <select
-                        value={lead.status}
-                        onClick={e => e.stopPropagation()}
-                        onChange={async (e) => {
-                          e.stopPropagation();
-                          const newStatus = e.target.value;
-                          const isConverting = ['converted', 'payment_done', 'closed', 'Closed', 'Closed / Won'].includes(newStatus);
-                          let paymentAmount = null;
-                          let paymentMethod = null;
-                          if (isConverting) {
-                            const inputAmt = window.prompt("🏆 Enter Final Closed Deal / Payment Amount (₹):");
-                            if (!inputAmt) return;
-                            paymentAmount = Number(inputAmt);
-                            if (!paymentAmount || isNaN(paymentAmount) || paymentAmount <= 0) {
-                              return toast.error("Payment amount (> 0) is required to convert a lead.");
-                            }
-                            const inputMethod = window.prompt("💳 Enter Payment Method (e.g. bank_transfer, upi, cash, card):", "bank_transfer");
-                            if (!inputMethod || !inputMethod.trim()) {
-                              return toast.error("Payment method is required to convert a lead.");
-                            }
-                            paymentMethod = inputMethod.trim();
-                          }
-                          try {
-                            await api.put(`/leads/${lead._id}`, {
-                              status: newStatus,
-                              paymentAmount,
-                              paymentMethod
-                            });
-                            toast.success(`Lead stage updated to "${STAGE_LABELS[newStatus] || newStatus}" ✅`);
-                            fetchLeads(true);
-                          } catch (err) {
-                            toast.error(err.response?.data?.message || 'Failed to update stage');
-                          }
-                        }}
-                        className={`badge ${STATUS_COLORS[lead.status] || 'badge-tag'} flex-shrink-0`}
-                        style={{
-                          cursor: 'pointer',
-                          padding: '4px 8px',
-                          borderRadius: 8,
-                          border: '1px solid var(--border)',
-                          fontSize: 11,
-                          fontWeight: 700,
-                          outline: 'none',
-                          maxWidth: '140px'
-                        }}
-                      >
-                        {availableStages.map(st => (
-                          <option key={st} value={st} style={{ background: '#0f172a', color: '#f8fafc' }}>
-                            {STAGE_LABELS[st] || st}
-                          </option>
+                    {loadingUnclaimed ? (
+                      <div style={{ padding: '20px', textAlign: 'center' }}><div className="spinner" style={{ width: 20, height: 20 }} /></div>
+                    ) : unclaimedLeads.length === 0 ? (
+                      <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+                        No unclaimed leads in common pool right now.
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {unclaimedLeads.slice(0, 4).map(lead => (
+                          <div key={lead._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 12px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10 }}>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }} className="truncate">{lead.name}</span>
+                                <SourcePill lead={lead} showDetail={false} />
+                              </div>
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>+{lead.phone}</span>
+                            </div>
+                            <button
+                              onClick={() => handleClaimLead(lead._id)}
+                              className="btn btn-primary btn-sm"
+                              style={{ padding: '4px 10px', fontSize: 11, borderRadius: 8, gap: 4 }}
+                            >
+                              Claim Lead 🎯
+                            </button>
+                          </div>
                         ))}
-                      </select>
-                    </div>
-
-                    {/* Metadata & Attribution Strip */}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '6px 0', width: '100%', minWidth: 0 }}>
-                      <SourcePill lead={lead} showDetail={true} />
-                      {lead.project && (
-                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'var(--surface)', borderRadius: 4, color: 'var(--text-muted)', border: '1px solid var(--border)', flexShrink: 0 }}>
-                          📦 {lead.project}
-                        </span>
-                      )}
-                      {lead.budget && (
-                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(34,197,94,0.1)', borderRadius: 4, color: 'var(--green)', fontWeight: 600, flexShrink: 0 }}>
-                          💰 {lead.budget}
-                        </span>
-                      )}
-                      {lead.closedDealAmount && (
-                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(16,185,129,0.15)', borderRadius: 4, color: '#10b981', fontWeight: 700, flexShrink: 0 }}>
-                          🏆 Won: ₹{Number(lead.closedDealAmount).toLocaleString('en-IN')}
-                        </span>
-                      )}
-                      {lead.location && (
-                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'var(--surface)', borderRadius: 4, color: 'var(--text-muted)', flexShrink: 0 }}>
-                          📍 {lead.location}
-                        </span>
-                      )}
-                      {lead.assignedToName ? (
-                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(99,102,241,0.1)', borderRadius: 4, color: 'var(--accent)', fontWeight: 500, flexShrink: 0 }}>
-                          👤 {lead.assignedToName}
-                        </span>
-                      ) : (
-                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(245,158,11,0.15)', borderRadius: 4, color: '#f59e0b', fontWeight: 700, flexShrink: 0 }}>
-                          🌐 Common Pool
-                        </span>
-                      )}
-                      {(lead.serviceRequired || lead.service_required) && (
-                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(16,185,129,0.1)', borderRadius: 4, color: '#10b981', fontWeight: 600, flexShrink: 0 }}>
-                          📦 {lead.service_required?.replace(/_/g, ' ') || 'Smart Solo'}
-                        </span>
-                      )}
-
-                      {/* Event Management Credentials Strip */}
-                      {lead.customData?.stallInventoryLock?.isLocked && (
-                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(99,102,241,0.15)', borderRadius: 4, color: '#818cf8', fontWeight: 700, border: '1px solid rgba(99,102,241,0.3)', flexShrink: 0 }}>
-                          🔒 Stall Locked ({lead.customData.stallInventoryLock.lockCode})
-                        </span>
-                      )}
-                      {lead.customData?.eventPass?.passCode && (
-                        <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(16,185,129,0.15)', borderRadius: 4, color: '#34d399', fontWeight: 700, border: '1px solid rgba(16,185,129,0.3)', flexShrink: 0 }}>
-                          🎟️ Pass Issued ({lead.customData.eventPass.passCode})
-                        </span>
-                      )}
-                    </div>
-
-                    {lead.followUpDate && (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, width: '100%' }}>
-                        <p className="truncate" style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-                          <Calendar size={12} className="flex-shrink-0" />
-                          <span className="truncate">Next Follow-up: {format(new Date(lead.followUpDate), 'dd MMM yyyy, h:mm a')}</span>
-                        </p>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSchedulingFollowUpLead(lead);
-                          }}
-                          className="btn btn-ghost btn-sm"
-                          style={{ padding: '1px 6px', fontSize: 10, height: 22, color: 'var(--accent)', gap: 3, flexShrink: 0 }}
-                          title="Edit Follow-up Schedule & Agenda"
-                        >
-                          <Edit2 size={10} /> Edit
-                        </button>
                       </div>
                     )}
+                  </div>
 
-                    {/* Mobile-First Responsive Action Grid: Row 1 (Call & WA) + Row 2 (FollowUp, Note, Edit) */}
-                    <div className="lead-card-actions" onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
-                      <div style={{ display: 'flex', gap: 6, width: '100%' }}>
-                        <a
-                          href={`tel:${lead.phone}`}
-                          className="lead-action-btn lead-action-call"
-                          style={{ flex: 1, minWidth: 0, height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, textDecoration: 'none' }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            api.post(`/leads/${lead._id}/track-call`).then(() => fetchLeads(true)).catch(() => {});
-                          }}
-                        >
-                          <Phone size={13} className="flex-shrink-0" /> Call
-                        </a>
-                        <a
-                          href={waLink(lead.phone, `Hello ${lead.name}, regarding your inquiry for ${lead.project || 'our subscription plans'}...`)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="lead-action-btn lead-action-wa"
-                          style={{ flex: 1, minWidth: 0, height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, textDecoration: 'none' }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            api.post(`/leads/${lead._id}/track-message`).then(() => fetchLeads(true)).catch(() => {});
-                          }}
-                        >
-                          <MessageCircle size={13} className="flex-shrink-0" /> WhatsApp
-                        </a>
+                  {/* TODAY'S SCHEDULE WIDGET */}
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(249,115,22,0.12)', color: '#ea580c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Calendar size={16} />
+                        </div>
+                        <h3 style={{ margin: 0, fontSize: 13.5, fontWeight: 700 }}>Today's Follow-ups ({followUps.length})</h3>
                       </div>
+                      <Link href="/dashboard?tab=follow_ups" style={{ fontSize: 11.5, fontWeight: 700, color: '#ea580c', textDecoration: 'none' }}>
+                        Manage →
+                      </Link>
+                    </div>
 
-                      <div style={{ display: 'flex', gap: 6, width: '100%' }}>
-                        <button
-                          type="button"
-                          className="lead-action-btn"
-                          style={{ flex: 1, minWidth: 0, height: 32, fontSize: 11.5, background: 'rgba(59,130,246,0.08)', color: '#2563eb', border: '1px solid rgba(59,130,246,0.25)', borderRadius: 8 }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSchedulingFollowUpLead(lead);
-                          }}
-                          title="Schedule or reschedule follow-up"
-                        >
-                          <Calendar size={12} className="flex-shrink-0" /> Follow-Up
-                        </button>
-                        <button
-                          type="button"
-                          className="lead-action-btn"
-                          style={{ flex: 1, minWidth: 0, height: 32, fontSize: 11.5, background: 'rgba(16,185,129,0.08)', color: '#059669', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 8 }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCompletingFollowUpLead(lead);
-                          }}
-                          title="Complete follow-up with mandatory outcome note"
-                        >
-                          <CheckCircle size={12} className="flex-shrink-0" /> Note / Done
-                        </button>
-                        <button
-                          type="button"
-                          className="lead-action-btn"
-                          style={{ flex: 1, minWidth: 0, height: 32, fontSize: 11.5, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8 }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingLead(lead);
-                          }}
-                          title="Edit original lead creation fields"
-                        >
-                          <Edit2 size={12} className="flex-shrink-0" /> Edit
-                        </button>
+                    {followUps.length === 0 ? (
+                      <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+                        No follow-ups due today. You're completely up to date! 🎉
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {followUps.slice(0, 4).map(lead => (
+                          <div key={lead._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 12px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10 }}>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }} className="truncate">{lead.name}</span>
+                                <span className={`badge ${STATUS_COLORS[lead.status] || 'badge-tag'}`} style={{ fontSize: 9.5, padding: '1px 5px' }}>
+                                  {STAGE_LABELS[lead.status] || lead.status}
+                                </span>
+                              </div>
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>+{lead.phone}</span>
+                            </div>
+                            <div style={{ display: 'flex', gap: 4 }}>
+                              <a href={`tel:${lead.phone}`} className="btn btn-secondary btn-sm" style={{ padding: '4px 8px', borderRadius: 8, color: '#059669' }}>
+                                <Phone size={13} />
+                              </a>
+                              <a href={waLink(lead.phone)} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm" style={{ padding: '4px 8px', borderRadius: 8, color: '#16a34a' }}>
+                                <MessageCircle size={13} />
+                              </a>
+                              <button
+                                onClick={() => setCompletingFollowUpLead(lead)}
+                                className="btn btn-primary btn-sm"
+                                style={{ padding: '4px 8px', fontSize: 11, borderRadius: 8 }}
+                              >
+                                Done
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Column: Pipeline Stage Distribution + Performance Summary */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {/* MY PIPELINE SUMMARY */}
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(99,102,241,0.12)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <TrendingUp size={16} />
+                        </div>
+                        <h3 style={{ margin: 0, fontSize: 13.5, fontWeight: 700 }}>My Pipeline Stages</h3>
+                      </div>
+                      <Link href="/dashboard?tab=pipeline" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent)', textDecoration: 'none' }}>
+                        View Pipeline →
+                      </Link>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {availableStages.map(st => {
+                        const count = leads.filter(l => l.status === st).length;
+                        const pct = leads.length > 0 ? Math.round((count / leads.length) * 100) : 0;
+                        return (
+                          <div key={st} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                              <span style={{ fontWeight: 600, color: 'var(--text)' }}>{STAGE_LABELS[st] || st}</span>
+                              <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>{count} leads ({pct}%)</span>
+                            </div>
+                            <div style={{ width: '100%', height: 6, background: 'rgba(0,0,0,0.06)', borderRadius: 4, overflow: 'hidden' }}>
+                              <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent)', borderRadius: 4 }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* MY PERFORMANCE SUMMARY */}
+                  <div style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(5,150,105,0.03) 100%)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 16, padding: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: 8, background: '#10b981', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Award size={16} />
+                        </div>
+                        <h3 style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: '#065f46' }}>My Sales Performance</h3>
+                      </div>
+                      <Link href="/analytics" style={{ fontSize: 11.5, fontWeight: 700, color: '#059669', textDecoration: 'none' }}>
+                        Full Analytics →
+                      </Link>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div style={{ background: '#ffffff', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 12, padding: '10px 12px' }}>
+                        <span style={{ fontSize: 10.5, color: '#059669', fontWeight: 700, textTransform: 'uppercase' }}>Closed Revenue</span>
+                        <div style={{ fontSize: 17, fontWeight: 900, color: '#065f46', marginTop: 2 }}>
+                          {user?.localization?.currencySymbol || '₹'}{Number(analyticsData?.totalRevenue || 0).toLocaleString()}
+                        </div>
+                      </div>
+                      <div style={{ background: '#ffffff', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 12, padding: '10px 12px' }}>
+                        <span style={{ fontSize: 10.5, color: '#059669', fontWeight: 700, textTransform: 'uppercase' }}>Win Rate</span>
+                        <div style={{ fontSize: 17, fontWeight: 900, color: '#065f46', marginTop: 2 }}>
+                          {analyticsData?.conversionRate || 0}%
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              ))}
+              </div>
             </div>
-          )}
+          ) : activeTab === 'unclaimed' ? (
+            /* ───────────────────────────────────────────────────────────── */
+            /* TAB 2: NEW / UNCLAIMED LEADS POOL                             */
+            /* ───────────────────────────────────────────────────────────── */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, background: 'var(--surface)', padding: '14px 18px', borderRadius: 14, border: '1px solid var(--border)' }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800 }}>Available Unclaimed Prospects ({unclaimedLeads.length})</h2>
+                  <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>Leads in the open pool ready to be claimed into your individual sales pipeline</p>
+                </div>
+                <button
+                  onClick={fetchUnclaimedLeads}
+                  className="btn btn-secondary btn-sm"
+                  style={{ gap: 4, borderRadius: 8 }}
+                >
+                  <RotateCcw size={13} /> Refresh Pool
+                </button>
+              </div>
 
-          {/* Pagination */}
-          {pagination.pages > 1 && (
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 20 }}>
-              <button
-                disabled={page <= 1}
-                onClick={() => setPage(p => p - 1)}
-                className="btn btn-secondary btn-sm"
-              >
-                Previous
-              </button>
-              <span style={{ fontSize: 13, display: 'flex', alignItems: 'center', padding: '0 8px', color: 'var(--text-muted)' }}>
-                Page {page} of {pagination.pages}
-              </span>
-              <button
-                disabled={page >= pagination.pages}
-                onClick={() => setPage(p => p + 1)}
-                className="btn btn-secondary btn-sm"
-              >
-                Next
-              </button>
+              {loadingUnclaimed ? (
+                <div style={{ padding: '60px 0', textAlign: 'center' }}><div className="spinner" /></div>
+              ) : unclaimedLeads.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state-icon">🎯</div>
+                  <h3>No unclaimed leads available</h3>
+                  <p>All client leads are currently assigned. Check back later or add a new direct prospect.</p>
+                  <button onClick={() => setShowAdd(true)} className="btn btn-primary" style={{ marginTop: 10 }}>Add New Lead</button>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
+                  {unclaimedLeads.map(lead => (
+                    <div key={lead._id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 12 }}>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{lead.name}</h3>
+                          <SourcePill lead={lead} showDetail={false} />
+                        </div>
+                        <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>+{lead.phone}</p>
+                        {lead.project && (
+                          <span style={{ display: 'inline-block', fontSize: 11, padding: '2px 6px', background: 'var(--card)', borderRadius: 4, color: 'var(--text)', border: '1px solid var(--border)', marginTop: 6 }}>
+                            📦 {lead.project}
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                        <button
+                          onClick={() => router.push(`/leads/${lead._id}`)}
+                          className="btn btn-secondary btn-sm"
+                          style={{ flex: 1, borderRadius: 8, fontSize: 12 }}
+                        >
+                          View Details
+                        </button>
+                        <button
+                          onClick={() => handleClaimLead(lead._id)}
+                          className="btn btn-primary btn-sm"
+                          style={{ flex: 1, borderRadius: 8, fontSize: 12, gap: 4 }}
+                        >
+                          Claim Lead 🎯
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : activeTab === 'follow_ups' ? (
+            /* ───────────────────────────────────────────────────────────── */
+            /* TAB 3: DEDICATED FOLLOW-UPS MODULE                           */
+            /* ───────────────────────────────────────────────────────────── */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', gap: 8, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+                {[
+                  { id: 'today', label: `Today (${followUps.length})` },
+                  { id: 'upcoming', label: 'Upcoming' },
+                  { id: 'overdue', label: 'Overdue' },
+                  { id: 'completed', label: 'Completed' },
+                ].map(sub => (
+                  <button
+                    key={sub.id}
+                    onClick={() => setFuSubTab(sub.id)}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: 8,
+                      fontSize: 12,
+                      fontWeight: fuSubTab === sub.id ? 700 : 500,
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: fuSubTab === sub.id ? 'var(--accent)' : 'transparent',
+                      color: fuSubTab === sub.id ? '#ffffff' : 'var(--text-muted)',
+                    }}
+                  >
+                    {sub.label}
+                  </button>
+                ))}
+              </div>
+
+              {followUps.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state-icon">📅</div>
+                  <h3>No follow-ups in this queue</h3>
+                  <p>All scheduled client follow-ups are completed.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {followUps.map(lead => (
+                    <div key={lead._id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                      <div style={{ minWidth: 200, flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <h3 style={{ margin: 0, fontSize: 14.5, fontWeight: 700 }}>{lead.name}</h3>
+                          <span className={`badge ${STATUS_COLORS[lead.status] || 'badge-tag'}`} style={{ fontSize: 10 }}>
+                            {STAGE_LABELS[lead.status] || lead.status}
+                          </span>
+                        </div>
+                        <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                          +{lead.phone} {lead.project ? `• ${lead.project}` : ''}
+                        </p>
+                        {lead.followUpNote && (
+                          <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#c2410c', fontWeight: 500 }}>
+                            📝 {lead.followUpNote}
+                          </p>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <a href={`tel:${lead.phone}`} className="btn btn-secondary btn-sm" style={{ padding: '6px 10px', borderRadius: 8, color: '#059669', gap: 4 }}>
+                          <Phone size={13} /> Call
+                        </a>
+                        <a href={waLink(lead.phone)} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm" style={{ padding: '6px 10px', borderRadius: 8, color: '#16a34a', gap: 4 }}>
+                          <MessageCircle size={13} /> WhatsApp
+                        </a>
+                        <button
+                          onClick={() => setSchedulingFollowUpLead(lead)}
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '6px 10px', borderRadius: 8, gap: 4 }}
+                        >
+                          <Clock size={13} /> Delay
+                        </button>
+                        <button
+                          onClick={() => setCompletingFollowUpLead(lead)}
+                          className="btn btn-primary btn-sm"
+                          style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12 }}
+                        >
+                          <Check size={13} /> Complete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : activeTab === 'pipeline' ? (
+            /* ───────────────────────────────────────────────────────────── */
+            /* TAB 4: DEDICATED PIPELINE VISUALIZER                          */
+            /* ───────────────────────────────────────────────────────────── */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 16, scrollbarWidth: 'thin' }}>
+                {availableStages.map(stage => {
+                  const stageLeads = leads.filter(l => l.status === stage);
+                  return (
+                    <div key={stage} style={{ minWidth: 260, maxWidth: 300, flex: 1, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+                        <span style={{ fontSize: 13, fontWeight: 800 }}>{STAGE_LABELS[stage] || stage}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 6px', borderRadius: 6, background: 'var(--card)', border: '1px solid var(--border)' }}>
+                          {stageLeads.length}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 120, maxHeight: 480, overflowY: 'auto' }}>
+                        {stageLeads.length === 0 ? (
+                          <div style={{ textAlign: 'center', padding: '20px 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                            No prospects in this stage
+                          </div>
+                        ) : (
+                          stageLeads.map(lead => (
+                            <div
+                              key={lead._id}
+                              onClick={() => router.push(`/leads/${lead._id}`)}
+                              style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px', cursor: 'pointer' }}
+                              className="hover:border-indigo-500"
+                            >
+                              <div style={{ fontSize: 13, fontWeight: 700 }}>{lead.name}</div>
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>+{lead.phone}</div>
+                              {lead.project && (
+                                <div style={{ fontSize: 10.5, color: 'var(--accent)', marginTop: 4 }}>📦 {lead.project}</div>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : activeTab === 'deals' ? (
+            /* ───────────────────────────────────────────────────────────── */
+            /* TAB 5: DEDICATED DEALS & OPPORTUNITIES MODULE                 */
+            /* ───────────────────────────────────────────────────────────── */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* Deals Summary Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+                <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 14, padding: '16px' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#047857', textTransform: 'uppercase' }}>Closed Revenue</span>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: '#065f46', marginTop: 4 }}>
+                    {user?.localization?.currencySymbol || '₹'}{Number(analyticsData?.totalRevenue || 0).toLocaleString()}
+                  </div>
+                </div>
+                <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Deals Won</span>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--text)', marginTop: 4 }}>
+                    {analyticsData?.byStatus?.closed || 0}
+                  </div>
+                </div>
+                <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Negotiation Stage</span>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--text)', marginTop: 4 }}>
+                    {leads.filter(l => l.status === 'negotiation' || l.status === 'not_interested').length}
+                  </div>
+                </div>
+              </div>
+
+              {/* Converted Deals List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {leads.filter(l => ['converted', 'closed', 'Closed', 'Closed / Won', 'payment_done'].includes(l.status)).length === 0 ? (
+                  <div className="empty-state">
+                    <div className="empty-state-icon">🏆</div>
+                    <h3>No won deals recorded yet</h3>
+                    <p>When you convert prospects in your pipeline, their deal value and closed contract details will appear here.</p>
+                  </div>
+                ) : (
+                  leads.filter(l => ['converted', 'closed', 'Closed', 'Closed / Won', 'payment_done'].includes(l.status)).map(deal => (
+                    <div key={deal._id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 14.5, fontWeight: 800 }}>{deal.name}</span>
+                          <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 12, background: 'rgba(16,185,129,0.15)', color: '#047857' }}>
+                            🏆 WON DEAL
+                          </span>
+                        </div>
+                        <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                          +{deal.phone} {deal.project ? `• ${deal.project}` : ''}
+                        </p>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 16, fontWeight: 900, color: '#047857' }}>
+                          {user?.localization?.currencySymbol || '₹'}{Number(deal.closedDealAmount || 0).toLocaleString()}
+                        </div>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                          {deal.updatedAt ? format(new Date(deal.updatedAt), 'dd MMM yyyy') : 'Converted'}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : activeTab === 'site_visits' ? (
+            /* ───────────────────────────────────────────────────────────── */
+            /* TAB 6: DEDICATED SITE VISITS MODULE                           */
+            /* ───────────────────────────────────────────────────────────── */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', gap: 8, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+                {[
+                  { id: 'scheduled', label: 'Scheduled Visits' },
+                  { id: 'completed', label: 'Completed' },
+                  { id: 'cancelled', label: 'Cancelled' },
+                ].map(sub => (
+                  <button
+                    key={sub.id}
+                    onClick={() => setSvSubTab(sub.id)}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: 8,
+                      fontSize: 12,
+                      fontWeight: svSubTab === sub.id ? 700 : 500,
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: svSubTab === sub.id ? 'var(--accent)' : 'transparent',
+                      color: svSubTab === sub.id ? '#ffffff' : 'var(--text-muted)',
+                    }}
+                  >
+                    {sub.label}
+                  </button>
+                ))}
+              </div>
+
+              {followUps.filter(f => f.type === 'site_visit' || Boolean(f.siteVisitDetails)).length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state-icon">🏢</div>
+                  <h3>No site visits scheduled</h3>
+                  <p>Schedule client property tours from any lead card to track visit outcomes and feedback.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {followUps.filter(f => f.type === 'site_visit' || Boolean(f.siteVisitDetails)).map(visit => (
+                    <div key={visit._id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700 }}>{visit.name}</span>
+                          <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 8, background: 'rgba(139,92,246,0.12)', color: '#6d28d9' }}>
+                            🏢 Site Visit
+                          </span>
+                        </div>
+                        <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                          +{visit.phone} {visit.project ? `• ${visit.project}` : ''}
+                        </p>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <a href={`tel:${visit.phone}`} className="btn btn-secondary btn-sm" style={{ padding: '6px 10px', borderRadius: 8 }}>
+                          <Phone size={13} />
+                        </a>
+                        <button
+                          onClick={() => setCompletingFollowUpLead(visit)}
+                          className="btn btn-primary btn-sm"
+                          style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12 }}
+                        >
+                          Record Outcome
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* ───────────────────────────────────────────────────────────── */
+            /* TAB 7: MY LEADS PIPELINE (DEFAULT PIPELINE LISTING)          */
+            /* ───────────────────────────────────────────────────────────── */
+            <div>
+              {/* Pipeline Stage Filter Chips */}
+              <div className="filter-chips" style={{ marginBottom: 16 }}>
+                <button className={`chip ${statusFilter === '' ? 'active' : ''}`} onClick={() => { setStatusFilter(''); setPage(1); }}>
+                  All Stages ({pagination.total || leads.length})
+                </button>
+                {availableStages.map(stage => (
+                  <button
+                    key={stage}
+                    className={`chip ${statusFilter === stage ? 'active' : ''}`}
+                    onClick={() => { setStatusFilter(stage); setPage(1); }}
+                  >
+                    {STAGE_LABELS[stage] || stage}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search & Filter Bar */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 14, width: '100%' }}>
+                <div className="search-bar" style={{ flex: '1 1 200px', minWidth: 160, position: 'relative' }}>
+                  <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: 12, top: 13 }} />
+                  <input
+                    className="input"
+                    type="search"
+                    placeholder="Search leads by name, phone, package..."
+                    value={search}
+                    onChange={e => { setSearch(e.target.value); setPage(1); }}
+                    style={{ paddingLeft: 36, height: 42, fontSize: 13, borderRadius: 10 }}
+                  />
+                  {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}><X size={16} /></button>}
+                </div>
+
+                <select
+                  value={sourceFilter}
+                  onChange={e => { setSourceFilter(e.target.value); setPage(1); }}
+                  className="input"
+                  style={{ flex: '1 1 140px', minWidth: 130, height: 42, fontSize: 12, borderRadius: 10 }}
+                >
+                  <option value="">All Sources</option>
+                  <option value="meta">Meta Ads</option>
+                  <option value="google">Google Ads</option>
+                  <option value="website">Organic / Web</option>
+                  <option value="referral">Referral</option>
+                  <option value="import">Import / CSV</option>
+                  <option value="direct">Direct / Manual</option>
+                </select>
+
+                {projects.length > 0 && (
+                  <select
+                    value={projectFilter}
+                    onChange={e => { setProjectFilter(e.target.value); setPage(1); }}
+                    className="input"
+                    style={{ flex: '1 1 140px', minWidth: 130, height: 42, fontSize: 12, borderRadius: 10 }}
+                  >
+                    <option value="">All Packages</option>
+                    {projects.map(p => (
+                      <option key={p._id} value={p._id}>{p.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Leads Listing */}
+              {loading ? (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}><div className="spinner" /></div>
+              ) : leads.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state-icon">📋</div>
+                  <h3>No client leads found</h3>
+                  <p>Add your first prospect, import a spreadsheet, or adjust filters.</p>
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 10 }}>
+                    <button onClick={() => setShowAdd(true)} className="btn btn-primary">Add Lead</button>
+                    <button onClick={() => setShowImport(true)} className="btn btn-secondary">Import Spreadsheet</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="leads-list" style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
+                  {leads.map(lead => (
+                    <div
+                      key={lead._id}
+                      onClick={() => router.push(`/leads/${lead._id}`)}
+                      style={{ textDecoration: 'none', display: 'block', width: '100%', cursor: 'pointer' }}
+                    >
+                      <div className="lead-card">
+                        {/* Header Row: Lead Name + Source Badge + Stage Dropdown */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, width: '100%', minWidth: 0, marginBottom: 6 }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <h3 className="lead-name truncate" style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+                                {lead.name}
+                              </h3>
+                              <SourcePill lead={lead} showDetail={false} />
+                            </div>
+                            <p className="truncate" style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                              +{lead.phone} {lead.company ? `• ${lead.company}` : ''}
+                            </p>
+                          </div>
+
+                          <select
+                            value={lead.status}
+                            onClick={e => e.stopPropagation()}
+                            onChange={async (e) => {
+                              e.stopPropagation();
+                              const newStatus = e.target.value;
+                              const isConverting = ['converted', 'payment_done', 'closed', 'Closed', 'Closed / Won'].includes(newStatus);
+                              let paymentAmount = null;
+                              let paymentMethod = null;
+                              if (isConverting) {
+                                const inputAmt = window.prompt("🏆 Enter Final Closed Deal / Payment Amount (₹):");
+                                if (!inputAmt) return;
+                                paymentAmount = Number(inputAmt);
+                                if (!paymentAmount || isNaN(paymentAmount) || paymentAmount <= 0) {
+                                  return toast.error("Payment amount (> 0) is required to convert a lead.");
+                                }
+                                const inputMethod = window.prompt("💳 Enter Payment Method (e.g. bank_transfer, upi, cash, card):", "bank_transfer");
+                                if (!inputMethod || !inputMethod.trim()) {
+                                  return toast.error("Payment method is required to convert a lead.");
+                                }
+                                paymentMethod = inputMethod.trim();
+                              }
+                              try {
+                                await api.put(`/leads/${lead._id}`, {
+                                  status: newStatus,
+                                  paymentAmount,
+                                  paymentMethod
+                                });
+                                toast.success(`Lead stage updated to "${STAGE_LABELS[newStatus] || newStatus}" ✅`);
+                                fetchLeads(true);
+                              } catch (err) {
+                                toast.error(err.response?.data?.message || 'Failed to update stage');
+                              }
+                            }}
+                            className={`badge ${STATUS_COLORS[lead.status] || 'badge-tag'} flex-shrink-0`}
+                            style={{
+                              cursor: 'pointer',
+                              padding: '4px 8px',
+                              borderRadius: 8,
+                              border: '1px solid var(--border)',
+                              fontSize: 11,
+                              fontWeight: 700,
+                              outline: 'none',
+                              maxWidth: '140px'
+                            }}
+                          >
+                            {availableStages.map(st => (
+                              <option key={st} value={st} style={{ background: '#0f172a', color: '#f8fafc' }}>
+                                {STAGE_LABELS[st] || st}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Metadata & Attribution Strip */}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '6px 0', width: '100%', minWidth: 0 }}>
+                          <SourcePill lead={lead} showDetail={true} />
+                          {lead.project && (
+                            <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'var(--surface)', borderRadius: 4, color: 'var(--text-muted)', border: '1px solid var(--border)', flexShrink: 0 }}>
+                              📦 {lead.project}
+                            </span>
+                          )}
+                          {lead.assignedToName ? (
+                            <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(99,102,241,0.1)', borderRadius: 4, color: 'var(--accent)', fontWeight: 500, flexShrink: 0 }}>
+                              👤 {lead.assignedToName}
+                            </span>
+                          ) : (
+                            <span className="truncate max-w-full" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(245,158,11,0.15)', borderRadius: 4, color: '#f59e0b', fontWeight: 700, flexShrink: 0 }}>
+                              🌐 Common Pool
+                            </span>
+                          )}
+                        </div>
+
+                        {lead.followUpDate && (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, width: '100%' }}>
+                            <p className="truncate" style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                              <Calendar size={12} className="flex-shrink-0" />
+                              <span className="truncate">Next Follow-up: {format(new Date(lead.followUpDate), 'dd MMM yyyy, h:mm a')}</span>
+                            </p>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSchedulingFollowUpLead(lead);
+                              }}
+                              className="btn btn-ghost btn-sm"
+                              style={{ padding: '1px 6px', fontSize: 10, height: 22, color: 'var(--accent)', gap: 3, flexShrink: 0 }}
+                              title="Edit Follow-up Schedule & Agenda"
+                            >
+                              <Edit2 size={10} /> Edit
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Mobile-First Responsive Action Grid: Row 1 (Call & WA) + Row 2 (FollowUp, Note, Edit) */}
+                        <div className="lead-card-actions" onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+                            <a
+                              href={`tel:${lead.phone}`}
+                              className="lead-action-btn lead-action-call"
+                              style={{ flex: 1, minWidth: 0, height: 34, fontSize: 12 }}
+                            >
+                              <Phone size={13} className="flex-shrink-0" /> Call
+                            </a>
+                            <a
+                              href={waLink(lead.phone, `Hi ${lead.name || ''}, `)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="lead-action-btn lead-action-wa"
+                              style={{ flex: 1, minWidth: 0, height: 34, fontSize: 12 }}
+                            >
+                              <MessageCircle size={13} className="flex-shrink-0" /> WhatsApp
+                            </a>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+                            <button
+                              type="button"
+                              className="lead-action-btn"
+                              style={{ flex: 1, minWidth: 0, height: 32, fontSize: 11.5, background: 'rgba(59,130,246,0.08)', color: '#2563eb', border: '1px solid rgba(59,130,246,0.25)', borderRadius: 8 }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSchedulingFollowUpLead(lead);
+                              }}
+                              title="Schedule or reschedule follow-up"
+                            >
+                              <Calendar size={12} className="flex-shrink-0" /> Follow-Up
+                            </button>
+                            <button
+                              type="button"
+                              className="lead-action-btn"
+                              style={{ flex: 1, minWidth: 0, height: 32, fontSize: 11.5, background: 'rgba(16,185,129,0.08)', color: '#059669', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 8 }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCompletingFollowUpLead(lead);
+                              }}
+                              title="Complete follow-up with mandatory outcome note"
+                            >
+                              <CheckCircle size={12} className="flex-shrink-0" /> Note / Done
+                            </button>
+                            <button
+                              type="button"
+                              className="lead-action-btn"
+                              style={{ flex: 1, minWidth: 0, height: 32, fontSize: 11.5, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8 }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingLead(lead);
+                              }}
+                              title="Edit original lead creation fields"
+                            >
+                              <Edit2 size={12} className="flex-shrink-0" /> Edit
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Pagination */}
+              {pagination.pages > 1 && (
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 20 }}>
+                  <button
+                    disabled={page <= 1}
+                    onClick={() => setPage(p => p - 1)}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    Previous
+                  </button>
+                  <span style={{ fontSize: 13, display: 'flex', alignItems: 'center', padding: '0 8px', color: 'var(--text-muted)' }}>
+                    Page {page} of {pagination.pages}
+                  </span>
+                  <button
+                    disabled={page >= pagination.pages}
+                    onClick={() => setPage(p => p + 1)}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
