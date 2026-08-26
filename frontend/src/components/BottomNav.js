@@ -15,7 +15,7 @@ import {
   Home, FileText, Users, BarChart2, User, MessageCircle,
   Package, Send, Zap, Shield, Crown, GraduationCap,
   ChevronLeft, ChevronRight, Building2, Calendar, TrendingUp,
-  Award, MapPin, ChevronDown
+  Award, MapPin, ChevronDown, Sliders
 } from 'lucide-react';
 import PlanStatusWidget from '@/components/PlanStatusWidget';
 
@@ -35,7 +35,7 @@ function BottomNavContent({ active }) {
 
   // Accordion states for sub-items
   const [leadsExpanded, setLeadsExpanded] = useState(true);
-  const [waExpanded, setWaExpanded] = useState(true);
+  const [generalControlsExpanded, setGeneralControlsExpanded] = useState(true);
 
   useEffect(() => {
     try {
@@ -638,25 +638,21 @@ function BottomNavContent({ active }) {
                 </Link>
               )}
 
-              {/* SECTION: GENERAL CONTROLS */}
-              {!isCollapsed && (
-                <div
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: 'var(--text-muted)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    padding: '12px 10px 4px',
-                    borderTop: '1px solid var(--border)',
-                    marginTop: 6,
-                  }}
-                >
-                  General Controls
-                </div>
-              )}
+              {/* 8. MY PERFORMANCE */}
+              <Link
+                href="/analytics"
+                className={`sidebar-nav-link ${isLinkActive('analytics', '/analytics') ? 'active' : ''}`}
+                style={{
+                  justifyContent: isCollapsed ? 'center' : 'flex-start',
+                  padding: isCollapsed ? '9px 0' : '9px 12px',
+                }}
+                title="My Performance"
+              >
+                <BarChart2 size={17} color={isLinkActive('analytics', '/analytics') ? 'var(--accent)' : 'currentColor'} />
+                {!isCollapsed && <span>My Performance</span>}
+              </Link>
 
-              {/* 8. WHATSAPP HUB (WITH SUB-ITEMS: BROADCAST, TEMPLATES, GROUPS) */}
+              {/* 9. GENERAL CONTROLS (WITH SUB-ITEMS: WHATSAPP HUB, BROADCAST, TEMPLATES, AUDIENCE GROUPS) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <div
                   className={`sidebar-nav-link ${normalize(pathname) === '/whatsapp' || normalize(pathname) === '/campaigns' || normalize(pathname) === '/templates' || normalize(pathname) === '/groups' ? 'active' : ''}`}
@@ -665,15 +661,15 @@ function BottomNavContent({ active }) {
                     padding: isCollapsed ? '9px 0' : '9px 12px',
                     cursor: 'pointer',
                   }}
-                  title="WhatsApp Hub"
+                  title="General Controls"
                 >
                   <Link
                     href="/whatsapp"
-                    onClick={() => setWaExpanded(true)}
+                    onClick={() => setGeneralControlsExpanded(true)}
                     style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', flex: 1 }}
                   >
-                    <MessageCircle size={17} color={normalize(pathname) === '/whatsapp' ? 'var(--accent)' : 'currentColor'} />
-                    {!isCollapsed && <span style={{ fontWeight: 600 }}>WhatsApp Hub</span>}
+                    <Sliders size={17} color={normalize(pathname) === '/whatsapp' || normalize(pathname) === '/campaigns' || normalize(pathname) === '/templates' || normalize(pathname) === '/groups' ? 'var(--accent)' : 'currentColor'} />
+                    {!isCollapsed && <span style={{ fontWeight: 600 }}>General Controls</span>}
                   </Link>
                   {!isCollapsed && (
                     <button
@@ -681,7 +677,7 @@ function BottomNavContent({ active }) {
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        setWaExpanded(!waExpanded);
+                        setGeneralControlsExpanded(!generalControlsExpanded);
                       }}
                       style={{
                         background: 'none',
@@ -697,7 +693,7 @@ function BottomNavContent({ active }) {
                       <ChevronDown
                         size={14}
                         style={{
-                          transform: waExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                          transform: generalControlsExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
                           transition: 'transform 0.2s',
                           color: 'var(--text-muted)',
                         }}
@@ -706,9 +702,16 @@ function BottomNavContent({ active }) {
                   )}
                 </div>
 
-                {/* Sub-items for WhatsApp Hub */}
-                {!isCollapsed && waExpanded && (
+                {/* Sub-items for General Controls */}
+                {!isCollapsed && generalControlsExpanded && (
                   <div style={{ paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 2, borderLeft: '1px solid var(--border)', marginLeft: 16 }}>
+                    <Link
+                      href="/whatsapp"
+                      className={`sidebar-nav-link ${normalize(pathname) === '/whatsapp' ? 'active' : ''}`}
+                      style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}
+                    >
+                      <span>WhatsApp Hub</span>
+                    </Link>
                     <Link
                       href="/campaigns"
                       className={`sidebar-nav-link ${normalize(pathname) === '/campaigns' ? 'active' : ''}`}
@@ -733,38 +736,6 @@ function BottomNavContent({ active }) {
                   </div>
                 )}
               </div>
-
-              {/* SECTION: PERFORMANCE & ACCOUNT */}
-              {!isCollapsed && (
-                <div
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: 'var(--text-muted)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    padding: '12px 10px 4px',
-                    borderTop: '1px solid var(--border)',
-                    marginTop: 6,
-                  }}
-                >
-                  Account & Analytics
-                </div>
-              )}
-
-              {/* 9. MY PERFORMANCE */}
-              <Link
-                href="/analytics"
-                className={`sidebar-nav-link ${isLinkActive('analytics', '/analytics') ? 'active' : ''}`}
-                style={{
-                  justifyContent: isCollapsed ? 'center' : 'flex-start',
-                  padding: isCollapsed ? '9px 0' : '9px 12px',
-                }}
-                title="My Performance"
-              >
-                <BarChart2 size={17} color={isLinkActive('analytics', '/analytics') ? 'var(--accent)' : 'currentColor'} />
-                {!isCollapsed && <span>My Performance</span>}
-              </Link>
 
               {/* 10. PROFILE */}
               <Link
