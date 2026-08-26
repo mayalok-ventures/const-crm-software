@@ -2,9 +2,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { getUser, setUser as saveLocalUser } from '@/lib/auth';
-import api from '@/lib/api';
-import { ShieldAlert, ArrowRight } from 'lucide-react';
+import { getUser } from '@/lib/auth';
+import { ShieldAlert, ArrowRight, X } from 'lucide-react';
 
 export default function SecurityWarningBanner() {
   const pathname = usePathname();
@@ -15,6 +14,14 @@ export default function SecurityWarningBanner() {
     if (isAuthPage) {
       setShowBanner(false);
       return;
+    }
+
+    if (typeof window !== 'undefined') {
+      const isDismissed = sessionStorage.getItem('dismissed_2fa_banner');
+      if (isDismissed === 'true') {
+        setShowBanner(false);
+        return;
+      }
     }
 
     const localUser = getUser();
@@ -44,48 +51,46 @@ export default function SecurityWarningBanner() {
     };
   }, [pathname]);
 
+  const handleDismiss = () => {
+    setShowBanner(false);
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.setItem('dismissed_2fa_banner', 'true');
+      } catch (e) {}
+    }
+  };
+
   if (!showBanner) return null;
 
   return (
-    <div style={{
-      background: 'linear-gradient(90deg, #b45309 0%, #d97706 100%)',
-      color: '#ffffff',
-      padding: '8px 16px',
-      fontSize: 12,
-      fontWeight: 600,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      position: 'sticky',
-      top: 0,
-      zIndex: 999,
-      boxShadow: '0 2px 8px rgba(180, 83, 9, 0.3)',
-      gap: 10,
-      flexWrap: 'wrap'
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <ShieldAlert size={16} />
-        <span>⚠️ Enhance your account security: 2FA Authenticator is not enabled.</span>
-      </div>
+    <aside aria-label="Security Alert" className="system-top-banner bg-amber-500/10 border-b border-amber-500/25 backdrop-blur-md">
+      <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between gap-3 text-xs flex-wrap">
+        <div className="flex items-center gap-2 text-amber-900 font-medium min-w-0">
+          <ShieldAlert className="w-4 h-4 text-amber-600 flex-shrink-0" />
+          <span className="truncate">
+            <strong className="font-bold text-amber-950">Enhance your account security:</strong> 2FA Authenticator is not enabled.
+          </span>
+        </div>
 
-      <Link
-        href="/admin?tab=security"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 4,
-          background: 'rgba(0,0,0,0.25)',
-          padding: '3px 10px',
-          borderRadius: 6,
-          color: '#ffffff',
-          textDecoration: 'none',
-          fontSize: 11,
-          fontWeight: 700,
-          border: '1px solid rgba(255,255,255,0.3)'
-        }}
-      >
-        Setup 2FA Authenticator <ArrowRight size={12} />
-      </Link>
-    </div>
+        <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
+          <Link
+            href="/admin?tab=security"
+            className="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-3 py-1 rounded-lg text-xs transition-colors shadow-sm"
+          >
+            <span>Setup 2FA</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+
+          <button
+            type="button"
+            onClick={handleDismiss}
+            className="p-1 text-amber-700 hover:text-amber-950 hover:bg-amber-500/20 rounded-md transition-colors"
+            title="Dismiss notification"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    </aside>
   );
 }
