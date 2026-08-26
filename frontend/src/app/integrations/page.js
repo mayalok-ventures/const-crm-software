@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import api, { API_URL } from '@/lib/api';
+import { getUser, isOwner, isSuperAdmin } from '@/lib/auth';
 import BottomNav from '@/components/BottomNav';
 import {
   Zap, ArrowLeft, Check, Copy, ExternalLink, RefreshCw,
@@ -56,6 +57,19 @@ export default function IntegrationsPage() {
   };
 
   useEffect(() => {
+    const user = getUser();
+    if (!user) {
+      router.replace('/login');
+      return;
+    }
+    const isAuthorized = isOwner(user) || isSuperAdmin(user);
+
+    if (!isAuthorized) {
+      toast.error('Ads & Lead Integrations management is restricted to Organization Administrators.');
+      router.replace('/dashboard');
+      return;
+    }
+
     fetchIntegrations();
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);

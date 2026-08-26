@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Zap, ArrowRight, Sparkles, Crown } from 'lucide-react';
-import { getUser } from '@/lib/auth';
+import { getUser, isOwner } from '@/lib/auth';
 import api from '@/lib/api';
 
 export function getPlanTierInfo(user) {
@@ -78,6 +78,9 @@ export default function PlanStatusWidget({ className = '', style = {} }) {
   }, []);
 
   if (!user || user.role === 'superadmin') return null;
+
+  // Plan and upgrade widgets are strictly for Tenant Owners
+  if (!isOwner(user)) return null;
 
   const { isFree, isMidTier, isHighest, daysLeft, formattedName } = getPlanTierInfo(user);
 

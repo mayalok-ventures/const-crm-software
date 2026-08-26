@@ -1057,7 +1057,8 @@ exports.updateProfile = async (req, res) => {
       }
     }
 
-    if (companyInfo) {
+    const isOwnerOrAdmin = user.workStatus === 'company_owner' || user.companyRole === 'owner' || user.role === 'admin' || user.role === 'superadmin';
+    if (companyInfo && isOwnerOrAdmin) {
       user.companyInfo = {
         ...user.companyInfo,
         ...companyInfo,

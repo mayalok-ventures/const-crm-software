@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Zap,
   Shield,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
+import { isOwner, isSuperAdmin } from '@/lib/auth';
 import BottomNav from '@/components/BottomNav';
 
 const WA_NUMBER = process.env.NEXT_PUBLIC_WA_NUMBER || '918796475107';
@@ -151,6 +153,7 @@ const ORG_PLANS = [
 ];
 
 export default function PlansPage() {
+  const router = useRouter();
   const [user, setUser] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const [billingCycle, setBillingCycle] = useState('monthly'); // 'monthly' | 'yearly'
@@ -174,6 +177,13 @@ export default function PlansPage() {
     api.get('/auth/me')
       .then(res => {
         const u = res.data;
+        const isAuthorized = isOwner(u) || isSuperAdmin(u);
+        if (!isAuthorized) {
+          toast.error('Plan & billing management is restricted to Organization Owners.');
+          router.replace('/dashboard');
+          return;
+        }
+
         setUser(u);
         localStorage.setItem('user', JSON.stringify(u));
         if (u.workStatus === 'company_owner' || u.companyRole === 'owner') {

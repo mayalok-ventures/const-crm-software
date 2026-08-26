@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getUser } from '@/lib/auth';
+import { getUser, isOwner } from '@/lib/auth';
 import BottomNav from '@/components/BottomNav';
 import ProfileModule from '@/components/admin/modules/ProfileModule';
 import { ArrowLeft } from 'lucide-react';
@@ -44,9 +44,15 @@ export default function ProfilePage() {
               <ArrowLeft size={18} />
             </Link>
             <div>
-              <h1 className="page-title text-slate-900 font-bold" style={{ fontSize: 'clamp(18px, 4vw, 22px)', margin: 0 }}>My Profile & Settings</h1>
+              <h1 className="page-title text-slate-900 font-bold" style={{ fontSize: 'clamp(18px, 4vw, 22px)', margin: 0 }}>
+                {isOwner(currentUser)
+                  ? 'Organization & Profile'
+                  : 'My Profile'}
+              </h1>
               <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-                Manage your account credentials and personal preferences
+                {isOwner(currentUser)
+                  ? 'Manage organization identity and administrator preferences'
+                  : 'Manage your personal account credentials, work information and preferences'}
               </p>
             </div>
           </div>

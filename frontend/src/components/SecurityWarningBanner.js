@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { getUser } from '@/lib/auth';
-import { ShieldAlert, ArrowRight, X } from 'lucide-react';
+import { ShieldAlert, AlertTriangle, ArrowRight, X } from 'lucide-react';
 
 export default function SecurityWarningBanner() {
   const pathname = usePathname();
@@ -64,34 +64,42 @@ export default function SecurityWarningBanner() {
 
   return (
     <aside
-      aria-label="Security Alert"
-      className="system-top-banner bg-[#0b1120] text-white border-b border-slate-800 shadow-md transition-all"
+      aria-label="Security Warning Alert"
+      className="system-top-banner text-white border-b border-amber-500/40 shadow-lg shadow-orange-950/20 transition-all"
+      style={{
+        background: 'linear-gradient(90deg, #7c2d12 0%, #9a3412 50%, #7c2d12 100%)',
+      }}
     >
-      <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3 text-xs flex-wrap">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-6 h-6 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
-            <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
-          </div>
-          <span className="truncate text-slate-200">
-            <strong className="font-bold text-amber-400">Enhance your account security:</strong>{' '}
-            <span className="text-slate-300">2FA Authenticator is not enabled.</span>
+      <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between gap-3 text-xs flex-wrap">
+        <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
+          {/* Security Alert Badge */}
+          <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-black/40 border border-amber-400/40 text-amber-200 flex items-center gap-1 shadow-inner flex-shrink-0">
+            <AlertTriangle className="w-3 h-3 text-amber-300 animate-pulse" />
+            <span>SECURITY WARNING</span>
+          </span>
+
+          <span className="text-amber-50 text-xs">
+            <strong className="font-bold text-white">2FA Authenticator is not enabled.</strong>{' '}
+            <span className="text-amber-100/90 hidden sm:inline">
+              Protect your account & organization from unauthorized access.
+            </span>
           </span>
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
           <Link
             href="/admin?tab=security"
-            className="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3.5 py-1.5 rounded-lg text-xs transition-all shadow-sm shadow-amber-500/20"
+            className="inline-flex items-center gap-1.5 bg-white hover:bg-amber-50 text-amber-950 font-bold px-3 py-1 rounded-lg text-xs transition-all shadow-md active:scale-95"
           >
-            <span>Setup 2FA</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            <span>Enable 2FA Now</span>
+            <ArrowRight className="w-3.5 h-3.5 text-amber-900" />
           </Link>
 
           <button
             type="button"
             onClick={handleDismiss}
-            className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
-            title="Dismiss notification"
+            className="p-1 text-amber-200/80 hover:text-white hover:bg-black/20 rounded-md transition-colors"
+            title="Dismiss alert"
           >
             <X className="w-3.5 h-3.5" />
           </button>

@@ -40,6 +40,57 @@ export const clearAuth = () => {
 
 export const isLoggedIn = () => !!getToken();
 
+// ─────────────────────────────────────────────────────────────
+// ROLE & PERMISSION HIERARCHY HELPERS (RBAC)
+// ─────────────────────────────────────────────────────────────
+export const isSuperAdmin = (user) => {
+  if (!user) return false;
+  return Boolean(user.role === 'superadmin' || user.isAdmin);
+};
+
+export const isOwner = (user) => {
+  if (!user) return false;
+  if (isSuperAdmin(user)) return false;
+  return Boolean(
+    user.workStatus === 'company_owner' ||
+    user.companyRole === 'owner' ||
+    user.role === 'admin' ||
+    user.roleId?.roleType === 'OWNER'
+  );
+};
+
+export const isManager = (user) => {
+  if (!user) return false;
+  if (isSuperAdmin(user) || isOwner(user)) return false;
+  return Boolean(
+    user.companyRole === 'manager' ||
+    user.role === 'manager' ||
+    user.roleId?.roleType === 'MANAGER'
+  );
+};
+
+export const isAgent = (user) => {
+  if (!user) return false;
+  if (isSuperAdmin(user) || isOwner(user) || isManager(user)) return false;
+  return Boolean(
+    user.companyRole === 'agent' ||
+    user.companyRole === 'sales_rep' ||
+    user.companyRole === 'telecaller' ||
+    user.role === 'agent' ||
+    user.workStatus === 'agent' ||
+    user.workStatus === 'employee' ||
+    user.roleId?.roleType === 'AGENT'
+  );
+};
+
+export const getUserRole = (user) => {
+  if (isSuperAdmin(user)) return 'SUPERADMIN';
+  if (isOwner(user)) return 'OWNER';
+  if (isManager(user)) return 'MANAGER';
+  if (isAgent(user)) return 'AGENT';
+  return 'AGENT';
+};
+
 /**
  * Background silent user state synchronization with backend API.
  * Ensures local plan, subscriptionLifecycle, and limits match live database state.
