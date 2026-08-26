@@ -91,7 +91,7 @@ export default function DashboardPage() {
       <BottomNav active="dashboard" />
 
       <main className="main-content">
-        <div style={{ maxWidth: 1100, margin: '0 auto', paddingBottom: 60 }}>
+        <div style={{ width: '100%', paddingBottom: 60 }}>
           
           {/* 1. Header Greeting & Actions */}
           <div style={{

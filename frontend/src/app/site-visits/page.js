@@ -96,7 +96,7 @@ export default function SiteVisitsPage() {
       <BottomNav active="site_visits" />
 
       <main className="main-content">
-        <div style={{ maxWidth: 1100, margin: '0 auto', paddingBottom: 60 }}>
+        <div style={{ width: '100%', paddingBottom: 60 }}>
           
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14, marginBottom: 20 }}>

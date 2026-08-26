@@ -138,7 +138,7 @@ function LeadsContent() {
       <BottomNav active="leads" />
 
       <main className="main-content">
-        <div style={{ maxWidth: 1200, width: '100%', margin: '0 auto', paddingBottom: 60 }}>
+        <div style={{ width: '100%', paddingBottom: 60 }}>
           
           {/* Header Section */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
