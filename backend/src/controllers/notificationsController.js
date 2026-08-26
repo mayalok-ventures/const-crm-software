@@ -27,6 +27,7 @@ exports.getNotifications = async (req, res) => {
     const [notifications, unreadCount] = await Promise.all([
       Notification.find({ userId: req.user._id })
         .populate('leadId', 'name phone status project location budget followUpDate')
+        .populate('transferRequestId', 'status requestType reason requestedBy requestedTo createdAt expiresAt')
         .sort({ createdAt: -1 })
         .limit(50)
         .lean(),

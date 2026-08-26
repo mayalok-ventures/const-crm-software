@@ -11,11 +11,12 @@ import {
   isAgent,
   getUserRole,
 } from '@/lib/auth';
+import api from '@/lib/api';
 import {
   Home, FileText, Users, BarChart2, User, MessageCircle,
   Package, Send, Zap, Shield, Crown, GraduationCap,
   ChevronLeft, ChevronRight, Building2, Calendar, TrendingUp,
-  Award, MapPin, ChevronDown, Sliders
+  Award, MapPin, ChevronDown, Sliders, Bell
 } from 'lucide-react';
 import PlanStatusWidget from '@/components/PlanStatusWidget';
 
@@ -25,6 +26,7 @@ function BottomNavContent({ active }) {
   const searchParams = useSearchParams();
   const currentTab = searchParams?.get('tab') || null;
   const [user, setUser] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [isSuper, setIsSuper] = useState(false);
   const [isTenantOwner, setIsTenantOwner] = useState(false);
   const [isTenantManager, setIsTenantManager] = useState(false);
@@ -36,6 +38,24 @@ function BottomNavContent({ active }) {
   // Accordion states for sub-items
   const [leadsExpanded, setLeadsExpanded] = useState(true);
   const [generalControlsExpanded, setGeneralControlsExpanded] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchUnread = async () => {
+      try {
+        const res = await api.get('/notifications');
+        if (mounted) {
+          setUnreadCount(res.data?.unreadCount || 0);
+        }
+      } catch {}
+    };
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 15000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [pathname]);
 
   useEffect(() => {
     try {
@@ -167,6 +187,7 @@ function BottomNavContent({ active }) {
     { href: '/templates', label: 'Message Templates', icon: FileText, key: 'templates' },
     { href: '/groups', label: 'Audience Groups', icon: Users, key: 'groups' },
     { href: '/analytics', label: 'Sales Analytics', icon: BarChart2, key: 'analytics' },
+    { href: '/notifications', label: 'Notifications', icon: Bell, key: 'notifications', badge: unreadCount },
     { href: '/profile', label: 'Profile', icon: User, key: 'profile' },
   ];
 
@@ -182,6 +203,7 @@ function BottomNavContent({ active }) {
     { href: '/templates', label: 'Message Templates', icon: FileText, key: 'templates' },
     { href: '/groups', label: 'Audience Groups', icon: Users, key: 'groups' },
     { href: '/analytics', label: 'Sales Analytics', icon: BarChart2, key: 'analytics' },
+    { href: '/notifications', label: 'Notifications', icon: Bell, key: 'notifications', badge: unreadCount },
     { href: profileHref, label: 'Organization & Profile', icon: User, key: 'profile' },
   ];
 
@@ -737,7 +759,35 @@ function BottomNavContent({ active }) {
                 )}
               </div>
 
-              {/* 10. PROFILE */}
+              {/* 10. NOTIFICATIONS */}
+              <Link
+                href="/notifications"
+                className={`sidebar-nav-link ${isLinkActive('notifications', '/notifications') ? 'active' : ''}`}
+                style={{
+                  justifyContent: isCollapsed ? 'center' : 'space-between',
+                  padding: isCollapsed ? '9px 0' : '9px 12px',
+                }}
+                title="Notifications"
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Bell size={17} color={isLinkActive('notifications', '/notifications') ? 'var(--accent)' : 'currentColor'} />
+                  {!isCollapsed && <span>Notifications</span>}
+                </div>
+                {!isCollapsed && unreadCount > 0 && (
+                  <span style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    padding: '2px 7px',
+                    borderRadius: 10,
+                    background: '#ef4444',
+                    color: '#fff',
+                  }}>
+                    {unreadCount}
+                  </span>
+                )}
+              </Link>
+
+              {/* 11. PROFILE */}
               <Link
                 href="/profile"
                 className={`sidebar-nav-link ${isLinkActive('profile', '/profile') ? 'active' : ''}`}
@@ -753,7 +803,7 @@ function BottomNavContent({ active }) {
             </>
           ) : isTenantManager ? (
             /* Render Manager Structured Navigation */
-            managerDesktopItems.map(({ href, label, icon: Icon, key }) => {
+            managerDesktopItems.map(({ href, label, icon: Icon, key, badge }) => {
               const activeState = isLinkActive(key, href);
               return (
                 <Link
@@ -761,19 +811,33 @@ function BottomNavContent({ active }) {
                   href={href}
                   className={`sidebar-nav-link ${activeState ? 'active' : ''}`}
                   style={{
-                    justifyContent: isCollapsed ? 'center' : 'flex-start',
+                    justifyContent: isCollapsed ? 'center' : 'space-between',
                     padding: isCollapsed ? '10px 0' : '10px 14px',
                   }}
                   title={label}
                 >
-                  <Icon size={18} color={activeState ? 'var(--accent)' : 'currentColor'} />
-                  {!isCollapsed && <span>{label}</span>}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Icon size={18} color={activeState ? 'var(--accent)' : 'currentColor'} />
+                    {!isCollapsed && <span>{label}</span>}
+                  </div>
+                  {!isCollapsed && badge > 0 && (
+                    <span style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      padding: '2px 7px',
+                      borderRadius: 10,
+                      background: '#ef4444',
+                      color: '#fff',
+                    }}>
+                      {badge}
+                    </span>
+                  )}
                 </Link>
               );
             })
           ) : (
             /* Render Owner / SuperAdmin Navigation */
-            ownerDesktopItems.map(({ href, label, icon: Icon, key }) => {
+            ownerDesktopItems.map(({ href, label, icon: Icon, key, badge }) => {
               const activeState = isLinkActive(key, href);
               return (
                 <Link
@@ -781,13 +845,27 @@ function BottomNavContent({ active }) {
                   href={href}
                   className={`sidebar-nav-link ${activeState ? 'active' : ''}`}
                   style={{
-                    justifyContent: isCollapsed ? 'center' : 'flex-start',
+                    justifyContent: isCollapsed ? 'center' : 'space-between',
                     padding: isCollapsed ? '10px 0' : '10px 14px',
                   }}
                   title={label}
                 >
-                  <Icon size={18} color={activeState ? 'var(--accent)' : 'currentColor'} />
-                  {!isCollapsed && <span>{label}</span>}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Icon size={18} color={activeState ? 'var(--accent)' : 'currentColor'} />
+                    {!isCollapsed && <span>{label}</span>}
+                  </div>
+                  {!isCollapsed && badge > 0 && (
+                    <span style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      padding: '2px 7px',
+                      borderRadius: 10,
+                      background: '#ef4444',
+                      color: '#fff',
+                    }}>
+                      {badge}
+                    </span>
+                  )}
                 </Link>
               );
             })

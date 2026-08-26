@@ -646,11 +646,19 @@ exports.acceptTransfer = async (req, res) => {
       return res.status(result.code).json({ message: result.message });
     }
 
-    // Create Notification
+    // Mark recipient notification as read
+    await Notification.updateMany(
+      { transferRequestId: result.request._id },
+      { $set: { isRead: true } }
+    );
+
+    // Create Notification for assigner
     await Notification.create({
       userId: result.request.requestedBy,
+      leadId: result.lead._id,
+      leadName: result.lead.name,
       title: '✅ Lead Transfer Accepted',
-      message: `Your transfer request for ${result.lead.name} has been accepted.`,
+      message: `${req.user.name} accepted the assignment of lead ${result.lead.name}.`,
       type: 'transfer_accepted',
     });
 
@@ -703,10 +711,34 @@ exports.rejectTransfer = async (req, res) => {
     request.respondedAt = new Date();
     await request.save();
 
+    // Mark recipient notification as read
+    await Notification.updateMany(
+      { transferRequestId: request._id },
+      { $set: { isRead: true } }
+    );
+
+    // Unassign lead or return to previous owner if needed
+    try {
+      const rejectedLead = await Lead.findById(request.leadId);
+      if (rejectedLead) {
+        rejectedLead.assignedTo = null;
+        rejectedLead.assignedToName = null;
+        rejectedLead.leadActivities.push({
+          action: 'transfer_rejected',
+          performedBy: req.user._id,
+          performerName: req.user.name,
+          details: `Lead assignment was rejected by ${req.user.name}. Returned to unassigned pool.`,
+          timestamp: new Date(),
+        });
+        await rejectedLead.save();
+      }
+    } catch {}
+
     await Notification.create({
       userId: request.requestedBy,
+      leadId: request.leadId,
       title: '❌ Lead Transfer Rejected',
-      message: `Your transfer request for lead ID ${request.leadId} has been rejected.`,
+      message: `${req.user.name} declined the assignment of lead ID ${request.leadId}. Lead has been returned to unassigned pool.`,
       type: 'transfer_rejected',
     });
 

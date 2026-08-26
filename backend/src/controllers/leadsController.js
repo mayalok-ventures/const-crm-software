@@ -1477,6 +1477,48 @@ exports.reassignLead = async (req, res) => {
 
     await lead.save();
 
+    // If assigned to another agent, create LeadTransferRequest and notify target agent
+    if (String(toAgentId) !== String(req.user._id)) {
+      try {
+        const LeadTransferRequest = require('../models/LeadTransferRequest');
+        const Notification = require('../models/Notification');
+        const tenantId = lead.companyId || req.user.companyId || req.user._id;
+        const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+        const isManagerOrAdmin = req.user.isAdmin || req.user.role === 'superadmin' || req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner';
+
+        const transferRequest = await LeadTransferRequest.create({
+          tenantId,
+          leadId: lead._id,
+          requestedBy: req.user._id,
+          currentOwnerId: req.user._id,
+          requestedTo: targetAgent._id,
+          requestType: isManagerOrAdmin ? 'MANAGER_REQUEST' : 'NORMAL',
+          status: 'PENDING',
+          reason: reason && String(reason).trim() ? String(reason).trim() : `Lead assigned by ${req.user.name}`,
+          expiresAt,
+        });
+
+        const notif = await Notification.create({
+          userId: targetAgent._id,
+          leadId: lead._id,
+          leadName: lead.name || 'Prospect Lead',
+          title: '🎯 New Lead Assigned / Transfer Request',
+          message: `${req.user.name} assigned lead "${lead.name || 'Prospect'}" (${lead.phone}) to you.${reasonText}`,
+          type: 'transfer_request',
+          transferRequestId: transferRequest._id,
+          isRead: false,
+        });
+
+        try {
+          const { broadcastNotification } = require('./notificationsController');
+          broadcastNotification(targetAgent._id, notif);
+        } catch {}
+      } catch (notifErr) {
+        console.warn('Failed to create transfer request / notification:', notifErr.message);
+      }
+    }
+
     try {
       const ActivityLog = require('../models/ActivityLog');
       await ActivityLog.create({
