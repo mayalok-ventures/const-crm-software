@@ -509,16 +509,21 @@ function AdminControlCenterContent() {
 
 
   // Save Form Schema Configuration Handler
-  const handleSaveFormSchema = async (fields) => {
+  const handleSaveFormSchema = async (fields, formType = 'lead') => {
     try {
-      const res = await fetch(`${API_BASE}/admin/form-schemas`, {
+      const isProduct = formType === 'product' || formType === 'package';
+      const res = await fetch(`${API_BASE}/admin/form-schemas?type=${formType}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ fields, title: 'Lead Capture Form' })
+        body: JSON.stringify({
+          fields,
+          formType: isProduct ? 'product' : 'lead',
+          title: isProduct ? 'Product / Package Form' : 'Lead Capture Form',
+        })
       });
       const data = await res.json();
       if (data.success) {
-        toast.success('Form schema saved!');
+        toast.success(`${isProduct ? 'Product / Package' : 'Lead'} form schema saved!`);
         fetchTabData('forms');
       } else {
         toast.error(data.message || 'Save failed');
