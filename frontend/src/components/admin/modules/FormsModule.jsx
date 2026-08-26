@@ -270,6 +270,9 @@ export default function FormsModule({
         formType,
         schema: activeFields,
         fields: activeFields,
+        productFormSchema: formType === 'product' ? activeFields : undefined,
+        leadFormSchema: formType === 'lead' ? activeFields : undefined,
+        customLeadFields: activeFields,
       });
 
       if (res.data?.success || res.status === 200) {

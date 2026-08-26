@@ -22,10 +22,17 @@ const STATUS_LABELS = {
 };
 
 import DynamicFormRenderer from '@/components/common/DynamicFormRenderer';
+import { getUser } from '@/lib/auth';
 
 function ProjectModal({ project, onClose, onSaved }) {
   const isEdit = !!project?._id;
-  const [schema, setSchema] = useState([]);
+  const [schema, setSchema] = useState(() => {
+    const u = getUser();
+    if (u?.productFormSchema && Array.isArray(u.productFormSchema) && u.productFormSchema.length > 0) {
+      return u.productFormSchema;
+    }
+    return [];
+  });
   const [form, setForm] = useState(() => {
     const initial = {
       name: project?.name || '',
@@ -52,7 +59,7 @@ function ProjectModal({ project, onClose, onSaved }) {
   useEffect(() => {
     async function loadSchema() {
       try {
-        const { data } = await api.get('/auth/form-schema?type=product');
+        const { data } = await api.get(`/auth/form-schema?type=product&_t=${Date.now()}`);
         if (data?.schema && Array.isArray(data.schema) && data.schema.length > 0) {
           setSchema(data.schema);
         }
@@ -70,9 +77,6 @@ function ProjectModal({ project, onClose, onSaved }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name?.trim() || !form.location?.trim()) {
-      return toast.error('Package name and location/market are required');
-    }
 
     setLoading(true);
     try {

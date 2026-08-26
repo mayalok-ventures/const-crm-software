@@ -27,6 +27,7 @@ const mockRes = () => {
     res.data = data;
     return res;
   };
+  res.set = () => res;
   return res;
 };
 
@@ -48,86 +49,77 @@ async function runVerification() {
       _id: ownerId,
       name: 'Agency Owner',
       email: 'owner@agency.com',
-      password: 'Password123!',
-      companyId: ownerId,
+      password: 'password123',
       role: 'admin',
-      workStatus: 'company_owner',
       companyRole: 'owner',
-      industryType: 'Real Estate',
+      workStatus: 'company_owner',
+      industryType: 'REAL ESTATE',
     });
 
     const agent = await User.create({
       _id: agentId,
-      name: 'Agency Agent',
+      name: 'Sales Agent',
       email: 'agent@agency.com',
-      password: 'Password123!',
-      companyId: ownerId,
+      password: 'password123',
       role: 'agent',
-      workStatus: 'employee',
       companyRole: 'agent',
-      industryType: 'Real Estate',
+      companyId: ownerId,
+      industryType: 'REAL ESTATE',
     });
 
-    // 2. Test Owner Saving Custom Schema with Optional Phone & Custom Name Label
+    // 1. Owner updates lead form schema
     console.log('1️⃣ Testing Owner Customizing Form (Making Phone Optional & renaming Client Name)...');
-
-    const customLeadSchema = [
-      { fieldId: 'name', label: 'Prospect Full Name', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 1 },
-      { fieldId: 'phone', label: 'Mobile Contact', fieldType: 'phone', isRequired: false, isSystem: true, isHidden: false, order: 2 },
-      { fieldId: 'email', label: 'Work Email', fieldType: 'email', isRequired: false, isSystem: true, isHidden: false, order: 3 },
-      { fieldId: 'preferredLocation', label: 'Preferred Location', fieldType: 'text', isRequired: true, isSystem: false, isHidden: false, order: 4 },
-      { fieldId: 'budget', label: 'Investment Budget', fieldType: 'currency', isRequired: false, isSystem: false, isHidden: false, order: 5 },
-    ];
-
-    const saveReq = {
+    const updateReq = {
       user: owner,
       query: { type: 'lead' },
-      body: { schema: customLeadSchema, formType: 'lead' }
+      body: {
+        formType: 'lead',
+        schema: [
+          { fieldId: 'name', label: 'Prospect Full Name', fieldType: 'text', isRequired: false },
+          { fieldId: 'phone', label: 'Mobile Number', fieldType: 'phone', isRequired: false },
+          { fieldId: 'preferredLocation', label: 'Preferred Sector / Area', fieldType: 'text', isRequired: true },
+          { fieldId: 'budget', label: 'Expected Budget', fieldType: 'currency', isRequired: false },
+          { fieldId: 'followUpDate', label: 'Next Follow-up Date & Time', fieldType: 'datetime', isRequired: false },
+        ]
+      }
     };
-    const saveRes = mockRes();
-    await authController.updateFormSchema(saveReq, saveRes);
+    const updateRes = mockRes();
+    await authController.updateFormSchema(updateReq, updateRes);
 
-    assert(saveRes.data && saveRes.data.success === true, 'Owner schema update API succeeded');
-    assert(saveRes.data.leadFormSchema.length === 5, 'Owner saved 5 customized fields');
-    const savedPhoneField = saveRes.data.leadFormSchema.find(f => f.fieldId === 'phone');
-    assert(savedPhoneField && savedPhoneField.isRequired === false, 'Phone field is saved as isRequired: false (Full Owner Control)');
+    assert(updateRes.data && updateRes.data.success === true, 'Owner schema update API succeeded');
+    assert(updateRes.data.leadFormSchema.length === 5, 'Owner saved 5 customized fields');
+    assert(updateRes.data.leadFormSchema.find(f => f.fieldId === 'phone').isRequired === false, 'Phone field is saved as isRequired: false (Full Owner Control)');
 
-    // 3. Test Sub-Agent Inheriting Owner Custom Schema
+    // 2. Sub-agent fetches form schema and inherits owner's customizations
     console.log('2️⃣ Testing Sub-Agent Multi-Tenant Schema Inheritance...');
+    const agentGetReq = { user: agent, query: { type: 'lead' } };
+    const agentGetRes = mockRes();
+    await authController.getFormSchema(agentGetReq, agentGetRes);
 
-    const getAgentSchemaReq = { user: agent, query: { type: 'lead' } };
-    const getAgentSchemaRes = mockRes();
-    await authController.getFormSchema(getAgentSchemaReq, getAgentSchemaRes);
+    assert(agentGetRes.data && agentGetRes.data.schema.length === 5, 'Sub-agent dynamically inherits owner custom schema (5 fields)');
+    assert(agentGetRes.data.schema.find(f => f.fieldId === 'phone').isRequired === false, 'Sub-agent sees phone as optional');
+    assert(agentGetRes.data.schema.find(f => f.fieldId === 'name').label === 'Prospect Full Name', 'Sub-agent sees customized label "Prospect Full Name"');
 
-    assert(getAgentSchemaRes.data && getAgentSchemaRes.data.schema.length === 5, 'Sub-agent dynamically inherits owner custom schema (5 fields)');
-    const agentPhoneField = getAgentSchemaRes.data.schema.find(f => f.fieldId === 'phone');
-    assert(agentPhoneField && agentPhoneField.isRequired === false, 'Sub-agent sees phone as optional');
-    const agentNameField = getAgentSchemaRes.data.schema.find(f => f.fieldId === 'name');
-    assert(agentNameField && agentNameField.label === 'Prospect Full Name', 'Sub-agent sees customized label "Prospect Full Name"');
-
-    // 4. Test Lead Creation with Missing Custom Required Field (preferredLocation)
+    // 3. Dynamic Lead Form Validation
     console.log('3️⃣ Testing Dynamic Validation on Lead Creation...');
-
     const invalidLeadReq = {
       user: agent,
       body: {
         name: 'Vikas Sharma',
-        phone: '9876543210',
-        // preferredLocation missing (which is required in custom schema)
+        // preferredLocation omitted even though it is marked required by owner!
+        budget: '25000000',
       }
     };
     const invalidLeadRes = mockRes();
     await leadsController.createLead(invalidLeadReq, invalidLeadRes);
     assert(invalidLeadRes.statusCode === 400, 'Lead rejected with 400 because custom required field "preferredLocation" is missing');
 
-    // 5. Test Lead Creation with Optional Phone left blank
+    // 4. Create Lead with phone omitted
     console.log('4️⃣ Testing Lead Creation with Optional Phone omitted & Custom Fields saved...');
-
     const validLeadReq = {
       user: agent,
       body: {
         name: 'Vikas Sharma',
-        // phone omitted because owner made it optional!
         preferredLocation: 'Golf Course Road, Gurgaon',
         budget: '25000000',
       }
@@ -142,8 +134,48 @@ async function runVerification() {
     assert(createdLead.customData?.preferredLocation === 'Golf Course Road, Gurgaon', 'Custom field preferredLocation saved in customData');
     assert(createdLead.companyId.toString() === ownerId.toString(), 'Lead correctly linked to company tenant');
 
+    // 5. Product/Package Custom Schema & Creation
+    console.log('5️⃣ Testing Product / Package Custom Schema & Creation...');
+    const projectsController = require('../src/controllers/projectsController');
+    const Project = require('../src/models/Project');
+
+    const updateProdReq = {
+      user: owner,
+      query: { type: 'product' },
+      body: {
+        formType: 'product',
+        schema: [
+          { fieldId: 'name', label: 'Package Name', fieldType: 'text', isRequired: false },
+          { fieldId: 'location', label: 'Market / Region', fieldType: 'text', isRequired: false },
+          { fieldId: 'basePrice', label: 'Base Pricing', fieldType: 'currency', isRequired: false },
+          { fieldId: 'customWarranty', label: 'Warranty Period', fieldType: 'text', isRequired: false },
+        ]
+      }
+    };
+    const updateProdRes = mockRes();
+    await authController.updateFormSchema(updateProdReq, updateProdRes);
+    assert(updateProdRes.data && updateProdRes.data.success === true, 'Owner Product schema update succeeded');
+    assert(updateProdRes.data.productFormSchema.length === 4, 'Owner saved 4 customized product fields');
+
+    const prodCreateReq = {
+      user: agent,
+      body: {
+        name: 'Premium Growth Suite',
+        location: 'Mumbai & NCR',
+        basePrice: '50 Lakhs',
+        customWarranty: '2 Years Comprehensive',
+      }
+    };
+    const prodCreateRes = mockRes();
+    await projectsController.createProject(prodCreateReq, prodCreateRes);
+    assert(prodCreateRes.statusCode === 201, 'Product created successfully with dynamic schema');
+
+    const createdProject = await Project.findOne({ name: 'Premium Growth Suite' });
+    assert(createdProject !== null, 'Project saved in MongoDB');
+    assert(createdProject.customData?.customWarranty === '2 Years Comprehensive', 'Custom product field saved in customData');
+
     console.log('\n======================================================');
-    console.log('🎉 ALL DYNAMIC FORM & MULTI-TENANT TESTS PASSED!');
+    console.log('🎉 ALL DYNAMIC FORM, PRODUCT & MULTI-TENANT TESTS PASSED!');
     console.log('======================================================\n');
   } catch (err) {
     console.error('Verification error:', err);

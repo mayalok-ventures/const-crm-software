@@ -22,12 +22,12 @@ const projectSchema = new mongoose.Schema({
 
   name: {
     type: String,
-    required: [true, 'Project/Product/Package name is required'],
+    default: '',
     trim: true,
   },
   location: {
     type: String,
-    required: [true, 'Location or Market is required'],
+    default: '',
     trim: true,
   },
   city: {

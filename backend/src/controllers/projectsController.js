@@ -98,16 +98,23 @@ exports.createProject = async (req, res) => {
       reraNumber,
     } = req.body;
 
-    if (!name || !location) {
-      return res.status(400).json({ message: 'Name and Location/Market are required' });
+    // Resolve Active Product Schema (Multi-tenant)
+    const { validateFormData, getDefaultProductFormSchema } = require('../utils/formValidator');
+    let activeProductSchema = req.user?.productFormSchema;
+
+    if ((!Array.isArray(activeProductSchema) || activeProductSchema.length === 0) && req.user?.companyId && String(req.user.companyId) !== String(req.user._id)) {
+      const User = require('../models/User');
+      const companyOwner = await User.findById(req.user.companyId).lean();
+      if (companyOwner && Array.isArray(companyOwner.productFormSchema) && companyOwner.productFormSchema.length > 0) {
+        activeProductSchema = companyOwner.productFormSchema;
+      }
     }
 
-    // Dynamic Product/Package Form Schema Validation
-    const { validateFormData, getDefaultProductFormSchema } = require('../utils/formValidator');
-    const activeProductSchema = (req.user?.productFormSchema && Array.isArray(req.user.productFormSchema) && req.user.productFormSchema.length > 0)
-      ? req.user.productFormSchema
-      : getDefaultProductFormSchema();
+    if (!Array.isArray(activeProductSchema) || activeProductSchema.length === 0) {
+      activeProductSchema = getDefaultProductFormSchema();
+    }
 
+    // Dynamic schema validation
     const validationResult = validateFormData(activeProductSchema, req.body);
     if (!validationResult.isValid) {
       const firstError = Object.values(validationResult.errors)[0] || 'Validation failed';
@@ -147,12 +154,15 @@ exports.createProject = async (req, res) => {
       ...extraCustomData,
     };
 
+    const resolvedName = (name && String(name).trim()) || 'Unnamed Package';
+    const resolvedLocation = (location && String(location).trim()) || '';
+
     const project = await Project.create({
       userId: req.user._id,
       companyId,
-      name: name.trim(),
-      location: location.trim(),
-      city: city ? city.trim() : '',
+      name: resolvedName,
+      location: resolvedLocation,
+      city: city ? String(city).trim() : '',
       vendorOrBrand: resolvedVendor.trim(),
       developer: resolvedVendor.trim(),
       basePrice: basePrice || '',
