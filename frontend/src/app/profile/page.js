@@ -40,11 +40,11 @@ export default function ProfilePage() {
       <div className="page-container max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 pb-20 md:pb-8">
         <div className="page-header" style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Link href="/dashboard" className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors">
+            <Link href="/dashboard" className="p-2 text-slate-500 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors border border-slate-200 bg-white shadow-sm">
               <ArrowLeft size={18} />
             </Link>
             <div>
-              <h1 className="page-title" style={{ fontSize: 'clamp(18px, 4vw, 22px)', margin: 0 }}>My Profile & Settings</h1>
+              <h1 className="page-title text-slate-900 font-bold" style={{ fontSize: 'clamp(18px, 4vw, 22px)', margin: 0 }}>My Profile & Settings</h1>
               <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
                 Manage your account credentials and personal preferences
               </p>
