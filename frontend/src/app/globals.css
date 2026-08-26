@@ -38,24 +38,28 @@ html, body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
 
-/* App shell */
-.app-shell {
+/* App shell & App container */
+.app-shell,
+.app-container {
   min-height: 100dvh;
   width: 100%;
   max-width: 100%;
   background: var(--bg);
   position: relative;
+  box-sizing: border-box;
 }
 
 @media (min-width: 768px) {
-  .app-shell {
-    display: flex;
-    flex-direction: row;
-    padding-left: 240px;
-    transition: padding-left 0.2s ease-in-out;
+  .app-shell,
+  .app-container {
+    display: flex !important;
+    flex-direction: column !important;
+    padding-left: 240px !important;
+    transition: padding-left 0.2s ease-in-out !important;
   }
-  body.sidebar-collapsed .app-shell {
-    padding-left: 70px;
+  body.sidebar-collapsed .app-shell,
+  body.sidebar-collapsed .app-container {
+    padding-left: 70px !important;
   }
 }
 
@@ -425,21 +429,24 @@ textarea.input { resize: vertical; min-height: 72px; }
   transform: scale(0.98) !important;
 }
 
-/* Page container (Constrained responsive container) */
-.page-container {
-  flex: 1;
-  min-width: 0;
-  width: 100%;
-  max-width: 1280px; /* max-w-7xl constraint */
-  margin: 0 auto;
-  padding: 20px 24px 80px 24px;
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
+/* Page container & Main content */
+.page-container,
+.main-content {
+  flex: 1 !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 24px 28px 80px 28px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 100vh !important;
+  box-sizing: border-box !important;
 }
 @media (max-width: 767px) {
-  .page-container {
-    padding: 12px 14px 90px 14px;
+  .page-container,
+  .main-content {
+    padding: 14px 14px 90px 14px !important;
   }
 }
 

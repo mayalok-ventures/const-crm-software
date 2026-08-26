@@ -1,7 +1,7 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import { waLink, isOwner, isManager, isAgent, getUser } from '@/lib/auth';
@@ -19,10 +19,13 @@ import {
   CompleteFollowUpModal
 } from '@/components/LeadModals';
 
-export default function LeadsPage() {
+function LeadsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams?.get('tab');
+  const activeTab = tabParam === 'unclaimed' ? 'unclaimed' : 'my_leads';
+
   const [user, setUser] = useState(null);
-  const [activeTab, setActiveTab] = useState('my_leads'); // 'my_leads' | 'unclaimed'
   const [leads, setLeads] = useState([]);
   const [unclaimedLeads, setUnclaimedLeads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -47,7 +50,6 @@ export default function LeadsPage() {
   const [schedulingFollowUpLead, setSchedulingFollowUpLead] = useState(null);
   const [completingFollowUpLead, setCompletingFollowUpLead] = useState(null);
 
-  // Initial tab & user sync
   useEffect(() => {
     const u = getUser();
     if (!u) {
@@ -55,16 +57,6 @@ export default function LeadsPage() {
       return;
     }
     setUser(u);
-
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const tab = params.get('tab');
-      if (tab === 'unclaimed') {
-        setActiveTab('unclaimed');
-      } else {
-        setActiveTab('my_leads');
-      }
-    }
   }, [router]);
 
   // Fetch Projects list for filter
@@ -141,14 +133,12 @@ export default function LeadsPage() {
     }
   };
 
-  const isTenantOwner = isOwner(user);
-
   return (
     <div className="app-container">
       <BottomNav active="leads" />
 
       <main className="main-content">
-        <div style={{ maxWidth: 1200, margin: '0 auto', paddingBottom: 60 }}>
+        <div style={{ maxWidth: 1200, width: '100%', margin: '0 auto', paddingBottom: 60 }}>
           
           {/* Header Section */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
@@ -196,10 +186,7 @@ export default function LeadsPage() {
             marginBottom: 20
           }}>
             <button
-              onClick={() => {
-                setActiveTab('my_leads');
-                window.history.replaceState(null, '', '/leads?tab=my_leads');
-              }}
+              onClick={() => router.push('/leads?tab=my_leads')}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -229,10 +216,7 @@ export default function LeadsPage() {
             </button>
 
             <button
-              onClick={() => {
-                setActiveTab('unclaimed');
-                window.history.replaceState(null, '', '/leads?tab=unclaimed');
-              }}
+              onClick={() => router.push('/leads?tab=unclaimed')}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -381,7 +365,7 @@ export default function LeadsPage() {
                     <button onClick={() => setShowAddModal(true)} className="btn btn-primary btn-sm">
                       <Plus size={15} /> Add First Lead
                     </button>
-                    <button onClick={() => setActiveTab('unclaimed')} className="btn btn-ghost btn-sm" style={{ color: '#d97706' }}>
+                    <button onClick={() => router.push('/leads?tab=unclaimed')} className="btn btn-ghost btn-sm" style={{ color: '#d97706' }}>
                       <Sparkles size={15} /> View Unclaimed Pool
                     </button>
                   </div>
@@ -691,5 +675,17 @@ export default function LeadsPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function LeadsPage() {
+  return (
+    <Suspense fallback={
+      <div className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <div className="spinner" style={{ width: 32, height: 32 }} />
+      </div>
+    }>
+      <LeadsContent />
+    </Suspense>
   );
 }

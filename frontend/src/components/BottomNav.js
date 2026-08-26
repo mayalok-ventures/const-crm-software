@@ -1,7 +1,7 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import {
   getUser,
@@ -19,9 +19,11 @@ import {
 } from 'lucide-react';
 import PlanStatusWidget from '@/components/PlanStatusWidget';
 
-export default function BottomNav({ active }) {
+function BottomNavContent({ active }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams?.get('tab') || null;
   const [user, setUser] = useState(null);
   const [isSuper, setIsSuper] = useState(false);
   const [isTenantOwner, setIsTenantOwner] = useState(false);
@@ -85,14 +87,6 @@ export default function BottomNav({ active }) {
     }
   }, []);
 
-  const [currentTab, setCurrentTab] = useState(null);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      setCurrentTab(params.get('tab'));
-    }
-  }, [pathname]);
   const normalize = (p) => (p || '').replace(/\/$/, '').toLowerCase();
 
   const isLinkActive = (key, href) => {
@@ -483,36 +477,50 @@ export default function BottomNav({ active }) {
               {/* 2. LEADS (WITH SUB-ITEMS: UNCLAIMED & MY LEADS) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <div
-                  onClick={() => !isCollapsed && setLeadsExpanded(!leadsExpanded)}
                   className={`sidebar-nav-link ${normalize(pathname) === '/leads' ? 'active' : ''}`}
                   style={{
                     justifyContent: isCollapsed ? 'center' : 'space-between',
                     padding: isCollapsed ? '9px 0' : '9px 12px',
-                    cursor: isCollapsed ? 'default' : 'pointer',
+                    cursor: 'pointer',
                   }}
                   title="Leads"
                 >
                   <Link
-                    href="/leads"
-                    onClick={(e) => {
-                      if (!isCollapsed) {
-                        e.stopPropagation();
-                      }
-                    }}
+                    href="/leads?tab=my_leads"
+                    onClick={() => setLeadsExpanded(true)}
                     style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', flex: 1 }}
                   >
                     <Users size={17} color={normalize(pathname) === '/leads' ? 'var(--accent)' : 'currentColor'} />
                     {!isCollapsed && <span style={{ fontWeight: 600 }}>Leads</span>}
                   </Link>
                   {!isCollapsed && (
-                    <ChevronDown
-                      size={14}
-                      style={{
-                        transform: leadsExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                        transition: 'transform 0.2s',
-                        color: 'var(--text-muted)',
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setLeadsExpanded(!leadsExpanded);
                       }}
-                    />
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: '4px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--text-muted)'
+                      }}
+                    >
+                      <ChevronDown
+                        size={14}
+                        style={{
+                          transform: leadsExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                          transition: 'transform 0.2s',
+                          color: 'var(--text-muted)',
+                        }}
+                      />
+                    </button>
                   )}
                 </div>
 
@@ -651,36 +659,50 @@ export default function BottomNav({ active }) {
               {/* 8. WHATSAPP HUB (WITH SUB-ITEMS: BROADCAST, TEMPLATES, GROUPS) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <div
-                  onClick={() => !isCollapsed && setWaExpanded(!waExpanded)}
                   className={`sidebar-nav-link ${normalize(pathname) === '/whatsapp' || normalize(pathname) === '/campaigns' || normalize(pathname) === '/templates' || normalize(pathname) === '/groups' ? 'active' : ''}`}
                   style={{
                     justifyContent: isCollapsed ? 'center' : 'space-between',
                     padding: isCollapsed ? '9px 0' : '9px 12px',
-                    cursor: isCollapsed ? 'default' : 'pointer',
+                    cursor: 'pointer',
                   }}
                   title="WhatsApp Hub"
                 >
                   <Link
                     href="/whatsapp"
-                    onClick={(e) => {
-                      if (!isCollapsed) {
-                        e.stopPropagation();
-                      }
-                    }}
+                    onClick={() => setWaExpanded(true)}
                     style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', flex: 1 }}
                   >
                     <MessageCircle size={17} color={normalize(pathname) === '/whatsapp' ? 'var(--accent)' : 'currentColor'} />
                     {!isCollapsed && <span style={{ fontWeight: 600 }}>WhatsApp Hub</span>}
                   </Link>
                   {!isCollapsed && (
-                    <ChevronDown
-                      size={14}
-                      style={{
-                        transform: waExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                        transition: 'transform 0.2s',
-                        color: 'var(--text-muted)',
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setWaExpanded(!waExpanded);
                       }}
-                    />
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: '4px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--text-muted)'
+                      }}
+                    >
+                      <ChevronDown
+                        size={14}
+                        style={{
+                          transform: waExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                          transition: 'transform 0.2s',
+                          color: 'var(--text-muted)',
+                        }}
+                      />
+                    </button>
                   )}
                 </div>
 
@@ -862,5 +884,13 @@ export default function BottomNav({ active }) {
         )}
       </aside>
     </>
+  );
+}
+
+export default function BottomNav(props) {
+  return (
+    <Suspense fallback={null}>
+      <BottomNavContent {...props} />
+    </Suspense>
   );
 }
