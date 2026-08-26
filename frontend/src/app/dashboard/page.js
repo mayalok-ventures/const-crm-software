@@ -104,10 +104,12 @@ export default function DashboardPage() {
           }}>
             <div>
               <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>
-                {getGreeting()}, {user?.name ? user.name.split(' ')[0] : 'Agent'} 👋
+                {getGreeting()}, {user?.name ? user.name.split(' ')[0] : 'Workspace'} 👋
               </h1>
               <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-                Here is your sales performance overview and daily priorities
+                {isTenantOwner || isManager(user)
+                  ? 'Here is your organization overview, sales pipeline and daily priorities'
+                  : 'Here is your sales performance overview and daily priorities'}
               </p>
             </div>
 
@@ -152,7 +154,9 @@ export default function DashboardPage() {
               }}
             >
               <div>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>My Assigned Leads</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
+                  {isTenantOwner || isManager(user) ? 'Total Organization Leads' : 'My Assigned Leads'}
+                </span>
                 <h2 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: 'var(--accent)' }}>
                   {totalLeadsCount}
                 </h2>

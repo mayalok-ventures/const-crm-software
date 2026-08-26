@@ -39,7 +39,9 @@ function LeadsContent() {
   const [statusFilter, setStatusFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
   const [projectFilter, setProjectFilter] = useState('');
+  const [agentFilter, setAgentFilter] = useState('');
   const [projects, setProjects] = useState([]);
+  const [agents, setAgents] = useState([]);
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -49,6 +51,8 @@ function LeadsContent() {
   const [editingLead, setEditingLead] = useState(null);
   const [schedulingFollowUpLead, setSchedulingFollowUpLead] = useState(null);
   const [completingFollowUpLead, setCompletingFollowUpLead] = useState(null);
+
+  const isOwnerOrManager = isOwner(user) || isManager(user) || user?.role === 'superadmin' || user?.workStatus === 'company_owner';
 
   useEffect(() => {
     const u = getUser();
@@ -64,6 +68,13 @@ function LeadsContent() {
     api.get('/projects').then(res => setProjects(res.data || [])).catch(() => {});
   }, []);
 
+  // Fetch Team Agents for Owner/Manager
+  useEffect(() => {
+    if (user && (isOwner(user) || isManager(user) || user?.role === 'superadmin' || user?.workStatus === 'company_owner')) {
+      api.get('/agency/agents').then(res => setAgents(res.data?.agents || res.data || [])).catch(() => {});
+    }
+  }, [user]);
+
   const fetchLeads = useCallback(async () => {
     setLoading(true);
     try {
@@ -75,6 +86,7 @@ function LeadsContent() {
       if (statusFilter) params.status = statusFilter;
       if (sourceFilter) params.source = sourceFilter;
       if (projectFilter) params.projectId = projectFilter;
+      if (agentFilter) params.assignedTo = agentFilter;
 
       const res = await api.get('/leads', { params });
       setLeads(res.data?.leads || []);
@@ -85,7 +97,7 @@ function LeadsContent() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, statusFilter, sourceFilter, projectFilter]);
+  }, [page, search, statusFilter, sourceFilter, projectFilter, agentFilter]);
 
   const fetchUnclaimedLeads = useCallback(async () => {
     setLoadingUnclaimed(true);
@@ -139,15 +151,16 @@ function LeadsContent() {
 
       <main className="main-content">
         <div style={{ width: '100%', paddingBottom: 60 }}>
-          
-          {/* Header Section */}
+                  {/* Header Section */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
             <div>
               <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Users size={26} color="var(--accent)" /> Leads Workspace
               </h1>
               <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-                Manage your assigned prospects and claim fresh inbound inquiries
+                {isOwnerOrManager
+                  ? 'Manage and track all organization leads, assign to team agents, and claim fresh inquiries'
+                  : 'Manage your assigned prospects and claim fresh inbound inquiries'}
               </p>
             </div>
 
@@ -202,7 +215,7 @@ function LeadsContent() {
                 transition: 'all 0.15s ease'
               }}
             >
-              <Users size={16} /> My Leads
+              <Users size={16} /> {isOwnerOrManager ? 'All Organization Leads' : 'My Leads'}
               <span style={{
                 fontSize: 11,
                 padding: '2px 7px',
@@ -232,7 +245,7 @@ function LeadsContent() {
                 transition: 'all 0.15s ease'
               }}
             >
-              <Sparkles size={16} /> New / Unclaimed Pool
+              <Sparkles size={16} /> Unclaimed Pool
               {unclaimedLeads.length > 0 && (
                 <span style={{
                   fontSize: 11,
@@ -248,7 +261,7 @@ function LeadsContent() {
             </button>
           </div>
 
-          {/* TAB 1: MY LEADS */}
+          {/* TAB 1: MY LEADS / ALL LEADS */}
           {activeTab === 'my_leads' && (
             <div>
               {/* Filter Strip */}
@@ -329,13 +342,31 @@ function LeadsContent() {
                   </select>
                 )}
 
-                {(search || statusFilter || sourceFilter || projectFilter) && (
+                {isOwnerOrManager && agents.length > 0 && (
+                  <select
+                    className="input"
+                    value={agentFilter}
+                    onChange={e => {
+                      setAgentFilter(e.target.value);
+                      setPage(1);
+                    }}
+                    style={{ flex: '0 0 160px', height: 38, fontSize: 13 }}
+                  >
+                    <option value="">All Team Agents</option>
+                    {agents.map(a => (
+                      <option key={a._id} value={a._id}>👤 {a.name}</option>
+                    ))}
+                  </select>
+                )}
+
+                {(search || statusFilter || sourceFilter || projectFilter || agentFilter) && (
                   <button
                     onClick={() => {
                       setSearch('');
                       setStatusFilter('');
                       setSourceFilter('');
                       setProjectFilter('');
+                      setAgentFilter('');
                       setPage(1);
                     }}
                     className="btn btn-ghost btn-sm"
@@ -350,7 +381,7 @@ function LeadsContent() {
               {loading ? (
                 <div style={{ textAlign: 'center', padding: '60px 20px' }}>
                   <div className="spinner" style={{ width: 32, height: 32, margin: '0 auto 12px' }} />
-                  <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading assigned leads...</p>
+                  <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading leads...</p>
                 </div>
               ) : leads.length === 0 ? (
                 <div className="empty-state" style={{ padding: '60px 20px', textAlign: 'center', background: 'var(--card)', borderRadius: 16, border: '1px solid var(--border)' }}>
@@ -389,7 +420,7 @@ function LeadsContent() {
                       }}
                     >
                       <div style={{ flex: '1 1 280px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
                           <Link
                             href={`/leads/${lead._id}`}
                             style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', textDecoration: 'none' }}
@@ -400,6 +431,18 @@ function LeadsContent() {
                           <span className={`badge ${STATUS_COLORS[lead.status] || 'badge-tag'}`} style={{ fontSize: 11 }}>
                             {STAGE_LABELS[lead.status] || lead.status}
                           </span>
+                          {isOwnerOrManager && (
+                            <span style={{
+                              fontSize: 11,
+                              fontWeight: 600,
+                              padding: '2px 8px',
+                              borderRadius: 6,
+                              background: lead.assignedToName ? 'rgba(99,102,241,0.1)' : 'rgba(217,119,6,0.12)',
+                              color: lead.assignedToName ? 'var(--accent)' : '#d97706'
+                            }}>
+                              👤 {lead.assignedToName ? `Agent: ${lead.assignedToName}` : 'Unassigned Pool'}
+                            </span>
+                          )}
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-muted)' }}>
