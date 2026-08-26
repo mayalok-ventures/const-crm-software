@@ -748,9 +748,6 @@ exports.updateFormSchema = async (req, res) => {
       const rawId = f.fieldId || f.name || f.label || '';
       const fieldId = String(rawId).replace(/[^a-zA-Z0-9_]/g, '_').trim();
       const isSystem = Boolean(f.isSystem);
-      const isMandatorySystem = formType === 'lead'
-        ? ['name', 'phone'].includes(fieldId.toLowerCase())
-        : ['name', 'location'].includes(fieldId.toLowerCase());
 
       const rawType = String(f.fieldType || f.type || 'text').toLowerCase();
       const fieldType = ALLOWED_TYPES.includes(rawType) ? rawType : 'text';
@@ -817,9 +814,9 @@ exports.updateFormSchema = async (req, res) => {
         helpText: f.helpText ? String(f.helpText).trim() : '',
         defaultValue: f.defaultValue !== undefined ? f.defaultValue : '',
         options,
-        isRequired: isMandatorySystem ? true : Boolean(f.isRequired),
+        isRequired: Boolean(f.isRequired),
         isSystem,
-        isHidden: isMandatorySystem ? false : Boolean(f.isHidden),
+        isHidden: Boolean(f.isHidden),
         order: typeof f.order === 'number' ? f.order : (idx + 1),
         dependsOn,
         conditionalRules,
@@ -827,15 +824,6 @@ exports.updateFormSchema = async (req, res) => {
         validationRules,
       };
     }).filter(f => f.fieldId && f.label);
-
-    // Enforce mandatory lead fields
-    if (formType === 'lead') {
-      const hasName = sanitized.some(f => f.fieldId.toLowerCase() === 'name');
-      const hasPhone = sanitized.some(f => f.fieldId.toLowerCase() === 'phone');
-      if (!hasName || !hasPhone) {
-        return res.status(400).json({ message: 'System fields "Name" and "Phone" cannot be removed.' });
-      }
-    }
 
     // Sort by order
     sanitized.sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -853,20 +841,39 @@ exports.updateFormSchema = async (req, res) => {
       updateFields['preferences.showFollowUpOnCreate'] = Boolean(req.body.preferences.showFollowUpOnCreate);
     }
 
+    // Determine target company owner ID if editing within an organization
+    const targetUserId = (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' || !req.user.companyId)
+      ? req.user._id
+      : req.user.companyId;
+
     const user = await User.findByIdAndUpdate(
-      req.user._id,
+      targetUserId,
       { $set: updateFields },
       { new: true }
     );
+
+    // Also sync TenantConfig if available
+    try {
+      const TenantConfig = require('../models/TenantConfig');
+      if (TenantConfig) {
+        if (!isProduct) {
+          await TenantConfig.findOneAndUpdate(
+            { userId: targetUserId },
+            { $set: { customFields: sanitized } },
+            { upsert: false }
+          );
+        }
+      }
+    } catch (tErr) {}
 
     res.json({
       success: true,
       message: `${isProduct ? 'Product/Package' : 'Lead'} form layout saved successfully ✅`,
       formType: isProduct ? 'product' : 'lead',
-      leadFormSchema: user.leadFormSchema,
-      productFormSchema: user.productFormSchema,
-      showFollowUpOnCreate: user.showFollowUpOnCreate !== false,
-      preferences: user.preferences,
+      leadFormSchema: user?.leadFormSchema || sanitized,
+      productFormSchema: user?.productFormSchema || sanitized,
+      showFollowUpOnCreate: user?.showFollowUpOnCreate !== false,
+      preferences: user?.preferences,
       user,
     });
   } catch (err) {
@@ -882,8 +889,22 @@ exports.updateCustomFields = exports.updateFormSchema;
 exports.getFormSchema = async (req, res) => {
   try {
     const formType = String(req.query.type || 'lead').toLowerCase();
-    const user = await User.findById(req.user._id).lean();
+    let user = await User.findById(req.user._id).lean();
     if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Multi-tenant resolution: If user is an agent in a company, check the company owner's custom schema
+    if (user.companyId && String(user.companyId) !== String(user._id)) {
+      const companyOwner = await User.findById(user.companyId).lean();
+      if (companyOwner) {
+        // If owner has custom schemas configured, inherit from the company owner
+        if (formType === 'lead' && Array.isArray(companyOwner.leadFormSchema) && companyOwner.leadFormSchema.length > 0) {
+          user.leadFormSchema = companyOwner.leadFormSchema;
+        }
+        if ((formType === 'product' || formType === 'package') && Array.isArray(companyOwner.productFormSchema) && companyOwner.productFormSchema.length > 0) {
+          user.productFormSchema = companyOwner.productFormSchema;
+        }
+      }
+    }
 
     const { getDefaultProductFormSchema } = require('../utils/formValidator');
     const { getIndustryDefaults } = require('../utils/industryTemplates');
@@ -925,10 +946,20 @@ exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user._id)
       .select('-password -twoFactorOtp -twoFactorOtpExpires -twoFactorSecret')
-      .populate('companyId', 'name usercode companyInfo companySettings')
+      .populate('companyId', 'name usercode companyInfo companySettings leadFormSchema productFormSchema')
       .lean();
 
     if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Multi-tenant resolution for agents: inherit company owner's custom schemas
+    if (user.companyId && typeof user.companyId === 'object') {
+      if (Array.isArray(user.companyId.leadFormSchema) && user.companyId.leadFormSchema.length > 0) {
+        user.leadFormSchema = user.companyId.leadFormSchema;
+      }
+      if (Array.isArray(user.companyId.productFormSchema) && user.companyId.productFormSchema.length > 0) {
+        user.productFormSchema = user.companyId.productFormSchema;
+      }
+    }
 
     // Auto-generate usercode if missing (Skip for SuperAdmin)
     const isSuperAdmin = user.role === 'superadmin' || user.isAdmin;

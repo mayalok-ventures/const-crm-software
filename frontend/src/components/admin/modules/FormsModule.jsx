@@ -1,6 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
+import api from '@/lib/api';
+import { getUser } from '@/lib/auth';
 import {
   Plus,
   Trash2,
@@ -21,6 +24,7 @@ import {
   HelpCircle,
   X,
   CheckCircle2,
+  RotateCcw,
 } from 'lucide-react';
 import ErrorState from '../ui/ErrorState';
 import DynamicFormRenderer from '@/components/common/DynamicFormRenderer';
@@ -91,7 +95,7 @@ const DEFAULT_PRODUCT_FIELDS = [
 
 export default function FormsModule({
   formFields = [],
-  loading = false,
+  loading: parentLoading = false,
   error = null,
   theme = 'light', // 'light' | 'dark'
   onRetry,
@@ -104,33 +108,30 @@ export default function FormsModule({
   const [showFieldModal, setShowFieldModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [loadingSchemas, setLoadingSchemas] = useState(true);
   const [previewValues, setPreviewValues] = useState({});
 
-  // Sync incoming schema
+  // Sync incoming schema from API
   useEffect(() => {
     async function loadSchemas() {
+      setLoadingSchemas(true);
       try {
-        const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-        
         // Fetch active lead schema
-        const resLead = await fetch(`${API_BASE}/auth/form-schema?type=lead`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const dataLead = await resLead.json();
-        if (dataLead.schema && Array.isArray(dataLead.schema) && dataLead.schema.length > 0) {
-          setLeadFields(dataLead.schema);
+        const resLead = await api.get('/auth/form-schema?type=lead');
+        if (resLead.data?.schema && Array.isArray(resLead.data.schema) && resLead.data.schema.length > 0) {
+          setLeadFields(resLead.data.schema);
         }
 
         // Fetch active product schema
-        const resProd = await fetch(`${API_BASE}/auth/form-schema?type=product`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const dataProd = await resProd.json();
-        if (dataProd.schema && Array.isArray(dataProd.schema) && dataProd.schema.length > 0) {
-          setProductFields(dataProd.schema);
+        const resProd = await api.get('/auth/form-schema?type=product');
+        if (resProd.data?.schema && Array.isArray(resProd.data.schema) && resProd.data.schema.length > 0) {
+          setProductFields(resProd.data.schema);
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error('Error loading form schemas:', e);
+      } finally {
+        setLoadingSchemas(false);
+      }
     }
     loadSchemas();
   }, []);
@@ -149,11 +150,8 @@ export default function FormsModule({
     return <ErrorState message={error} onRetry={onRetry} />;
   }
 
+  // 100% Owner Control: Toggle Visibility for ANY field
   const handleToggleHide = (idx) => {
-    const field = activeFields[idx];
-    if (formType === 'lead' && (field.fieldId === 'name' || field.fieldId === 'phone')) return;
-    if (formType === 'product' && (field.fieldId === 'name' || field.fieldId === 'location')) return;
-
     setActiveFields((prev) => {
       const next = [...prev];
       next[idx] = { ...next[idx], isHidden: !next[idx].isHidden };
@@ -161,11 +159,8 @@ export default function FormsModule({
     });
   };
 
+  // 100% Owner Control: Toggle Mandatory / Optional for ANY field (including Name & Phone)
   const handleToggleRequired = (idx) => {
-    const field = activeFields[idx];
-    if (formType === 'lead' && (field.fieldId === 'name' || field.fieldId === 'phone')) return;
-    if (formType === 'product' && (field.fieldId === 'name' || field.fieldId === 'location')) return;
-
     setActiveFields((prev) => {
       const next = [...prev];
       next[idx] = { ...next[idx], isRequired: !next[idx].isRequired };
@@ -187,9 +182,19 @@ export default function FormsModule({
   };
 
   const handleDeleteField = (idx) => {
-    const field = activeFields[idx];
-    if (field.isSystem) return;
     setActiveFields((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleResetToDefaults = () => {
+    if (!confirm(`Are you sure you want to reset the ${formType === 'lead' ? 'Prospect Lead' : 'Product'} form fields to standard defaults?`)) {
+      return;
+    }
+    if (formType === 'lead') {
+      setLeadFields(DEFAULT_LEAD_FIELDS);
+    } else {
+      setProductFields(DEFAULT_PRODUCT_FIELDS);
+    }
+    toast.success('Form reset to defaults. Click "Save Configuration" to apply.');
   };
 
   const handleOpenAddModal = () => {
@@ -248,27 +253,37 @@ export default function FormsModule({
     setSaving(true);
     setSavedSuccess(false);
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-
-      const res = await fetch(`${API_BASE}/auth/form-schema?type=${formType}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          formType,
-          schema: activeFields,
-          fields: activeFields,
-        }),
+      const res = await api.put(`/auth/form-schema?type=${formType}`, {
+        formType,
+        schema: activeFields,
+        fields: activeFields,
       });
-      const data = await res.json();
-      if (data.success) {
+
+      if (res.data?.success || res.status === 200) {
         setSavedSuccess(true);
-        setTimeout(() => setSavedSuccess(false), 3000);
+        toast.success(`🎉 ${formType === 'lead' ? 'Prospect Lead' : 'Product / Package'} form configuration saved successfully!`);
+
+        // Synchronize in local user state so dashboard reflects instantly
+        try {
+          const storedUser = getUser();
+          if (storedUser) {
+            if (formType === 'lead') {
+              storedUser.leadFormSchema = activeFields;
+            } else {
+              storedUser.productFormSchema = activeFields;
+            }
+            localStorage.setItem('user', JSON.stringify(storedUser));
+          }
+        } catch (e) {}
+
         if (onSaveSchema) onSaveSchema(activeFields, formType);
+        setTimeout(() => setSavedSuccess(false), 4000);
+      } else {
+        toast.error(res.data?.message || 'Failed to save form layout');
       }
+    } catch (err) {
+      console.error('Save schema error:', err);
+      toast.error(err.response?.data?.message || 'Error saving form schema to server');
     } finally {
       setSaving(false);
     }
@@ -292,11 +307,11 @@ export default function FormsModule({
               <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-medium ${
                 isDark ? 'bg-amber-500/20 text-amber-300' : 'bg-indigo-100 text-indigo-700'
               }`}>
-                Dynamic Engine
+                Agency Control
               </span>
             </h3>
             <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              Customize input fields, add custom attributes, and configure real-time conditional logic
+              Full owner control: customize field labels, toggle mandatory / optional status, hide unused fields, and reorder.
             </p>
           </div>
         </div>
@@ -342,6 +357,16 @@ export default function FormsModule({
 
           <button
             type="button"
+            onClick={handleResetToDefaults}
+            className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold border border-slate-300 text-slate-600 hover:bg-slate-50 transition"
+            title="Reset to default template"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Reset Defaults</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleSaveLayout}
             disabled={saving}
             className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all disabled:opacity-50 ${
@@ -351,7 +376,7 @@ export default function FormsModule({
             }`}
           >
             {savedSuccess ? <CheckCircle2 className="w-4 h-4 text-emerald-300" /> : <Save className="w-4 h-4" />}
-            <span>{saving ? 'Saving Schema...' : (savedSuccess ? 'Saved Successfully! ✅' : 'Save Configuration')}</span>
+            <span>{saving ? 'Saving Changes...' : (savedSuccess ? 'Saved & Applied! ✅' : 'Save Changes')}</span>
           </button>
         </div>
       </div>
@@ -385,11 +410,6 @@ export default function FormsModule({
           {/* Field Items List */}
           <div className="space-y-2.5">
             {activeFields.map((field, idx) => {
-              const isMandatorySystem =
-                formType === 'lead'
-                  ? ['name', 'phone'].includes(field.fieldId)
-                  : ['name', 'location'].includes(field.fieldId);
-
               const hasConditional =
                 (field.conditionalRules?.rules?.length || 0) > 0 || Boolean(field.dependsOn?.field);
 
@@ -415,6 +435,7 @@ export default function FormsModule({
                           onClick={() => handleMoveOrder(idx, -1)}
                           disabled={idx === 0}
                           className="p-1 text-slate-400 hover:text-slate-800 disabled:opacity-20"
+                          title="Move Up"
                         >
                           <ArrowUp className="w-3.5 h-3.5" />
                         </button>
@@ -423,6 +444,7 @@ export default function FormsModule({
                           onClick={() => handleMoveOrder(idx, 1)}
                           disabled={idx === activeFields.length - 1}
                           className="p-1 text-slate-400 hover:text-slate-800 disabled:opacity-20"
+                          title="Move Down"
                         >
                           <ArrowDown className="w-3.5 h-3.5" />
                         </button>
@@ -438,9 +460,18 @@ export default function FormsModule({
                           }`}>
                             {field.fieldType || 'text'}
                           </span>
-                          {field.isRequired && (
+                          {field.isRequired ? (
                             <span className="text-[10px] px-2 py-0.5 rounded-md bg-rose-50 text-rose-600 border border-rose-200 font-semibold">
-                              Required
+                              Mandatory
+                            </span>
+                          ) : (
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-50 text-slate-500 border border-slate-200 font-medium">
+                              Optional
+                            </span>
+                          )}
+                          {field.isHidden && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-semibold">
+                              Hidden
                             </span>
                           )}
                           {hasConditional && (
@@ -451,24 +482,24 @@ export default function FormsModule({
                         </div>
                         <div className="text-[11px] text-slate-400 font-mono mt-0.5 flex items-center gap-2">
                           <span>key: {field.fieldId}</span>
+                          {field.placeholder && <span>• "{field.placeholder}"</span>}
                           {field.helpText && <span>• {field.helpText}</span>}
                         </div>
                       </div>
                     </div>
 
-                    {/* Action Controls */}
+                    {/* Action Controls: Full Owner Control */}
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       {/* Toggle Visibility */}
                       <button
                         type="button"
                         onClick={() => handleToggleHide(idx)}
-                        disabled={isMandatorySystem}
                         className={`p-2 rounded-lg border text-xs transition-colors ${
                           field.isHidden
-                            ? 'border-slate-200 text-slate-400 hover:text-slate-600 bg-slate-50'
+                            ? 'border-amber-300 text-amber-600 bg-amber-50'
                             : 'border-slate-300 text-slate-600 hover:text-slate-900 bg-white shadow-sm'
                         }`}
-                        title={field.isHidden ? 'Show Field' : 'Hide Field'}
+                        title={field.isHidden ? 'Hidden (Click to Show)' : 'Visible (Click to Hide)'}
                       >
                         {field.isHidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                       </button>
@@ -477,12 +508,12 @@ export default function FormsModule({
                       <button
                         type="button"
                         onClick={() => handleToggleRequired(idx)}
-                        disabled={isMandatorySystem}
                         className={`text-[10px] px-2.5 py-1.5 rounded-lg border font-semibold transition-colors ${
                           field.isRequired
                             ? 'border-rose-300 text-rose-700 bg-rose-50 shadow-sm'
                             : 'border-slate-300 text-slate-600 hover:text-slate-900 bg-white shadow-sm'
                         }`}
+                        title="Click to toggle Mandatory vs Optional"
                       >
                         {field.isRequired ? 'Mandatory' : 'Optional'}
                       </button>
@@ -492,22 +523,20 @@ export default function FormsModule({
                         type="button"
                         onClick={() => handleOpenEditModal(field)}
                         className="p-2 rounded-lg border border-slate-300 text-slate-600 hover:text-indigo-600 bg-white shadow-sm transition-colors"
-                        title="Configure Logic & Options"
+                        title="Configure Label, Placeholder & Logic"
                       >
                         <Settings2 className="w-3.5 h-3.5" />
                       </button>
 
                       {/* Delete Custom Field */}
-                      {!field.isSystem && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteField(idx)}
-                          className="p-2 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 bg-white shadow-sm transition-colors"
-                          title="Remove Custom Field"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteField(idx)}
+                        className="p-2 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 bg-white shadow-sm transition-colors"
+                        title="Remove Field"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -527,10 +556,10 @@ export default function FormsModule({
                   isDark ? 'text-white' : 'text-slate-900'
                 }`}>
                   <Sparkles className="w-4 h-4 text-indigo-600" />
-                  Live Interactive Form Preview
+                  Live Real-Time Form Preview
                 </h4>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Type into the fields to test real-time conditional logic and validations
+                  Direct preview of how this form appears to your sales agents and prospect leads
                 </p>
               </div>
               <button
@@ -553,8 +582,8 @@ export default function FormsModule({
             </div>
 
             <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500 font-mono">
-              <span>Status: Synchronized with builder</span>
-              <span>Fields visible: {activeFields.filter((f) => !f.isHidden).length}</span>
+              <span>Status: Live preview synced</span>
+              <span>Visible fields: {activeFields.filter((f) => !f.isHidden).length}</span>
             </div>
           </div>
         </div>
@@ -649,9 +678,9 @@ function FieldConfigModal({ field, allFields, theme = 'light', onClose, onSave }
             </div>
             <div>
               <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                {form.isSystem ? `Configure Field: ${form.label}` : 'Custom Field & Conditional Rules'}
+                Configure Field: {form.label || form.fieldId || 'New Field'}
               </h3>
-              <p className="text-[11px] text-slate-400">Define label, options, validation, and conditional visibility</p>
+              <p className="text-[11px] text-slate-400">Customize display label, placeholder text, field options, and conditional visibility</p>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 transition-colors">
@@ -669,7 +698,7 @@ function FieldConfigModal({ field, allFields, theme = 'light', onClose, onSave }
                 type="text"
                 value={form.label}
                 onChange={(e) => setForm({ ...form, label: e.target.value })}
-                placeholder="e.g. Preferred Location"
+                placeholder="e.g. Full Name or Preferred Location"
                 required
                 className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-indigo-600 shadow-sm"
               />
@@ -678,10 +707,9 @@ function FieldConfigModal({ field, allFields, theme = 'light', onClose, onSave }
             <div>
               <label className="font-bold text-slate-700 block mb-1">Field Type</label>
               <select
-                disabled={form.isSystem}
                 value={form.fieldType}
                 onChange={(e) => setForm({ ...form, fieldType: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-indigo-600 shadow-sm disabled:opacity-50"
+                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-indigo-600 shadow-sm"
               >
                 {FIELD_TYPES.map((t) => (
                   <option key={t.value} value={t.value}>
@@ -697,7 +725,7 @@ function FieldConfigModal({ field, allFields, theme = 'light', onClose, onSave }
                 type="text"
                 value={form.placeholder || ''}
                 onChange={(e) => setForm({ ...form, placeholder: e.target.value })}
-                placeholder="e.g. Enter preferred sector..."
+                placeholder="e.g. Enter name or details..."
                 className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-indigo-600 shadow-sm"
               />
             </div>
@@ -708,10 +736,33 @@ function FieldConfigModal({ field, allFields, theme = 'light', onClose, onSave }
                 type="text"
                 value={form.helpText || ''}
                 onChange={(e) => setForm({ ...form, helpText: e.target.value })}
-                placeholder="e.g. Select your primary requirement"
+                placeholder="e.g. Helper instructions for the sales rep"
                 className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-indigo-600 shadow-sm"
               />
             </div>
+          </div>
+
+          {/* Mandatory & Hidden Toggles inside Modal */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.isRequired === true}
+                onChange={(e) => setForm({ ...form, isRequired: e.target.checked })}
+                className="w-4 h-4 rounded text-indigo-600"
+              />
+              <span className="font-semibold text-slate-700">Mandatory / Required Field</span>
+            </label>
+
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.isHidden === true}
+                onChange={(e) => setForm({ ...form, isHidden: e.target.checked })}
+                className="w-4 h-4 rounded text-indigo-600"
+              />
+              <span className="font-semibold text-slate-700">Hide on Form</span>
+            </label>
           </div>
 
           {/* Options Builder for Select / Multi-Select / Radio */}
@@ -726,7 +777,7 @@ function FieldConfigModal({ field, allFields, theme = 'light', onClose, onSave }
                   type="text"
                   value={optionInput}
                   onChange={(e) => setOptionInput(e.target.value)}
-                  placeholder="e.g. Residential 3BHK"
+                  placeholder="e.g. Premium Plan or Residential 3BHK"
                   className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-slate-900 shadow-sm"
                 />
                 <button
@@ -768,7 +819,7 @@ function FieldConfigModal({ field, allFields, theme = 'light', onClose, onSave }
                 <h5 className="font-bold text-indigo-700 uppercase tracking-wider text-[11px]">
                   ⚡ Conditional Visibility Rules
                 </h5>
-                <p className="text-[11px] text-slate-500">Show this field only when conditions match</p>
+                <p className="text-[11px] text-slate-500">Show this field only when conditions match other inputs</p>
               </div>
 
               <button

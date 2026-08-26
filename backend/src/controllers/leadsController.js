@@ -684,14 +684,20 @@ exports.createLead = async (req, res) => {
       utmCampaign, utmMedium, utmSource, lostReason, lostReasonDetail
     } = req.body;
 
-    if (!name || !phone) return res.status(400).json({ message: 'Name and phone are required' });
-
     // Dynamic Form Schema Backend Validation (Conditional & Custom Fields)
     const { validateFormData } = require('../utils/formValidator');
     const { getIndustryDefaults } = require('../utils/industryTemplates');
-    const activeLeadSchema = (req.user?.leadFormSchema && Array.isArray(req.user.leadFormSchema) && req.user.leadFormSchema.length > 0)
-      ? req.user.leadFormSchema
-      : getIndustryDefaults(req.user?.industryType, req.user?.educationSubProfile).leadFormSchema;
+    
+    let activeLeadSchema = req.user?.leadFormSchema;
+    if ((!activeLeadSchema || activeLeadSchema.length === 0) && req.user.companyId) {
+      const companyOwner = await User.findById(req.user.companyId).lean();
+      if (companyOwner && Array.isArray(companyOwner.leadFormSchema) && companyOwner.leadFormSchema.length > 0) {
+        activeLeadSchema = companyOwner.leadFormSchema;
+      }
+    }
+    if (!activeLeadSchema || activeLeadSchema.length === 0) {
+      activeLeadSchema = getIndustryDefaults(req.user?.industryType, req.user?.educationSubProfile).leadFormSchema;
+    }
 
     const validationResult = validateFormData(activeLeadSchema, req.body);
     if (!validationResult.isValid) {
@@ -703,25 +709,27 @@ exports.createLead = async (req, res) => {
     }
 
     const parsedFollowUpDate = (followUpDate && String(followUpDate).trim() !== '') ? new Date(followUpDate) : null;
-
-    const cleanPhone = phone.replace(/\D/g, '');
+    const cleanPhone = phone ? String(phone).replace(/\D/g, '') : '';
+    const resolvedName = (name && String(name).trim()) || (cleanPhone ? `Lead (${cleanPhone})` : `Lead #${Date.now().toString().slice(-4)}`);
 
     const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner';
     const companyId = req.user.companyId || (isOwner ? req.user._id : null);
 
-    // Multi-tenant Phone duplicate check (Company level when attached, or solo user level)
-    const duplicateQuery = companyId
-      ? { companyId, phone: cleanPhone }
-      : { userId: req.user._id, phone: cleanPhone };
+    // Multi-tenant Phone duplicate check (Company level when attached, or solo user level) - only when phone is provided
+    if (cleanPhone) {
+      const duplicateQuery = companyId
+        ? { companyId, phone: cleanPhone }
+        : { userId: req.user._id, phone: cleanPhone };
 
-    const phoneExists = await Lead.findOne(duplicateQuery);
-    if (phoneExists) {
-      return res.status(409).json({
-        message: companyId
-          ? "This phone number already exists in your company's database."
-          : "A lead with this phone number already exists in your pipeline.",
-        code: 'DUPLICATE_PHONE',
-      });
+      const phoneExists = await Lead.findOne(duplicateQuery);
+      if (phoneExists) {
+        return res.status(409).json({
+          message: companyId
+            ? "This phone number already exists in your company's database."
+            : "A lead with this phone number already exists in your pipeline.",
+          code: 'DUPLICATE_PHONE',
+        });
+      }
     }
 
     // Plan limits check (Handles Solo, Organization, and Free tiers; bypassed for SuperAdmin)
@@ -810,7 +818,7 @@ exports.createLead = async (req, res) => {
       sharedByUserName,
       assignedTo: assignedTo || (req.user.companyRole === 'agent' ? req.user._id : null),
       assignedToName: assignedAgentName || (req.user.companyRole === 'agent' ? req.user.name : ''),
-      name: name.trim(),
+      name: resolvedName,
       phone: cleanPhone,
       email: email ? email.toLowerCase().trim() : undefined,
       company: company || undefined,

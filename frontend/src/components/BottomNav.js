@@ -22,7 +22,6 @@ const MOBILE_ITEMS = [
 const DESKTOP_ITEMS = [
   { href: '/dashboard', label: 'Leads Pipeline', icon: Home, key: 'dashboard' },
   { href: '/catalogue', label: 'Colleges & Courses', icon: GraduationCap, key: 'catalogue' },
-  { href: '/forms', label: 'Form Center', icon: Sliders, key: 'forms' },
   { href: '/integrations', label: 'Ads & Lead Integrations', icon: Zap, key: 'integrations' },
   { href: '/projects', label: 'Products & Packages', icon: Package, key: 'projects' },
   { href: '/whatsapp', label: 'WhatsApp Hub', icon: MessageCircle, key: 'whatsapp' },
@@ -111,7 +110,6 @@ export default function BottomNav({ active }) {
     ...(isEducation
       ? [{ href: '/catalogue', label: 'Colleges & Courses', icon: GraduationCap, key: 'catalogue' }]
       : [{ href: '/projects', label: 'Products & Packages', icon: Package, key: 'projects' }]),
-    { href: '/forms', label: 'Form Center', icon: Sliders, key: 'forms' },
     { href: '/integrations', label: 'Ads & Lead Integrations', icon: Zap, key: 'integrations' },
     { href: '/whatsapp', label: 'WhatsApp Hub', icon: MessageCircle, key: 'whatsapp' },
     { href: '/campaigns', label: 'Broadcast Campaigns', icon: Send, key: 'campaigns' },

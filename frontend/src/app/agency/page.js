@@ -1,9 +1,9 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import { getUser } from '@/lib/auth';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import BottomNav from '@/components/BottomNav';
 import FormsModule from '@/components/admin/modules/FormsModule';
 import {
@@ -27,10 +27,26 @@ const PERMISSION_OPTIONS = [
 ];
 
 export default function AgencyPage() {
+  return (
+    <Suspense fallback={<div className="app-shell flex items-center justify-center min-h-screen"><div className="spinner" /></div>}>
+      <AgencyPageContent />
+    </Suspense>
+  );
+}
+
+function AgencyPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'roster' | 'roles' | 'incentives' | 'logs'
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'roster' | 'roles' | 'incentives' | 'logs' | 'forms'
+
+  useEffect(() => {
+    const tabParam = searchParams?.get('tab');
+    if (tabParam && ['overview', 'roster', 'forms', 'roles', 'incentives', 'logs'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
 
   // Dashboard Metrics & Logs State
   const [dashboardData, setDashboardData] = useState({

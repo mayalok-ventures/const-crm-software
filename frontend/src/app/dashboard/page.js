@@ -617,15 +617,32 @@ function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    if (!values.name?.trim() || !values.phone?.trim()) {
-      return toast.error('Name and Phone are required');
+
+    // Dynamic Schema Validation based on owner-configured field requirements
+    const validationErrors = {};
+    for (const field of filteredSchema) {
+      if (!evaluateFieldVisible(field, values)) continue;
+      const isReq = evaluateFieldRequired(field, values);
+      const fieldVal = values[field.fieldId];
+      const isEmpty = fieldVal === undefined || fieldVal === null || String(fieldVal).trim() === '' || (Array.isArray(fieldVal) && fieldVal.length === 0);
+      
+      if (isReq && isEmpty && field.fieldId !== 'followUpDate') {
+        validationErrors[field.fieldId] = `${field.label || field.fieldId} is required.`;
+      }
     }
-    if (showFollowUpOnCreate && !values.followUpDate) {
+
+    if (Object.keys(validationErrors).length > 0) {
+      setFormErrors(validationErrors);
+      const firstErrMsg = Object.values(validationErrors)[0];
+      return toast.error(firstErrMsg);
+    }
+
+    if (showFollowUpOnCreate && filteredSchema.some(f => f.fieldId === 'followUpDate' && f.isRequired) && !values.followUpDate) {
       return toast.error('Next follow-up date is mandatory');
     }
 
     // Check lost reason requirement if moving straight to lost
-    if (isLostStage(values.status) && !values.lostReason) {
+    if (isCurrentLostStage && !values.lostReason) {
       return toast.error('Please select a Lost Reason for this lost stage');
     }
 

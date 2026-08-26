@@ -145,8 +145,8 @@ const leadSchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
   project: { type: String, default: '' },
 
-  name: { type: String, required: true, trim: true },
-  phone: { type: String, required: true, trim: true },
+  name: { type: String, default: '', trim: true },
+  phone: { type: String, default: '', trim: true },
   email: { type: String, lowercase: true, trim: true },
   company: { type: String, trim: true },
   tags: [{ type: String, trim: true }],
