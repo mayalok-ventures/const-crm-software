@@ -962,7 +962,8 @@ function EditLeadModal({ lead, onClose, onUpdated, user }) {
               );
             }
 
-            const inputType = field.fieldType === 'number' ? 'number' : field.fieldType === 'email' ? 'email' : field.fieldType === 'phone' ? 'tel' : field.fieldType === 'date' ? 'date' : 'text';
+            const isDateTime = field.fieldType === 'datetime' || field.fieldId === 'followUpDate' || field.fieldId === 'siteVisitDate';
+            const inputType = field.fieldType === 'number' ? 'number' : field.fieldType === 'email' ? 'email' : field.fieldType === 'phone' ? 'tel' : isDateTime ? 'datetime-local' : field.fieldType === 'date' ? 'date' : 'text';
 
             return (
               <div key={field.fieldId}>

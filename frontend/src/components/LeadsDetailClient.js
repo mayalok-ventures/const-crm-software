@@ -1416,8 +1416,8 @@ export default function LeadDetailPage() {
                         );
                       }
 
-                      if (field.fieldType === 'date') {
-                        const isDateTime = field.fieldId === 'followUpDate' || field.fieldId === 'siteVisitDate';
+                      if (field.fieldType === 'date' || field.fieldType === 'datetime') {
+                        const isDateTime = field.fieldType === 'datetime' || field.fieldId === 'followUpDate' || field.fieldId === 'siteVisitDate';
                         const dateFormatted = currentVal ? (isDateTime ? toLocalDatetimeString(currentVal) : String(currentVal).slice(0, 10)) : '';
 
                         return (

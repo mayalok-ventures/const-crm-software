@@ -68,7 +68,7 @@ const DEFAULT_LEAD_FIELDS = [
   { fieldId: 'company', label: 'Company / Project', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 4 },
   { fieldId: 'budget', label: 'Budget Range', fieldType: 'currency', isRequired: false, isSystem: true, isHidden: false, order: 5 },
   { fieldId: 'location', label: 'Location Preference', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 6 },
-  { fieldId: 'followUpDate', label: 'Next Follow-up Date', fieldType: 'date', isRequired: false, isSystem: true, isHidden: false, order: 7 },
+  { fieldId: 'followUpDate', label: 'Next Follow-up Date & Time', fieldType: 'datetime', isRequired: false, isSystem: true, isHidden: false, order: 7 },
 ];
 
 const DEFAULT_PRODUCT_FIELDS = [

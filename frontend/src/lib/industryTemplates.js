@@ -155,7 +155,7 @@ export const INDUSTRY_TEMPLATES = {
         isHidden: false,
         order: 9,
       },
-      { fieldId: 'followUpDate', label: 'Next Follow-up Date', fieldType: 'date', isRequired: true, isSystem: true, isHidden: false, order: 10 },
+      { fieldId: 'followUpDate', label: 'Next Follow-up Date & Time', fieldType: 'datetime', isRequired: false, isSystem: true, isHidden: false, order: 10 },
     ],
   },
 
@@ -201,7 +201,7 @@ export const INDUSTRY_TEMPLATES = {
       {
         fieldId: 'budget',
         label: 'Budget',
-        fieldType: 'text',
+        fieldType: 'currency',
         isRequired: false,
         isSystem: true,
         isHidden: false,
@@ -211,7 +211,7 @@ export const INDUSTRY_TEMPLATES = {
       {
         fieldId: 'expectedPrice',
         label: 'Expected Price',
-        fieldType: 'text',
+        fieldType: 'currency',
         isRequired: false,
         isSystem: false,
         isHidden: false,
@@ -228,8 +228,8 @@ export const INDUSTRY_TEMPLATES = {
         isHidden: false,
         order: 9,
       },
-      { fieldId: 'siteVisitDate', label: 'Scheduled Site Visit', fieldType: 'date', isRequired: false, isSystem: true, isHidden: false, order: 10 },
-      { fieldId: 'followUpDate', label: 'Next Follow-up Date', fieldType: 'date', isRequired: true, isSystem: true, isHidden: false, order: 11 },
+      { fieldId: 'siteVisitDate', label: 'Scheduled Site Visit', fieldType: 'datetime', isRequired: false, isSystem: true, isHidden: false, order: 10 },
+      { fieldId: 'followUpDate', label: 'Next Follow-up Date & Time', fieldType: 'datetime', isRequired: false, isSystem: true, isHidden: false, order: 11 },
     ],
   },
 
