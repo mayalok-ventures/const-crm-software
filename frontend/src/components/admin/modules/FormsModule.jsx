@@ -62,8 +62,8 @@ const OPERATORS = [
 ];
 
 const DEFAULT_LEAD_FIELDS = [
-  { fieldId: 'name', label: 'Client Name', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 1 },
-  { fieldId: 'phone', label: 'Phone Number', fieldType: 'phone', isRequired: true, isSystem: true, isHidden: false, order: 2 },
+  { fieldId: 'name', label: 'Client Name', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 1 },
+  { fieldId: 'phone', label: 'Phone Number', fieldType: 'phone', isRequired: false, isSystem: true, isHidden: false, order: 2 },
   { fieldId: 'email', label: 'Email Address', fieldType: 'email', isRequired: false, isSystem: true, isHidden: false, order: 3 },
   { fieldId: 'company', label: 'Company / Project', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 4 },
   { fieldId: 'budget', label: 'Budget Range', fieldType: 'currency', isRequired: false, isSystem: true, isHidden: false, order: 5 },
@@ -72,8 +72,8 @@ const DEFAULT_LEAD_FIELDS = [
 ];
 
 const DEFAULT_PRODUCT_FIELDS = [
-  { fieldId: 'name', label: 'Package / Product Name', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 1 },
-  { fieldId: 'location', label: 'Market / Region / Location', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 2 },
+  { fieldId: 'name', label: 'Package / Product Name', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 1 },
+  { fieldId: 'location', label: 'Market / Region / Location', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 2 },
   { fieldId: 'city', label: 'City / Territory', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 3 },
   { fieldId: 'vendorOrBrand', label: 'Vendor / Brand / Provider', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 4 },
   { fieldId: 'basePrice', label: 'Base Pricing / Rate', fieldType: 'currency', isRequired: false, isSystem: true, isHidden: false, order: 5 },
@@ -102,8 +102,20 @@ export default function FormsModule({
   onSaveSchema,
 }) {
   const [formType, setFormType] = useState('lead'); // 'lead' | 'product'
-  const [leadFields, setLeadFields] = useState(DEFAULT_LEAD_FIELDS);
-  const [productFields, setProductFields] = useState(DEFAULT_PRODUCT_FIELDS);
+  const [leadFields, setLeadFields] = useState(() => {
+    const u = getUser();
+    if (u?.leadFormSchema && Array.isArray(u.leadFormSchema) && u.leadFormSchema.length > 0) {
+      return u.leadFormSchema;
+    }
+    return DEFAULT_LEAD_FIELDS;
+  });
+  const [productFields, setProductFields] = useState(() => {
+    const u = getUser();
+    if (u?.productFormSchema && Array.isArray(u.productFormSchema) && u.productFormSchema.length > 0) {
+      return u.productFormSchema;
+    }
+    return DEFAULT_PRODUCT_FIELDS;
+  });
   const [activeEditingField, setActiveEditingField] = useState(null);
   const [showFieldModal, setShowFieldModal] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -111,19 +123,20 @@ export default function FormsModule({
   const [loadingSchemas, setLoadingSchemas] = useState(true);
   const [previewValues, setPreviewValues] = useState({});
 
-  // Sync incoming schema from API
+  // Sync incoming schema from API (always bypass HTTP cache)
   useEffect(() => {
     async function loadSchemas() {
       setLoadingSchemas(true);
       try {
-        // Fetch active lead schema
-        const resLead = await api.get('/auth/form-schema?type=lead');
+        const timestamp = Date.now();
+        // Fetch active lead schema with cache-buster
+        const resLead = await api.get(`/auth/form-schema?type=lead&_t=${timestamp}`);
         if (resLead.data?.schema && Array.isArray(resLead.data.schema) && resLead.data.schema.length > 0) {
           setLeadFields(resLead.data.schema);
         }
 
-        // Fetch active product schema
-        const resProd = await api.get('/auth/form-schema?type=product');
+        // Fetch active product schema with cache-buster
+        const resProd = await api.get(`/auth/form-schema?type=product&_t=${timestamp}`);
         if (resProd.data?.schema && Array.isArray(resProd.data.schema) && resProd.data.schema.length > 0) {
           setProductFields(resProd.data.schema);
         }
@@ -260,6 +273,16 @@ export default function FormsModule({
       });
 
       if (res.data?.success || res.status === 200) {
+        const returnedSchema = formType === 'lead'
+          ? (res.data?.leadFormSchema || activeFields)
+          : (res.data?.productFormSchema || activeFields);
+
+        if (formType === 'lead') {
+          setLeadFields(returnedSchema);
+        } else {
+          setProductFields(returnedSchema);
+        }
+
         setSavedSuccess(true);
         toast.success(`🎉 ${formType === 'lead' ? 'Prospect Lead' : 'Product / Package'} form configuration saved successfully!`);
 
@@ -268,15 +291,15 @@ export default function FormsModule({
           const storedUser = getUser();
           if (storedUser) {
             if (formType === 'lead') {
-              storedUser.leadFormSchema = activeFields;
+              storedUser.leadFormSchema = returnedSchema;
             } else {
-              storedUser.productFormSchema = activeFields;
+              storedUser.productFormSchema = returnedSchema;
             }
             localStorage.setItem('user', JSON.stringify(storedUser));
           }
         } catch (e) {}
 
-        if (onSaveSchema) onSaveSchema(activeFields, formType);
+        if (onSaveSchema) onSaveSchema(returnedSchema, formType);
         setTimeout(() => setSavedSuccess(false), 4000);
       } else {
         toast.error(res.data?.message || 'Failed to save form layout');

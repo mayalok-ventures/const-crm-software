@@ -841,16 +841,20 @@ exports.updateFormSchema = async (req, res) => {
       updateFields['preferences.showFollowUpOnCreate'] = Boolean(req.body.preferences.showFollowUpOnCreate);
     }
 
-    // Determine target company owner ID if editing within an organization
-    const targetUserId = (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' || !req.user.companyId)
-      ? req.user._id
-      : req.user.companyId;
-
+    // Update the logged in user directly
     const user = await User.findByIdAndUpdate(
-      targetUserId,
+      req.user._id,
       { $set: updateFields },
       { new: true }
     );
+
+    // If part of an organization, also synchronize to the company owner
+    if (req.user.companyId && String(req.user.companyId) !== String(req.user._id)) {
+      await User.findByIdAndUpdate(
+        req.user.companyId,
+        { $set: updateFields }
+      );
+    }
 
     // Also sync TenantConfig if available
     try {
@@ -858,7 +862,7 @@ exports.updateFormSchema = async (req, res) => {
       if (TenantConfig) {
         if (!isProduct) {
           await TenantConfig.findOneAndUpdate(
-            { userId: targetUserId },
+            { userId: req.user._id },
             { $set: { customFields: sanitized } },
             { upsert: false }
           );
@@ -866,6 +870,9 @@ exports.updateFormSchema = async (req, res) => {
       }
     } catch (tErr) {}
 
+    if (typeof res.set === 'function') {
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    }
     res.json({
       success: true,
       message: `${isProduct ? 'Product/Package' : 'Lead'} form layout saved successfully ✅`,
@@ -888,15 +895,20 @@ exports.updateCustomFields = exports.updateFormSchema;
 // @access Private
 exports.getFormSchema = async (req, res) => {
   try {
+    if (typeof res.set === 'function') {
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    }
     const formType = String(req.query.type || 'lead').toLowerCase();
     let user = await User.findById(req.user._id).lean();
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // Multi-tenant resolution: If user is an agent in a company, check the company owner's custom schema
-    if (user.companyId && String(user.companyId) !== String(user._id)) {
+    // Multi-tenant resolution: If user's own schema is empty and belongs to a company, inherit company owner's custom schema
+    const isLeadEmpty = !Array.isArray(user.leadFormSchema) || user.leadFormSchema.length === 0;
+    const isProdEmpty = !Array.isArray(user.productFormSchema) || user.productFormSchema.length === 0;
+
+    if ((isLeadEmpty || isProdEmpty) && user.companyId && String(user.companyId) !== String(user._id)) {
       const companyOwner = await User.findById(user.companyId).lean();
       if (companyOwner) {
-        // If owner has custom schemas configured, inherit from the company owner
         if (formType === 'lead' && Array.isArray(companyOwner.leadFormSchema) && companyOwner.leadFormSchema.length > 0) {
           user.leadFormSchema = companyOwner.leadFormSchema;
         }
