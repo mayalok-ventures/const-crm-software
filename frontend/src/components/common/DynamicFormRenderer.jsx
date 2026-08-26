@@ -148,9 +148,9 @@ export function isFieldRequired(field, values = {}) {
 }
 
 /**
- * Sub-Component: Smart Currency Input with Unit Selector (Lakhs, Cr, Thousand, Exact)
+ * Sub-Component: Smart Currency Input with Seamless Unit Selector (Lakhs, Cr, Thousand, Exact)
  */
-export function CurrencyWithUnitInput({ value, onChange, placeholder, disabled, isDark, inputClass }) {
+export function CurrencyWithUnitInput({ value, onChange, placeholder, disabled, isDark }) {
   // Parse value e.g. "50 Lakhs" -> { amount: '50', unit: 'Lakhs' }
   const parsed = useMemo(() => {
     if (!value) return { amount: '', unit: 'Lakhs' };
@@ -199,68 +199,36 @@ export function CurrencyWithUnitInput({ value, onChange, placeholder, disabled, 
     }
   };
 
-  const handleAmountChange = (e) => {
-    const clean = e.target.value.replace(/[^\d.]/g, '');
-    emitChange(clean, unit);
-  };
-
-  const handleUnitChange = (e) => {
-    const newUnit = e.target.value;
-    emitChange(amount, newUnit);
-  };
-
-  const previewText = useMemo(() => {
-    if (!amount || isNaN(Number(amount))) return '';
-    const num = Number(amount);
-    if (unit === 'Cr') {
-      const full = num * 10000000;
-      return `≈ ₹ ${num} Crore (₹ ${full.toLocaleString('en-IN')})`;
-    }
-    if (unit === 'Lakhs') {
-      const full = num * 100000;
-      return `≈ ₹ ${num} Lakh (₹ ${full.toLocaleString('en-IN')})`;
-    }
-    if (unit === 'Thousand') {
-      const full = num * 1000;
-      return `≈ ₹ ${num} Thousand (₹ ${full.toLocaleString('en-IN')})`;
-    }
-    return `₹ ${num.toLocaleString('en-IN')}`;
-  }, [amount, unit]);
-
-  const quickPills = [
-    { label: '25 L', amount: '25', unit: 'Lakhs' },
-    { label: '50 L', amount: '50', unit: 'Lakhs' },
-    { label: '75 L', amount: '75', unit: 'Lakhs' },
-    { label: '1 Cr', amount: '1', unit: 'Cr' },
-    { label: '1.5 Cr', amount: '1.5', unit: 'Cr' },
-    { label: '2.5 Cr', amount: '2.5', unit: 'Cr' },
-  ];
-
   return (
-    <div className="space-y-1.5">
-      <div className="relative flex items-center rounded-xl overflow-hidden shadow-sm">
-        <div className={`absolute left-3 top-1/2 -translate-y-1/2 font-bold text-xs pointer-events-none z-10 ${isDark ? 'text-amber-400' : 'text-indigo-600'}`}>
-          ₹
-        </div>
-        <input
-          type="text"
-          inputMode="decimal"
-          disabled={disabled}
-          placeholder={placeholder || (unit === 'Lakhs' ? 'e.g. 50' : unit === 'Cr' ? 'e.g. 1.5' : 'e.g. 50000')}
-          value={amount}
-          onChange={handleAmountChange}
-          className={`${inputClass} pl-7 pr-28 !rounded-r-none border-r-0`}
-        />
+    <div
+      className={`relative flex items-stretch rounded-xl border transition-all overflow-hidden ${
+        isDark
+          ? 'bg-[#0d1424] border-slate-700/80 focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-500/20'
+          : 'bg-white border-slate-300 focus-within:border-indigo-600 focus-within:ring-2 focus-within:ring-indigo-500/20 shadow-xs'
+      }`}
+    >
+      <div className={`flex items-center justify-center pl-3.5 pr-1 font-bold text-xs pointer-events-none select-none ${isDark ? 'text-amber-400' : 'text-indigo-600'}`}>
+        ₹
+      </div>
+      <input
+        type="text"
+        inputMode="decimal"
+        disabled={disabled}
+        placeholder={placeholder || (unit === 'Lakhs' ? 'e.g. 50' : unit === 'Cr' ? 'e.g. 1.5' : 'e.g. 50000')}
+        value={amount}
+        onChange={(e) => emitChange(e.target.value.replace(/[^\d.]/g, ''), unit)}
+        className={`w-full py-2.5 px-2 text-xs bg-transparent border-0 focus:outline-none focus:ring-0 ${
+          isDark ? 'text-white placeholder-slate-500' : 'text-slate-900 placeholder-slate-400'
+        }`}
+      />
+      <div className={`flex items-center border-l ${isDark ? 'border-slate-700/80 bg-slate-800/80' : 'border-slate-200 bg-slate-50'}`}>
         <select
           value={unit}
           disabled={disabled}
-          onChange={handleUnitChange}
-          className={`h-full py-2.5 px-2 text-xs font-semibold rounded-r-xl border cursor-pointer transition-colors ${
-            isDark
-              ? 'bg-slate-800 text-amber-300 border-slate-700 hover:bg-slate-700'
-              : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+          onChange={(e) => emitChange(amount, e.target.value)}
+          className={`h-full py-2 px-2.5 text-xs font-semibold bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer transition-colors ${
+            isDark ? 'text-amber-400 hover:text-amber-300' : 'text-slate-700 hover:text-indigo-600'
           }`}
-          style={{ minWidth: '105px' }}
         >
           <option value="Lakhs">Lakhs (L)</option>
           <option value="Cr">Crore (Cr)</option>
@@ -268,44 +236,12 @@ export function CurrencyWithUnitInput({ value, onChange, placeholder, disabled, 
           <option value="Exact">₹ Exact</option>
         </select>
       </div>
-
-      {/* Quick Budget Chips */}
-      <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-        <span className="text-[10px] text-slate-400 font-medium mr-0.5">Quick:</span>
-        {quickPills.map((pill) => (
-          <button
-            key={pill.label}
-            type="button"
-            disabled={disabled}
-            onClick={() => emitChange(pill.amount, pill.unit)}
-            className={`text-[10px] px-2 py-0.5 rounded-md font-medium border transition-all ${
-              amount === pill.amount && unit === pill.unit
-                ? isDark
-                  ? 'bg-amber-500 text-slate-950 font-bold border-amber-400'
-                  : 'bg-indigo-600 text-white font-bold border-indigo-600'
-                : isDark
-                ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-            }`}
-          >
-            {pill.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Live Calculated Helper Text */}
-      {previewText && (
-        <div className={`text-[11px] font-medium flex items-center gap-1 px-1 ${isDark ? 'text-amber-400/90' : 'text-indigo-600'}`}>
-          <span>💰</span>
-          <span>{previewText}</span>
-        </div>
-      )}
     </div>
   );
 }
 
 /**
- * Sub-Component: Follow-Up Date & Time Input with Quick Schedule Presets
+ * Sub-Component: Clean Follow-Up Date & Time Input
  */
 export function FollowUpDateTimeInput({ value, onChange, placeholder, disabled, isDark, inputClass }) {
   // Ensure formatted as YYYY-MM-DDTHH:mm
@@ -320,92 +256,15 @@ export function FollowUpDateTimeInput({ value, onChange, placeholder, disabled, 
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }, [value]);
 
-  const applyPreset = (type) => {
-    const d = new Date();
-    if (type === 'today_5pm') {
-      d.setHours(17, 0, 0, 0);
-    } else if (type === 'tomorrow_10am') {
-      d.setDate(d.getDate() + 1);
-      d.setHours(10, 0, 0, 0);
-    } else if (type === 'tomorrow_4pm') {
-      d.setDate(d.getDate() + 1);
-      d.setHours(16, 0, 0, 0);
-    } else if (type === 'in_2_days') {
-      d.setDate(d.getDate() + 2);
-      d.setHours(11, 0, 0, 0);
-    } else if (type === 'in_3_days') {
-      d.setDate(d.getDate() + 3);
-      d.setHours(11, 0, 0, 0);
-    } else if (type === 'next_week') {
-      d.setDate(d.getDate() + 7);
-      d.setHours(10, 0, 0, 0);
-    }
-    const pad = (n) => String(n).padStart(2, '0');
-    const localStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    onChange(localStr);
-  };
-
-  const readableDisplay = useMemo(() => {
-    if (!formattedVal) return '';
-    const d = new Date(formattedVal);
-    if (isNaN(d.getTime())) return '';
-    return d.toLocaleString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
-  }, [formattedVal]);
-
-  const quickPresets = [
-    { label: 'Today 5 PM', type: 'today_5pm' },
-    { label: 'Tomorrow 10 AM', type: 'tomorrow_10am' },
-    { label: 'Tomorrow 4 PM', type: 'tomorrow_4pm' },
-    { label: 'In 2 Days', type: 'in_2_days' },
-    { label: 'Next Week', type: 'next_week' },
-  ];
-
   return (
-    <div className="space-y-1.5">
-      <div className="relative">
-        <input
-          type="datetime-local"
-          disabled={disabled}
-          value={formattedVal}
-          onChange={(e) => onChange(e.target.value)}
-          className={inputClass}
-        />
-      </div>
-
-      {/* Quick Time Schedule Presets */}
-      <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-        <span className="text-[10px] text-slate-400 font-medium mr-0.5">Quick Time:</span>
-        {quickPresets.map((p) => (
-          <button
-            key={p.label}
-            type="button"
-            disabled={disabled}
-            onClick={() => applyPreset(p.type)}
-            className={`text-[10px] px-2 py-0.5 rounded-md font-medium border transition-all ${
-              isDark
-                ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-amber-300'
-                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200'
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Live Selected Time Badge */}
-      {readableDisplay && (
-        <div className={`text-[11px] font-semibold flex items-center gap-1.5 px-1 ${isDark ? 'text-amber-300' : 'text-indigo-600'}`}>
-          <span>📅</span>
-          <span>Scheduled: {readableDisplay}</span>
-        </div>
-      )}
+    <div className="relative">
+      <input
+        type="datetime-local"
+        disabled={disabled}
+        value={formattedVal}
+        onChange={(e) => onChange(e.target.value)}
+        className={inputClass}
+      />
     </div>
   );
 }
