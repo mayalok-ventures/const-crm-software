@@ -19,8 +19,8 @@ export const INDUSTRY_TEMPLATES = {
       'Nurture',
     ],
     leadFormSchema: [
-      { fieldId: 'name', label: 'Client Name', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 1 },
-      { fieldId: 'phone', label: 'Phone Number', fieldType: 'phone', isRequired: true, isSystem: true, isHidden: false, order: 2 },
+      { fieldId: 'name', label: 'Client Name', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 1 },
+      { fieldId: 'phone', label: 'Phone Number', fieldType: 'phone', isRequired: false, isSystem: true, isHidden: false, order: 2 },
       { fieldId: 'email', label: 'Email Address', fieldType: 'email', isRequired: false, isSystem: true, isHidden: false, order: 3 },
       { fieldId: 'company', label: 'Company Name', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 4 },
       { fieldId: 'jobTitle', label: 'Job Title', fieldType: 'text', isRequired: false, isSystem: false, isHidden: false, order: 5 },
@@ -45,7 +45,7 @@ export const INDUSTRY_TEMPLATES = {
         isHidden: false,
         order: 8,
       },
-      { fieldId: 'followUpDate', label: 'Next Follow-up Date', fieldType: 'date', isRequired: true, isSystem: true, isHidden: false, order: 9 },
+      { fieldId: 'followUpDate', label: 'Next Follow-up Date', fieldType: 'date', isRequired: false, isSystem: true, isHidden: false, order: 9 },
     ],
   },
 
@@ -64,8 +64,8 @@ export const INDUSTRY_TEMPLATES = {
       'Nurture',
     ],
     leadFormSchema: [
-      { fieldId: 'name', label: 'Client Name', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 1 },
-      { fieldId: 'phone', label: 'Phone Number', fieldType: 'phone', isRequired: true, isSystem: true, isHidden: false, order: 2 },
+      { fieldId: 'name', label: 'Client Name', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 1 },
+      { fieldId: 'phone', label: 'Phone Number', fieldType: 'phone', isRequired: false, isSystem: true, isHidden: false, order: 2 },
       { fieldId: 'email', label: 'Email Address', fieldType: 'email', isRequired: false, isSystem: true, isHidden: false, order: 3 },
       { fieldId: 'company', label: 'Company', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 4 },
       {
@@ -99,7 +99,7 @@ export const INDUSTRY_TEMPLATES = {
         isHidden: false,
         order: 8,
       },
-      { fieldId: 'followUpDate', label: 'Next Follow-up Date', fieldType: 'date', isRequired: true, isSystem: true, isHidden: false, order: 9 },
+      { fieldId: 'followUpDate', label: 'Next Follow-up Date', fieldType: 'date', isRequired: false, isSystem: true, isHidden: false, order: 9 },
     ],
   },
 
@@ -119,8 +119,8 @@ export const INDUSTRY_TEMPLATES = {
       'Nurture',
     ],
     leadFormSchema: [
-      { fieldId: 'name', label: 'Contact Name', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 1 },
-      { fieldId: 'phone', label: 'Phone / WhatsApp', fieldType: 'phone', isRequired: true, isSystem: true, isHidden: false, order: 2 },
+      { fieldId: 'name', label: 'Contact Name', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 1 },
+      { fieldId: 'phone', label: 'Phone / WhatsApp', fieldType: 'phone', isRequired: false, isSystem: true, isHidden: false, order: 2 },
       { fieldId: 'email', label: 'Work Email', fieldType: 'email', isRequired: false, isSystem: true, isHidden: false, order: 3 },
       { fieldId: 'company', label: 'Company', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 4 },
       { fieldId: 'jobTitle', label: 'Job Title', fieldType: 'text', isRequired: false, isSystem: false, isHidden: false, order: 5 },
@@ -174,15 +174,15 @@ export const INDUSTRY_TEMPLATES = {
       'Closed Lost',
     ],
     leadFormSchema: [
-      { fieldId: 'name', label: 'Client Name', fieldType: 'text', isRequired: true, isSystem: true, isHidden: false, order: 1 },
-      { fieldId: 'phone', label: 'Phone Number', fieldType: 'phone', isRequired: true, isSystem: true, isHidden: false, order: 2 },
+      { fieldId: 'name', label: 'Client Name', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 1 },
+      { fieldId: 'phone', label: 'Phone Number', fieldType: 'phone', isRequired: false, isSystem: true, isHidden: false, order: 2 },
       { fieldId: 'email', label: 'Email Address', fieldType: 'email', isRequired: false, isSystem: true, isHidden: false, order: 3 },
       {
         fieldId: 'purpose',
         label: 'Purpose (Buy/Sell/Rent)',
         fieldType: 'dropdown',
         options: ['Buy', 'Sell', 'Rent'],
-        isRequired: true,
+        isRequired: false,
         isSystem: false,
         isHidden: false,
         order: 4,

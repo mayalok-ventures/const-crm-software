@@ -291,22 +291,33 @@ function validateFormData(schema = [], values = {}) {
       // Phone validation
       if (fieldType === 'phone') {
         const digits = String(val).replace(/\D/g, '');
-        if (digits.length < 7 || digits.length > 15) {
+        if (digits.length === 0) {
+          if (required) {
+            errors[fieldKey] = `${field.label || fieldKey} is required.`;
+          }
+        } else if (digits.length < 7 || digits.length > 15) {
           errors[fieldKey] = `Please enter a valid phone number for ${field.label}.`;
         }
       }
 
       // Numeric / Currency / Percentage
       if (['number', 'currency', 'percentage'].includes(fieldType)) {
-        const cleanNum = Number(String(val).replace(/[^0-9.-]+/g, ''));
-        if (isNaN(cleanNum)) {
-          errors[fieldKey] = `${field.label} must be a valid number.`;
-        } else {
-          if (field.validationRules?.min !== undefined && cleanNum < field.validationRules.min) {
-            errors[fieldKey] = `${field.label} cannot be less than ${field.validationRules.min}.`;
+        const cleanStr = String(val).replace(/[^0-9.-]+/g, '');
+        if (!cleanStr) {
+          if (required) {
+            errors[fieldKey] = `${field.label || fieldKey} is required.`;
           }
-          if (field.validationRules?.max !== undefined && cleanNum > field.validationRules.max) {
-            errors[fieldKey] = `${field.label} cannot exceed ${field.validationRules.max}.`;
+        } else {
+          const cleanNum = Number(cleanStr);
+          if (isNaN(cleanNum)) {
+            errors[fieldKey] = `${field.label} must be a valid number.`;
+          } else {
+            if (field.validationRules?.min !== undefined && cleanNum < field.validationRules.min) {
+              errors[fieldKey] = `${field.label} cannot be less than ${field.validationRules.min}.`;
+            }
+            if (field.validationRules?.max !== undefined && cleanNum > field.validationRules.max) {
+              errors[fieldKey] = `${field.label} cannot exceed ${field.validationRules.max}.`;
+            }
           }
         }
       }

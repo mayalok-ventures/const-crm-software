@@ -338,21 +338,29 @@ export default function DynamicFormRenderer({
                 </div>
                 <input
                   type="text"
+                  inputMode="decimal"
                   disabled={disabled}
-                  placeholder={field.placeholder || 'e.g. 5,00,000'}
+                  placeholder={field.placeholder || 'e.g. 500000'}
                   value={value}
-                  onChange={(e) => handleInputChange(fieldKey, e.target.value)}
+                  onChange={(e) => {
+                    const clean = e.target.value.replace(/[^\d.,]/g, '');
+                    handleInputChange(fieldKey, clean);
+                  }}
                   className={`${inputClass} pl-7`}
                 />
               </div>
             ) : fieldType === 'percentage' ? (
               <div className="relative">
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   disabled={disabled}
                   placeholder={field.placeholder || 'e.g. 18'}
                   value={value}
-                  onChange={(e) => handleInputChange(fieldKey, e.target.value)}
+                  onChange={(e) => {
+                    const clean = e.target.value.replace(/[^\d.]/g, '');
+                    handleInputChange(fieldKey, clean);
+                  }}
                   className={`${inputClass} pr-7`}
                 />
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -366,10 +374,14 @@ export default function DynamicFormRenderer({
                 </div>
                 <input
                   type="tel"
+                  inputMode="tel"
                   disabled={disabled}
                   placeholder={field.placeholder || 'e.g. 9876543210'}
                   value={value}
-                  onChange={(e) => handleInputChange(fieldKey, e.target.value)}
+                  onChange={(e) => {
+                    const clean = e.target.value.replace(/[^\d+\s()-]/g, '');
+                    handleInputChange(fieldKey, clean);
+                  }}
                   className={`${inputClass} pl-9`}
                 />
               </div>
@@ -383,7 +395,7 @@ export default function DynamicFormRenderer({
                   disabled={disabled}
                   placeholder={field.placeholder || 'e.g. client@example.com'}
                   value={value}
-                  onChange={(e) => handleInputChange(fieldKey, e.target.value)}
+                  onChange={(e) => handleInputChange(fieldKey, e.target.value.trim())}
                   className={`${inputClass} pl-9`}
                 />
               </div>
@@ -397,7 +409,7 @@ export default function DynamicFormRenderer({
                   disabled={disabled}
                   placeholder={field.placeholder || 'https://example.com'}
                   value={value}
-                  onChange={(e) => handleInputChange(fieldKey, e.target.value)}
+                  onChange={(e) => handleInputChange(fieldKey, e.target.value.trim())}
                   className={`${inputClass} pl-9`}
                 />
               </div>
@@ -407,11 +419,15 @@ export default function DynamicFormRenderer({
                   <Hash className="w-3.5 h-3.5" />
                 </div>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   disabled={disabled}
                   placeholder={field.placeholder || '0'}
                   value={value}
-                  onChange={(e) => handleInputChange(fieldKey, e.target.value)}
+                  onChange={(e) => {
+                    const clean = e.target.value.replace(/[^\d.-]/g, '');
+                    handleInputChange(fieldKey, clean);
+                  }}
                   className={`${inputClass} pl-9`}
                 />
               </div>
