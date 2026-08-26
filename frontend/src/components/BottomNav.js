@@ -134,8 +134,8 @@ export default function BottomNav({ active }) {
   // Mobile Bottom Nav for Agents
   const agentMobileItems = [
     { href: '/dashboard', label: 'Dashboard', icon: Home, key: 'dashboard' },
-    { href: '/dashboard?tab=my_leads', label: 'Leads', icon: Users, key: 'leads' },
-    { href: '/dashboard?tab=follow_ups', label: 'Follow-ups', icon: Calendar, key: 'follow_ups' },
+    { href: '/leads', label: 'Leads', icon: Users, key: 'leads' },
+    { href: '/follow-ups', label: 'Follow-ups', icon: Calendar, key: 'follow_ups' },
     { href: '/whatsapp', label: 'Inbox', icon: MessageCircle, key: 'whatsapp' },
     { href: '/profile', label: 'Profile', icon: User, key: 'profile' },
   ];
@@ -484,7 +484,7 @@ export default function BottomNav({ active }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <div
                   onClick={() => !isCollapsed && setLeadsExpanded(!leadsExpanded)}
-                  className={`sidebar-nav-link ${(currentTab === 'unclaimed' || currentTab === 'my_leads') ? 'active' : ''}`}
+                  className={`sidebar-nav-link ${normalize(pathname) === '/leads' ? 'active' : ''}`}
                   style={{
                     justifyContent: isCollapsed ? 'center' : 'space-between',
                     padding: isCollapsed ? '9px 0' : '9px 12px',
@@ -492,10 +492,18 @@ export default function BottomNav({ active }) {
                   }}
                   title="Leads"
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Users size={17} color={(currentTab === 'unclaimed' || currentTab === 'my_leads') ? 'var(--accent)' : 'currentColor'} />
+                  <Link
+                    href="/leads"
+                    onClick={(e) => {
+                      if (!isCollapsed) {
+                        e.stopPropagation();
+                      }
+                    }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', flex: 1 }}
+                  >
+                    <Users size={17} color={normalize(pathname) === '/leads' ? 'var(--accent)' : 'currentColor'} />
                     {!isCollapsed && <span style={{ fontWeight: 600 }}>Leads</span>}
-                  </div>
+                  </Link>
                   {!isCollapsed && (
                     <ChevronDown
                       size={14}
@@ -512,8 +520,8 @@ export default function BottomNav({ active }) {
                 {!isCollapsed && leadsExpanded && (
                   <div style={{ paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 2, borderLeft: '1px solid var(--border)', marginLeft: 16 }}>
                     <Link
-                      href="/dashboard?tab=unclaimed"
-                      className={`sidebar-nav-link ${currentTab === 'unclaimed' ? 'active' : ''}`}
+                      href="/leads?tab=unclaimed"
+                      className={`sidebar-nav-link ${normalize(pathname) === '/leads' && currentTab === 'unclaimed' ? 'active' : ''}`}
                       style={{
                         padding: '6px 10px',
                         fontSize: 12,
@@ -523,8 +531,8 @@ export default function BottomNav({ active }) {
                       <span>New / Unclaimed</span>
                     </Link>
                     <Link
-                      href="/dashboard?tab=my_leads"
-                      className={`sidebar-nav-link ${currentTab === 'my_leads' ? 'active' : ''}`}
+                      href="/leads?tab=my_leads"
+                      className={`sidebar-nav-link ${normalize(pathname) === '/leads' && (currentTab === 'my_leads' || !currentTab) ? 'active' : ''}`}
                       style={{
                         padding: '6px 10px',
                         fontSize: 12,
@@ -539,57 +547,57 @@ export default function BottomNav({ active }) {
 
               {/* 3. FOLLOW-UPS */}
               <Link
-                href="/dashboard?tab=follow_ups"
-                className={`sidebar-nav-link ${currentTab === 'follow_ups' ? 'active' : ''}`}
+                href="/follow-ups"
+                className={`sidebar-nav-link ${normalize(pathname) === '/follow-ups' ? 'active' : ''}`}
                 style={{
                   justifyContent: isCollapsed ? 'center' : 'flex-start',
                   padding: isCollapsed ? '9px 0' : '9px 12px',
                 }}
                 title="Follow-ups"
               >
-                <Calendar size={17} color={currentTab === 'follow_ups' ? 'var(--accent)' : 'currentColor'} />
+                <Calendar size={17} color={normalize(pathname) === '/follow-ups' ? 'var(--accent)' : 'currentColor'} />
                 {!isCollapsed && <span>Follow-ups</span>}
               </Link>
 
               {/* 4. PIPELINE */}
               <Link
-                href="/dashboard?tab=pipeline"
-                className={`sidebar-nav-link ${currentTab === 'pipeline' ? 'active' : ''}`}
+                href="/pipeline"
+                className={`sidebar-nav-link ${normalize(pathname) === '/pipeline' ? 'active' : ''}`}
                 style={{
                   justifyContent: isCollapsed ? 'center' : 'flex-start',
                   padding: isCollapsed ? '9px 0' : '9px 12px',
                 }}
                 title="Pipeline"
               >
-                <TrendingUp size={17} color={currentTab === 'pipeline' ? 'var(--accent)' : 'currentColor'} />
+                <TrendingUp size={17} color={normalize(pathname) === '/pipeline' ? 'var(--accent)' : 'currentColor'} />
                 {!isCollapsed && <span>Pipeline</span>}
               </Link>
 
               {/* 5. DEALS */}
               <Link
-                href="/dashboard?tab=deals"
-                className={`sidebar-nav-link ${currentTab === 'deals' ? 'active' : ''}`}
+                href="/deals"
+                className={`sidebar-nav-link ${normalize(pathname) === '/deals' ? 'active' : ''}`}
                 style={{
                   justifyContent: isCollapsed ? 'center' : 'flex-start',
                   padding: isCollapsed ? '9px 0' : '9px 12px',
                 }}
                 title="Deals"
               >
-                <Award size={17} color={currentTab === 'deals' ? 'var(--accent)' : 'currentColor'} />
+                <Award size={17} color={normalize(pathname) === '/deals' ? 'var(--accent)' : 'currentColor'} />
                 {!isCollapsed && <span>Deals</span>}
               </Link>
 
               {/* 6. SITE VISITS */}
               <Link
-                href="/dashboard?tab=site_visits"
-                className={`sidebar-nav-link ${currentTab === 'site_visits' ? 'active' : ''}`}
+                href="/site-visits"
+                className={`sidebar-nav-link ${normalize(pathname) === '/site-visits' ? 'active' : ''}`}
                 style={{
                   justifyContent: isCollapsed ? 'center' : 'flex-start',
                   padding: isCollapsed ? '9px 0' : '9px 12px',
                 }}
                 title="Site Visits"
               >
-                <MapPin size={17} color={currentTab === 'site_visits' ? 'var(--accent)' : 'currentColor'} />
+                <MapPin size={17} color={normalize(pathname) === '/site-visits' ? 'var(--accent)' : 'currentColor'} />
                 {!isCollapsed && <span>Site Visits</span>}
               </Link>
 
@@ -640,7 +648,7 @@ export default function BottomNav({ active }) {
                 </div>
               )}
 
-              {/* 8. WHATSAPP HUB (WITH SUB-ITEMS) */}
+              {/* 8. WHATSAPP HUB (WITH SUB-ITEMS: BROADCAST, TEMPLATES, GROUPS) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <div
                   onClick={() => !isCollapsed && setWaExpanded(!waExpanded)}
@@ -652,10 +660,18 @@ export default function BottomNav({ active }) {
                   }}
                   title="WhatsApp Hub"
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Link
+                    href="/whatsapp"
+                    onClick={(e) => {
+                      if (!isCollapsed) {
+                        e.stopPropagation();
+                      }
+                    }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', flex: 1 }}
+                  >
                     <MessageCircle size={17} color={normalize(pathname) === '/whatsapp' ? 'var(--accent)' : 'currentColor'} />
                     {!isCollapsed && <span style={{ fontWeight: 600 }}>WhatsApp Hub</span>}
-                  </div>
+                  </Link>
                   {!isCollapsed && (
                     <ChevronDown
                       size={14}
@@ -671,13 +687,6 @@ export default function BottomNav({ active }) {
                 {/* Sub-items for WhatsApp Hub */}
                 {!isCollapsed && waExpanded && (
                   <div style={{ paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 2, borderLeft: '1px solid var(--border)', marginLeft: 16 }}>
-                    <Link
-                      href="/whatsapp"
-                      className={`sidebar-nav-link ${normalize(pathname) === '/whatsapp' ? 'active' : ''}`}
-                      style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}
-                    >
-                      <span>Connection</span>
-                    </Link>
                     <Link
                       href="/campaigns"
                       className={`sidebar-nav-link ${normalize(pathname) === '/campaigns' ? 'active' : ''}`}
