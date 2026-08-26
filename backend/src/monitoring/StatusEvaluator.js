@@ -63,7 +63,12 @@ class StatusEvaluator {
                     // Open incident if none exists
                     const existingIncident = await Incident_1.Incident.findOne({ serverId, status: 'OPEN' });
                     if (!existingIncident) {
+                        const generatedIncId = `inc-offline-${serverId}-${Date.now()}`;
                         const newIncident = await Incident_1.Incident.create({
+                            incidentId: generatedIncId,
+                            title: `Server Offline: ${serverId}`,
+                            summary: `Server "${serverId}" transitioned to OFFLINE: ${reason}`,
+                            severity: 'CRITICAL',
                             serverId,
                             type: 'OFFLINE',
                             startedAt: now,

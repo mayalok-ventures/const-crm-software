@@ -83,8 +83,14 @@ export interface IIncidentDocument extends IIncident, Document {}
 
 const IncidentSchema: Schema = new Schema(
   {
-    incidentId: { type: String, required: true, unique: true, index: true },
-    title: { type: String, required: true },
+    incidentId: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+      default: () => `inc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    },
+    title: { type: String, required: true, default: 'System Incident' },
     summary: { type: String, default: '' },
     severity: {
       type: String,

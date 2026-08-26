@@ -36,8 +36,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.Incident = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
 const IncidentSchema = new mongoose_1.Schema({
-    incidentId: { type: String, required: true, unique: true, index: true },
-    title: { type: String, required: true },
+    incidentId: {
+        type: String,
+        required: true,
+        unique: true,
+        index: true,
+        default: () => `inc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    },
+    title: { type: String, required: true, default: 'System Incident' },
     summary: { type: String, default: '' },
     severity: {
         type: String,
