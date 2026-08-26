@@ -1560,9 +1560,6 @@ exports.saveFormSchema = async (req, res) => {
       const rawId = f.fieldId || f.name || f.label || '';
       const fieldId = String(rawId).replace(/[^a-zA-Z0-9_]/g, '_').trim();
       const isSystem = Boolean(f.isSystem);
-      const isMandatorySystem = isProduct
-        ? ['name', 'location'].includes(fieldId.toLowerCase())
-        : ['name', 'phone'].includes(fieldId.toLowerCase());
 
       const rawType = String(f.fieldType || f.type || 'text').toLowerCase();
       const fieldType = ALLOWED_TYPES.includes(rawType) ? rawType : 'text';
@@ -1587,23 +1584,15 @@ exports.saveFormSchema = async (req, res) => {
         helpText: f.helpText ? String(f.helpText).trim() : '',
         defaultValue: f.defaultValue !== undefined ? f.defaultValue : '',
         options,
-        isRequired: isMandatorySystem ? true : Boolean(f.isRequired),
+        isRequired: Boolean(f.isRequired),
         isSystem,
-        isHidden: isMandatorySystem ? false : Boolean(f.isHidden),
+        isHidden: Boolean(f.isHidden),
         order: typeof f.order === 'number' ? f.order : (idx + 1),
         conditionalRules: f.conditionalRules || null,
         conditionalRequiredRules: f.conditionalRequiredRules || null,
         validationRules: f.validationRules || {},
       };
     }).filter(f => f.fieldId && f.label);
-
-    if (!isProduct) {
-      const hasName = sanitized.some(f => f.fieldId.toLowerCase() === 'name');
-      const hasPhone = sanitized.some(f => f.fieldId.toLowerCase() === 'phone');
-      if (!hasName || !hasPhone) {
-        return res.status(400).json({ success: false, message: 'System fields "Name" and "Phone" cannot be removed.' });
-      }
-    }
 
     sanitized.sort((a, b) => (a.order || 0) - (b.order || 0));
 
@@ -1612,6 +1601,10 @@ exports.saveFormSchema = async (req, res) => {
       : { leadFormSchema: sanitized };
 
     await User.findByIdAndUpdate(req.user._id, { $set: updateFields });
+    if (req.user.companyId && String(req.user.companyId) !== String(req.user._id)) {
+      await User.findByIdAndUpdate(req.user.companyId, { $set: updateFields });
+    }
+
     await TenantConfig.findOneAndUpdate(
       { user: req.user._id },
       { $set: updateFields },
@@ -1631,10 +1624,12 @@ exports.saveFormSchema = async (req, res) => {
 
     res.json({
       success: true,
-      message: `${isProduct ? 'Product/Package' : 'Lead'} form schema saved successfully`,
+      message: `${isProduct ? 'Product/Package' : 'Lead'} form schema saved successfully ✅`,
       formType: isProduct ? 'product' : 'lead',
       fields: sanitized,
       schema: sanitized,
+      leadFormSchema: sanitized,
+      productFormSchema: sanitized,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
