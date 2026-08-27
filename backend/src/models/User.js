@@ -186,6 +186,8 @@ const userSchema = new mongoose.Schema({
   // Authentication & Security
   twoFactorEnabled: { type: Boolean, default: false },
   twoFactorSecret: { type: String, default: null },
+  twoFactorTempSecret: { type: String, default: null },
+  twoFactorTempExpires: { type: Date, default: null },
   twoFactorRecoveryCodes: { type: [String], default: [] },
   twoFactorOtp: { type: String, default: null },
   twoFactorOtpExpires: { type: Date, default: null },
@@ -302,6 +304,8 @@ userSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.password;
   delete obj.twoFactorSecret;
+  delete obj.twoFactorTempSecret;
+  delete obj.twoFactorTempExpires;
   delete obj.twoFactorOtp;
   delete obj.twoFactorOtpExpires;
   delete obj.twoFactorRecoveryCodes;

@@ -7,6 +7,7 @@ const {
   setup2FA,
   enable2FA,
   disable2FA,
+  get2FAStatus,
   reset2FAEmergency,
   updatePipelineStages,
   updateCustomFields,
@@ -29,6 +30,7 @@ router.post('/reset-2fa-emergency', authLimiter, reset2FAEmergency);
 router.get('/me', protect, getMe);
 router.get('/user', protect, getMe); // Alias route
 router.put('/profile', protect, updateProfile);
+router.get('/2fa/status', protect, get2FAStatus);
 router.post('/2fa/setup', protect, setup2FA);
 router.post('/2fa/enable', protect, enable2FA);
 router.post('/2fa/disable', protect, disable2FA);

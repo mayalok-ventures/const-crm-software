@@ -4,6 +4,7 @@ import './globals.css';
 import { Toaster } from 'react-hot-toast';
 import NotificationPoller from '@/components/NotificationPoller';
 import SecurityWarningBanner from '@/components/SecurityWarningBanner';
+import Owner2FAModal from '@/components/Owner2FAModal';
 import SubscriptionLifecycleBanner from '@/components/SubscriptionLifecycleBanner';
 import FollowUpAlertManager from '@/components/FollowUpAlertManager';
 import UserSyncManager from '@/components/UserSyncManager';
@@ -83,6 +84,7 @@ export default function RootLayout({ children }) {
         />
         <AlarmProvider>
           <SecurityWarningBanner />
+          <Owner2FAModal />
           <SubscriptionLifecycleBanner />
           <UserSyncManager />
           {children}
@@ -90,15 +92,16 @@ export default function RootLayout({ children }) {
           <FollowUpAlertManager />
           <Toaster
             position="top-center"
+            containerStyle={{ zIndex: 999999 }}
             toastOptions={{
-              duration: 3000,
+              duration: 4000,
               style: {
                 background: '#ffffff',
                 color: '#0f172a',
                 border: '1px solid #e2e8f0',
                 borderRadius: '12px',
                 fontSize: '14px',
-                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
               },
             }}
           />

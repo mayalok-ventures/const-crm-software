@@ -89,7 +89,7 @@ function SuperAdminDashboardContent() {
     }
     if (user.role !== 'superadmin') {
       toast.error('Access restricted to Platform SuperAdmins');
-      router.replace('/admin');
+      router.replace('/dashboard');
       return;
     }
     setCurrentUser(user);

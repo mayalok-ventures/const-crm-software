@@ -89,7 +89,9 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ message: 'Two-Factor Authentication required to access this endpoint.' });
     }
 
-    const user = await User.findById(decoded.id).select('-password').lean();
+    const user = await User.findById(decoded.id)
+      .select('-password -twoFactorSecret -twoFactorTempSecret -twoFactorTempExpires -twoFactorRecoveryCodes -twoFactorOtp -twoFactorOtpExpires')
+      .lean();
 
     if (!user || !user.isActive) {
       return res.status(401).json({ message: 'Not authorized, account inactive' });
@@ -258,7 +260,9 @@ const optionalAuth = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     if (decoded && decoded.id) {
-      const user = await User.findById(decoded.id).select('-password').lean();
+      const user = await User.findById(decoded.id)
+        .select('-password -twoFactorSecret -twoFactorTempSecret -twoFactorTempExpires -twoFactorRecoveryCodes -twoFactorOtp -twoFactorOtpExpires')
+        .lean();
       if (user && user.isActive) {
         req.user = user;
       }

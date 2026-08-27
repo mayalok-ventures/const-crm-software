@@ -419,13 +419,13 @@ exports.verify2FA = async (req, res) => {
 
     let isVerified = false;
 
-    // 1. Standard Multi-Step Window Check (window: 6 = ±180 seconds clock drift tolerance)
+    // 1. Standard Multi-Step Window Check (window: 1 = ±30 seconds standard TOTP time step)
     if (cleanOtp.length === 6) {
       isVerified = speakeasy.totp.verify({
         secret: cleanSecret,
         encoding: 'base32',
         token: cleanOtp,
-        window: 6,
+        window: 1,
       });
 
       // 2. Delta Step Window Check fallback
@@ -434,7 +434,7 @@ exports.verify2FA = async (req, res) => {
           secret: cleanSecret,
           encoding: 'base32',
           token: cleanOtp,
-          window: 6,
+          window: 1,
         });
         if (delta !== null && delta !== undefined) {
           isVerified = true;
@@ -513,14 +513,34 @@ exports.verify2FA = async (req, res) => {
 
 // @desc  Setup 2FA - Generates TOTP secret, QR code & Emergency Recovery Codes
 // @route POST /api/auth/2fa/setup
-// @access Private
+// @access Private (Owner only)
 exports.setup2FA = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Authorization: Owner-only 2FA Setup
+    const isOwnerUser = (
+      user.workStatus === 'company_owner' ||
+      user.companyRole === 'owner' ||
+      user.role === 'admin' ||
+      user.isAdmin ||
+      user.roleId?.roleType === 'OWNER'
+    );
+    if (!isOwnerUser && user.role !== 'superadmin') {
+      return res.status(403).json({ message: 'Two-Factor Authentication setup is available for Organization Owners.' });
+    }
+
+    if (user.twoFactorEnabled) {
+      return res.status(400).json({
+        message: 'Two-Factor Authentication is already enabled on your account. To re-enroll, please disable 2FA first.',
+      });
+    }
+
     const crypto = require('crypto');
 
     // Generate speakeasy secret with clean labels
-    const accountLabel = user.email || user.username || user.phone || 'User';
+    const accountLabel = user.email || user.username || user.phone || 'Owner';
     const secret = speakeasy.generateSecret({
       name: `SalesCRM (${accountLabel})`,
       issuer: 'SalesCRM',
@@ -533,8 +553,11 @@ exports.setup2FA = async (req, res) => {
       return `${hex.slice(0, 4)}-${hex.slice(4, 8)}`;
     });
 
-    user.twoFactorSecret = secret.base32;
+    // Store as temporary enrollment secret (valid for 10 minutes, 2FA remains disabled until verified)
+    user.twoFactorTempSecret = secret.base32;
+    user.twoFactorTempExpires = new Date(Date.now() + 10 * 60 * 1000);
     user.twoFactorRecoveryCodes = recoveryCodes.map(c => c.replace(/-/g, ''));
+    user.twoFactorEnabled = false;
     await user.save();
 
     // Generate QR Code data URL
@@ -559,16 +582,26 @@ exports.setup2FA = async (req, res) => {
 
 // @desc  Enable 2FA - Verify initial code and lock 2FA to account
 // @route POST /api/auth/2fa/enable
-// @access Private
+// @access Private (Owner only)
 exports.enable2FA = async (req, res) => {
   try {
     const rawToken = req.body.token || req.body.otp || req.body.code;
     if (!rawToken) return res.status(400).json({ message: '6-digit Authenticator code required' });
 
     const user = await User.findById(req.user._id);
-    const candidateSecret = req.body.secret || user.twoFactorSecret;
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (user.twoFactorEnabled) {
+      return res.status(400).json({ message: 'Two-Factor Authentication is already enabled.' });
+    }
+
+    const candidateSecret = user.twoFactorTempSecret || user.twoFactorSecret;
     if (!candidateSecret) {
       return res.status(400).json({ message: 'Please initialize 2FA setup first.' });
+    }
+
+    if (user.twoFactorTempExpires && new Date(user.twoFactorTempExpires) < new Date()) {
+      return res.status(400).json({ message: '2FA setup session expired. Please click Enable 2FA again to start a new setup.' });
     }
 
     const cleanSecret = String(candidateSecret).replace(/[\s-]+/g, '').toUpperCase();
@@ -578,7 +611,7 @@ exports.enable2FA = async (req, res) => {
       secret: cleanSecret,
       encoding: 'base32',
       token: cleanToken,
-      window: 6, // Allow +/- 180s clock drift
+      window: 1, // Standard ±30s TOTP time step
     });
 
     if (!verified) {
@@ -586,23 +619,26 @@ exports.enable2FA = async (req, res) => {
         secret: cleanSecret,
         encoding: 'base32',
         token: cleanToken,
-        window: 6,
+        window: 1,
       });
       if (delta !== null && delta !== undefined) verified = true;
     }
 
     if (!verified) {
       return res.status(400).json({
-        message: 'Invalid 6-digit code. Please verify the code on your Authenticator app (ensure phone clock is accurate).',
+        message: 'Invalid 6-digit Authenticator code. Please check your authenticator app and try again.',
         code: 'TOTP_MISMATCH'
       });
     }
 
     user.twoFactorSecret = cleanSecret;
     user.twoFactorEnabled = true;
+    user.twoFactorTempSecret = null;
+    user.twoFactorTempExpires = null;
     await user.save();
 
     res.json({
+      success: true,
       message: 'Two-Factor Authentication (TOTP) successfully activated & locked 🔒',
       twoFactorEnabled: true,
     });
@@ -621,18 +657,42 @@ exports.disable2FA = async (req, res) => {
     if (!password) return res.status(400).json({ message: 'Password confirmation required to disable 2FA' });
 
     const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
     const isMatch = await user.comparePassword(password);
     if (!isMatch) return res.status(401).json({ message: 'Incorrect password' });
 
     user.twoFactorEnabled = false;
     user.twoFactorSecret = null;
+    user.twoFactorTempSecret = null;
+    user.twoFactorTempExpires = null;
     user.twoFactorRecoveryCodes = [];
+    user.twoFactorOtp = null;
+    user.twoFactorOtpExpires = null;
     await user.save();
 
-    res.json({ message: 'Two-Factor Authentication disabled successfully', twoFactorEnabled: false });
+    res.json({
+      success: true,
+      message: 'Two-Factor Authentication disabled successfully',
+      twoFactorEnabled: false
+    });
   } catch (error) {
     console.error('disable2FA error:', error);
     res.status(500).json({ message: 'Failed to disable 2FA' });
+  }
+};
+
+// @desc  Get live 2FA status for current user
+// @route GET /api/auth/2fa/status
+// @access Private
+exports.get2FAStatus = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('twoFactorEnabled').lean();
+    res.json({
+      twoFactorEnabled: Boolean(user?.twoFactorEnabled),
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to retrieve 2FA status' });
   }
 };
 
@@ -957,7 +1017,7 @@ exports.getFormSchema = async (req, res) => {
 exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user._id)
-      .select('-password -twoFactorOtp -twoFactorOtpExpires -twoFactorSecret')
+      .select('-password -twoFactorOtp -twoFactorOtpExpires -twoFactorSecret -twoFactorTempSecret -twoFactorTempExpires -twoFactorRecoveryCodes')
       .populate('companyId', 'name usercode companyInfo companySettings leadFormSchema productFormSchema')
       .lean();
 

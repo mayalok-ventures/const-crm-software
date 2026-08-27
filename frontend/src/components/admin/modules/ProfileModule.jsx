@@ -92,6 +92,11 @@ export default function ProfileModule({
   const [savingPreferences, setSavingPreferences] = useState(false);
   const [savingCompany, setSavingCompany] = useState(false);
 
+  // 2FA Disable State
+  const [showDisable2FAModal, setShowDisable2FAModal] = useState(false);
+  const [disablePassword, setDisablePassword] = useState('');
+  const [disabling2FA, setDisabling2FA] = useState(false);
+
   // Compact Performance Metrics (For Agent)
   const [analytics, setAnalytics] = useState(null);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
@@ -240,6 +245,47 @@ export default function ProfileModule({
       toast.error(err.response?.data?.message || 'Failed to change password. Verify your current password.');
     } finally {
       setPasswordSaving(false);
+    }
+  };
+
+  // Handle Disable 2FA
+  const handleDisable2FA = async (e) => {
+    e.preventDefault();
+    if (!disablePassword) return toast.error('Account password is required to disable 2FA');
+
+    setDisabling2FA(true);
+    try {
+      const res = await api.post('/auth/2fa/disable', {
+        password: disablePassword,
+      });
+
+      toast.success(res.data?.message || 'Two-Factor Authentication disabled successfully');
+      setShowDisable2FAModal(false);
+      setDisablePassword('');
+
+      const updatedUser = {
+        ...(currentUser || {}),
+        twoFactorEnabled: false,
+      };
+
+      if (onUserUpdated) {
+        onUserUpdated(updatedUser);
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('2fa-status-changed', { detail: { enabled: false } }));
+        window.dispatchEvent(new CustomEvent('user-updated', { detail: updatedUser }));
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to disable 2FA. Verify your current password.');
+    } finally {
+      setDisabling2FA(false);
+    }
+  };
+
+  const handleOpen2FASetup = () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('open-2fa-setup'));
     }
   };
 
@@ -787,21 +833,34 @@ export default function ProfileModule({
             <div className="flex items-center gap-2">
               <Shield className="w-4 h-4 text-slate-400" />
               <span className="text-xs text-slate-500">
-                2FA Authenticator Status:{' '}
+                Two-Factor Authentication:{' '}
                 <strong className={currentUser?.twoFactorEnabled ? 'text-emerald-600' : 'text-amber-600'}>
-                  {currentUser?.twoFactorEnabled ? 'Enabled ✅' : 'Disabled ⚠️'}
+                  {currentUser?.twoFactorEnabled ? 'Status: Enabled ✅' : 'Status: Disabled ⚠️'}
                 </strong>
               </span>
             </div>
 
             {isTenantOwner && (
-              <Link
-                href="/admin?tab=security"
-                className="text-xs font-bold text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1"
-              >
-                <span>Manage Security Settings</span>
-                <ArrowUpRight size={14} />
-              </Link>
+              currentUser?.twoFactorEnabled ? (
+                <button
+                  type="button"
+                  onClick={() => setShowDisable2FAModal(true)}
+                  className="text-xs font-bold text-red-600 hover:text-red-700 inline-flex items-center gap-1 cursor-pointer bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors border border-red-200"
+                >
+                  <Lock size={13} />
+                  <span>Disable 2FA</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleOpen2FASetup}
+                  className="text-xs font-bold text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1 cursor-pointer bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors border border-indigo-200"
+                >
+                  <ShieldCheck size={13} />
+                  <span>Enable 2FA</span>
+                  <ArrowUpRight size={13} />
+                </button>
+              )
             )}
           </div>
         </form>
@@ -895,6 +954,78 @@ export default function ProfileModule({
           </form>
         )}
       </div>
+
+      {/* Disable 2FA Confirmation Modal */}
+      {showDisable2FAModal && (
+        <div
+          className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
+          onClick={() => {
+            setShowDisable2FAModal(false);
+            setDisablePassword('');
+          }}
+        >
+          <div
+            className="w-full max-w-md bg-[#0f172a] text-white border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-red-400">
+                <Lock className="w-5 h-5" />
+                <h3 className="text-sm font-bold uppercase tracking-wider text-white">Disable Two-Factor Auth</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDisable2FAModal(false);
+                  setDisablePassword('');
+                }}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Disabling 2FA reduces account security. Enter your account password to confirm:
+            </p>
+
+            <form onSubmit={handleDisable2FA} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-slate-300">Account Password</label>
+                <input
+                  type="password"
+                  required
+                  value={disablePassword}
+                  onChange={(e) => setDisablePassword(e.target.value)}
+                  placeholder="Enter your current password"
+                  className="w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium bg-slate-900 border-slate-700 text-white focus:border-red-500 outline-none"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDisable2FAModal(false);
+                    setDisablePassword('');
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={disabling2FA || !disablePassword}
+                  className="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-500 rounded-xl transition-all disabled:opacity-50"
+                >
+                  {disabling2FA ? 'Disabling...' : 'Confirm & Disable 2FA'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

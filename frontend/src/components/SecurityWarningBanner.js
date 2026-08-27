@@ -1,9 +1,9 @@
 'use client';
+
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { getUser } from '@/lib/auth';
-import { ShieldAlert, AlertTriangle, ArrowRight, X } from 'lucide-react';
+import { getUser, isOwner } from '@/lib/auth';
+import { AlertTriangle, ArrowRight, X } from 'lucide-react';
 
 export default function SecurityWarningBanner() {
   const pathname = usePathname();
@@ -30,8 +30,9 @@ export default function SecurityWarningBanner() {
       return;
     }
 
-    // Hide immediately if user has 2FA enabled
-    if (localUser.twoFactorEnabled === true || localUser.twoFactorSecret) {
+    // Security Invariant: The 2FA alert must appear ONLY for OWNER users whose 2FA is disabled
+    // Never show for: AGENT, MANAGER, EMPLOYEE, SUPER_ADMIN, or when 2FA is enabled
+    if (!isOwner(localUser) || localUser.twoFactorEnabled === true) {
       setShowBanner(false);
       return;
     }
@@ -60,11 +61,17 @@ export default function SecurityWarningBanner() {
     }
   };
 
+  const handleOpenSetup = () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('open-2fa-setup'));
+    }
+  };
+
   if (!showBanner) return null;
 
   return (
     <aside
-      aria-label="Security Warning Alert"
+      aria-label="Two-Factor Authentication Security Alert"
       className="system-top-banner text-white border-b border-amber-500/40 shadow-lg shadow-orange-950/20 transition-all"
       style={{
         background: 'linear-gradient(90deg, #7c2d12 0%, #9a3412 50%, #7c2d12 100%)',
@@ -75,25 +82,26 @@ export default function SecurityWarningBanner() {
           {/* Security Alert Badge */}
           <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-black/40 border border-amber-400/40 text-amber-200 flex items-center gap-1 shadow-inner flex-shrink-0">
             <AlertTriangle className="w-3 h-3 text-amber-300 animate-pulse" />
-            <span>SECURITY WARNING</span>
+            <span>Two-Factor Authentication</span>
           </span>
 
           <span className="text-amber-50 text-xs">
-            <strong className="font-bold text-white">2FA Authenticator is not enabled.</strong>{' '}
+            <strong className="font-bold text-white">Your account is not protected with 2FA.</strong>{' '}
             <span className="text-amber-100/90 hidden sm:inline">
-              Protect your account & organization from unauthorized access.
+              Enable an authenticator app to protect your organization from unauthorized access.
             </span>
           </span>
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
-          <Link
-            href="/admin?tab=security"
-            className="inline-flex items-center gap-1.5 bg-white hover:bg-amber-50 text-amber-950 font-bold px-3 py-1 rounded-lg text-xs transition-all shadow-md active:scale-95"
+          <button
+            type="button"
+            onClick={handleOpenSetup}
+            className="inline-flex items-center gap-1.5 bg-white hover:bg-amber-50 text-amber-950 font-bold px-3.5 py-1 rounded-lg text-xs transition-all shadow-md active:scale-95 cursor-pointer"
           >
-            <span>Enable 2FA Now</span>
+            <span>Enable 2FA</span>
             <ArrowRight className="w-3.5 h-3.5 text-amber-900" />
-          </Link>
+          </button>
 
           <button
             type="button"

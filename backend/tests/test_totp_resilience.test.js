@@ -25,7 +25,7 @@ const runTOTPTests = async () => {
       phone,
       password,
       industryType: 'Agency',
-      workStatus: 'independent_agent'
+      workStatus: 'company_owner'
     })
   });
   const regData = await regRes.json();
@@ -105,8 +105,8 @@ const runTOTPTests = async () => {
   assert.ok(verifyData1.token, 'Authenticated JWT token must be returned');
   console.log('   ✓ Unformatted OTP successfully sanitized & verified\n');
 
-  // 6. Test Clock Drift Tolerance (past step: -60s / future step: +60s)
-  console.log('6. Testing Clock-Drifted OTP (+90s simulated mobile clock drift)...');
+  // 6. Test Clock Drift Tolerance (±30s step)
+  console.log('6. Testing Clock-Drifted OTP (+30s simulated mobile clock drift)...');
   const loginRes2 = await fetch(`${BASE_URL}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -114,7 +114,7 @@ const runTOTPTests = async () => {
   });
   const loginData2 = await loginRes2.json();
 
-  const driftedTime = Math.floor((Date.now() + 90000) / 1000); // 90s in future
+  const driftedTime = Math.floor((Date.now() + 30000) / 1000); // 30s in future
   const driftedOtp = speakeasy.totp({
     secret: setupData.secret,
     encoding: 'base32',
@@ -129,8 +129,8 @@ const runTOTPTests = async () => {
       otp: driftedOtp
     })
   });
-  assert.strictEqual(verifyDrift.status, 200, 'Clock-drifted OTP must be accepted by expanded window');
-  console.log('   ✓ Clock-drifted OTP (+90s) successfully verified\n');
+  assert.strictEqual(verifyDrift.status, 200, 'Clock-drifted OTP must be accepted by standard window');
+  console.log('   ✓ Clock-drifted OTP (+30s) successfully verified\n');
 
   // 7. Test Emergency Recovery Code verification
   console.log('7. Testing Emergency Recovery Code login...');

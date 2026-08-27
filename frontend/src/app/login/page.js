@@ -71,7 +71,11 @@ export default function LoginPage() {
         setTwoFactorMethod(data.method);
         setMaskedTarget(data.maskedTarget || '');
         setStep2FA(true);
-        toast.success(`Verification code sent via ${data.method === 'whatsapp' ? 'WhatsApp 📲' : 'Email 📧'}`);
+        if (data.method === 'totp') {
+          toast.success('Please enter the 6-digit code from your authenticator app 🔐');
+        } else {
+          toast.success(`Verification code sent via ${data.method === 'whatsapp' ? 'WhatsApp 📲' : 'Email 📧'}`);
+        }
         return;
       }
 

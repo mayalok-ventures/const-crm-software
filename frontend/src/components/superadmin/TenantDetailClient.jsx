@@ -10,6 +10,7 @@ import {
   Mail, Phone, ExternalLink
 } from 'lucide-react';
 import api from '@/lib/api';
+import { getUser } from '@/lib/auth';
 
 export default function TenantDetailClient() {
   const params = useParams();
@@ -20,7 +21,21 @@ export default function TenantDetailClient() {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    if (!tenantId || tenantId === 'placeholder') return;
+    const user = getUser();
+    if (!user) {
+      router.replace('/login');
+      return;
+    }
+    if (user.role !== 'superadmin') {
+      toast.error('Access restricted to Platform SuperAdmins');
+      router.replace('/dashboard');
+      return;
+    }
+
+    if (!tenantId || tenantId === 'placeholder') {
+      setLoading(false);
+      return;
+    }
     async function loadTenant() {
       setLoading(true);
       try {
