@@ -15,11 +15,8 @@ import {
   ArrowLeft,
   Lock,
   Mail,
-  Smartphone,
   Sparkles,
   ArrowRight,
-  RefreshCw,
-  CheckCircle2,
   KeyRound
 } from 'lucide-react';
 
@@ -164,32 +161,18 @@ export default function LoginPage() {
     <div style={{
       minHeight: '100vh',
       width: '100%',
-      backgroundColor: '#090d16',
-      backgroundImage: 'radial-gradient(circle at 50% 10%, rgba(79, 70, 229, 0.15) 0%, rgba(15, 23, 42, 0) 60%)',
+      backgroundColor: '#f8fafc',
+      backgroundImage: 'radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.08), transparent)',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '24px 16px',
+      padding: '32px 16px',
       position: 'relative',
       overflow: 'hidden',
-      color: '#f8fafc',
+      color: '#0f172a',
       fontFamily: 'Inter, sans-serif'
     }}>
-      {/* Background Ambient Orbs */}
-      <div style={{
-        position: 'absolute',
-        top: '-120px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: '560px',
-        height: '380px',
-        background: 'radial-gradient(circle, rgba(99, 102, 241, 0.22) 0%, rgba(147, 51, 234, 0.08) 50%, transparent 70%)',
-        filter: 'blur(70px)',
-        pointerEvents: 'none',
-        zIndex: 0
-      }} />
-
       {/* Back to Home Link */}
       <div style={{
         position: 'absolute',
@@ -203,15 +186,15 @@ export default function LoginPage() {
             display: 'inline-flex',
             alignItems: 'center',
             gap: 6,
-            color: '#94a3b8',
+            color: '#64748b',
             fontSize: 13,
             fontWeight: 500,
             textDecoration: 'none',
             padding: '6px 12px',
             borderRadius: 8,
-            background: 'rgba(255, 255, 255, 0.04)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            backdropFilter: 'blur(10px)',
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
             transition: 'all 0.2s ease'
           }}
         >
@@ -220,16 +203,15 @@ export default function LoginPage() {
         </Link>
       </div>
 
-      {/* Main Glassmorphic Auth Card */}
+      {/* Main Light Auth Card */}
       <div style={{
         width: '100%',
-        maxWidth: '440px',
-        background: 'rgba(15, 23, 42, 0.85)',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        borderRadius: '24px',
+        maxWidth: '430px',
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderRadius: '20px',
         padding: '36px 30px',
-        boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 35px rgba(79, 70, 229, 0.15)',
-        backdropFilter: 'blur(20px)',
+        boxShadow: '0 20px 40px -15px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(0, 0, 0, 0.02)',
         position: 'relative',
         zIndex: 1
       }}>
@@ -237,24 +219,24 @@ export default function LoginPage() {
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <Link href="/" style={{ textDecoration: 'none', display: 'inline-block' }}>
             <div style={{
-              width: 58,
-              height: 58,
-              borderRadius: 16,
+              width: 52,
+              height: 52,
+              borderRadius: 14,
               background: 'linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%)',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 8px 24px rgba(79, 70, 229, 0.45)',
+              boxShadow: '0 4px 14px rgba(79, 70, 229, 0.3)',
               marginBottom: 12
             }}>
               {step2FA ? (
-                <ShieldCheck size={30} color="#ffffff" />
+                <ShieldCheck size={28} color="#ffffff" />
               ) : (
                 <Image
                   src="/logo.png"
                   alt="SalesCRM Logo"
-                  width={46}
-                  height={46}
+                  width={42}
+                  height={42}
                   style={{ objectFit: 'contain' }}
                   priority
                 />
@@ -262,35 +244,35 @@ export default function LoginPage() {
             </div>
           </Link>
 
-          <h1 style={{ fontSize: 23, fontWeight: 800, margin: 0, color: '#ffffff', letterSpacing: '-0.3px' }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#0f172a', letterSpacing: '-0.3px' }}>
             {step2FA ? 'Authenticator Check' : 'Sign in to SalesCRM'}
           </h1>
-          <p style={{ color: '#94a3b8', marginTop: 6, fontSize: 13 }}>
+          <p style={{ color: '#64748b', marginTop: 4, fontSize: 13 }}>
             {step2FA
               ? 'Enter the 6-digit code from Google Authenticator'
               : 'Universal Sales & Operations Command Center'}
           </p>
         </div>
 
-        {/* Toggle Tabs: Sign In / Create Account */}
+        {/* Segmented Switcher: Sign In / Create Account */}
         {!step2FA && (
           <div style={{
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
-            background: 'rgba(255, 255, 255, 0.04)',
+            background: '#f1f5f9',
             padding: 4,
-            borderRadius: 12,
-            marginBottom: 24,
-            border: '1px solid rgba(255, 255, 255, 0.06)'
+            borderRadius: 10,
+            marginBottom: 22,
+            border: '1px solid #e2e8f0'
           }}>
             <button
               type="button"
               style={{
                 padding: '8px 0',
-                borderRadius: 8,
+                borderRadius: 7,
                 border: 'none',
-                background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
-                color: '#ffffff',
+                background: '#ffffff',
+                color: '#0f172a',
                 fontWeight: 600,
                 fontSize: 13,
                 cursor: 'default',
@@ -298,18 +280,18 @@ export default function LoginPage() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 6,
-                boxShadow: '0 2px 8px rgba(79, 70, 229, 0.3)'
+                boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
               }}
             >
-              <Lock size={13} />
+              <Lock size={13} color="#4f46e5" />
               <span>Sign In</span>
             </button>
             <Link
               href="/signup"
               style={{
                 padding: '8px 0',
-                borderRadius: 8,
-                color: '#94a3b8',
+                borderRadius: 7,
+                color: '#64748b',
                 fontWeight: 500,
                 fontSize: 13,
                 textDecoration: 'none',
@@ -329,12 +311,12 @@ export default function LoginPage() {
         {/* Error Alert */}
         {errorMsg && (
           <div style={{
-            background: 'rgba(239, 68, 68, 0.12)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            color: '#fca5a5',
-            borderRadius: 12,
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            color: '#b91c1c',
+            borderRadius: 10,
             padding: '12px 14px',
-            marginBottom: 20,
+            marginBottom: 18,
             fontSize: 13,
             display: 'flex',
             gap: 10,
@@ -342,7 +324,7 @@ export default function LoginPage() {
           }}>
             <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 1, color: '#ef4444' }} />
             <div>
-              <strong style={{ display: 'block', marginBottom: 2, color: '#f87171' }}>Account Suspended</strong>
+              <strong style={{ display: 'block', marginBottom: 2, color: '#991b1b' }}>Account Notice</strong>
               {errorMsg}
             </div>
           </div>
@@ -350,9 +332,9 @@ export default function LoginPage() {
 
         {!step2FA ? (
           /* Step 1: Standard Password Login */
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#cbd5e1', marginBottom: 6 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
                 Email or Phone Number
               </label>
               <div style={{ position: 'relative' }}>
@@ -366,31 +348,31 @@ export default function LoginPage() {
                   required
                   style={{
                     width: '100%',
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    borderRadius: 12,
-                    padding: '11px 14px 11px 38px',
-                    fontSize: 14,
-                    color: '#ffffff',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: 10,
+                    padding: '10px 14px 10px 38px',
+                    fontSize: 13.5,
+                    color: '#0f172a',
                     outline: 'none',
                     transition: 'all 0.2s ease',
                     boxSizing: 'border-box'
                   }}
                   onFocus={(e) => {
-                    e.target.style.borderColor = '#6366f1';
-                    e.target.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.25)';
+                    e.target.style.borderColor = '#4f46e5';
+                    e.target.style.boxShadow = '0 0 0 3px rgba(79, 70, 229, 0.15)';
                   }}
                   onBlur={(e) => {
-                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.borderColor = '#cbd5e1';
                     e.target.style.boxShadow = 'none';
                   }}
                 />
-                <Mail size={16} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#64748b', pointerEvents: 'none' }} />
+                <Mail size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
               </div>
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#cbd5e1', marginBottom: 6 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
                 Password
               </label>
               <div style={{ position: 'relative' }}>
@@ -403,44 +385,44 @@ export default function LoginPage() {
                   required
                   style={{
                     width: '100%',
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    borderRadius: 12,
-                    padding: '11px 44px 11px 38px',
-                    fontSize: 14,
-                    color: '#ffffff',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: 10,
+                    padding: '10px 42px 10px 38px',
+                    fontSize: 13.5,
+                    color: '#0f172a',
                     outline: 'none',
                     transition: 'all 0.2s ease',
                     boxSizing: 'border-box'
                   }}
                   onFocus={(e) => {
-                    e.target.style.borderColor = '#6366f1';
-                    e.target.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.25)';
+                    e.target.style.borderColor = '#4f46e5';
+                    e.target.style.boxShadow = '0 0 0 3px rgba(79, 70, 229, 0.15)';
                   }}
                   onBlur={(e) => {
-                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.borderColor = '#cbd5e1';
                     e.target.style.boxShadow = 'none';
                   }}
                 />
-                <Lock size={16} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#64748b', pointerEvents: 'none' }} />
+                <Lock size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
                 <button
                   type="button"
                   onClick={() => setShowPass(!showPass)}
                   style={{
                     position: 'absolute',
-                    right: 12,
+                    right: 10,
                     top: '50%',
                     transform: 'translateY(-50%)',
                     background: 'none',
                     border: 'none',
                     cursor: 'pointer',
-                    color: '#94a3b8',
+                    color: '#64748b',
                     padding: 4,
                     display: 'flex',
                     alignItems: 'center'
                   }}
                 >
-                  {showPass ? <EyeOff size={17} /> : <Eye size={17} />}
+                  {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
@@ -450,19 +432,19 @@ export default function LoginPage() {
               disabled={loading}
               style={{
                 width: '100%',
-                height: 44,
-                borderRadius: 12,
+                height: 42,
+                borderRadius: 10,
                 border: 'none',
-                background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+                background: '#4f46e5',
                 color: '#ffffff',
-                fontSize: 14.5,
+                fontSize: 14,
                 fontWeight: 600,
                 cursor: loading ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 8,
-                boxShadow: '0 8px 24px -4px rgba(79, 70, 229, 0.5)',
+                boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)',
                 transition: 'all 0.2s ease',
                 marginTop: 4
               }}
@@ -477,38 +459,35 @@ export default function LoginPage() {
               )}
             </button>
 
-            <p style={{ textAlign: 'center', fontSize: 11.5, color: '#64748b', margin: '4px 0 0', lineHeight: 1.5 }}>
+            <p style={{ textAlign: 'center', fontSize: 11.5, color: '#64748b', margin: '4px 0 0', lineHeight: 1.4 }}>
               By signing in, you agree to our{' '}
-              <Link href="/terms" style={{ color: '#818cf8', textDecoration: 'underline' }}>Terms of Service</Link>{' '}
+              <Link href="/terms" style={{ color: '#4f46e5', textDecoration: 'underline' }}>Terms of Service</Link>{' '}
               and{' '}
-              <Link href="/privacy" style={{ color: '#818cf8', textDecoration: 'underline' }}>Privacy Policy</Link>.
+              <Link href="/privacy" style={{ color: '#4f46e5', textDecoration: 'underline' }}>Privacy Policy</Link>.
             </p>
 
             <div style={{ textAlign: 'center', marginTop: 8 }}>
-              <span style={{ fontSize: 13, color: '#94a3b8' }}>Don&apos;t have an account? </span>
-              <Link href="/signup" style={{ color: '#818cf8', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
-                Create Agency Account →
+              <span style={{ fontSize: 13, color: '#64748b' }}>Don&apos;t have an account? </span>
+              <Link href="/signup" style={{ color: '#4f46e5', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+                Create Agency Account
               </Link>
             </div>
 
-            <div style={{ textAlign: 'center', marginTop: 12, paddingTop: 14, borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+            <div style={{ textAlign: 'center', marginTop: 10, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
               <button
                 type="button"
                 onClick={handleWipeLocalBrowserStorage}
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: '#64748b',
+                  color: '#94a3b8',
                   fontSize: 11.5,
                   fontWeight: 500,
                   cursor: 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: 6,
-                  transition: 'color 0.2s'
+                  gap: 6
                 }}
-                onMouseEnter={(e) => (e.target.style.color = '#94a3b8')}
-                onMouseLeave={(e) => (e.target.style.color = '#64748b')}
               >
                 <span>🧹 Reset / Wipe Local Browser Storage</span>
               </button>
@@ -516,10 +495,10 @@ export default function LoginPage() {
           </form>
         ) : (
           /* Step 2: 2FA TOTP Screen */
-          <form onSubmit={handleVerify2FA} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <form onSubmit={handleVerify2FA} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {!useRecovery ? (
               <div style={{ textAlign: 'center' }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#cbd5e1', marginBottom: 10 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 8 }}>
                   6-Digit Authenticator Code
                 </label>
                 <input
@@ -532,27 +511,27 @@ export default function LoginPage() {
                   autoFocus
                   style={{
                     width: '100%',
-                    fontSize: 28,
-                    fontWeight: 800,
-                    letterSpacing: 12,
+                    fontSize: 26,
+                    fontWeight: 700,
+                    letterSpacing: 10,
                     textAlign: 'center',
-                    padding: '14px 0',
-                    borderRadius: 14,
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    border: '2px solid #6366f1',
-                    color: '#ffffff',
+                    padding: '12px 0',
+                    borderRadius: 10,
+                    background: '#ffffff',
+                    border: '2px solid #4f46e5',
+                    color: '#0f172a',
                     outline: 'none',
-                    boxShadow: '0 0 0 3px rgba(99, 102, 241, 0.25)',
+                    boxShadow: '0 0 0 3px rgba(79, 70, 229, 0.15)',
                     boxSizing: 'border-box'
                   }}
                 />
-                <span style={{ fontSize: 11.5, color: '#94a3b8', display: 'block', marginTop: 10 }}>
-                  Open Google Authenticator or Authy to retrieve your 6-digit code
+                <span style={{ fontSize: 11.5, color: '#64748b', display: 'block', marginTop: 8 }}>
+                  Open Google Authenticator or Authy to retrieve your code
                 </span>
               </div>
             ) : (
               <div style={{ textAlign: 'center' }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#cbd5e1', marginBottom: 10 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 8 }}>
                   Emergency Backup Recovery Code
                 </label>
                 <input
@@ -564,21 +543,21 @@ export default function LoginPage() {
                   autoFocus
                   style={{
                     width: '100%',
-                    fontSize: 20,
+                    fontSize: 18,
                     fontWeight: 700,
                     letterSpacing: 4,
                     textAlign: 'center',
-                    padding: '12px 0',
-                    borderRadius: 14,
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    border: '2px solid #6366f1',
-                    color: '#ffffff',
+                    padding: '10px 0',
+                    borderRadius: 10,
+                    background: '#ffffff',
+                    border: '2px solid #4f46e5',
+                    color: '#0f172a',
                     outline: 'none',
-                    boxShadow: '0 0 0 3px rgba(99, 102, 241, 0.25)',
+                    boxShadow: '0 0 0 3px rgba(79, 70, 229, 0.15)',
                     boxSizing: 'border-box'
                   }}
                 />
-                <span style={{ fontSize: 11.5, color: '#94a3b8', display: 'block', marginTop: 10 }}>
+                <span style={{ fontSize: 11.5, color: '#64748b', display: 'block', marginTop: 8 }}>
                   Enter one of your 8-digit emergency backup recovery keys
                 </span>
               </div>
@@ -589,10 +568,10 @@ export default function LoginPage() {
               disabled={loading || (!useRecovery && otp.length < 6) || (useRecovery && !recoveryCode.trim())}
               style={{
                 width: '100%',
-                height: 44,
-                borderRadius: 12,
+                height: 42,
+                borderRadius: 10,
                 border: 'none',
-                background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+                background: '#4f46e5',
                 color: '#ffffff',
                 fontSize: 14,
                 fontWeight: 600,
@@ -601,7 +580,7 @@ export default function LoginPage() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 8,
-                boxShadow: '0 8px 24px -4px rgba(79, 70, 229, 0.5)'
+                boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)'
               }}
             >
               {loading ? (
@@ -614,11 +593,11 @@ export default function LoginPage() {
               )}
             </button>
 
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginTop: 6 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 4 }}>
               <button
                 type="button"
                 onClick={() => { setUseRecovery(!useRecovery); setOtp(''); setRecoveryCode(''); }}
-                style={{ background: 'none', border: 'none', color: '#818cf8', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
+                style={{ background: 'none', border: 'none', color: '#4f46e5', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
               >
                 {useRecovery ? 'Use 6-Digit Authenticator App Code' : 'Lost Device? Use Emergency Recovery Code'}
               </button>
@@ -626,7 +605,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={handleReset2FAEmergency}
-                style={{ background: 'none', border: 'none', color: '#f87171', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}
               >
                 🔓 Remove / Reset 2FA with Password
               </button>
@@ -635,11 +614,11 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => { setStep2FA(false); setOtp(''); setRecoveryCode(''); setUseRecovery(false); }}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
                   borderRadius: 8,
-                  color: '#94a3b8',
-                  padding: '6px 14px',
+                  color: '#64748b',
+                  padding: '6px 12px',
                   fontSize: 12,
                   fontWeight: 500,
                   cursor: 'pointer',
