@@ -196,7 +196,6 @@ function BottomNavContent({ active }) {
   const ownerDesktopItems = [
     { href: '/dashboard', label: 'Dashboard', icon: Home, key: 'dashboard' },
     { href: '/leads', label: 'Leads Pipeline', icon: Users, key: 'leads' },
-    { href: '/agency', label: 'Agency Control', icon: Shield, key: 'agency' },
     ...(isEducation
       ? [{ href: '/catalogue', label: 'Colleges & Courses', icon: GraduationCap, key: 'catalogue' }]
       : [{ href: '/projects', label: 'Products & Packages', icon: Package, key: 'projects' }]),
