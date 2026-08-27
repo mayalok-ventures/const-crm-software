@@ -6,7 +6,22 @@ import Image from 'next/image';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import { setAuth } from '@/lib/auth';
-import { Eye, EyeOff, ShieldCheck, Zap, AlertTriangle, ArrowLeft, RefreshCw } from 'lucide-react';
+import {
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  Zap,
+  AlertTriangle,
+  ArrowLeft,
+  Lock,
+  Mail,
+  Smartphone,
+  Sparkles,
+  ArrowRight,
+  RefreshCw,
+  CheckCircle2,
+  KeyRound
+} from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,7 +36,8 @@ export default function LoginPage() {
   const [twoFactorMethod, setTwoFactorMethod] = useState('');
   const [maskedTarget, setMaskedTarget] = useState('');
   const [otp, setOtp] = useState('');
-  const [resending, setResending] = useState(false);
+  const [useRecovery, setUseRecovery] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState('');
 
   const [errorMsg, setErrorMsg] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -93,9 +109,6 @@ export default function LoginPage() {
     }
   };
 
-  const [useRecovery, setUseRecovery] = useState(false);
-  const [recoveryCode, setRecoveryCode] = useState('');
-
   const handleVerify2FA = async (e) => {
     e.preventDefault();
     if (!useRecovery && !otp.trim()) return toast.error('Please enter the 6-digit verification code');
@@ -148,55 +161,188 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="auth-wrapper">
-      <div className="auth-card">
-        {/* Logo Header */}
-        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-          <div style={{
+    <div style={{
+      minHeight: '100vh',
+      width: '100%',
+      backgroundColor: '#090d16',
+      backgroundImage: 'radial-gradient(circle at 50% 10%, rgba(79, 70, 229, 0.15) 0%, rgba(15, 23, 42, 0) 60%)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '24px 16px',
+      position: 'relative',
+      overflow: 'hidden',
+      color: '#f8fafc',
+      fontFamily: 'Inter, sans-serif'
+    }}>
+      {/* Background Ambient Orbs */}
+      <div style={{
+        position: 'absolute',
+        top: '-120px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: '560px',
+        height: '380px',
+        background: 'radial-gradient(circle, rgba(99, 102, 241, 0.22) 0%, rgba(147, 51, 234, 0.08) 50%, transparent 70%)',
+        filter: 'blur(70px)',
+        pointerEvents: 'none',
+        zIndex: 0
+      }} />
+
+      {/* Back to Home Link */}
+      <div style={{
+        position: 'absolute',
+        top: 24,
+        left: 24,
+        zIndex: 10
+      }}>
+        <Link
+          href="/"
+          style={{
             display: 'inline-flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 16,
-          }}>
-            {step2FA ? (
-              <div style={{
-                width: 64,
-                height: 64,
-                borderRadius: 20,
-                background: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 8px 32px rgba(79, 70, 229, 0.35)'
-              }}>
-                <ShieldCheck size={32} color="white" />
-              </div>
-            ) : (
-              <Image
-                src="/logo.png"
-                alt="SalesCRM Logo"
-                width={64}
-                height={64}
-                style={{ borderRadius: 18, objectFit: 'contain', boxShadow: '0 8px 32px rgba(79, 70, 229, 0.35)' }}
-                priority
-              />
-            )}
-          </div>
-          <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0, color: 'var(--text)' }}>
-            {step2FA ? 'Authenticator Verification' : 'SalesCRM'}
+            gap: 6,
+            color: '#94a3b8',
+            fontSize: 13,
+            fontWeight: 500,
+            textDecoration: 'none',
+            padding: '6px 12px',
+            borderRadius: 8,
+            background: 'rgba(255, 255, 255, 0.04)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            backdropFilter: 'blur(10px)',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <ArrowLeft size={14} />
+          <span>Back to Home</span>
+        </Link>
+      </div>
+
+      {/* Main Glassmorphic Auth Card */}
+      <div style={{
+        width: '100%',
+        maxWidth: '440px',
+        background: 'rgba(15, 23, 42, 0.85)',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+        borderRadius: '24px',
+        padding: '36px 30px',
+        boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 35px rgba(79, 70, 229, 0.15)',
+        backdropFilter: 'blur(20px)',
+        position: 'relative',
+        zIndex: 1
+      }}>
+        {/* Brand Logo Header */}
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <Link href="/" style={{ textDecoration: 'none', display: 'inline-block' }}>
+            <div style={{
+              width: 58,
+              height: 58,
+              borderRadius: 16,
+              background: 'linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 8px 24px rgba(79, 70, 229, 0.45)',
+              marginBottom: 12
+            }}>
+              {step2FA ? (
+                <ShieldCheck size={30} color="#ffffff" />
+              ) : (
+                <Image
+                  src="/logo.png"
+                  alt="SalesCRM Logo"
+                  width={46}
+                  height={46}
+                  style={{ objectFit: 'contain' }}
+                  priority
+                />
+              )}
+            </div>
+          </Link>
+
+          <h1 style={{ fontSize: 23, fontWeight: 800, margin: 0, color: '#ffffff', letterSpacing: '-0.3px' }}>
+            {step2FA ? 'Authenticator Check' : 'Sign in to SalesCRM'}
           </h1>
-          <p style={{ color: 'var(--text-muted)', marginTop: 6, fontSize: 13 }}>
+          <p style={{ color: '#94a3b8', marginTop: 6, fontSize: 13 }}>
             {step2FA
-              ? 'Enter the 6-digit code from Google Authenticator or Authy app'
+              ? 'Enter the 6-digit code from Google Authenticator'
               : 'Universal Sales & Operations Command Center'}
           </p>
         </div>
 
+        {/* Toggle Tabs: Sign In / Create Account */}
+        {!step2FA && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            background: 'rgba(255, 255, 255, 0.04)',
+            padding: 4,
+            borderRadius: 12,
+            marginBottom: 24,
+            border: '1px solid rgba(255, 255, 255, 0.06)'
+          }}>
+            <button
+              type="button"
+              style={{
+                padding: '8px 0',
+                borderRadius: 8,
+                border: 'none',
+                background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+                color: '#ffffff',
+                fontWeight: 600,
+                fontSize: 13,
+                cursor: 'default',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                boxShadow: '0 2px 8px rgba(79, 70, 229, 0.3)'
+              }}
+            >
+              <Lock size={13} />
+              <span>Sign In</span>
+            </button>
+            <Link
+              href="/signup"
+              style={{
+                padding: '8px 0',
+                borderRadius: 8,
+                color: '#94a3b8',
+                fontWeight: 500,
+                fontSize: 13,
+                textDecoration: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                transition: 'color 0.2s'
+              }}
+            >
+              <Sparkles size={13} />
+              <span>Create Account</span>
+            </Link>
+          </div>
+        )}
+
+        {/* Error Alert */}
         {errorMsg && (
-          <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', color: 'var(--red)', borderRadius: 12, padding: '12px 14px', marginBottom: 20, fontSize: 13, display: 'flex', gap: 8, alignItems: 'flex-start', textAlign: 'left' }}>
-            <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 1 }} />
+          <div style={{
+            background: 'rgba(239, 68, 68, 0.12)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            color: '#fca5a5',
+            borderRadius: 12,
+            padding: '12px 14px',
+            marginBottom: 20,
+            fontSize: 13,
+            display: 'flex',
+            gap: 10,
+            alignItems: 'flex-start'
+          }}>
+            <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 1, color: '#ef4444' }} />
             <div>
-              <strong style={{ display: 'block', marginBottom: 2 }}>Account Suspended</strong>
+              <strong style={{ display: 'block', marginBottom: 2, color: '#f87171' }}>Account Suspended</strong>
               {errorMsg}
             </div>
           </div>
@@ -204,77 +350,165 @@ export default function LoginPage() {
 
         {!step2FA ? (
           /* Step 1: Standard Password Login */
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             <div>
-              <label className="label">Email or Phone</label>
-              <input
-                className="input"
-                type="text"
-                placeholder="Enter email or phone number"
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                autoComplete="username"
-                inputMode="email"
-                required
-              />
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#cbd5e1', marginBottom: 6 }}>
+                Email or Phone Number
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder="name@company.com or phone"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  autoComplete="username"
+                  inputMode="email"
+                  required
+                  style={{
+                    width: '100%',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    borderRadius: 12,
+                    padding: '11px 14px 11px 38px',
+                    fontSize: 14,
+                    color: '#ffffff',
+                    outline: 'none',
+                    transition: 'all 0.2s ease',
+                    boxSizing: 'border-box'
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#6366f1';
+                    e.target.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.25)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.boxShadow = 'none';
+                  }}
+                />
+                <Mail size={16} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#64748b', pointerEvents: 'none' }} />
+              </div>
             </div>
 
             <div>
-              <label className="label">Password</label>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#cbd5e1', marginBottom: 6 }}>
+                Password
+              </label>
               <div style={{ position: 'relative' }}>
                 <input
-                  className="input"
                   type={showPass ? 'text' : 'password'}
-                  placeholder="Enter password"
+                  placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
-                  style={{ paddingRight: 48 }}
                   required
+                  style={{
+                    width: '100%',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    borderRadius: 12,
+                    padding: '11px 44px 11px 38px',
+                    fontSize: 14,
+                    color: '#ffffff',
+                    outline: 'none',
+                    transition: 'all 0.2s ease',
+                    boxSizing: 'border-box'
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#6366f1';
+                    e.target.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.25)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.boxShadow = 'none';
+                  }}
                 />
+                <Lock size={16} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#64748b', pointerEvents: 'none' }} />
                 <button
                   type="button"
                   onClick={() => setShowPass(!showPass)}
-                  style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}
+                  style={{
+                    position: 'absolute',
+                    right: 12,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#94a3b8',
+                    padding: 4,
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
                 >
-                  {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                  {showPass ? <EyeOff size={17} /> : <Eye size={17} />}
                 </button>
               </div>
             </div>
 
-            <button type="submit" disabled={loading} className="btn btn-primary btn-full" style={{ marginTop: 8, height: 44, borderRadius: 12 }}>
-              {loading ? <div className="spinner" style={{ width: 18, height: 18 }} /> : 'Sign In'}
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                width: '100%',
+                height: 44,
+                borderRadius: 12,
+                border: 'none',
+                background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+                color: '#ffffff',
+                fontSize: 14.5,
+                fontWeight: 600,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                boxShadow: '0 8px 24px -4px rgba(79, 70, 229, 0.5)',
+                transition: 'all 0.2s ease',
+                marginTop: 4
+              }}
+            >
+              {loading ? (
+                <div className="spinner" style={{ width: 18, height: 18, borderTopColor: '#ffffff' }} />
+              ) : (
+                <>
+                  <span>Sign In</span>
+                  <ArrowRight size={15} />
+                </>
+              )}
             </button>
 
-            <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', margin: '10px 0 4px', lineHeight: 1.4 }}>
+            <p style={{ textAlign: 'center', fontSize: 11.5, color: '#64748b', margin: '4px 0 0', lineHeight: 1.5 }}>
               By signing in, you agree to our{' '}
-              <Link href="/terms" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>Terms of Service</Link>{' '}
+              <Link href="/terms" style={{ color: '#818cf8', textDecoration: 'underline' }}>Terms of Service</Link>{' '}
               and{' '}
-              <Link href="/privacy" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>Privacy Policy</Link>.
+              <Link href="/privacy" style={{ color: '#818cf8', textDecoration: 'underline' }}>Privacy Policy</Link>.
             </p>
 
             <div style={{ textAlign: 'center', marginTop: 8 }}>
-              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Don't have an account? </span>
-              <Link href="/signup" style={{ color: 'var(--accent)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
-                Create Agency Account
+              <span style={{ fontSize: 13, color: '#94a3b8' }}>Don&apos;t have an account? </span>
+              <Link href="/signup" style={{ color: '#818cf8', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+                Create Agency Account →
               </Link>
             </div>
 
-            <div style={{ textAlign: 'center', marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+            <div style={{ textAlign: 'center', marginTop: 12, paddingTop: 14, borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
               <button
                 type="button"
                 onClick={handleWipeLocalBrowserStorage}
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: '#94a3b8',
-                  fontSize: 11,
+                  color: '#64748b',
+                  fontSize: 11.5,
                   fontWeight: 500,
                   cursor: 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 6,
+                  transition: 'color 0.2s'
                 }}
+                onMouseEnter={(e) => (e.target.style.color = '#94a3b8')}
+                onMouseLeave={(e) => (e.target.style.color = '#64748b')}
               >
                 <span>🧹 Reset / Wipe Local Browser Storage</span>
               </button>
@@ -282,14 +516,13 @@ export default function LoginPage() {
           </form>
         ) : (
           /* Step 2: 2FA TOTP Screen */
-          <form onSubmit={handleVerify2FA} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <form onSubmit={handleVerify2FA} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             {!useRecovery ? (
               <div style={{ textAlign: 'center' }}>
-                <label className="label" style={{ textAlign: 'center', marginBottom: 8 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#cbd5e1', marginBottom: 10 }}>
                   6-Digit Authenticator Code
                 </label>
                 <input
-                  className="input"
                   type="text"
                   inputMode="numeric"
                   maxLength={6}
@@ -298,26 +531,31 @@ export default function LoginPage() {
                   onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
                   autoFocus
                   style={{
+                    width: '100%',
                     fontSize: 28,
                     fontWeight: 800,
-                    letterSpacing: 10,
+                    letterSpacing: 12,
                     textAlign: 'center',
                     padding: '14px 0',
                     borderRadius: 14,
-                    border: '2px solid var(--accent)',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '2px solid #6366f1',
+                    color: '#ffffff',
+                    outline: 'none',
+                    boxShadow: '0 0 0 3px rgba(99, 102, 241, 0.25)',
+                    boxSizing: 'border-box'
                   }}
                 />
-                <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginTop: 8 }}>
-                  Open Authenticator app (Google Authenticator / Authy) & enter the current code
+                <span style={{ fontSize: 11.5, color: '#94a3b8', display: 'block', marginTop: 10 }}>
+                  Open Google Authenticator or Authy to retrieve your 6-digit code
                 </span>
               </div>
             ) : (
               <div style={{ textAlign: 'center' }}>
-                <label className="label" style={{ textAlign: 'center', marginBottom: 8 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#cbd5e1', marginBottom: 10 }}>
                   Emergency Backup Recovery Code
                 </label>
                 <input
-                  className="input"
                   type="text"
                   maxLength={10}
                   placeholder="XXXX-XXXX"
@@ -325,17 +563,23 @@ export default function LoginPage() {
                   onChange={(e) => setRecoveryCode(e.target.value.toUpperCase())}
                   autoFocus
                   style={{
+                    width: '100%',
                     fontSize: 20,
                     fontWeight: 700,
                     letterSpacing: 4,
                     textAlign: 'center',
                     padding: '12px 0',
                     borderRadius: 14,
-                    border: '2px solid var(--accent)',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '2px solid #6366f1',
+                    color: '#ffffff',
+                    outline: 'none',
+                    boxShadow: '0 0 0 3px rgba(99, 102, 241, 0.25)',
+                    boxSizing: 'border-box'
                   }}
                 />
-                <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginTop: 8 }}>
-                  Enter one of your 8-digit emergency recovery codes
+                <span style={{ fontSize: 11.5, color: '#94a3b8', display: 'block', marginTop: 10 }}>
+                  Enter one of your 8-digit emergency backup recovery keys
                 </span>
               </div>
             )}
@@ -343,17 +587,38 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading || (!useRecovery && otp.length < 6) || (useRecovery && !recoveryCode.trim())}
-              className="btn btn-primary btn-full"
-              style={{ height: 44, borderRadius: 12 }}
+              style={{
+                width: '100%',
+                height: 44,
+                borderRadius: 12,
+                border: 'none',
+                background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+                color: '#ffffff',
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                boxShadow: '0 8px 24px -4px rgba(79, 70, 229, 0.5)'
+              }}
             >
-              {loading ? <div className="spinner" style={{ width: 18, height: 18 }} /> : (useRecovery ? 'Verify Recovery Code' : 'Verify Code & Sign In')}
+              {loading ? (
+                <div className="spinner" style={{ width: 18, height: 18, borderTopColor: '#ffffff' }} />
+              ) : (
+                <>
+                  <KeyRound size={15} />
+                  <span>{useRecovery ? 'Verify Recovery Code' : 'Verify Code & Sign In'}</span>
+                </>
+              )}
             </button>
 
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 4 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginTop: 6 }}>
               <button
                 type="button"
                 onClick={() => { setUseRecovery(!useRecovery); setOtp(''); setRecoveryCode(''); }}
-                style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
+                style={{ background: 'none', border: 'none', color: '#818cf8', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
               >
                 {useRecovery ? 'Use 6-Digit Authenticator App Code' : 'Lost Device? Use Emergency Recovery Code'}
               </button>
@@ -361,7 +626,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={handleReset2FAEmergency}
-                style={{ background: 'none', border: 'none', color: 'var(--red)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: '#f87171', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}
               >
                 🔓 Remove / Reset 2FA with Password
               </button>
@@ -369,8 +634,19 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => { setStep2FA(false); setOtp(''); setRecoveryCode(''); setUseRecovery(false); }}
-                className="btn btn-ghost btn-sm"
-                style={{ gap: 6, fontSize: 12 }}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: 8,
+                  color: '#94a3b8',
+                  padding: '6px 14px',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}
               >
                 <ArrowLeft size={14} /> Back to login
               </button>
