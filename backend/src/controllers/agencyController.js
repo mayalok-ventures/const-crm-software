@@ -68,16 +68,22 @@ const logActivity = async ({ tenantId, actorUserId, action, targetType, targetId
 // Helper to log system/security audits
 const logAudit = async ({ actorId, actorRole, targetUserId, targetCompanyId, action, beforeState, afterState, reason, metadata }) => {
   try {
+    const validActions = ['ROLE_CHANGE', 'UPDATE', 'PERMISSION_CHANGE', 'CREATE', 'DELETE'];
+    const auditAction = validActions.includes(action) ? action : 'ROLE_CHANGE';
+
     await AuditLog.create({
       actorId,
       actorRole: actorRole || 'user',
-      targetUserId,
-      targetCompanyId,
-      action,
-      beforeState,
-      afterState,
-      reason,
-      metadata: metadata || {},
+      organizationId: targetCompanyId,
+      action: auditAction,
+      resourceType: 'User',
+      resourceId: String(targetUserId),
+      before: beforeState || null,
+      after: afterState || null,
+      metadata: {
+        reason: reason || '',
+        ...(metadata || {})
+      },
     });
   } catch (err) {
     console.error('[AuditLog Error]:', err.message);
@@ -1082,7 +1088,7 @@ exports.triggerWonIncentiveCalculation = async (leadId, tenantId) => {
 exports.updateAgent = async (req, res) => {
   try {
     const { agentId } = req.params;
-    const { roleId, managerId, employeeStatus } = req.body;
+    const { roleId, role, companyRole, managerId, employeeStatus } = req.body;
 
     const agent = await User.findOne({ _id: agentId, companyId: req.tenantId });
     if (!agent) {
@@ -1094,8 +1100,37 @@ exports.updateAgent = async (req, res) => {
         const roleExists = await Role.findOne({ _id: roleId, tenantId: req.tenantId });
         if (!roleExists) return res.status(400).json({ message: 'Invalid custom role' });
         agent.roleId = roleId;
+        if (roleExists.roleType === 'MANAGER') {
+          agent.role = 'manager';
+          agent.companyRole = 'manager';
+        } else if (roleExists.roleType === 'OWNER') {
+          agent.companyRole = 'owner';
+        } else {
+          agent.role = 'agent';
+          agent.companyRole = 'agent';
+        }
       } else {
         agent.roleId = null;
+      }
+    }
+
+    // Direct role / companyRole update
+    if (companyRole !== undefined || role !== undefined) {
+      const target = String(companyRole || role).toLowerCase();
+      if (target === 'manager') {
+        agent.role = 'manager';
+        agent.companyRole = 'manager';
+      } else if (target === 'sales_rep') {
+        agent.role = 'agent';
+        agent.companyRole = 'sales_rep';
+      } else if (target === 'telecaller') {
+        agent.role = 'agent';
+        agent.companyRole = 'telecaller';
+      } else if (target === 'owner') {
+        agent.companyRole = 'owner';
+      } else {
+        agent.role = 'agent';
+        agent.companyRole = 'agent';
       }
     }
 
@@ -1104,8 +1139,10 @@ exports.updateAgent = async (req, res) => {
         const managerExists = await User.findOne({ _id: managerId, companyId: req.tenantId });
         if (!managerExists) return res.status(400).json({ message: 'Invalid manager assignment' });
         agent.managerId = managerId;
+        agent.managerName = managerExists.name || '';
       } else {
         agent.managerId = null;
+        agent.managerName = '';
       }
     }
 
@@ -1113,12 +1150,21 @@ exports.updateAgent = async (req, res) => {
       agent.employeeStatus = employeeStatus;
       if (employeeStatus === 'terminated' || employeeStatus === 'inactive') {
         agent.deactivatedAt = new Date();
+        agent.isActive = false;
+        agent.userStatus = 'inactive';
       } else {
         agent.deactivatedAt = null;
+        agent.isActive = true;
+        agent.userStatus = 'active';
       }
     }
 
     await agent.save();
+
+    const populatedAgent = await User.findById(agent._id)
+      .populate('roleId', 'name roleType permissions')
+      .populate('managerId', 'name email usercode')
+      .lean();
 
     await logAudit({
       actorId: req.user._id,
@@ -1127,11 +1173,11 @@ exports.updateAgent = async (req, res) => {
       targetCompanyId: req.tenantId,
       action: 'OWNER_CHANGED_ROLE',
       beforeState: {},
-      afterState: agent.toObject(),
-      reason: `Updated agent configuration`,
+      afterState: populatedAgent,
+      reason: `Updated agent configuration: Role: ${agent.companyRole || agent.role}`,
     });
 
-    res.json({ success: true, agent });
+    res.json({ success: true, agent: populatedAgent });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

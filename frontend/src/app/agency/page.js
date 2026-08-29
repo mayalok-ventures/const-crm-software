@@ -86,7 +86,7 @@ function AgencyPageContent() {
   const [roleForm, setRoleForm] = useState({ name: '', roleType: 'AGENT', permissions: [] });
   
   const [editingAgent, setEditingAgent] = useState(null);
-  const [agentForm, setAgentForm] = useState({ roleId: '', managerId: '', employeeStatus: 'active' });
+  const [agentForm, setAgentForm] = useState({ roleId: '', companyRole: 'agent', managerId: '', employeeStatus: 'active' });
 
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [newMemberForm, setNewMemberForm] = useState({
@@ -94,6 +94,7 @@ function AgencyPageContent() {
     email: '',
     phone: '',
     password: '',
+    companyRole: 'agent',
     roleId: '',
     managerId: ''
   });
@@ -179,6 +180,7 @@ function AgencyPageContent() {
     setEditingAgent(ag);
     setAgentForm({
       roleId: ag.roleId?._id || ag.roleId || '',
+      companyRole: ag.companyRole || ag.role || 'agent',
       managerId: ag.managerId?._id || ag.managerId || '',
       employeeStatus: ag.employeeStatus || 'active'
     });
@@ -187,7 +189,13 @@ function AgencyPageContent() {
   const handleSaveAgent = async (e) => {
     e.preventDefault();
     try {
-      await api.patch(`/agency/agents/${editingAgent._id}`, agentForm);
+      await api.patch(`/agency/agents/${editingAgent._id}`, {
+        roleId: agentForm.roleId || null,
+        companyRole: agentForm.companyRole || 'agent',
+        role: agentForm.companyRole === 'manager' ? 'manager' : 'agent',
+        managerId: agentForm.managerId || null,
+        employeeStatus: agentForm.employeeStatus
+      });
       toast.success(`Agent configuration updated for ${editingAgent.name}`);
       setEditingAgent(null);
       fetchData();
@@ -209,14 +217,20 @@ function AgencyPageContent() {
         name: newMemberForm.name,
         email: newMemberForm.email,
         phone: newMemberForm.phone,
-        password: newMemberForm.password
+        password: newMemberForm.password,
+        role: newMemberForm.companyRole === 'manager' ? 'manager' : 'agent',
+        companyRole: newMemberForm.companyRole || 'agent',
+        roleId: newMemberForm.roleId || null,
+        managerId: newMemberForm.managerId || null,
       });
 
       const newAgentId = res.data?.agent?._id;
 
-      if (newAgentId && (newMemberForm.roleId || newMemberForm.managerId)) {
+      if (newAgentId && (newMemberForm.roleId || newMemberForm.managerId || newMemberForm.companyRole)) {
         await api.patch(`/agency/agents/${newAgentId}`, {
           roleId: newMemberForm.roleId || null,
+          companyRole: newMemberForm.companyRole || 'agent',
+          role: newMemberForm.companyRole === 'manager' ? 'manager' : 'agent',
           managerId: newMemberForm.managerId || null
         });
       }
@@ -228,6 +242,7 @@ function AgencyPageContent() {
         email: '',
         phone: '',
         password: '',
+        companyRole: 'agent',
         roleId: '',
         managerId: ''
       });
@@ -473,14 +488,27 @@ function AgencyPageContent() {
                       </td>
                       <td style={{ padding: '12px 8px' }}>
                         <span style={{
-                          background: 'rgba(79, 70, 229, 0.08)',
-                          color: 'var(--accent)',
+                          background: (ag.companyRole === 'manager' || ag.role === 'manager')
+                            ? 'rgba(16, 185, 129, 0.12)'
+                            : (ag.companyRole === 'owner' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(79, 70, 229, 0.08)'),
+                          color: (ag.companyRole === 'manager' || ag.role === 'manager')
+                            ? '#10b981'
+                            : (ag.companyRole === 'owner' ? '#f59e0b' : 'var(--accent)'),
                           padding: '3px 8px',
                           borderRadius: 6,
                           fontSize: 11,
-                          fontWeight: 600
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
                         }}>
-                          {ag.roleId?.name || (ag.companyRole === 'owner' ? 'OWNER (Default)' : 'AGENT (Default)')}
+                          {ag.roleId?.name ? `${ag.roleId.name}` : (
+                            ag.companyRole === 'owner'
+                              ? 'OWNER (Default)'
+                              : (ag.companyRole === 'manager' || ag.role === 'manager'
+                                ? 'MANAGER'
+                                : (ag.companyRole === 'telecaller'
+                                  ? 'TELECALLER'
+                                  : (ag.companyRole === 'sales_rep' ? 'SALES REP' : 'AGENT (Default)')))
+                          )}
                         </span>
                       </td>
                       <td style={{ padding: '12px 8px' }}>
@@ -756,45 +784,42 @@ function AgencyPageContent() {
               </div>
             )}
 
-            {/* Incentives Ledger List */}
+            {/* Incentives Table */}
             <div className="card" style={{ padding: 20 }}>
               <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700 }}>
-                💰 Commission Ledger & Payout Approvals
+                💰 Tenant Incentive Records ({incentivesList.length})
               </h3>
-
               {incentivesList.length === 0 ? (
-                <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>No incentive records generated yet.</p>
+                <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>No closed deals with incentives calculated yet.</p>
               ) : (
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                     <thead>
                       <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)', fontSize: 12 }}>
-                        <th style={{ padding: '10px 8px' }}>Lead Name</th>
-                        <th style={{ padding: '10px 8px' }}>Agent Beneficiary</th>
-                        <th style={{ padding: '10px 8px' }}>Deal Size</th>
-                        <th style={{ padding: '10px 8px' }}>Commission Rate</th>
-                        <th style={{ padding: '10px 8px' }}>Earned Amount</th>
-                        <th style={{ padding: '10px 8px' }}>Status</th>
-                        {isOwner && <th style={{ padding: '10px 8px', textAlign: 'right' }}>Approvals</th>}
+                        <th style={{ padding: '10px 8px' }}>Beneficiary Agent</th>
+                        <th style={{ padding: '10px 8px' }}>Lead Reference</th>
+                        <th style={{ padding: '10px 8px' }}>Total Sales</th>
+                        <th style={{ padding: '10px 8px' }}>Incentive Amount</th>
+                        <th style={{ padding: '10px 8px' }}>Payout Status</th>
+                        {isOwner && <th style={{ padding: '10px 8px', textAlign: 'right' }}>Actions</th>}
                       </tr>
                     </thead>
                     <tbody>
                       {incentivesList.map(inc => (
                         <tr key={inc._id} style={{ borderBottom: '1px solid var(--border)', fontSize: 13 }}>
                           <td style={{ padding: '12px 8px' }}>
-                            <strong>{inc.leadId?.name || 'N/A'}</strong>
+                            <strong style={{ display: 'block' }}>{inc.agentId?.name || 'Agent'}</strong>
+                            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{inc.agentId?.email}</span>
                           </td>
                           <td style={{ padding: '12px 8px' }}>
-                            <span>{inc.agentId?.name || 'Deleted User'}</span>
+                            <span>{inc.leadId?.name || 'Lead #'+String(inc.leadId).slice(-4)}</span>
                           </td>
                           <td style={{ padding: '12px 8px' }}>
-                            <span>₹{inc.totalSales}</span>
+                            ₹{Number(inc.totalSales || 0).toLocaleString()}
                           </td>
                           <td style={{ padding: '12px 8px' }}>
-                            <span>{Number(inc.incentivePct).toFixed(1)}%</span>
-                          </td>
-                          <td style={{ padding: '12px 8px' }}>
-                            <strong style={{ color: 'var(--green)' }}>₹{inc.incentiveAmount}</strong>
+                            <strong style={{ color: 'var(--accent)' }}>₹{Number(inc.incentiveAmount || 0).toLocaleString()}</strong>
+                            <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>({inc.incentivePct}%)</span>
                           </td>
                           <td style={{ padding: '12px 8px' }}>
                             <span style={{
@@ -912,14 +937,29 @@ function AgencyPageContent() {
               </h3>
               <form onSubmit={handleSaveAgent} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Custom Tenant Role</label>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Organization Role</label>
+                  <select
+                    value={agentForm.companyRole}
+                    onChange={e => setAgentForm({ ...agentForm, companyRole: e.target.value })}
+                    className="input btn-full"
+                    style={{ width: '100%' }}
+                  >
+                    <option value="agent">👤 Sales Agent (Standard Agent)</option>
+                    <option value="manager">👔 Manager (Team Lead / Oversight)</option>
+                    <option value="telecaller">📞 Telecaller (Outreach & Calls)</option>
+                    <option value="sales_rep">💼 Sales Representative</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Custom Tenant Role Policy (Optional)</label>
                   <select
                     value={agentForm.roleId}
                     onChange={e => setAgentForm({ ...agentForm, roleId: e.target.value })}
                     className="input btn-full"
                     style={{ width: '100%' }}
                   >
-                    <option value="">Default permissions (Default Agent)</option>
+                    <option value="">Default permissions (Inherit Role Defaults)</option>
                     {roles.map(r => (
                       <option key={r._id} value={r._id}>{r.name} ({r.roleType})</option>
                     ))}
@@ -935,7 +975,7 @@ function AgencyPageContent() {
                     style={{ width: '100%' }}
                   >
                     <option value="">None (Reports to Owner)</option>
-                    {agents.filter(a => a._id !== editingAgent._id && a.companyRole !== 'agent').map(a => (
+                    {agents.filter(a => a._id !== editingAgent._id && (a.companyRole === 'manager' || a.role === 'manager')).map(a => (
                       <option key={a._id} value={a._id}>{a.name} ({a.roleId?.name || 'Manager'})</option>
                     ))}
                   </select>
@@ -1023,14 +1063,29 @@ function AgencyPageContent() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Assign Role</label>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Organization Role</label>
+                  <select
+                    value={newMemberForm.companyRole}
+                    onChange={e => setNewMemberForm({ ...newMemberForm, companyRole: e.target.value })}
+                    className="input btn-full"
+                    style={{ width: '100%' }}
+                  >
+                    <option value="agent">👤 Sales Agent (Standard Agent)</option>
+                    <option value="manager">👔 Manager (Team Lead / Oversight)</option>
+                    <option value="telecaller">📞 Telecaller (Outreach & Calls)</option>
+                    <option value="sales_rep">💼 Sales Representative</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Custom Role Policy (Optional)</label>
                   <select
                     value={newMemberForm.roleId}
                     onChange={e => setNewMemberForm({ ...newMemberForm, roleId: e.target.value })}
                     className="input btn-full"
                     style={{ width: '100%' }}
                   >
-                    <option value="">Default permissions (Default Agent)</option>
+                    <option value="">Default permissions (Inherit Role Defaults)</option>
                     {roles.map(r => (
                       <option key={r._id} value={r._id}>{r.name} ({r.roleType})</option>
                     ))}
@@ -1046,7 +1101,7 @@ function AgencyPageContent() {
                     style={{ width: '100%' }}
                   >
                     <option value="">None (Reports to Owner)</option>
-                    {agents.filter(a => a.companyRole !== 'agent').map(a => (
+                    {agents.filter(a => a.companyRole === 'manager' || a.role === 'manager').map(a => (
                       <option key={a._id} value={a._id}>{a.name} ({a.roleId?.name || 'Manager'})</option>
                     ))}
                   </select>

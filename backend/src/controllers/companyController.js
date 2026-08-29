@@ -20,7 +20,9 @@ exports.getCompanyAgents = async (req, res) => {
 
     const company = await User.findById(companyId).select('name usercode companyInfo companySettings');
     const agents = await User.find({ companyId })
-      .select('name email phone usercode companyRole companyJoinMethod companyLeaveRequest allowCompanyWhatsApp defaultSender createdAt lastLogin')
+      .select('name email phone usercode role roleId companyRole employeeStatus managerId companyJoinMethod companyLeaveRequest allowCompanyWhatsApp defaultSender createdAt lastLogin')
+      .populate('roleId', 'name roleType permissions')
+      .populate('managerId', 'name email usercode')
       .lean();
 
     const incentiveRate = company?.companySettings?.incentivePerConversion || 0;
@@ -89,7 +91,7 @@ exports.createCompanyAgent = async (req, res) => {
     const { PLAN_LIMITS } = require('../utils/planLimits');
     const companyPlan = req.user.plan || 'free';
     const limits = PLAN_LIMITS[companyPlan];
-    const maxUsers = limits?.maxUsers || 1;
+    const maxUsers = limits?.maxUsers || 5;
 
     const currentAgentCount = await User.countDocuments({ companyId: req.user._id });
     if (currentAgentCount >= maxUsers) {
@@ -101,7 +103,7 @@ exports.createCompanyAgent = async (req, res) => {
       });
     }
 
-    const { name, email, phone, password } = req.body;
+    const { name, email, phone, password, role, companyRole, roleId, managerId } = req.body;
     if (!name || !password) {
       return res.status(400).json({ message: 'Name and password are required' });
     }
@@ -119,20 +121,36 @@ exports.createCompanyAgent = async (req, res) => {
     const username = await generateUniqueUsername(User);
     const usercode = await generateUniqueUsercode(User, 'REA');
 
-    const agent = await User.create({
+    // Determine role & companyRole
+    let finalRole = 'agent';
+    let finalCompanyRole = 'agent';
+    if (role === 'manager' || companyRole === 'manager') {
+      finalRole = 'manager';
+      finalCompanyRole = 'manager';
+    } else if (companyRole) {
+      finalCompanyRole = companyRole;
+    }
+
+    const agentData = {
       name: name.trim(),
       email: email ? email.toLowerCase().trim() : undefined,
       phone: cleanPhone,
       password,
       username,
       usercode,
+      role: finalRole,
+      companyRole: finalCompanyRole,
       workStatus: 'independent_agent',
-      companyRole: 'agent',
       companyId: req.user._id,
       companyJoinMethod: 'created_by_company', // SMART PERMISSION: Created by company
       companyLeaveRequest: 'none',
       allowCompanyWhatsApp: req.user.companySettings?.allowAgentCompanyWhatsApp ?? true,
-    });
+    };
+
+    if (roleId) agentData.roleId = roleId;
+    if (managerId) agentData.managerId = managerId;
+
+    const agent = await User.create(agentData);
 
     res.status(201).json({
       message: `Team member ${agent.name} created successfully ✅`,
@@ -142,7 +160,10 @@ exports.createCompanyAgent = async (req, res) => {
         email: agent.email,
         phone: agent.phone,
         usercode: agent.usercode,
+        role: agent.role,
         companyRole: agent.companyRole,
+        roleId: agent.roleId,
+        managerId: agent.managerId,
         companyJoinMethod: agent.companyJoinMethod,
       }
     });
@@ -158,7 +179,7 @@ exports.createCompanyAgent = async (req, res) => {
 exports.joinCompany = async (req, res) => {
   try {
     if (req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner') {
-      return res.status(403).json({ message: "Organizations cannot join other organizations." });
+      return res.status(400).json({ message: 'Organization owners cannot join other organizations' });
     }
 
     const { usercode } = req.body;
@@ -183,7 +204,7 @@ exports.joinCompany = async (req, res) => {
     const { PLAN_LIMITS } = require('../utils/planLimits');
     const companyPlan = company.plan || 'free';
     const limits = PLAN_LIMITS[companyPlan];
-    const maxUsers = limits?.maxUsers || 1;
+    const maxUsers = limits?.maxUsers || 5;
 
     const currentAgentCount = await User.countDocuments({ companyId: company._id });
     if (currentAgentCount >= maxUsers) {

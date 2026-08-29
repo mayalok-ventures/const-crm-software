@@ -185,7 +185,7 @@ const FREE_TIER = {
   tierType: 'free',
   monthlyPrice: 0,
   yearlyPrice: 0,
-  maxUsers: 1,
+  maxUsers: 5,
   maxLeads: 10,
   maxGroups: 1,
   maxRecipientsPerCampaign: 0,
@@ -194,12 +194,13 @@ const FREE_TIER = {
   canCreateGroup: true,
   features: [
     'Up to 10 leads maximum',
+    'Up to 5 team members / staff seats',
     '1 contact group',
     'Single pipeline workflow',
     'Basic follow-up reminders',
   ],
   popular: false,
-  description: '10 lead free trial.',
+  description: '10 lead free trial with up to 5 team seats.',
 };
 
 // Legacy plan mappings for backward compatibility
