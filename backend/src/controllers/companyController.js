@@ -86,22 +86,9 @@ exports.createCompanyAgent = async (req, res) => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // TEAM ROSTER MEMBER CAP ENFORCEMENT
+    // TEAM ROSTER MEMBER CAP (UNRESTRICTED IN DEVELOPMENT)
     // ─────────────────────────────────────────────────────────────
-    const { PLAN_LIMITS } = require('../utils/planLimits');
-    const companyPlan = req.user.plan || 'free';
-    const limits = PLAN_LIMITS[companyPlan];
-    const maxUsers = limits?.maxUsers || 5;
-
-    const currentAgentCount = await User.countDocuments({ companyId: req.user._id });
-    if (currentAgentCount >= maxUsers) {
-      return res.status(403).json({
-        code: 'ROSTER_LIMIT_REACHED',
-        message: `Your active plan (${limits?.name || companyPlan}) allows a maximum of ${maxUsers} team member(s). You currently have ${currentAgentCount}. Please upgrade your organization plan to add more agents.`,
-        currentCount: currentAgentCount,
-        maxUsers,
-      });
-    }
+    // Roster limit check bypassed for development phase per user request.
 
     const { name, email, phone, password, role, companyRole, roleId, managerId } = req.body;
     if (!name || !password) {
@@ -200,22 +187,7 @@ exports.joinCompany = async (req, res) => {
       return res.status(400).json({ message: 'You cannot join your own organization account' });
     }
 
-    // Check organization roster limit
-    const { PLAN_LIMITS } = require('../utils/planLimits');
-    const companyPlan = company.plan || 'free';
-    const limits = PLAN_LIMITS[companyPlan];
-    const maxUsers = limits?.maxUsers || 5;
-
-    const currentAgentCount = await User.countDocuments({ companyId: company._id });
-    if (currentAgentCount >= maxUsers) {
-      return res.status(403).json({
-        code: 'ROSTER_LIMIT_REACHED',
-        message: `This organization has reached its maximum team member limit (${maxUsers} seat(s) on ${limits?.name || companyPlan}). Please ask the organization owner to upgrade their plan.`,
-        currentCount: currentAgentCount,
-        maxUsers,
-      });
-    }
-
+    // Check organization roster limit (Bypassed for development)
     const agent = await User.findById(req.user._id);
     agent.companyId = company._id;
     agent.companyRole = 'agent';

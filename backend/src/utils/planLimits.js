@@ -185,22 +185,21 @@ const FREE_TIER = {
   tierType: 'free',
   monthlyPrice: 0,
   yearlyPrice: 0,
-  maxUsers: 5,
-  maxLeads: 10,
-  maxGroups: 1,
-  maxRecipientsPerCampaign: 0,
-  maxConcurrentCampaigns: 0,
-  canStartCampaign: false,
+  maxUsers: 99999, // Development mode: unlimited team member seats
+  maxLeads: 100000,
+  maxGroups: 100,
+  maxRecipientsPerCampaign: 10000,
+  maxConcurrentCampaigns: 10,
+  canStartCampaign: true,
   canCreateGroup: true,
   features: [
-    'Up to 10 leads maximum',
-    'Up to 5 team members / staff seats',
-    '1 contact group',
-    'Single pipeline workflow',
-    'Basic follow-up reminders',
+    'Unlimited team members / staff seats (Development Mode)',
+    'Full access to all modules',
+    'Custom pipeline workflow',
+    'Follow-up reminders',
   ],
   popular: false,
-  description: '10 lead free trial with up to 5 team seats.',
+  description: 'Development mode with unlimited team seats.',
 };
 
 // Legacy plan mappings for backward compatibility

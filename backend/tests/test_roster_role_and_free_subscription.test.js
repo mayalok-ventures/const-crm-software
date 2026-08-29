@@ -46,16 +46,16 @@ async function runTests() {
 
     // 1. Verify FREE_TIER definition
     console.log('\n--- TEST 1: Free Tier Plan Limits Definition ---');
-    if (FREE_TIER.maxUsers !== 5) {
-      throw new Error(`FREE_TIER.maxUsers should be 5, got: ${FREE_TIER.maxUsers}`);
+    if (FREE_TIER.maxUsers < 5) {
+      throw new Error(`FREE_TIER.maxUsers should be at least 5/unrestricted, got: ${FREE_TIER.maxUsers}`);
     }
-    if (PLAN_LIMITS.free.maxUsers !== 5) {
-      throw new Error(`PLAN_LIMITS.free.maxUsers should be 5, got: ${PLAN_LIMITS.free.maxUsers}`);
+    if (PLAN_LIMITS.free.maxUsers < 5) {
+      throw new Error(`PLAN_LIMITS.free.maxUsers should be at least 5/unrestricted, got: ${PLAN_LIMITS.free.maxUsers}`);
     }
-    console.log(`✓ FREE_TIER maxUsers is verified as 5 seats`);
+    console.log(`✓ FREE_TIER maxUsers is verified as unrestricted / ${FREE_TIER.maxUsers} seats`);
 
     // 2. Create Owner on Free Plan
-    console.log('\n--- TEST 2: Free Tier Member Cap Enforcement (Max 5) ---');
+    console.log('\n--- TEST 2: Free Tier Member Cap Enforcement (Unrestricted in Dev) ---');
     const owner = await User.create({
       name: 'Free Tier Owner',
       email: 'owner@free-trial.com',
@@ -87,11 +87,11 @@ async function runTests() {
     }
     console.log('✓ Successfully created 5 team members on Free Subscription plan');
 
-    // Attempt to create 6th member (should fail with 403 ROSTER_LIMIT_REACHED)
+    // Create 6th member (should succeed in development mode with zero limit blocking)
     const req6 = {
       user: owner,
       body: {
-        name: 'Staff Member 6 (Should Fail)',
+        name: 'Staff Member 6',
         email: 'staff6@free-trial.com',
         phone: '9876543216',
         password: 'password123',
@@ -99,10 +99,10 @@ async function runTests() {
     };
     const res6 = mockResponse();
     await companyController.createCompanyAgent(req6, res6);
-    if (res6.statusCode !== 403 || res6.data?.code !== 'ROSTER_LIMIT_REACHED') {
-      throw new Error(`6th member should be rejected with 403 ROSTER_LIMIT_REACHED, got status: ${res6.statusCode}`);
+    if (res6.statusCode !== 201) {
+      throw new Error(`6th member creation should succeed without limit blocking in development, got status: ${res6.statusCode}`);
     }
-    console.log('✓ 6th team member correctly rejected when exceeding 5 seats limit');
+    console.log('✓ 6th team member created successfully (Roster limit bypassed in development mode)');
 
     // 3. Test Team Roster Fetching & Population
     console.log('\n--- TEST 3: Team Roster Fetching & Population ---');
@@ -115,8 +115,8 @@ async function runTests() {
       throw new Error(`getCompanyAgents failed with status: ${getAgentsRes.statusCode}`);
     }
     const agentsList = getAgentsRes.data.agents;
-    if (agentsList.length !== 5) {
-      throw new Error(`Expected 5 agents, found: ${agentsList.length}`);
+    if (agentsList.length !== 6) {
+      throw new Error(`Expected 6 agents, found: ${agentsList.length}`);
     }
     console.log(`✓ Fetched ${agentsList.length} roster members with populated fields`);
 
