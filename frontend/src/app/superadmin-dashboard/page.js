@@ -225,6 +225,27 @@ function SuperAdminDashboardContent() {
     }
   };
 
+  // Plan update
+  const handleTenantPlanUpdate = async (tenantId, planPayload) => {
+    try {
+      const payload = typeof planPayload === 'string'
+        ? { planCode: planPayload, reason: 'SuperAdmin manual override' }
+        : planPayload;
+
+      const { data } = await api.patch(`/super-admin/organisations/${tenantId}/plan`, payload);
+      if (data.success) {
+        toast.success(data.message || 'Subscription plan updated successfully! 🚀');
+        fetchTabData('organisations');
+        if (activeTab === 'overview' || activeTab === 'revenue') {
+          fetchTabData(activeTab);
+        }
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update tenant plan');
+      throw err;
+    }
+  };
+
   // Toggle Feature Flag
   const handleToggleFeatureFlag = async (flagId, enabled) => {
     try {
@@ -328,6 +349,7 @@ function SuperAdminDashboardContent() {
               onInspectTenant={handleInspectTenant}
               onImpersonate={handleStartImpersonation}
               onStatusUpdate={handleTenantStatusUpdate}
+              onPlanUpdate={handleTenantPlanUpdate}
               onPageChange={(page) => setOrgPagination((p) => ({ ...p, page }))}
             />
           )}
@@ -438,6 +460,7 @@ function SuperAdminDashboardContent() {
           setSelectedTenantData(null);
           handleStartImpersonation(userId);
         }}
+        onPlanUpdated={handleTenantPlanUpdate}
       />
     </div>
   );

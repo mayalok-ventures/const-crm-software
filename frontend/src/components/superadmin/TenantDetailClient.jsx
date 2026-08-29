@@ -52,6 +52,57 @@ export default function TenantDetailClient() {
     loadTenant();
   }, [tenantId]);
 
+  const [targetPlan, setTargetPlan] = useState('free');
+  const [targetBillingCycle, setTargetBillingCycle] = useState('monthly');
+  const [targetDuration, setTargetDuration] = useState('30');
+  const [planReason, setPlanReason] = useState('');
+  const [submittingPlan, setSubmittingPlan] = useState(false);
+
+  useEffect(() => {
+    if (data?.organisation?.owner?.plan) {
+      setTargetPlan(data.organisation.owner.plan);
+    }
+    if (data?.organisation?.owner?.billingCycle) {
+      setTargetBillingCycle(data.organisation.owner.billingCycle);
+    }
+  }, [data]);
+
+  const handlePlanOverrideSubmit = async (e) => {
+    e.preventDefault();
+    if (!tenantId) return;
+
+    setSubmittingPlan(true);
+    try {
+      const res = await api.patch(`/super-admin/organisations/${tenantId}/plan`, {
+        planCode: targetPlan,
+        billingCycle: targetBillingCycle,
+        durationDays: targetDuration === 'lifetime' ? null : Number(targetDuration),
+        reason: planReason || `SuperAdmin manual override to ${targetPlan}`,
+      });
+
+      if (res.data.success) {
+        toast.success(`Plan updated to ${targetPlan.toUpperCase()} successfully! 🚀`);
+        if (data.organisation?.owner) {
+          setData((prev) => ({
+            ...prev,
+            organisation: {
+              ...prev.organisation,
+              owner: {
+                ...prev.organisation.owner,
+                plan: targetPlan,
+                billingCycle: targetBillingCycle,
+              },
+            },
+          }));
+        }
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update plan');
+    } finally {
+      setSubmittingPlan(false);
+    }
+  };
+
   if (loading && tenantId !== 'placeholder') {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-[#070b14] text-white">
@@ -143,6 +194,95 @@ export default function TenantDetailClient() {
           <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Payment Done</span>
           <span className="text-lg font-bold text-emerald-400 font-mono mt-1 block">{leads.stageCounts?.payment_done || 0} Won</span>
         </div>
+      </div>
+
+      {/* Super Admin Manual Subscription Plan Override Form */}
+      <div className="p-6 rounded-2xl bg-[#0d1424] border border-amber-500/30 space-y-4 text-xs shadow-xl shadow-amber-950/20">
+        <div className="flex items-center gap-2 text-amber-400">
+          <CreditCard className="w-5 h-5" />
+          <h2 className="font-bold text-sm uppercase tracking-wider text-white">⚡ SuperAdmin Manual Plan Override</h2>
+        </div>
+        <p className="text-xs text-slate-400">
+          Directly assign or modify the subscription tier, team seat entitlements, and validity period for {org.name}.
+        </p>
+
+        <form onSubmit={handlePlanOverrideSubmit} className="space-y-4 pt-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">Target Subscription Plan</label>
+              <select
+                value={targetPlan}
+                onChange={(e) => setTargetPlan(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              >
+                <optgroup label="🏢 Organization / Team Plans">
+                  <option value="free">Free Trial (10 Staff Seats • 1,000 Leads)</option>
+                  <option value="team_starter">Team Starter (3 Seats • ₹1,499/mo)</option>
+                  <option value="business">Business Agency (10 Seats • ₹2,499/mo)</option>
+                  <option value="enterprise">Enterprise Command (25 Seats • ₹4,999/mo)</option>
+                  <option value="custom_enterprise">Custom Enterprise (100+ Seats • Custom)</option>
+                </optgroup>
+                <optgroup label="👤 Individual / Solo Plans">
+                  <option value="basic_solo">Basic Solo (1 Seat • 2k Leads • ₹399/mo)</option>
+                  <option value="smart_solo">Smart Solo (1 Seat • 10k Leads • ₹799/mo)</option>
+                  <option value="power_solo">Power Solo (1 Seat • 25k Leads • ₹1,299/mo)</option>
+                </optgroup>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">Billing Cycle</label>
+              <select
+                value={targetBillingCycle}
+                onChange={(e) => setTargetBillingCycle(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              >
+                <option value="monthly">Monthly Cycle</option>
+                <option value="yearly">Yearly Cycle</option>
+                <option value="lifetime">Lifetime / Permanent</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">Plan Validity Duration</label>
+              <select
+                value={targetDuration}
+                onChange={(e) => setTargetDuration(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              >
+                <option value="30">30 Days (1 Month)</option>
+                <option value="90">90 Days (3 Months)</option>
+                <option value="180">180 Days (6 Months)</option>
+                <option value="365">365 Days (1 Full Year)</option>
+                <option value="lifetime">Never Expire / Lifetime</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">Audit Reason / Support Note</label>
+              <input
+                type="text"
+                value={planReason}
+                onChange={(e) => setPlanReason(e.target.value)}
+                placeholder="e.g. Granted by SuperAdmin via Phone Support"
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          <div className="pt-2 flex items-center justify-end">
+            <button
+              type="submit"
+              disabled={submittingPlan}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition-all disabled:opacity-50"
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>{submittingPlan ? 'Updating Plan...' : 'Apply & Save Subscription Plan'}</span>
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

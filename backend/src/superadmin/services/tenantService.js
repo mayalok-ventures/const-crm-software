@@ -151,13 +151,69 @@ async function updateTenantStatus(tenantId, { status, reason = '' }, adminUser) 
 /**
  * Update tenant subscription plan
  */
-async function updateTenantPlan(tenantId, { planCode, reason = '' }, adminUser) {
+async function updateTenantPlan(tenantId, { planCode, billingCycle, durationDays, planEndDate, isCustomPlan, reason = '' }, adminUser) {
   const user = await User.findById(tenantId);
   if (!user) throw new Error('Tenant not found');
 
   const prevPlan = user.plan;
+  const prevBillingCycle = user.billingCycle;
+  const prevEndDate = user.planEndDate;
+
   user.plan = planCode;
+  if (billingCycle) {
+    user.billingCycle = billingCycle === 'yearly' ? 'yearly' : 'monthly';
+  }
+  user.planStartDate = new Date();
+
+  if (planEndDate) {
+    user.planEndDate = new Date(planEndDate);
+  } else if (durationDays) {
+    const d = new Date();
+    d.setDate(d.getDate() + Number(durationDays));
+    user.planEndDate = d;
+  } else if (billingCycle === 'yearly') {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() + 1);
+    user.planEndDate = d;
+  } else if (billingCycle === 'monthly') {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1);
+    user.planEndDate = d;
+  } else if (planCode === 'free') {
+    user.planEndDate = null;
+  }
+
+  if (typeof isCustomPlan === 'boolean') {
+    user.isCustomPlan = isCustomPlan;
+  }
+
+  user.isActive = true;
+  user.userStatus = 'active';
+
   await user.save();
+
+  // Also update or sync Subscription record if present or create one
+  try {
+    const PlanModel = mongoose.models.Plan || require('../../models/Plan');
+    const dbPlan = await PlanModel.findOne({ code: planCode });
+    if (dbPlan) {
+      await Subscription.findOneAndUpdate(
+        { companyId: user._id },
+        {
+          userId: user._id,
+          companyId: user._id,
+          accountType: user.workStatus === 'company_owner' ? 'ORGANIZATION' : 'INDIVIDUAL',
+          planId: dbPlan._id,
+          status: 'ACTIVE',
+          currentPeriodStart: user.planStartDate,
+          currentPeriodEnd: user.planEndDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+        },
+        { upsert: true, new: true }
+      );
+    }
+  } catch (subErr) {
+    console.warn('[updateTenantPlan] Subscription sync warning:', subErr.message);
+  }
 
   await AuditLog.create({
     actorId: adminUser._id,
@@ -169,9 +225,9 @@ async function updateTenantPlan(tenantId, { planCode, reason = '' }, adminUser) 
     resourceType: 'User',
     resourceId: user._id.toString(),
     resourceName: user.companyInfo?.companyName || user.name,
-    before: { plan: prevPlan },
-    after: { plan: planCode },
-    metadata: { reason, updatedBy: 'superadmin' },
+    before: { plan: prevPlan, billingCycle: prevBillingCycle, planEndDate: prevEndDate },
+    after: { plan: user.plan, billingCycle: user.billingCycle, planEndDate: user.planEndDate },
+    metadata: { reason: reason || 'Manual subscription override by SuperAdmin', updatedBy: 'superadmin' },
     timestamp: new Date(),
   });
 

@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import {
   Building2, Search, Filter, ShieldAlert, Eye,
-  Shield, CheckCircle2, XCircle, ArrowRight, Loader2
+  Shield, CheckCircle2, XCircle, ArrowRight, Loader2,
+  Sparkles, CreditCard, X
 } from 'lucide-react';
 
 export default function SuperAdminOrganisationsModule({
@@ -17,8 +18,42 @@ export default function SuperAdminOrganisationsModule({
   onInspectTenant = null,
   onImpersonate = null,
   onStatusUpdate = null,
+  onPlanUpdate = null,
   onPageChange = null,
 }) {
+  // Quick Plan Change Modal State
+  const [selectedOrgForPlan, setSelectedOrgForPlan] = useState(null);
+  const [quickPlan, setQuickPlan] = useState('team_starter');
+  const [quickBillingCycle, setQuickBillingCycle] = useState('monthly');
+  const [quickDuration, setQuickDuration] = useState('30');
+  const [quickReason, setQuickReason] = useState('');
+  const [updatingPlan, setUpdatingPlan] = useState(false);
+
+  const handleOpenPlanModal = (org) => {
+    setSelectedOrgForPlan(org);
+    setQuickPlan(org.plan || 'free');
+    setQuickBillingCycle('monthly');
+    setQuickDuration('30');
+    setQuickReason(`SuperAdmin manual override for ${org.organisationName}`);
+  };
+
+  const handleApplyQuickPlan = async (e) => {
+    e.preventDefault();
+    if (!selectedOrgForPlan || !onPlanUpdate) return;
+    setUpdatingPlan(true);
+    try {
+      await onPlanUpdate(selectedOrgForPlan._id, {
+        planCode: quickPlan,
+        billingCycle: quickBillingCycle,
+        durationDays: quickDuration === 'lifetime' ? null : Number(quickDuration),
+        reason: quickReason,
+      });
+      setSelectedOrgForPlan(null);
+    } finally {
+      setUpdatingPlan(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Control Bar: Search & Status Filters */}
@@ -127,6 +162,16 @@ export default function SuperAdminOrganisationsModule({
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        {/* Change Plan Button */}
+                        <button
+                          onClick={() => handleOpenPlanModal(org)}
+                          className="px-2.5 py-1 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 hover:text-indigo-200 text-[11px] font-semibold flex items-center gap-1 transition-colors"
+                          title="Manually override subscription plan"
+                        >
+                          <Sparkles className="w-3 h-3 text-indigo-400" />
+                          <span>Set Plan</span>
+                        </button>
+
                         {/* Deep Inspect */}
                         <button
                           onClick={() => onInspectTenant && onInspectTenant(org._id)}
@@ -190,6 +235,110 @@ export default function SuperAdminOrganisationsModule({
           </div>
         )}
       </div>
+
+      {/* Quick Plan Override Modal */}
+      {selectedOrgForPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
+          <div
+            className="w-full max-w-md bg-[#0a0f1d] border border-amber-500/40 rounded-2xl shadow-2xl overflow-hidden flex flex-col p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-amber-400">
+                <Sparkles className="w-4 h-4" />
+                <h3 className="font-bold text-sm text-white">Override Plan: {selectedOrgForPlan.organisationName}</h3>
+              </div>
+              <button
+                onClick={() => setSelectedOrgForPlan(null)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleApplyQuickPlan} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">Target Subscription Plan</label>
+                <select
+                  value={quickPlan}
+                  onChange={(e) => setQuickPlan(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                >
+                  <optgroup label="🏢 Organization / Team Plans">
+                    <option value="free">Free Trial (10 Seats • 1k Leads)</option>
+                    <option value="team_starter">Team Starter (3 Seats • ₹1,499/mo)</option>
+                    <option value="business">Business Agency (10 Seats • ₹2,499/mo)</option>
+                    <option value="enterprise">Enterprise Command (25 Seats • ₹4,999/mo)</option>
+                    <option value="custom_enterprise">Custom Enterprise (100+ Seats • Custom)</option>
+                  </optgroup>
+                  <optgroup label="👤 Solo Plans">
+                    <option value="basic_solo">Basic Solo (1 Seat • ₹399/mo)</option>
+                    <option value="smart_solo">Smart Solo (1 Seat • ₹799/mo)</option>
+                    <option value="power_solo">Power Solo (1 Seat • ₹1,299/mo)</option>
+                  </optgroup>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Billing Cycle</label>
+                  <select
+                    value={quickBillingCycle}
+                    onChange={(e) => setQuickBillingCycle(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="monthly">Monthly</option>
+                    <option value="yearly">Yearly</option>
+                    <option value="lifetime">Lifetime</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Duration</label>
+                  <select
+                    value={quickDuration}
+                    onChange={(e) => setQuickDuration(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="30">30 Days</option>
+                    <option value="90">90 Days</option>
+                    <option value="180">180 Days</option>
+                    <option value="365">1 Year</option>
+                    <option value="lifetime">Lifetime</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">Audit Reason</label>
+                <input
+                  type="text"
+                  value={quickReason}
+                  onChange={(e) => setQuickReason(e.target.value)}
+                  placeholder="e.g. Plan upgrade requested by customer"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="flex gap-2 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrgForPlan(null)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updatingPlan}
+                  className="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-sm disabled:opacity-50"
+                >
+                  {updatingPlan ? 'Saving...' : 'Apply Plan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

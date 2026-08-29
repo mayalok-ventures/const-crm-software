@@ -46,12 +46,20 @@ exports.updateStatus = async (req, res) => {
 
 exports.updatePlan = async (req, res) => {
   try {
-    const { planCode, reason } = req.body;
+    const { planCode, billingCycle, durationDays, planEndDate, isCustomPlan, reason } = req.body;
     if (!planCode) {
       return res.status(400).json({ success: false, message: 'planCode is required' });
     }
-    const updated = await updateTenantPlan(req.params.id, { planCode, reason }, req.user);
-    res.json({ success: true, message: `Organisation plan updated to ${planCode}`, organisation: updated });
+    const updated = await updateTenantPlan(
+      req.params.id,
+      { planCode, billingCycle, durationDays, planEndDate, isCustomPlan, reason },
+      req.user
+    );
+    res.json({
+      success: true,
+      message: `Organisation plan successfully updated to ${planCode}`,
+      organisation: updated,
+    });
   } catch (error) {
     console.error('SuperAdmin Update Plan Error:', error);
     res.status(500).json({ success: false, message: error.message || 'Failed to update organisation plan' });
