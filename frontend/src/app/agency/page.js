@@ -14,16 +14,33 @@ import {
 
 const PERMISSION_OPTIONS = [
   { value: 'LEAD_VIEW', label: 'LEAD_VIEW', desc: 'Read-only access to company leads pipeline.' },
+  { value: 'LEAD_CREATE', label: 'LEAD_CREATE', desc: 'Create new leads in the CRM.' },
   { value: 'LEAD_EDIT', label: 'LEAD_EDIT', desc: 'Allows updating details and editing lead profile fields.' },
+  { value: 'LEAD_DELETE', label: 'LEAD_DELETE', desc: 'Allows deleting leads from pipeline.' },
   { value: 'LEAD_CLAIM', label: 'LEAD_CLAIM', desc: 'Self-claim new and unclaimed leads.' },
+  { value: 'LEAD_ASSIGN', label: 'LEAD_ASSIGN', desc: 'Assign leads to sales agents.' },
   { value: 'LEAD_TRANSFER_REQUEST', label: 'LEAD_TRANSFER_REQUEST', desc: 'Initiate lead transfer request to teammates.' },
   { value: 'LEAD_TRANSFER_APPROVE', label: 'LEAD_TRANSFER_APPROVE', desc: 'Approve or reject pending lead transfers.' },
   { value: 'LEAD_FORCE_TRANSFER', label: 'LEAD_FORCE_TRANSFER', desc: 'Force immediate lead transfer override without approvals.' },
+  { value: 'LEAD_VIEW_TEAM', label: 'LEAD_VIEW_TEAM', desc: 'View all leads of team members under manager supervision.' },
+  { value: 'LEAD_VIEW_ALL', label: 'LEAD_VIEW_ALL', desc: 'View all organization leads across all agents and teams.' },
+  { value: 'STAFF_VIEW', label: 'STAFF_VIEW', desc: 'View staff members and agency roster.' },
+  { value: 'STAFF_CREATE', label: 'STAFF_CREATE', desc: 'Add new staff members to the organization.' },
+  { value: 'STAFF_EDIT', label: 'STAFF_EDIT', desc: 'Edit staff member details and assignments.' },
   { value: 'ROLE_VIEW', label: 'ROLE_VIEW', desc: 'View custom company roles structure.' },
   { value: 'ROLE_CREATE', label: 'ROLE_CREATE', desc: 'Create and configure custom agent/manager roles.' },
+  { value: 'ROLE_EDIT', label: 'ROLE_EDIT', desc: 'Edit existing custom company roles.' },
+  { value: 'ROLE_DELETE', label: 'ROLE_DELETE', desc: 'Delete custom company roles.' },
+  { value: 'REPORT_VIEW_TEAM', label: 'REPORT_VIEW_TEAM', desc: 'View team performance analytics and conversion reports.' },
+  { value: 'REPORT_VIEW_AGENCY', label: 'REPORT_VIEW_AGENCY', desc: 'View full agency-wide revenue and sales analytics.' },
   { value: 'INCENTIVE_VIEW_SELF', label: 'INCENTIVE_VIEW_SELF', desc: 'Allows sales reps to view their own incentive earnings.' },
-  { value: 'INCENTIVE_MANAGE', label: 'INCENTIVE_MANAGE', desc: 'Approve/reject agent incentives and modify split policy configs.' },
-  { value: 'ACTIVITY_VIEW', label: 'ACTIVITY_VIEW', desc: 'View global audit activity feed of company actions.' }
+  { value: 'INCENTIVE_VIEW_TEAM', label: 'INCENTIVE_VIEW_TEAM', desc: 'Allows managers to view team incentives.' },
+  { value: 'INCENTIVE_APPROVE', label: 'INCENTIVE_APPROVE', desc: 'Approve or reject agent milestone incentives.' },
+  { value: 'INCENTIVE_MODIFY', label: 'INCENTIVE_MODIFY', desc: 'Modify incentive policy configurations.' },
+  { value: 'INCENTIVE_MANAGE', label: 'INCENTIVE_MANAGE', desc: 'Full incentive management access.' },
+  { value: 'EXPORT_LEADS', label: 'EXPORT_LEADS', desc: 'Export leads and reports to CSV / Excel.' },
+  { value: 'ACTIVITY_VIEW', label: 'ACTIVITY_VIEW', desc: 'View global audit activity feed of company actions.' },
+  { value: 'AUDIT_VIEW', label: 'AUDIT_VIEW', desc: 'View full security audit trails.' },
 ];
 
 export default function AgencyPage() {

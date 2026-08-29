@@ -233,14 +233,22 @@ exports.createRole = async (req, res) => {
     const { name, description, roleType, permissions } = req.body;
     if (!name) return res.status(400).json({ message: 'Role name is required' });
 
-    // Enforce Permission Ceiling: Cannot grant permissions the creator does not possess
-    if (permissions && permissions.length > 0) {
-      const creatorPermissions = req.user.role === 'superadmin' || req.user.isAdmin
-        ? Object.values(PERMISSIONS)
-        : (req.user.roleId 
-            ? (await Role.findOne({ _id: req.user.roleId, tenantId: req.tenantId }).lean())?.permissions || []
-            : (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? Object.values(PERMISSIONS) : [])
-          );
+    const isOwner =
+      req.user.role === 'superadmin' ||
+      req.user.isAdmin ||
+      req.user.role === 'admin' ||
+      req.user.companyRole === 'owner' ||
+      req.user.workStatus === 'company_owner' ||
+      !req.user.companyId ||
+      String(req.user._id) === String(req.tenantId);
+
+    // Enforce Permission Ceiling ONLY on non-owner delegated staff
+    if (!isOwner && permissions && permissions.length > 0) {
+      let creatorPermissions = [];
+      if (req.user.roleId) {
+        const creatorRole = await Role.findOne({ _id: req.user.roleId, tenantId: req.tenantId }).lean();
+        creatorPermissions = creatorRole?.permissions || [];
+      }
 
       const invalidPermissions = permissions.filter(p => !creatorPermissions.includes(p));
       if (invalidPermissions.length > 0) {
@@ -288,7 +296,7 @@ exports.getRoles = async (req, res) => {
 exports.updateRole = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, permissions, isActive } = req.body;
+    const { name, description, roleType, permissions, isActive } = req.body;
 
     const role = await Role.findOne({ _id: id, tenantId: req.tenantId });
     if (!role) return res.status(404).json({ message: 'Role not found' });
@@ -298,14 +306,22 @@ exports.updateRole = async (req, res) => {
       return res.status(403).json({ message: 'Cannot modify system OWNER role configurations' });
     }
 
-    // Enforce Permission Ceiling on modifications
-    if (permissions) {
-      const creatorPermissions = req.user.role === 'superadmin' || req.user.isAdmin
-        ? Object.values(PERMISSIONS)
-        : (req.user.roleId 
-            ? (await Role.findOne({ _id: req.user.roleId, tenantId: req.tenantId }).lean())?.permissions || []
-            : (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? Object.values(PERMISSIONS) : [])
-          );
+    const isOwner =
+      req.user.role === 'superadmin' ||
+      req.user.isAdmin ||
+      req.user.role === 'admin' ||
+      req.user.companyRole === 'owner' ||
+      req.user.workStatus === 'company_owner' ||
+      !req.user.companyId ||
+      String(req.user._id) === String(req.tenantId);
+
+    // Enforce Permission Ceiling ONLY on non-owner delegated staff
+    if (!isOwner && permissions && permissions.length > 0) {
+      let creatorPermissions = [];
+      if (req.user.roleId) {
+        const creatorRole = await Role.findOne({ _id: req.user.roleId, tenantId: req.tenantId }).lean();
+        creatorPermissions = creatorRole?.permissions || [];
+      }
 
       const invalidPermissions = permissions.filter(p => !creatorPermissions.includes(p));
       if (invalidPermissions.length > 0) {
@@ -319,6 +335,7 @@ exports.updateRole = async (req, res) => {
     const beforeState = role.toObject();
     if (name !== undefined) role.name = name;
     if (description !== undefined) role.description = description;
+    if (roleType !== undefined) role.roleType = roleType;
     if (permissions !== undefined) role.permissions = permissions;
     if (isActive !== undefined) role.isActive = isActive;
     role.updatedBy = req.user._id;
