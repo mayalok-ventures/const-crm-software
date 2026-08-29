@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
@@ -8,7 +8,8 @@ import { isRealEstateTenant, isManager, isOwner, getUser } from '@/lib/auth';
 import {
   BarChart2, TrendingUp, Users, Calendar, MessageSquare, Mic,
   Download, FileSpreadsheet, FileText, X, Award, DollarSign,
-  Building2, MapPin, Sparkles, UserCheck, Flame
+  Building2, MapPin, Sparkles, UserCheck, Flame, Layers,
+  ChevronRight, ArrowDown, CheckCircle2, AlertTriangle, ShieldCheck
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
@@ -142,6 +143,12 @@ function AnalyticsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rawTab = searchParams?.get('tab') || 'performance';
+  const [activeTab, setActiveTab] = useState(rawTab);
+
+  useEffect(() => {
+    const tabParam = searchParams?.get('tab');
+    if (tabParam) setActiveTab(tabParam);
+  }, [searchParams]);
 
   const [data, setData] = useState(null);
   const [reAnalytics, setReAnalytics] = useState(null);
@@ -187,9 +194,7 @@ function AnalyticsContent() {
     conversionRate = 0,
     totalRevenue = 0,
     totalTemplates = 0,
-    totalRecordings = 0,
     todayFollowUps = 0,
-    recentLeads = []
   } = data || {};
 
   const statusChartData = [
@@ -199,16 +204,34 @@ function AnalyticsContent() {
     { name: 'Closed', value: byStatus.closed || 0, color: '#22c55e' },
   ];
 
-  const recentChartData = recentLeads.map(d => ({ day: d._id?.slice(5) || d._id, leads: d.count }));
+  // Full 6-Stage Real Estate Funnel Numbers (Pure Real Data from API)
+  const totalLeadsCount = reAnalytics?.leads?.total ?? (totalLeads || 0);
+  const activeRequirementsCount = reAnalytics?.requirements?.active ?? (reAnalytics?.requirements?.total || 0);
+  const totalSiteVisits = reAnalytics?.siteVisits?.total ?? (reAnalytics?.siteVisits?.completed || 0);
+  const openOpportunities = reAnalytics?.pipeline?.openDeals ?? 0;
+  const totalEOIs = reAnalytics?.eois?.total ?? (reAnalytics?.eois?.confirmed || 0);
+  const totalBookings = reAnalytics?.bookings?.count ?? 0;
+
+  const funnelSteps = [
+    { id: 'leads', name: 'Total Leads Captured', count: totalLeadsCount, color: '#6366f1', pct: totalLeadsCount > 0 ? 100 : 0 },
+    { id: 'requirements', name: 'Requirements Captured', count: activeRequirementsCount, color: '#0ea5e9', pct: totalLeadsCount > 0 ? Math.round((activeRequirementsCount / totalLeadsCount) * 100) : 0 },
+    { id: 'site_visits', name: 'Site Visits Conducted', count: totalSiteVisits, color: '#f59e0b', pct: totalLeadsCount > 0 ? Math.round((totalSiteVisits / totalLeadsCount) * 100) : 0 },
+    { id: 'opportunities', name: 'Active Negotiations', count: openOpportunities, color: '#8b5cf6', pct: totalLeadsCount > 0 ? Math.round((openOpportunities / totalLeadsCount) * 100) : 0 },
+    { id: 'eoi', name: 'EOI Tokens Received', count: totalEOIs, color: '#ec4899', pct: totalLeadsCount > 0 ? Math.round((totalEOIs / totalLeadsCount) * 100) : 0 },
+    { id: 'bookings', name: 'Confirmed Unit Bookings', count: totalBookings, color: '#10b981', pct: totalLeadsCount > 0 ? Math.round((totalBookings / totalLeadsCount) * 100) : 0 },
+  ];
 
   return (
     <div className="app-shell">
       <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
-        <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        {/* Page Header */}
+        <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
           <div>
-            <h1 className="page-title">Performance Analytics</h1>
-            <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-              Real-time pipeline metrics, team performance & revenue tracking
+            <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <BarChart2 size={26} color="var(--accent)" /> Real Estate Sales & Conversion Analytics
+            </h1>
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+              Real-time pipeline metrics, team performance leaderboard, funnel conversion and revenue realization.
             </p>
           </div>
           <button
@@ -220,154 +243,299 @@ function AnalyticsContent() {
           </button>
         </div>
 
+        {/* Tab Navigation for Real Estate Analytics */}
+        {isRE && (
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20, gap: 14, overflowX: 'auto' }}>
+            {[
+              { id: 'performance', label: '🏆 Team Leaderboard' },
+              { id: 'leads', label: '🎯 Conversion Funnel' },
+              { id: 'site_visits', label: '📍 Site Visits Conversion' },
+              { id: 'eoi', label: '📑 EOI Token Analytics' },
+              { id: 'bookings', label: '💰 Booking & Revenue' },
+            ].map(tab => {
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '8px 12px 12px',
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    fontWeight: active ? 700 : 500,
+                    color: active ? 'var(--accent)' : 'var(--text-muted)',
+                    borderBottom: active ? '2.5px solid var(--accent)' : '2.5px solid transparent',
+                    transition: 'all 0.15s ease',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="page-content">
-          {/* Real Estate / Manager Funnel Stats if RE */}
-          {isRE && reAnalytics && (
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: 14,
-              marginBottom: 20
-            }}>
-              <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Total Pipeline Value</span>
-                <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: 'var(--accent)' }}>
-                  {formatINR(reAnalytics?.pipeline?.totalValue || 0)}
-                </h3>
-              </div>
-
-              <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Site Visit Conversion</span>
-                <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: '#0ea5e9' }}>
-                  {reAnalytics?.siteVisits?.conversionRate || '0%'}
-                </h3>
-              </div>
-
-              <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>EOI Conversion Rate</span>
-                <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: '#a855f7' }}>
-                  {reAnalytics?.eois?.conversionRate || '0%'}
-                </h3>
-              </div>
-
-              <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Bookings Revenue</span>
-                <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: '#10b981' }}>
-                  {formatINR(reAnalytics?.bookings?.totalAgreementValue || 0)}
-                </h3>
-              </div>
-            </div>
-          )}
-
-          {/* Top KPI Banner */}
+          {/* Top 4 KPI Metrics Banner */}
           <div style={{
-            background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(79,70,229,0.1) 100%)',
-            border: '1px solid rgba(16,185,129,0.3)',
-            borderRadius: 16,
-            padding: '16px 20px',
-            marginBottom: 20,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 16
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: 14,
+            marginBottom: 20
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{
-                width: 48,
-                height: 48,
-                borderRadius: 14,
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                color: 'white',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 4px 12px rgba(16,185,129,0.35)'
-              }}>
-                <Award size={26} />
-              </div>
-              <div>
-                <p style={{ margin: 0, fontSize: 12, fontWeight: 700, textTransform: 'uppercase', color: '#10b981', letterSpacing: 0.5 }}>
-                  Total Closed Revenue
-                </p>
-                <h2 style={{ margin: '2px 0 0', fontSize: 26, fontWeight: 800, color: 'var(--text)' }}>
-                  {user?.localization?.currencySymbol || '₹'}{Number(totalRevenue || 0).toLocaleString()}
-                </h2>
-              </div>
+            <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Total Pipeline Value</span>
+              <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: 'var(--accent)' }}>
+                {formatINR(reAnalytics?.pipeline?.totalValue || totalRevenue || 0)}
+              </h3>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                ⚖️ Weighted: {formatINR(reAnalytics?.pipeline?.weightedValue || 0)}
+              </span>
             </div>
 
-            <button
-              onClick={() => setShowExportModal(true)}
-              className="btn btn-primary btn-sm"
-              style={{ gap: 6, borderRadius: 8, background: '#10b981', borderColor: '#10b981' }}
-            >
-              <Download size={14} /> Export Analytics (.xlsx / .pdf)
-            </button>
+            <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Site Visit Conversion</span>
+              <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: '#0ea5e9' }}>
+                {reAnalytics?.siteVisits?.conversionRate || '0%'}
+              </h3>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                📍 {reAnalytics?.siteVisits?.completed ?? 0} Visits Completed
+              </span>
+            </div>
+
+            <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>EOI Conversion Rate</span>
+              <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: '#a855f7' }}>
+                {reAnalytics?.eois?.conversionRate || '0%'}
+              </h3>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                📑 {reAnalytics?.eois?.confirmed ?? 0} Confirmed Tokens
+              </span>
+            </div>
+
+            <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Confirmed Bookings</span>
+              <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: '#10b981' }}>
+                {formatINR(reAnalytics?.bookings?.totalAgreementValue || 0)}
+              </h3>
+              <span style={{ fontSize: 11, color: '#10b981', fontWeight: 700, display: 'block', marginTop: 4 }}>
+                🏆 {reAnalytics?.bookings?.count ?? 0} Units Booked
+              </span>
+            </div>
           </div>
 
-          {/* Team Performance Table for Managers */}
-          {teamPerformance.length > 0 && (
+          {/* ========================================================================= */}
+          {/* TAB 1: TEAM LEADERBOARD & PERFORMANCE                                    */}
+          {/* ========================================================================= */}
+          {(activeTab === 'performance' || !isRE) && (
             <div className="card" style={{ marginBottom: 20, padding: 20 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 800, margin: '0 0 14px' }}>Team Agent Performance Leaderboard</h3>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', textAlign: 'left' }}>
-                      <th style={{ padding: '10px 8px', fontWeight: 600 }}>Agent</th>
-                      <th style={{ padding: '10px 8px', fontWeight: 600 }}>Assigned Leads</th>
-                      <th style={{ padding: '10px 8px', fontWeight: 600 }}>Visits Completed</th>
-                      <th style={{ padding: '10px 8px', fontWeight: 600 }}>Bookings</th>
-                      <th style={{ padding: '10px 8px', fontWeight: 600 }}>Booking Value</th>
-                      <th style={{ padding: '10px 8px', fontWeight: 600 }}>Conversion %</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {teamPerformance.map(agent => (
-                      <tr key={agent.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '12px 8px', fontWeight: 700 }}>👤 {agent.name}</td>
-                        <td style={{ padding: '12px 8px' }}>{agent.leadsAssigned}</td>
-                        <td style={{ padding: '12px 8px' }}>{agent.completedVisits} / {agent.siteVisits}</td>
-                        <td style={{ padding: '12px 8px', fontWeight: 700, color: '#10b981' }}>{agent.bookings}</td>
-                        <td style={{ padding: '12px 8px', fontWeight: 700, color: 'var(--accent)' }}>{formatINR(agent.bookingValue)}</td>
-                        <td style={{ padding: '12px 8px', fontWeight: 700 }}>{agent.conversionRate}</td>
+              <h3 style={{ fontSize: 16, fontWeight: 800, margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Award size={20} color="#f59e0b" /> Team Agent Performance & Conversion Leaderboard
+              </h3>
+              {teamPerformance.length === 0 ? (
+                <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No team performance data available.</p>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
+                        <th style={{ padding: '10px 8px' }}>Agent</th>
+                        <th style={{ padding: '10px 8px' }}>Leads Assigned</th>
+                        <th style={{ padding: '10px 8px' }}>Visits Done</th>
+                        <th style={{ padding: '10px 8px' }}>Bookings</th>
+                        <th style={{ padding: '10px 8px' }}>Booking Value</th>
+                        <th style={{ padding: '10px 8px' }}>Win Rate %</th>
+                        <th style={{ padding: '10px 8px' }}>Commission</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {teamPerformance.map((agent, i) => (
+                        <tr key={agent.id || i} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '12px 8px', fontWeight: 700 }}>👤 {agent.name}</td>
+                          <td style={{ padding: '12px 8px', fontWeight: 600 }}>{agent.leadsAssigned}</td>
+                          <td style={{ padding: '12px 8px' }}>{agent.completedVisits} / {agent.siteVisits}</td>
+                          <td style={{ padding: '12px 8px', fontWeight: 700, color: '#10b981' }}>{agent.bookings}</td>
+                          <td style={{ padding: '12px 8px', fontWeight: 700, color: 'var(--accent)' }}>{formatINR(agent.bookingValue)}</td>
+                          <td style={{ padding: '12px 8px', fontWeight: 700 }}>
+                            <span style={{
+                              padding: '2px 8px',
+                              borderRadius: 6,
+                              background: parseFloat(agent.conversionRate) > 10 ? 'rgba(16,185,129,0.12)' : 'rgba(99,102,241,0.08)',
+                              color: parseFloat(agent.conversionRate) > 10 ? '#10b981' : 'var(--accent)'
+                            }}>
+                              {agent.conversionRate}
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 8px', fontWeight: 700, color: '#10b981' }}>
+                            {formatINR(agent.commissionEarned)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB 2: FULL 6-STAGE CONVERSION FUNNEL                                    */}
+          {/* ========================================================================= */}
+          {activeTab === 'leads' && (
+            <div className="card" style={{ marginBottom: 20, padding: 22 }}>
+              <div style={{ marginBottom: 20 }}>
+                <h3 style={{ fontSize: 17, fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <TrendingUp size={20} color="var(--accent)" /> Real Estate Lead-to-Booking Conversion Funnel
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
+                  Full lifecycle track from first inquiry capture down to registered unit booking.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {funnelSteps.map((step, idx) => (
+                  <div key={step.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: '50%',
+                          background: step.color,
+                          color: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 11,
+                          fontWeight: 800
+                        }}>
+                          {idx + 1}
+                        </span>
+                        <strong style={{ color: 'var(--text)' }}>{step.name}</strong>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <strong style={{ fontSize: 16, color: step.color }}>{step.count}</strong>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>({step.pct}%)</span>
+                      </div>
+                    </div>
+
+                    <div style={{ width: '100%', height: 10, background: 'var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                      <div style={{
+                        width: `${step.pct}%`,
+                        height: '100%',
+                        background: step.color,
+                        borderRadius: 10,
+                        transition: 'width 0.4s ease'
+                      }} />
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
 
-          {/* Top 4 Stat Grid */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:10, marginBottom:20 }}>
-            <div className="stat-card">
-              <div className="stat-value">{totalLeads}</div>
-              <div className="stat-label">Total Opportunities</div>
+          {/* ========================================================================= */}
+          {/* TAB 3: SITE VISITS CONVERSION                                            */}
+          {/* ========================================================================= */}
+          {activeTab === 'site_visits' && (
+            <div className="card" style={{ marginBottom: 20, padding: 22 }}>
+              <h3 style={{ fontSize: 17, fontWeight: 800, margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <MapPin size={20} color="#0ea5e9" /> Site Visits Efficiency & Conversion Matrix
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 20 }}>
+                <div style={{ background: 'var(--surface)', padding: 14, borderRadius: 12, border: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Total Scheduled</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0' }}>{reAnalytics?.siteVisits?.total ?? 0}</h4>
+                </div>
+                <div style={{ background: 'var(--surface)', padding: 14, borderRadius: 12, border: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Completed</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#10b981' }}>{reAnalytics?.siteVisits?.completed ?? 0}</h4>
+                </div>
+                <div style={{ background: 'var(--surface)', padding: 14, borderRadius: 12, border: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Cancelled / No-Show</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#ef4444' }}>{reAnalytics?.siteVisits?.noShow ?? 0}</h4>
+                </div>
+                <div style={{ background: 'var(--surface)', padding: 14, borderRadius: 12, border: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Visit-to-Booking %</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#0ea5e9' }}>{reAnalytics?.siteVisits?.conversionRate || '0%'}</h4>
+                </div>
+              </div>
             </div>
-            <div className="stat-card">
-              <div className="stat-value" style={{ color:'var(--green)' }}>{conversionRate}%</div>
-              <div className="stat-label">Win Conversion Rate</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value" style={{ color:'#f97316' }}>{todayFollowUps}</div>
-              <div className="stat-label">Today's Actions</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value" style={{ color:'#eab308' }}>{totalTemplates}</div>
-              <div className="stat-label">Templates</div>
-            </div>
-          </div>
+          )}
 
-          {/* Status breakdown */}
-          <div className="card" style={{ marginBottom:16 }}>
-            <p style={{ margin:'0 0 16px', fontWeight:600, fontSize:14 }}>Leads by Pipeline Stage</p>
-            <div style={{ height:160 }}>
+          {/* ========================================================================= */}
+          {/* TAB 4: EOI TOKEN ANALYTICS                                               */}
+          {/* ========================================================================= */}
+          {activeTab === 'eoi' && (
+            <div className="card" style={{ marginBottom: 20, padding: 22 }}>
+              <h3 style={{ fontSize: 17, fontWeight: 800, margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <FileText size={20} color="#a855f7" /> Expressions of Interest (EOI) Performance
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
+                <div style={{ background: 'var(--surface)', padding: 14, borderRadius: 12, border: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Total Tokens</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#a855f7' }}>{reAnalytics?.eois?.total ?? 0}</h4>
+                </div>
+                <div style={{ background: 'var(--surface)', padding: 14, borderRadius: 12, border: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Confirmed Tokens</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#10b981' }}>{reAnalytics?.eois?.confirmed ?? 0}</h4>
+                </div>
+                <div style={{ background: 'var(--surface)', padding: 14, borderRadius: 12, border: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Pending Allotment</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#f59e0b' }}>{reAnalytics?.eois?.pending ?? 0}</h4>
+                </div>
+                <div style={{ background: 'var(--surface)', padding: 14, borderRadius: 12, border: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Expiring Soon (20d+)</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#ef4444' }}>{reAnalytics?.eois?.expiring ?? 0}</h4>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB 5: BOOKINGS & REVENUE                                                */}
+          {/* ========================================================================= */}
+          {activeTab === 'bookings' && (
+            <div className="card" style={{ marginBottom: 20, padding: 22 }}>
+              <h3 style={{ fontSize: 17, fontWeight: 800, margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Award size={20} color="#10b981" /> Unit Bookings, Revenue Realization & Collections
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+                <div style={{ background: 'var(--surface)', padding: 16, borderRadius: 12, border: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Total Agreement Value</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: 'var(--accent)' }}>
+                    {formatINR(reAnalytics?.bookings?.totalAgreementValue || 0)}
+                  </h4>
+                </div>
+                <div style={{ background: 'var(--surface)', padding: 16, borderRadius: 12, border: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Total Collected (Paid)</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#10b981' }}>
+                    {formatINR(reAnalytics?.bookings?.totalCollectedAmount || 0)}
+                  </h4>
+                </div>
+                <div style={{ background: 'var(--surface)', padding: 16, borderRadius: 12, border: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Outstanding Balance</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#ef4444' }}>
+                    {formatINR(reAnalytics?.bookings?.totalOutstandingAmount || 0)}
+                  </h4>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Generic Stage Breakdown Chart */}
+          <div className="card" style={{ marginBottom: 16, padding: 20 }}>
+            <p style={{ margin: '0 0 16px', fontWeight: 700, fontSize: 14 }}>Leads Distribution by Stage</p>
+            <div style={{ height: 160 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={statusChartData} margin={{ top:0, right:0, left:-20, bottom:0 }}>
-                  <XAxis dataKey="name" tick={{ fill:'var(--text-muted)', fontSize:12 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill:'var(--text-muted)', fontSize:11 }} axisLine={false} tickLine={false} />
-                  <Tooltip content={<CustomTooltip />} cursor={{ fill:'rgba(99,102,241,0.05)' }} />
-                  <Bar dataKey="value" radius={[6,6,0,0]}>
+                <BarChart data={statusChartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                  <XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(99,102,241,0.05)' }} />
+                  <Bar dataKey="value" radius={[6, 6, 0, 0]}>
                     {statusChartData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Bar>
                 </BarChart>

@@ -73,6 +73,11 @@ router.get(
 );
 
 // 5. Incentive Policies & Modifications
+router.get(
+  '/incentive-policies',
+  requirePermission(PERMISSIONS.INCENTIVE_VIEW_SELF),
+  agencyController.getIncentivePolicies
+);
 router.post(
   '/incentive-policies',
   requirePermission(PERMISSIONS.AGENCY_SETTINGS_EDIT),

@@ -32,7 +32,7 @@ const getManagerTeamUserIds = async (user) => {
   if (user.role === 'manager' || user.companyRole === 'manager') {
     const tenantId = getTenantId(user);
     const teamAgents = await User.find({
-      $or: [{ companyId: tenantId }, { _id: tenantId }],
+      companyId: tenantId,
       $or: [{ managerId: user._id }, { _id: user._id }],
     }).select('_id').lean();
     return teamAgents.map(a => a._id);
@@ -46,12 +46,16 @@ const getLeadIdsForUserScope = async (user, companyId) => {
   if (teamUserIds === null) return null; // Tenant-level scope
 
   const leads = await Lead.find({
-    $or: [{ companyId }, { userId: companyId }],
-    $or: [
-      { assignedTo: { $in: teamUserIds } },
-      { currentOwnerId: { $in: teamUserIds } },
-      { assignedManager: user._id },
-      { userId: { $in: teamUserIds } },
+    $and: [
+      { $or: [{ companyId }, { userId: companyId }] },
+      {
+        $or: [
+          { assignedTo: { $in: teamUserIds } },
+          { currentOwnerId: { $in: teamUserIds } },
+          { assignedManager: user._id },
+          { userId: { $in: teamUserIds } },
+        ],
+      },
     ],
   }).select('_id').lean();
   return leads.map(l => l._id);
@@ -2000,7 +2004,7 @@ const getManagerTeamMembers = async (req, res) => {
     const teamUserIds = await getManagerTeamUserIds(req.user);
 
     const filter = {
-      $or: [{ companyId }, { _id: companyId }],
+      companyId,
       $or: [
         { role: { $in: ['agent', 'manager', 'sales_rep'] } },
         { companyRole: { $in: ['agent', 'manager', 'sales_rep'] } },
@@ -2028,7 +2032,7 @@ const getManagerTeamPerformance = async (req, res) => {
     const teamUserIds = await getManagerTeamUserIds(req.user);
 
     const filter = {
-      $or: [{ companyId }, { _id: companyId }],
+      companyId,
       $or: [
         { role: { $in: ['agent', 'manager', 'sales_rep'] } },
         { companyRole: { $in: ['agent', 'manager', 'sales_rep'] } },
@@ -2124,7 +2128,7 @@ const getManagerTeamWorkload = async (req, res) => {
     const teamUserIds = await getManagerTeamUserIds(req.user);
 
     const filter = {
-      $or: [{ companyId }, { _id: companyId }],
+      companyId,
       $or: [
         { role: { $in: ['agent', 'manager', 'sales_rep'] } },
         { companyRole: { $in: ['agent', 'manager', 'sales_rep'] } },

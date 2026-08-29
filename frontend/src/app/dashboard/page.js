@@ -54,13 +54,14 @@ export default function DashboardPage() {
     setUser(u);
   }, [router]);
 
-  const isRealEstateManager = isManager(user) && isRealEstateTenant(user);
   const isTenantOwner = isOwner(user);
+  const isRealEstateManager = !isTenantOwner && isManager(user) && isRealEstateTenant(user);
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     const u = getUser();
-    const isRE = isManager(u) && isRealEstateTenant(u);
+    const isOwnerUser = isOwner(u);
+    const isRE = !isOwnerUser && isManager(u) && isRealEstateTenant(u);
 
     try {
       if (isRE) {

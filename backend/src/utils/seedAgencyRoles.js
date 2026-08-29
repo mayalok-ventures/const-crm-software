@@ -13,8 +13,11 @@ const MANAGER_PERMISSIONS = [
   PERMISSIONS.LEAD_ASSIGN,
   PERMISSIONS.LEAD_TRANSFER_REQUEST,
   PERMISSIONS.LEAD_TRANSFER_APPROVE,
+  PERMISSIONS.LEAD_FORCE_TRANSFER,
   PERMISSIONS.LEAD_VIEW_TEAM,
   PERMISSIONS.STAFF_VIEW,
+  PERMISSIONS.STAFF_CREATE,
+  PERMISSIONS.STAFF_EDIT,
   PERMISSIONS.ROLE_VIEW,
   PERMISSIONS.REPORT_VIEW_TEAM,
   PERMISSIONS.INCENTIVE_VIEW_TEAM,
@@ -41,22 +44,16 @@ const seedSystemRolesForTenant = async (tenantId) => {
   const roles = {};
   const defaults = [
     {
-      name: 'Agency Owner',
-      roleType: 'OWNER',
-      permissions: OWNER_PERMISSIONS,
-      description: 'Full administrative access and agency control',
-    },
-    {
-      name: 'Manager',
+      name: 'manager',
       roleType: 'MANAGER',
       permissions: MANAGER_PERMISSIONS,
-      description: 'Manage team members, approve transfers, and view reports',
+      description: 'Supervise sales agents, distribute leads, approve transfers, and view team reports',
     },
     {
-      name: 'Agent',
+      name: 'agent',
       roleType: 'AGENT',
       permissions: AGENT_PERMISSIONS,
-      description: 'View and edit assigned leads, submit transfer requests',
+      description: 'View and edit assigned leads, claim new leads, and submit transfer requests',
     },
   ];
 

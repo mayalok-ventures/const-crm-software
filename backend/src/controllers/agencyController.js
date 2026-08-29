@@ -11,6 +11,7 @@ const ActivityLog = require('../models/ActivityLog');
 const AuditLog = require('../models/AuditLog');
 const Notification = require('../models/Notification');
 const { PERMISSIONS, resolveTenantId } = require('../middleware/permission');
+const { seedSystemRolesForTenant } = require('../utils/seedAgencyRoles');
 
 const runInTransaction = async (workFn) => {
   let session = null;
@@ -231,7 +232,8 @@ const saveIncentiveRecord = async (data, session) => {
 exports.createRole = async (req, res) => {
   try {
     const { name, description, roleType, permissions } = req.body;
-    if (!name) return res.status(400).json({ message: 'Role name is required' });
+    if (!name || !name.trim()) return res.status(400).json({ message: 'Role name is required' });
+    const cleanRoleName = name.trim().toLowerCase();
 
     const isOwner =
       req.user.role === 'superadmin' ||
@@ -261,8 +263,8 @@ exports.createRole = async (req, res) => {
 
     const role = await Role.create({
       tenantId: req.tenantId,
-      name,
-      description,
+      name: cleanRoleName,
+      description: description ? description.trim() : '',
       roleType: roleType || 'CUSTOM',
       permissions: permissions || [],
       createdBy: req.user._id,
@@ -275,7 +277,7 @@ exports.createRole = async (req, res) => {
       targetCompanyId: req.tenantId,
       action: 'OWNER_CHANGED_ROLE',
       afterState: role.toObject(),
-      reason: `Created custom role ${name}`,
+      reason: `Created custom role ${cleanRoleName}`,
     });
 
     res.status(201).json({ success: true, role });
@@ -286,9 +288,19 @@ exports.createRole = async (req, res) => {
 
 exports.getRoles = async (req, res) => {
   try {
-    const roles = await Role.find({ tenantId: req.tenantId }).lean();
-    res.json({ success: true, roles });
+    const tenantId = req.tenantId || resolveTenantId(req.user);
+    if (!tenantId) {
+      return res.status(400).json({ message: 'Tenant context could not be resolved' });
+    }
+
+    let roles = await Role.find({ tenantId }).lean();
+    if (!roles || roles.length === 0 || !roles.some(r => r.roleType === 'AGENT') || !roles.some(r => r.roleType === 'MANAGER')) {
+      await seedSystemRolesForTenant(tenantId);
+      roles = await Role.find({ tenantId }).lean();
+    }
+    res.json({ success: true, roles: roles || [] });
   } catch (error) {
+    console.error('getRoles error:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -333,8 +345,8 @@ exports.updateRole = async (req, res) => {
     }
 
     const beforeState = role.toObject();
-    if (name !== undefined) role.name = name;
-    if (description !== undefined) role.description = description;
+    if (name !== undefined) role.name = (name || '').trim().toLowerCase();
+    if (description !== undefined) role.description = description ? description.trim() : '';
     if (roleType !== undefined) role.roleType = roleType;
     if (permissions !== undefined) role.permissions = permissions;
     if (isActive !== undefined) role.isActive = isActive;
@@ -963,6 +975,15 @@ exports.createIncentivePolicy = async (req, res) => {
     });
 
     res.status(201).json({ success: true, policy });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.getIncentivePolicies = async (req, res) => {
+  try {
+    const policies = await IncentivePolicy.find({ tenantId: req.tenantId }).sort({ isActive: -1, createdAt: -1 }).lean();
+    res.json({ success: true, policies });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

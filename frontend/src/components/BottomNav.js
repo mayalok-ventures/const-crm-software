@@ -11,6 +11,7 @@ import {
   isAgent,
   isRealEstateTenant,
   getUserRole,
+  clearAuth,
 } from '@/lib/auth';
 import api from '@/lib/api';
 import {
@@ -18,7 +19,7 @@ import {
   Package, Send, Zap, Shield, Crown, GraduationCap,
   ChevronLeft, ChevronRight, Building2, Calendar, TrendingUp,
   Award, MapPin, ChevronDown, Sliders, Bell, DollarSign,
-  Percent, CheckSquare, Layers
+  Percent, CheckSquare, Layers, LogOut
 } from 'lucide-react';
 import PlanStatusWidget from '@/components/PlanStatusWidget';
 
@@ -37,20 +38,12 @@ function BottomNavContent({ active }) {
   const [isRealEstate, setIsRealEstate] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [profileHref, setProfileHref] = useState('/profile');
-
-  // Accordion states for sub-items
-  const [leadsExpanded, setLeadsExpanded] = useState(true);
-  const [teamExpanded, setTeamExpanded] = useState(false);
-  const [requirementsExpanded, setRequirementsExpanded] = useState(false);
-  const [siteVisitsExpanded, setSiteVisitsExpanded] = useState(false);
-  const [pipelineExpanded, setPipelineExpanded] = useState(false);
-  const [projectsExpanded, setProjectsExpanded] = useState(false);
-  const [eoiExpanded, setEoiExpanded] = useState(false);
-  const [bookingsExpanded, setBookingsExpanded] = useState(false);
-  const [paymentsExpanded, setPaymentsExpanded] = useState(false);
-  const [commissionExpanded, setCommissionExpanded] = useState(false);
-  const [analyticsExpanded, setAnalyticsExpanded] = useState(false);
   const [generalControlsExpanded, setGeneralControlsExpanded] = useState(false);
+
+  const handleLogout = () => {
+    clearAuth();
+    router.replace('/login');
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -829,8 +822,8 @@ function BottomNavContent({ active }) {
               </Link>
             </>
           ) : isTenantManager ? (
+            /* REAL ESTATE MANAGER COMMAND CENTER (FOR MANAGERS ONLY) */
             isRealEstate ? (
-              /* REAL ESTATE MANAGER COMPLETE STRUCTURED NAVIGATION */
               <>
                 {/* 1. DASHBOARD */}
                 <Link
@@ -840,730 +833,167 @@ function BottomNavContent({ active }) {
                     justifyContent: isCollapsed ? 'center' : 'flex-start',
                     padding: isCollapsed ? '9px 0' : '9px 12px',
                   }}
-                  title="Manager Dashboard"
+                  title="Dashboard"
                 >
                   <Home size={17} color={isLinkActive('dashboard', '/dashboard') ? 'var(--accent)' : 'currentColor'} />
                   {!isCollapsed && <span style={{ fontWeight: 600 }}>Dashboard</span>}
                 </Link>
 
-                {/* 2. LEADS (WITH SUB-ITEMS: TEAM LEADS, UNASSIGNED, HOT, FOLLOW-UPS, DISTRIBUTION) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div
-                    className={`sidebar-nav-link ${normalize(pathname) === '/leads' ? 'active' : ''}`}
-                    style={{
-                      justifyContent: isCollapsed ? 'center' : 'space-between',
-                      padding: isCollapsed ? '9px 0' : '9px 12px',
-                      cursor: 'pointer',
-                    }}
-                    title="Leads"
-                  >
-                    <Link
-                      href="/leads?tab=team_leads"
-                      onClick={() => setLeadsExpanded(true)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', flex: 1 }}
-                    >
-                      <Users size={17} color={normalize(pathname) === '/leads' ? 'var(--accent)' : 'currentColor'} />
-                      {!isCollapsed && <span style={{ fontWeight: 600 }}>Leads</span>}
-                    </Link>
-                    {!isCollapsed && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setLeadsExpanded(!leadsExpanded);
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: '4px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--text-muted)'
-                        }}
-                      >
-                        <ChevronDown
-                          size={14}
-                          style={{
-                            transform: leadsExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                            transition: 'transform 0.2s',
-                          }}
-                        />
-                      </button>
-                    )}
-                  </div>
-                  {!isCollapsed && leadsExpanded && (
-                    <div style={{ paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 2, borderLeft: '1px solid var(--border)', marginLeft: 16 }}>
-                      <Link href="/leads?tab=team_leads" className={`sidebar-nav-link ${normalize(pathname) === '/leads' && (currentTab === 'team_leads' || !currentTab) ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Team Leads</span>
-                      </Link>
-                      <Link href="/leads?tab=unassigned" className={`sidebar-nav-link ${normalize(pathname) === '/leads' && currentTab === 'unassigned' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Unassigned Leads</span>
-                      </Link>
-                      <Link href="/leads?tab=hot" className={`sidebar-nav-link ${normalize(pathname) === '/leads' && currentTab === 'hot' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Hot Leads</span>
-                      </Link>
-                      <Link href="/follow-ups" className={`sidebar-nav-link ${normalize(pathname) === '/follow-ups' || (normalize(pathname) === '/leads' && currentTab === 'followups') ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Follow-ups</span>
-                      </Link>
-                      <Link href="/leads?tab=distribution" className={`sidebar-nav-link ${normalize(pathname) === '/leads' && currentTab === 'distribution' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Lead Distribution</span>
-                      </Link>
-                    </div>
-                  )}
-                </div>
+                {/* 2. LEADS */}
+                <Link
+                  href="/leads"
+                  className={`sidebar-nav-link ${isLinkActive('leads', '/leads') ? 'active' : ''}`}
+                  style={{
+                    justifyContent: isCollapsed ? 'center' : 'flex-start',
+                    padding: isCollapsed ? '9px 0' : '9px 12px',
+                  }}
+                  title="Leads Pipeline"
+                >
+                  <Users size={17} color={isLinkActive('leads', '/leads') ? 'var(--accent)' : 'currentColor'} />
+                  {!isCollapsed && <span>Leads</span>}
+                </Link>
 
-                {/* 3. MY TEAM (WITH SUB-ITEMS: MEMBERS, PERFORMANCE, WORKLOAD, ATTENDANCE/ACTIVITY) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div
-                    className={`sidebar-nav-link ${normalize(pathname) === '/agency' ? 'active' : ''}`}
-                    style={{
-                      justifyContent: isCollapsed ? 'center' : 'space-between',
-                      padding: isCollapsed ? '9px 0' : '9px 12px',
-                      cursor: 'pointer',
-                    }}
-                    title="My Team"
-                  >
-                    <Link
-                      href="/agency?tab=members"
-                      onClick={() => setTeamExpanded(true)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', flex: 1 }}
-                    >
-                      <Shield size={17} color={normalize(pathname) === '/agency' ? 'var(--accent)' : 'currentColor'} />
-                      {!isCollapsed && <span style={{ fontWeight: 600 }}>My Team</span>}
-                    </Link>
-                    {!isCollapsed && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setTeamExpanded(!teamExpanded);
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: '4px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--text-muted)'
-                        }}
-                      >
-                        <ChevronDown
-                          size={14}
-                          style={{
-                            transform: teamExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                            transition: 'transform 0.2s',
-                          }}
-                        />
-                      </button>
-                    )}
-                  </div>
-                  {!isCollapsed && teamExpanded && (
-                    <div style={{ paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 2, borderLeft: '1px solid var(--border)', marginLeft: 16 }}>
-                      <Link href="/agency?tab=members" className={`sidebar-nav-link ${normalize(pathname) === '/agency' && (currentTab === 'members' || !currentTab) ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Team Members</span>
-                      </Link>
-                      <Link href="/agency?tab=performance" className={`sidebar-nav-link ${normalize(pathname) === '/agency' && currentTab === 'performance' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Agent Performance</span>
-                      </Link>
-                      <Link href="/agency?tab=workload" className={`sidebar-nav-link ${normalize(pathname) === '/agency' && currentTab === 'workload' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Agent Workload</span>
-                      </Link>
-                      <Link href="/agency?tab=activity" className={`sidebar-nav-link ${normalize(pathname) === '/agency' && currentTab === 'activity' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Attendance / Activity</span>
-                      </Link>
-                    </div>
-                  )}
-                </div>
+                {/* 3. MY TEAM */}
+                <Link
+                  href="/agency"
+                  className={`sidebar-nav-link ${isLinkActive('agency', '/agency') ? 'active' : ''}`}
+                  style={{
+                    justifyContent: isCollapsed ? 'center' : 'flex-start',
+                    padding: isCollapsed ? '9px 0' : '9px 12px',
+                  }}
+                  title="My Team"
+                >
+                  <Shield size={17} color={isLinkActive('agency', '/agency') ? 'var(--accent)' : 'currentColor'} />
+                  {!isCollapsed && <span>My Team</span>}
+                </Link>
 
-                {/* 4. REQUIREMENTS (WITH SUB-ITEMS: ACTIVE, HIGH PRIORITY, MATCHING) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div
-                    className={`sidebar-nav-link ${normalize(pathname) === '/requirements' ? 'active' : ''}`}
-                    style={{
-                      justifyContent: isCollapsed ? 'center' : 'space-between',
-                      padding: isCollapsed ? '9px 0' : '9px 12px',
-                      cursor: 'pointer',
-                    }}
-                    title="Requirements"
-                  >
-                    <Link
-                      href="/requirements?tab=active"
-                      onClick={() => setRequirementsExpanded(true)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', flex: 1 }}
-                    >
-                      <CheckSquare size={17} color={normalize(pathname) === '/requirements' ? 'var(--accent)' : 'currentColor'} />
-                      {!isCollapsed && <span style={{ fontWeight: 600 }}>Requirements</span>}
-                    </Link>
-                    {!isCollapsed && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setRequirementsExpanded(!requirementsExpanded);
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: '4px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--text-muted)'
-                        }}
-                      >
-                        <ChevronDown
-                          size={14}
-                          style={{
-                            transform: requirementsExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                            transition: 'transform 0.2s',
-                          }}
-                        />
-                      </button>
-                    )}
-                  </div>
-                  {!isCollapsed && requirementsExpanded && (
-                    <div style={{ paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 2, borderLeft: '1px solid var(--border)', marginLeft: 16 }}>
-                      <Link href="/requirements?tab=active" className={`sidebar-nav-link ${normalize(pathname) === '/requirements' && (currentTab === 'active' || !currentTab) ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Active Requirements</span>
-                      </Link>
-                      <Link href="/requirements?tab=high_priority" className={`sidebar-nav-link ${normalize(pathname) === '/requirements' && currentTab === 'high_priority' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>High Priority</span>
-                      </Link>
-                      <Link href="/requirements?tab=matching" className={`sidebar-nav-link ${normalize(pathname) === '/requirements' && currentTab === 'matching' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Property Matching</span>
-                      </Link>
-                    </div>
-                  )}
-                </div>
+                {/* 4. REQUIREMENTS */}
+                <Link
+                  href="/requirements"
+                  className={`sidebar-nav-link ${isLinkActive('requirements', '/requirements') ? 'active' : ''}`}
+                  style={{
+                    justifyContent: isCollapsed ? 'center' : 'flex-start',
+                    padding: isCollapsed ? '9px 0' : '9px 12px',
+                  }}
+                  title="Buyer Requirements"
+                >
+                  <CheckSquare size={17} color={isLinkActive('requirements', '/requirements') ? 'var(--accent)' : 'currentColor'} />
+                  {!isCollapsed && <span>Requirements</span>}
+                </Link>
 
-                {/* 5. SITE VISITS (WITH SUB-ITEMS: TODAY, UPCOMING, COMPLETED, NO SHOW, CONVERSION) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div
-                    className={`sidebar-nav-link ${normalize(pathname) === '/site-visits' ? 'active' : ''}`}
-                    style={{
-                      justifyContent: isCollapsed ? 'center' : 'space-between',
-                      padding: isCollapsed ? '9px 0' : '9px 12px',
-                      cursor: 'pointer',
-                    }}
-                    title="Site Visits"
-                  >
-                    <Link
-                      href="/site-visits?tab=today"
-                      onClick={() => setSiteVisitsExpanded(true)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', flex: 1 }}
-                    >
-                      <MapPin size={17} color={normalize(pathname) === '/site-visits' ? 'var(--accent)' : 'currentColor'} />
-                      {!isCollapsed && <span style={{ fontWeight: 600 }}>Site Visits</span>}
-                    </Link>
-                    {!isCollapsed && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setSiteVisitsExpanded(!siteVisitsExpanded);
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: '4px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--text-muted)'
-                        }}
-                      >
-                        <ChevronDown
-                          size={14}
-                          style={{
-                            transform: siteVisitsExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                            transition: 'transform 0.2s',
-                          }}
-                        />
-                      </button>
-                    )}
-                  </div>
-                  {!isCollapsed && siteVisitsExpanded && (
-                    <div style={{ paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 2, borderLeft: '1px solid var(--border)', marginLeft: 16 }}>
-                      <Link href="/site-visits?tab=today" className={`sidebar-nav-link ${normalize(pathname) === '/site-visits' && (currentTab === 'today' || !currentTab) ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Today's Visits</span>
-                      </Link>
-                      <Link href="/site-visits?tab=upcoming" className={`sidebar-nav-link ${normalize(pathname) === '/site-visits' && currentTab === 'upcoming' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Upcoming</span>
-                      </Link>
-                      <Link href="/site-visits?tab=completed" className={`sidebar-nav-link ${normalize(pathname) === '/site-visits' && currentTab === 'completed' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Completed</span>
-                      </Link>
-                      <Link href="/site-visits?tab=no_show" className={`sidebar-nav-link ${normalize(pathname) === '/site-visits' && currentTab === 'no_show' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>No Show</span>
-                      </Link>
-                      <Link href="/site-visits?tab=conversion" className={`sidebar-nav-link ${normalize(pathname) === '/site-visits' && currentTab === 'conversion' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Conversion</span>
-                      </Link>
-                    </div>
-                  )}
-                </div>
+                {/* 5. SITE VISITS */}
+                <Link
+                  href="/site-visits"
+                  className={`sidebar-nav-link ${isLinkActive('site-visits', '/site-visits') ? 'active' : ''}`}
+                  style={{
+                    justifyContent: isCollapsed ? 'center' : 'flex-start',
+                    padding: isCollapsed ? '9px 0' : '9px 12px',
+                  }}
+                  title="Site Visits"
+                >
+                  <MapPin size={17} color={isLinkActive('site-visits', '/site-visits') ? 'var(--accent)' : 'currentColor'} />
+                  {!isCollapsed && <span>Site Visits</span>}
+                </Link>
 
-                {/* 6. PIPELINE (WITH SUB-ITEMS: KANBAN, TEAM PIPELINE, DEAL FORECAST) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div
-                    className={`sidebar-nav-link ${normalize(pathname) === '/pipeline' ? 'active' : ''}`}
-                    style={{
-                      justifyContent: isCollapsed ? 'center' : 'space-between',
-                      padding: isCollapsed ? '9px 0' : '9px 12px',
-                      cursor: 'pointer',
-                    }}
-                    title="Pipeline"
-                  >
-                    <Link
-                      href="/pipeline?tab=kanban"
-                      onClick={() => setPipelineExpanded(true)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', flex: 1 }}
-                    >
-                      <TrendingUp size={17} color={normalize(pathname) === '/pipeline' ? 'var(--accent)' : 'currentColor'} />
-                      {!isCollapsed && <span style={{ fontWeight: 600 }}>Pipeline</span>}
-                    </Link>
-                    {!isCollapsed && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setPipelineExpanded(!pipelineExpanded);
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: '4px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--text-muted)'
-                        }}
-                      >
-                        <ChevronDown
-                          size={14}
-                          style={{
-                            transform: pipelineExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                            transition: 'transform 0.2s',
-                          }}
-                        />
-                      </button>
-                    )}
-                  </div>
-                  {!isCollapsed && pipelineExpanded && (
-                    <div style={{ paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 2, borderLeft: '1px solid var(--border)', marginLeft: 16 }}>
-                      <Link href="/pipeline?tab=kanban" className={`sidebar-nav-link ${normalize(pathname) === '/pipeline' && (currentTab === 'kanban' || !currentTab) ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Kanban</span>
-                      </Link>
-                      <Link href="/pipeline?tab=team_pipeline" className={`sidebar-nav-link ${normalize(pathname) === '/pipeline' && currentTab === 'team_pipeline' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>My Team Pipeline</span>
-                      </Link>
-                      <Link href="/pipeline?tab=forecast" className={`sidebar-nav-link ${normalize(pathname) === '/pipeline' && currentTab === 'forecast' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Deal Forecast</span>
-                      </Link>
-                    </div>
-                  )}
-                </div>
+                {/* 6. PIPELINE */}
+                <Link
+                  href="/pipeline"
+                  className={`sidebar-nav-link ${isLinkActive('pipeline', '/pipeline') ? 'active' : ''}`}
+                  style={{
+                    justifyContent: isCollapsed ? 'center' : 'flex-start',
+                    padding: isCollapsed ? '9px 0' : '9px 12px',
+                  }}
+                  title="Sales Pipeline"
+                >
+                  <TrendingUp size={17} color={isLinkActive('pipeline', '/pipeline') ? 'var(--accent)' : 'currentColor'} />
+                  {!isCollapsed && <span>Pipeline</span>}
+                </Link>
 
-                {/* 7. PROJECTS & INVENTORY (WITH SUB-ITEMS: PROJECTS, INVENTORY, AVAILABILITY) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div
-                    className={`sidebar-nav-link ${normalize(pathname) === '/projects' ? 'active' : ''}`}
-                    style={{
-                      justifyContent: isCollapsed ? 'center' : 'space-between',
-                      padding: isCollapsed ? '9px 0' : '9px 12px',
-                      cursor: 'pointer',
-                    }}
-                    title="Projects"
-                  >
-                    <Link
-                      href="/projects?tab=projects"
-                      onClick={() => setProjectsExpanded(true)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', flex: 1 }}
-                    >
-                      <Building2 size={17} color={normalize(pathname) === '/projects' ? 'var(--accent)' : 'currentColor'} />
-                      {!isCollapsed && <span style={{ fontWeight: 600 }}>Projects</span>}
-                    </Link>
-                    {!isCollapsed && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setProjectsExpanded(!projectsExpanded);
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: '4px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--text-muted)'
-                        }}
-                      >
-                        <ChevronDown
-                          size={14}
-                          style={{
-                            transform: projectsExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                            transition: 'transform 0.2s',
-                          }}
-                        />
-                      </button>
-                    )}
-                  </div>
-                  {!isCollapsed && projectsExpanded && (
-                    <div style={{ paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 2, borderLeft: '1px solid var(--border)', marginLeft: 16 }}>
-                      <Link href="/projects?tab=projects" className={`sidebar-nav-link ${normalize(pathname) === '/projects' && (currentTab === 'projects' || !currentTab) ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Projects</span>
-                      </Link>
-                      <Link href="/projects?tab=inventory" className={`sidebar-nav-link ${normalize(pathname) === '/projects' && currentTab === 'inventory' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Inventory</span>
-                      </Link>
-                      <Link href="/projects?tab=availability" className={`sidebar-nav-link ${normalize(pathname) === '/projects' && currentTab === 'availability' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Availability</span>
-                      </Link>
-                    </div>
-                  )}
-                </div>
+                {/* 7. PROJECTS & INVENTORY */}
+                <Link
+                  href="/projects"
+                  className={`sidebar-nav-link ${isLinkActive('projects', '/projects') ? 'active' : ''}`}
+                  style={{
+                    justifyContent: isCollapsed ? 'center' : 'flex-start',
+                    padding: isCollapsed ? '9px 0' : '9px 12px',
+                  }}
+                  title="Projects & Inventory"
+                >
+                  <Building2 size={17} color={isLinkActive('projects', '/projects') ? 'var(--accent)' : 'currentColor'} />
+                  {!isCollapsed && <span>Projects</span>}
+                </Link>
 
-                {/* 8. EOI (WITH SUB-ITEMS: ALL, PENDING, CONFIRMED, EXPIRING) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div
-                    className={`sidebar-nav-link ${normalize(pathname) === '/eoi' ? 'active' : ''}`}
-                    style={{
-                      justifyContent: isCollapsed ? 'center' : 'space-between',
-                      padding: isCollapsed ? '9px 0' : '9px 12px',
-                      cursor: 'pointer',
-                    }}
-                    title="EOI"
-                  >
-                    <Link
-                      href="/eoi?tab=all"
-                      onClick={() => setEoiExpanded(true)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', flex: 1 }}
-                    >
-                      <FileText size={17} color={normalize(pathname) === '/eoi' ? 'var(--accent)' : 'currentColor'} />
-                      {!isCollapsed && <span style={{ fontWeight: 600 }}>EOI</span>}
-                    </Link>
-                    {!isCollapsed && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setEoiExpanded(!eoiExpanded);
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: '4px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--text-muted)'
-                        }}
-                      >
-                        <ChevronDown
-                          size={14}
-                          style={{
-                            transform: eoiExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                            transition: 'transform 0.2s',
-                          }}
-                        />
-                      </button>
-                    )}
-                  </div>
-                  {!isCollapsed && eoiExpanded && (
-                    <div style={{ paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 2, borderLeft: '1px solid var(--border)', marginLeft: 16 }}>
-                      <Link href="/eoi?tab=all" className={`sidebar-nav-link ${normalize(pathname) === '/eoi' && (currentTab === 'all' || !currentTab) ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>All EOI</span>
-                      </Link>
-                      <Link href="/eoi?tab=pending" className={`sidebar-nav-link ${normalize(pathname) === '/eoi' && currentTab === 'pending' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Pending</span>
-                      </Link>
-                      <Link href="/eoi?tab=confirmed" className={`sidebar-nav-link ${normalize(pathname) === '/eoi' && currentTab === 'confirmed' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Confirmed</span>
-                      </Link>
-                      <Link href="/eoi?tab=expiring" className={`sidebar-nav-link ${normalize(pathname) === '/eoi' && currentTab === 'expiring' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Expiring</span>
-                      </Link>
-                    </div>
-                  )}
-                </div>
+                {/* 8. EOI */}
+                <Link
+                  href="/eoi"
+                  className={`sidebar-nav-link ${isLinkActive('eoi', '/eoi') ? 'active' : ''}`}
+                  style={{
+                    justifyContent: isCollapsed ? 'center' : 'flex-start',
+                    padding: isCollapsed ? '9px 0' : '9px 12px',
+                  }}
+                  title="Expressions of Interest"
+                >
+                  <FileText size={17} color={isLinkActive('eoi', '/eoi') ? 'var(--accent)' : 'currentColor'} />
+                  {!isCollapsed && <span>EOI Tokens</span>}
+                </Link>
 
-                {/* 9. BOOKINGS (WITH SUB-ITEMS: TEAM BOOKINGS, PENDING, CONFIRMED, CANCELLED) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div
-                    className={`sidebar-nav-link ${normalize(pathname) === '/bookings' ? 'active' : ''}`}
-                    style={{
-                      justifyContent: isCollapsed ? 'center' : 'space-between',
-                      padding: isCollapsed ? '9px 0' : '9px 12px',
-                      cursor: 'pointer',
-                    }}
-                    title="Bookings"
-                  >
-                    <Link
-                      href="/bookings?tab=team"
-                      onClick={() => setBookingsExpanded(true)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', flex: 1 }}
-                    >
-                      <Award size={17} color={normalize(pathname) === '/bookings' ? 'var(--accent)' : 'currentColor'} />
-                      {!isCollapsed && <span style={{ fontWeight: 600 }}>Bookings</span>}
-                    </Link>
-                    {!isCollapsed && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setBookingsExpanded(!bookingsExpanded);
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: '4px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--text-muted)'
-                        }}
-                      >
-                        <ChevronDown
-                          size={14}
-                          style={{
-                            transform: bookingsExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                            transition: 'transform 0.2s',
-                          }}
-                        />
-                      </button>
-                    )}
-                  </div>
-                  {!isCollapsed && bookingsExpanded && (
-                    <div style={{ paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 2, borderLeft: '1px solid var(--border)', marginLeft: 16 }}>
-                      <Link href="/bookings?tab=team" className={`sidebar-nav-link ${normalize(pathname) === '/bookings' && (currentTab === 'team' || !currentTab) ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Team Bookings</span>
-                      </Link>
-                      <Link href="/bookings?tab=pending" className={`sidebar-nav-link ${normalize(pathname) === '/bookings' && currentTab === 'pending' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Pending</span>
-                      </Link>
-                      <Link href="/bookings?tab=confirmed" className={`sidebar-nav-link ${normalize(pathname) === '/bookings' && currentTab === 'confirmed' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Confirmed</span>
-                      </Link>
-                      <Link href="/bookings?tab=cancelled" className={`sidebar-nav-link ${normalize(pathname) === '/bookings' && currentTab === 'cancelled' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Cancelled</span>
-                      </Link>
-                    </div>
-                  )}
-                </div>
+                {/* 9. BOOKINGS */}
+                <Link
+                  href="/bookings"
+                  className={`sidebar-nav-link ${isLinkActive('bookings', '/bookings') ? 'active' : ''}`}
+                  style={{
+                    justifyContent: isCollapsed ? 'center' : 'flex-start',
+                    padding: isCollapsed ? '9px 0' : '9px 12px',
+                  }}
+                  title="Bookings"
+                >
+                  <Award size={17} color={isLinkActive('bookings', '/bookings') ? 'var(--accent)' : 'currentColor'} />
+                  {!isCollapsed && <span>Bookings</span>}
+                </Link>
 
-                {/* 10. PAYMENTS (WITH SUB-ITEMS: DUE, OVERDUE, COLLECTIONS) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div
-                    className={`sidebar-nav-link ${normalize(pathname) === '/payments' ? 'active' : ''}`}
-                    style={{
-                      justifyContent: isCollapsed ? 'center' : 'space-between',
-                      padding: isCollapsed ? '9px 0' : '9px 12px',
-                      cursor: 'pointer',
-                    }}
-                    title="Payments"
-                  >
-                    <Link
-                      href="/payments?tab=due"
-                      onClick={() => setPaymentsExpanded(true)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', flex: 1 }}
-                    >
-                      <DollarSign size={17} color={normalize(pathname) === '/payments' ? 'var(--accent)' : 'currentColor'} />
-                      {!isCollapsed && <span style={{ fontWeight: 600 }}>Payments</span>}
-                    </Link>
-                    {!isCollapsed && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setPaymentsExpanded(!paymentsExpanded);
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: '4px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--text-muted)'
-                        }}
-                      >
-                        <ChevronDown
-                          size={14}
-                          style={{
-                            transform: paymentsExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                            transition: 'transform 0.2s',
-                          }}
-                        />
-                      </button>
-                    )}
-                  </div>
-                  {!isCollapsed && paymentsExpanded && (
-                    <div style={{ paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 2, borderLeft: '1px solid var(--border)', marginLeft: 16 }}>
-                      <Link href="/payments?tab=due" className={`sidebar-nav-link ${normalize(pathname) === '/payments' && (currentTab === 'due' || !currentTab) ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Due</span>
-                      </Link>
-                      <Link href="/payments?tab=overdue" className={`sidebar-nav-link ${normalize(pathname) === '/payments' && currentTab === 'overdue' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Overdue</span>
-                      </Link>
-                      <Link href="/payments?tab=collections" className={`sidebar-nav-link ${normalize(pathname) === '/payments' && currentTab === 'collections' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Collections</span>
-                      </Link>
-                    </div>
-                  )}
-                </div>
+                {/* 10. PAYMENTS */}
+                <Link
+                  href="/payments"
+                  className={`sidebar-nav-link ${isLinkActive('payments', '/payments') ? 'active' : ''}`}
+                  style={{
+                    justifyContent: isCollapsed ? 'center' : 'flex-start',
+                    padding: isCollapsed ? '9px 0' : '9px 12px',
+                  }}
+                  title="Payment Milestones"
+                >
+                  <DollarSign size={17} color={isLinkActive('payments', '/payments') ? 'var(--accent)' : 'currentColor'} />
+                  {!isCollapsed && <span>Payments</span>}
+                </Link>
 
-                {/* 11. COMMISSION (WITH SUB-ITEMS: TEAM COMMISSION, PAYOUT STATUS) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div
-                    className={`sidebar-nav-link ${normalize(pathname) === '/commission' ? 'active' : ''}`}
-                    style={{
-                      justifyContent: isCollapsed ? 'center' : 'space-between',
-                      padding: isCollapsed ? '9px 0' : '9px 12px',
-                      cursor: 'pointer',
-                    }}
-                    title="Commission"
-                  >
-                    <Link
-                      href="/commission?tab=team"
-                      onClick={() => setCommissionExpanded(true)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', flex: 1 }}
-                    >
-                      <Percent size={17} color={normalize(pathname) === '/commission' ? 'var(--accent)' : 'currentColor'} />
-                      {!isCollapsed && <span style={{ fontWeight: 600 }}>Commission</span>}
-                    </Link>
-                    {!isCollapsed && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setCommissionExpanded(!commissionExpanded);
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: '4px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--text-muted)'
-                        }}
-                      >
-                        <ChevronDown
-                          size={14}
-                          style={{
-                            transform: commissionExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                            transition: 'transform 0.2s',
-                          }}
-                        />
-                      </button>
-                    )}
-                  </div>
-                  {!isCollapsed && commissionExpanded && (
-                    <div style={{ paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 2, borderLeft: '1px solid var(--border)', marginLeft: 16 }}>
-                      <Link href="/commission?tab=team" className={`sidebar-nav-link ${normalize(pathname) === '/commission' && (currentTab === 'team' || !currentTab) ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Team Commission</span>
-                      </Link>
-                      <Link href="/commission?tab=payouts" className={`sidebar-nav-link ${normalize(pathname) === '/commission' && currentTab === 'payouts' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Payout Status</span>
-                      </Link>
-                    </div>
-                  )}
-                </div>
+                {/* 11. COMMISSION */}
+                <Link
+                  href="/commission"
+                  className={`sidebar-nav-link ${isLinkActive('commission', '/commission') ? 'active' : ''}`}
+                  style={{
+                    justifyContent: isCollapsed ? 'center' : 'flex-start',
+                    padding: isCollapsed ? '9px 0' : '9px 12px',
+                  }}
+                  title="Commissions"
+                >
+                  <Percent size={17} color={isLinkActive('commission', '/commission') ? 'var(--accent)' : 'currentColor'} />
+                  {!isCollapsed && <span>Commission</span>}
+                </Link>
 
-                {/* 12. ANALYTICS (WITH SUB-ITEMS: TEAM PERFORMANCE, LEAD CONVERSION, SITE VISIT CONVERSION, EOI CONVERSION, BOOKING CONVERSION) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div
-                    className={`sidebar-nav-link ${normalize(pathname) === '/analytics' ? 'active' : ''}`}
-                    style={{
-                      justifyContent: isCollapsed ? 'center' : 'space-between',
-                      padding: isCollapsed ? '9px 0' : '9px 12px',
-                      cursor: 'pointer',
-                    }}
-                    title="Analytics"
-                  >
-                    <Link
-                      href="/analytics?tab=performance"
-                      onClick={() => setAnalyticsExpanded(true)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', flex: 1 }}
-                    >
-                      <BarChart2 size={17} color={normalize(pathname) === '/analytics' ? 'var(--accent)' : 'currentColor'} />
-                      {!isCollapsed && <span style={{ fontWeight: 600 }}>Analytics</span>}
-                    </Link>
-                    {!isCollapsed && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setAnalyticsExpanded(!analyticsExpanded);
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: '4px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--text-muted)'
-                        }}
-                      >
-                        <ChevronDown
-                          size={14}
-                          style={{
-                            transform: analyticsExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                            transition: 'transform 0.2s',
-                          }}
-                        />
-                      </button>
-                    )}
-                  </div>
-                  {!isCollapsed && analyticsExpanded && (
-                    <div style={{ paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 2, borderLeft: '1px solid var(--border)', marginLeft: 16 }}>
-                      <Link href="/analytics?tab=performance" className={`sidebar-nav-link ${normalize(pathname) === '/analytics' && (currentTab === 'performance' || !currentTab) ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Team Performance</span>
-                      </Link>
-                      <Link href="/analytics?tab=leads" className={`sidebar-nav-link ${normalize(pathname) === '/analytics' && currentTab === 'leads' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Lead Conversion</span>
-                      </Link>
-                      <Link href="/analytics?tab=site_visits" className={`sidebar-nav-link ${normalize(pathname) === '/analytics' && currentTab === 'site_visits' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Site Visit Conversion</span>
-                      </Link>
-                      <Link href="/analytics?tab=eoi" className={`sidebar-nav-link ${normalize(pathname) === '/analytics' && currentTab === 'eoi' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>EOI Conversion</span>
-                      </Link>
-                      <Link href="/analytics?tab=bookings" className={`sidebar-nav-link ${normalize(pathname) === '/analytics' && currentTab === 'bookings' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Booking Conversion</span>
-                      </Link>
-                    </div>
-                  )}
-                </div>
+                {/* 12. ANALYTICS */}
+                <Link
+                  href="/analytics"
+                  className={`sidebar-nav-link ${isLinkActive('analytics', '/analytics') ? 'active' : ''}`}
+                  style={{
+                    justifyContent: isCollapsed ? 'center' : 'flex-start',
+                    padding: isCollapsed ? '9px 0' : '9px 12px',
+                  }}
+                  title="Analytics & Conversion"
+                >
+                  <BarChart2 size={17} color={isLinkActive('analytics', '/analytics') ? 'var(--accent)' : 'currentColor'} />
+                  {!isCollapsed && <span>Analytics</span>}
+                </Link>
 
-                {/* 13. GENERAL SETTINGS / WHATSAPP HUB (WITH SUB-ITEMS: WHATSAPP HUB, BROADCAST, TEMPLATES, AUDIENCE GROUPS) */}
+                {/* 13. GENERAL SETTINGS */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <div
                     className={`sidebar-nav-link ${normalize(pathname) === '/whatsapp' || normalize(pathname) === '/campaigns' || normalize(pathname) === '/templates' || normalize(pathname) === '/groups' ? 'active' : ''}`}
@@ -1617,7 +1047,7 @@ function BottomNavContent({ active }) {
                         <span>WhatsApp Hub</span>
                       </Link>
                       <Link href="/campaigns" className={`sidebar-nav-link ${normalize(pathname) === '/campaigns' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
-                        <span>Broadcast</span>
+                        <span>Broadcast Campaigns</span>
                       </Link>
                       <Link href="/templates" className={`sidebar-nav-link ${normalize(pathname) === '/templates' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
                         <span>Message Templates</span>
@@ -1706,8 +1136,8 @@ function BottomNavContent({ active }) {
                 );
               })
             )
-          ) : (
-            /* Render Owner / SuperAdmin Navigation */
+          ) : isTenantOwner ? (
+            /* OWNER / SUPERADMIN NAVIGATION (FULL OWNER CONTROLS) */
             ownerDesktopItems.map(({ href, label, icon: Icon, key, badge }) => {
               const activeState = isLinkActive(key, href);
               return (
@@ -1740,7 +1170,210 @@ function BottomNavContent({ active }) {
                 </Link>
               );
             })
+          ) : (
+            /* DEFAULT / AGENT FALLBACK */
+            /* Non-Real-Estate Navigation (Owner & Manager) */
+            <>
+              <Link
+                href="/dashboard"
+                className={`sidebar-nav-link ${isLinkActive('dashboard', '/dashboard') ? 'active' : ''}`}
+                style={{ justifyContent: isCollapsed ? 'center' : 'flex-start', padding: isCollapsed ? '9px 0' : '9px 12px' }}
+                title="Dashboard"
+              >
+                <Home size={17} color={isLinkActive('dashboard', '/dashboard') ? 'var(--accent)' : 'currentColor'} />
+                {!isCollapsed && <span style={{ fontWeight: 600 }}>Dashboard</span>}
+              </Link>
+
+              <Link
+                href="/leads"
+                className={`sidebar-nav-link ${isLinkActive('leads', '/leads') ? 'active' : ''}`}
+                style={{ justifyContent: isCollapsed ? 'center' : 'flex-start', padding: isCollapsed ? '9px 0' : '9px 12px' }}
+                title="Leads Pipeline"
+              >
+                <Users size={17} color={isLinkActive('leads', '/leads') ? 'var(--accent)' : 'currentColor'} />
+                {!isCollapsed && <span>Leads Pipeline</span>}
+              </Link>
+
+              {isEducation ? (
+                <Link
+                  href="/catalogue"
+                  className={`sidebar-nav-link ${isLinkActive('catalogue', '/catalogue') ? 'active' : ''}`}
+                  style={{ justifyContent: isCollapsed ? 'center' : 'flex-start', padding: isCollapsed ? '9px 0' : '9px 12px' }}
+                  title="Colleges & Courses"
+                >
+                  <GraduationCap size={17} color={isLinkActive('catalogue', '/catalogue') ? 'var(--accent)' : 'currentColor'} />
+                  {!isCollapsed && <span>Colleges & Courses</span>}
+                </Link>
+              ) : (
+                <Link
+                  href="/projects"
+                  className={`sidebar-nav-link ${isLinkActive('projects', '/projects') ? 'active' : ''}`}
+                  style={{ justifyContent: isCollapsed ? 'center' : 'flex-start', padding: isCollapsed ? '9px 0' : '9px 12px' }}
+                  title="Products & Packages"
+                >
+                  <Package size={17} color={isLinkActive('projects', '/projects') ? 'var(--accent)' : 'currentColor'} />
+                  {!isCollapsed && <span>Products & Packages</span>}
+                </Link>
+              )}
+
+              {isTenantOwner && (
+                <Link
+                  href="/integrations"
+                  className={`sidebar-nav-link ${isLinkActive('integrations', '/integrations') ? 'active' : ''}`}
+                  style={{ justifyContent: isCollapsed ? 'center' : 'flex-start', padding: isCollapsed ? '9px 0' : '9px 12px' }}
+                  title="Ads & Lead Integrations"
+                >
+                  <Zap size={17} color={isLinkActive('integrations', '/integrations') ? 'var(--accent)' : 'currentColor'} />
+                  {!isCollapsed && <span>Ads & Integrations</span>}
+                </Link>
+              )}
+
+              <Link
+                href="/analytics"
+                className={`sidebar-nav-link ${isLinkActive('analytics', '/analytics') ? 'active' : ''}`}
+                style={{ justifyContent: isCollapsed ? 'center' : 'flex-start', padding: isCollapsed ? '9px 0' : '9px 12px' }}
+                title="Sales Analytics"
+              >
+                <BarChart2 size={17} color={isLinkActive('analytics', '/analytics') ? 'var(--accent)' : 'currentColor'} />
+                {!isCollapsed && <span>Sales Analytics</span>}
+              </Link>
+
+              {/* GENERAL SETTINGS / WHATSAPP HUB (COLLAPSIBLE GROUP) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <div
+                  className={`sidebar-nav-link ${normalize(pathname) === '/whatsapp' || normalize(pathname) === '/campaigns' || normalize(pathname) === '/templates' || normalize(pathname) === '/groups' ? 'active' : ''}`}
+                  style={{
+                    justifyContent: isCollapsed ? 'center' : 'space-between',
+                    padding: isCollapsed ? '9px 0' : '9px 12px',
+                    cursor: 'pointer',
+                  }}
+                  title="General Settings"
+                >
+                  <Link
+                    href="/whatsapp"
+                    onClick={() => setGeneralControlsExpanded(true)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', flex: 1 }}
+                  >
+                    <Sliders size={17} color={normalize(pathname) === '/whatsapp' || normalize(pathname) === '/campaigns' || normalize(pathname) === '/templates' || normalize(pathname) === '/groups' ? 'var(--accent)' : 'currentColor'} />
+                    {!isCollapsed && <span style={{ fontWeight: 600 }}>General Settings</span>}
+                  </Link>
+                  {!isCollapsed && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setGeneralControlsExpanded(!generalControlsExpanded);
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: '4px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--text-muted)'
+                      }}
+                    >
+                      <ChevronDown
+                        size={14}
+                        style={{
+                          transform: generalControlsExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                          transition: 'transform 0.2s',
+                        }}
+                      />
+                    </button>
+                  )}
+                </div>
+                {!isCollapsed && generalControlsExpanded && (
+                  <div style={{ paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 2, borderLeft: '1px solid var(--border)', marginLeft: 16 }}>
+                    <Link href="/whatsapp" className={`sidebar-nav-link ${normalize(pathname) === '/whatsapp' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
+                      <span>WhatsApp Hub</span>
+                    </Link>
+                    <Link href="/campaigns" className={`sidebar-nav-link ${normalize(pathname) === '/campaigns' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
+                      <span>Broadcast Campaigns</span>
+                    </Link>
+                    <Link href="/templates" className={`sidebar-nav-link ${normalize(pathname) === '/templates' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
+                      <span>Message Templates</span>
+                    </Link>
+                    <Link href="/groups" className={`sidebar-nav-link ${normalize(pathname) === '/groups' ? 'active' : ''}`} style={{ padding: '6px 10px', fontSize: 12, minHeight: 28 }}>
+                      <span>Audience Groups</span>
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              <Link
+                href="/notifications"
+                className={`sidebar-nav-link ${isLinkActive('notifications', '/notifications') ? 'active' : ''}`}
+                style={{
+                  justifyContent: isCollapsed ? 'center' : 'space-between',
+                  padding: isCollapsed ? '9px 0' : '9px 12px',
+                }}
+                title="Notifications"
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Bell size={17} color={isLinkActive('notifications', '/notifications') ? 'var(--accent)' : 'currentColor'} />
+                  {!isCollapsed && <span>Notifications</span>}
+                </div>
+                {!isCollapsed && unreadCount > 0 && (
+                  <span style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    padding: '2px 7px',
+                    borderRadius: 10,
+                    background: '#ef4444',
+                    color: '#fff',
+                  }}>
+                    {unreadCount}
+                  </span>
+                )}
+              </Link>
+
+              <Link
+                href={profileHref}
+                className={`sidebar-nav-link ${isLinkActive('profile', profileHref) ? 'active' : ''}`}
+                style={{
+                  justifyContent: isCollapsed ? 'center' : 'flex-start',
+                  padding: isCollapsed ? '9px 0' : '9px 12px',
+                }}
+                title="Profile"
+              >
+                <User size={17} color={isLinkActive('profile', profileHref) ? 'var(--accent)' : 'currentColor'} />
+                {!isCollapsed && <span>Organization & Profile</span>}
+              </Link>
+            </>
           )}
+        </div>
+
+        {/* Universal Logout Button for All Users */}
+        <div style={{ padding: isCollapsed ? '8px 0 4px' : '8px 2px 4px', borderTop: '1px solid var(--border)', marginTop: 'auto' }}>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="sidebar-nav-link"
+            style={{
+              width: '100%',
+              background: 'rgba(239, 68, 68, 0.06)',
+              border: '1px solid rgba(239, 68, 68, 0.15)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: isCollapsed ? 'center' : 'flex-start',
+              gap: 10,
+              padding: isCollapsed ? '10px 0' : '10px 12px',
+              borderRadius: 8,
+              color: '#ef4444',
+              fontSize: 13,
+              fontWeight: 700,
+              transition: 'all 0.15s ease',
+            }}
+            title="Log Out"
+          >
+            <LogOut size={17} color="#ef4444" />
+            {!isCollapsed && <span>Log Out</span>}
+          </button>
         </div>
 
         {/* Legal links in sidebar */}
@@ -1750,10 +1383,9 @@ function BottomNavContent({ active }) {
               display: 'flex',
               alignItems: 'center',
               gap: 12,
-              padding: '8px 8px 4px',
+              padding: '6px 8px 4px',
               fontSize: 11,
               color: 'var(--text-muted)',
-              marginTop: 'auto',
             }}
           >
             <Link

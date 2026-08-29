@@ -1,15 +1,17 @@
 'use client';
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import Link from 'next/link';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
-import { getUser } from '@/lib/auth';
+import { getUser, isOwner, isManager, isRealEstateTenant } from '@/lib/auth';
 import { useRouter, useSearchParams } from 'next/navigation';
 import BottomNav from '@/components/BottomNav';
 import FormsModule from '@/components/admin/modules/FormsModule';
 import {
   Users, Shield, Award, FileText, CheckCircle2, XCircle, Plus, Trash2,
   Edit2, Check, X, DollarSign, AlertTriangle, TrendingUp, HelpCircle, UserPlus,
-  ShieldCheck, RefreshCw, BarChart2, Settings, ArrowRight, UserCheck, Clock, Sliders
+  ShieldCheck, RefreshCw, BarChart2, Settings, ArrowRight, UserCheck, Clock,
+  Sliders, ArrowRightLeft, MapPin, Sparkles, CheckSquare, Search, Flame, Filter
 } from 'lucide-react';
 
 const PERMISSION_OPTIONS = [
@@ -43,6 +45,34 @@ const PERMISSION_OPTIONS = [
   { value: 'AUDIT_VIEW', label: 'AUDIT_VIEW', desc: 'View full security audit trails.' },
 ];
 
+const DEFAULT_SYSTEM_ROLES = [
+  {
+    _id: 'default_manager',
+    name: 'manager',
+    roleType: 'MANAGER',
+    isSystemRole: true,
+    description: 'Supervise sales agents, distribute leads, approve transfers, and view team reports',
+    permissions: [
+      'LEAD_VIEW', 'LEAD_CREATE', 'LEAD_EDIT', 'LEAD_CLAIM', 'LEAD_ASSIGN',
+      'LEAD_TRANSFER_REQUEST', 'LEAD_TRANSFER_APPROVE', 'LEAD_FORCE_TRANSFER',
+      'LEAD_VIEW_TEAM', 'STAFF_VIEW', 'STAFF_CREATE', 'STAFF_EDIT',
+      'ROLE_VIEW', 'REPORT_VIEW_TEAM', 'INCENTIVE_VIEW_TEAM', 'INCENTIVE_APPROVE',
+      'ACTIVITY_VIEW'
+    ]
+  },
+  {
+    _id: 'default_agent',
+    name: 'agent',
+    roleType: 'AGENT',
+    isSystemRole: true,
+    description: 'View and edit assigned leads, claim new leads, and submit transfer requests',
+    permissions: [
+      'LEAD_VIEW', 'LEAD_CREATE', 'LEAD_EDIT', 'LEAD_CLAIM',
+      'LEAD_TRANSFER_REQUEST', 'INCENTIVE_VIEW_SELF', 'ACTIVITY_VIEW'
+    ]
+  }
+];
+
 export default function AgencyPage() {
   return (
     <Suspense fallback={<div className="app-shell flex items-center justify-center min-h-screen"><div className="spinner" /></div>}>
@@ -56,15 +86,17 @@ function AgencyPageContent() {
   const searchParams = useSearchParams();
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'roster' | 'roles' | 'incentives' | 'logs' | 'forms'
+  const [activeTab, setActiveTab] = useState('performance'); // 'performance' | 'workload' | 'members' | 'transfers' | 'forms' | 'roles' | 'incentives' | 'activity'
 
   useEffect(() => {
     const tabParam = searchParams?.get('tab');
     if (tabParam) {
-      if (tabParam === 'members' || tabParam === 'workload') setActiveTab('roster');
-      else if (tabParam === 'performance') setActiveTab('overview');
-      else if (tabParam === 'activity') setActiveTab('logs');
-      else if (['overview', 'roster', 'forms', 'roles', 'incentives', 'logs'].includes(tabParam)) {
+      if (tabParam === 'roster' || tabParam === 'members') setActiveTab('members');
+      else if (tabParam === 'overview' || tabParam === 'performance') setActiveTab('performance');
+      else if (tabParam === 'workload') setActiveTab('workload');
+      else if (tabParam === 'transfers') setActiveTab('transfers');
+      else if (tabParam === 'activity' || tabParam === 'logs') setActiveTab('activity');
+      else if (['performance', 'workload', 'members', 'transfers', 'forms', 'roles', 'incentives', 'activity'].includes(tabParam)) {
         setActiveTab(tabParam);
       }
     }
@@ -85,9 +117,13 @@ function AgencyPageContent() {
     auditLogs: []
   });
 
-  // Roster, Roles & Policies State
+  // Team Data States
   const [agents, setAgents] = useState([]);
-  const [roles, setRoles] = useState([]);
+  const [roles, setRoles] = useState(DEFAULT_SYSTEM_ROLES);
+  const [teamPerformance, setTeamPerformance] = useState([]);
+  const [teamWorkload, setTeamWorkload] = useState([]);
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [transferNotifications, setTransferNotifications] = useState([]);
   const [incentivesList, setIncentivesList] = useState([]);
   const [globalActivity, setGlobalActivity] = useState([]);
   const [activePolicy, setActivePolicy] = useState({
@@ -97,7 +133,13 @@ function AgencyPageContent() {
     closerPercentage: 60
   });
 
-  // Modal / Editing State
+  // Filters & Search
+  const [performanceSearch, setPerformanceSearch] = useState('');
+  const [workloadSearch, setWorkloadSearch] = useState('');
+  const [memberFilter, setMemberFilter] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'INACTIVE' | 'AVAILABLE'
+  const [sortKey, setSortKey] = useState('bookings'); // 'bookings' | 'revenue' | 'conversion' | 'leads'
+
+  // Modals
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [editingRole, setEditingRole] = useState(null);
   const [roleForm, setRoleForm] = useState({ name: '', roleType: 'AGENT', permissions: [] });
@@ -116,7 +158,16 @@ function AgencyPageContent() {
     managerId: ''
   });
 
-  const [incentiveActionData, setIncentiveActionData] = useState(null); // { id, status, reason: '' }
+  // Force Transfer Modal State
+  const [showForceTransferModal, setShowForceTransferModal] = useState(false);
+  const [forceTransferForm, setForceTransferForm] = useState({
+    leadId: '',
+    targetUserId: '',
+    reason: 'Manager Reallocation'
+  });
+  const [unassignedLeadsList, setUnassignedLeadsList] = useState([]);
+
+  const [incentiveActionData, setIncentiveActionData] = useState(null);
 
   useEffect(() => {
     const u = getUser();
@@ -125,51 +176,146 @@ function AgencyPageContent() {
       return;
     }
     setCurrentUser(u);
-    fetchData();
-  }, []);
+  }, [router]);
 
-  const fetchData = async () => {
+  const formatINR = (val) => {
+    if (!val || isNaN(val)) return '₹0';
+    if (val >= 10000000) return `₹${(val / 10000000).toFixed(2)} Cr`;
+    if (val >= 100000) return `₹${(val / 100000).toFixed(2)} L`;
+    return `₹${Number(val).toLocaleString('en-IN')}`;
+  };
+
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Fetch dashboard overview
-      const resDash = await api.get('/agency/dashboard');
-      setDashboardData(resDash.data);
+      const [
+        dashRes,
+        agentsRes,
+        rolesRes,
+        incentivesRes,
+        activityRes,
+        perfRes,
+        workloadRes,
+        membersRes,
+        notifRes,
+        leadsRes,
+        policiesRes
+      ] = await Promise.all([
+        api.get('/agency/dashboard').catch(() => ({ data: null })),
+        api.get('/company/agents').catch(() => ({ data: { agents: [] } })),
+        api.get('/agency/roles').catch(() => ({ data: { roles: [] } })),
+        api.get('/agency/incentives').catch(() => ({ data: { incentives: [] } })),
+        api.get('/agency/activity').catch(() => ({ data: { activities: [] } })),
+        api.get('/real-estate/team/performance').catch(() => ({ data: { data: [] } })),
+        api.get('/real-estate/team/workload').catch(() => ({ data: { data: [] } })),
+        api.get('/real-estate/team/members').catch(() => ({ data: { data: [] } })),
+        api.get('/notifications').catch(() => ({ data: { notifications: [] } })),
+        api.get('/leads?limit=100').catch(() => ({ data: { leads: [] } })),
+        api.get('/agency/incentive-policies').catch(() => ({ data: { policies: [] } })),
+      ]);
 
-      // 2. Fetch company roster
-      const resAgents = await api.get('/company/agents');
-      setAgents(resAgents.data?.agents || []);
+      if (dashRes.data) setDashboardData(dashRes.data);
+      setAgents(agentsRes.data?.agents || []);
+      
+      const backendRoles = rolesRes.data?.roles || [];
+      if (backendRoles.length > 0) {
+        const hasManager = backendRoles.some(r => r.roleType === 'MANAGER');
+        const hasAgent = backendRoles.some(r => r.roleType === 'AGENT');
+        const combined = [...backendRoles];
+        if (!hasManager) combined.unshift(DEFAULT_SYSTEM_ROLES[0]);
+        if (!hasAgent) combined.push(DEFAULT_SYSTEM_ROLES[1]);
+        setRoles(combined);
+      } else {
+        setRoles(DEFAULT_SYSTEM_ROLES);
+      }
 
-      // 3. Fetch custom roles
-      const resRoles = await api.get('/agency/roles');
-      setRoles(resRoles.data?.roles || []);
+      setIncentivesList(incentivesRes.data?.incentives || []);
+      setGlobalActivity(activityRes.data?.activities || []);
+      setTeamPerformance(perfRes.data?.data || []);
+      setTeamWorkload(workloadRes.data?.data || []);
+      setTeamMembers(membersRes.data?.data || []);
+      setUnassignedLeadsList(leadsRes.data?.leads || []);
+      
+      const policies = policiesRes.data?.policies || [];
+      if (policies && policies.length > 0) {
+        setActivePolicy(policies.find(p => p.isActive) || policies[0]);
+      }
 
-      // 4. Fetch incentives list
-      const resIncentives = await api.get('/agency/incentives');
-      setIncentivesList(resIncentives.data?.incentives || []);
-
-      // 5. Fetch Global Activity Feed
-      const resActivity = await api.get('/agency/activity');
-      setGlobalActivity(resActivity.data?.activities || []);
-
+      const notifs = notifRes.data?.notifications || [];
+      setTransferNotifications(notifs.filter(n => n.type === 'transfer_request' || n.transferRequestId));
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Error loading agency dashboard data');
+      toast.error(err.response?.data?.message || 'Error loading team data');
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Lead Transfer Actions
+  const handleAcceptTransfer = async (notif) => {
+    const reqId = notif.transferRequestId?._id || notif.transferRequestId;
+    if (!reqId) return toast.error('Transfer request ID missing');
+    try {
+      await api.post(`/agency/transfer-requests/${reqId}/accept`);
+      toast.success('Lead transfer request accepted & ownership transferred! ✅');
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to accept transfer');
+    }
+  };
+
+  const handleRejectTransfer = async (notif) => {
+    const reqId = notif.transferRequestId?._id || notif.transferRequestId;
+    if (!reqId) return toast.error('Transfer request ID missing');
+    try {
+      await api.post(`/agency/transfer-requests/${reqId}/reject`);
+      toast.success('Lead transfer request rejected');
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to reject transfer');
+    }
+  };
+
+  const handleForceTransferSubmit = async (e) => {
+    e.preventDefault();
+    if (!forceTransferForm.leadId || !forceTransferForm.targetUserId) {
+      return toast.error('Please select Lead and Target Agent');
+    }
+    try {
+      await api.post(`/agency/leads/${forceTransferForm.leadId}/force-transfer`, {
+        targetUserId: forceTransferForm.targetUserId,
+        reason: forceTransferForm.reason || 'Manager Direct Override'
+      });
+      toast.success('Lead force-transferred successfully! 🎯');
+      setShowForceTransferModal(false);
+      setForceTransferForm({ leadId: '', targetUserId: '', reason: 'Manager Reallocation' });
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Force transfer failed');
     }
   };
 
   // Roles Operations
   const handleSaveRole = async (e) => {
     e.preventDefault();
-    if (!roleForm.name.trim()) return toast.error('Role name is required');
+    const cleanRoleName = (roleForm.name || '').trim().toLowerCase();
+    if (!cleanRoleName) return toast.error('Role name is required');
     if (roleForm.permissions.length === 0) return toast.error('Please assign at least one permission');
 
     try {
+      const payload = {
+        ...roleForm,
+        name: cleanRoleName,
+      };
+
       if (editingRole) {
-        await api.patch(`/agency/roles/${editingRole._id}`, roleForm);
+        await api.patch(`/agency/roles/${editingRole._id}`, payload);
         toast.success('Custom role updated successfully');
       } else {
-        await api.post('/agency/roles', roleForm);
+        await api.post('/agency/roles', payload);
         toast.success('Custom role created successfully');
       }
       setShowRoleModal(false);
@@ -273,35 +419,22 @@ function AgencyPageContent() {
     }
   };
 
-  // Delete / Remove Agent from Roster
   const handleDeleteAgent = async (agent) => {
-    if (!confirm(`Are you sure you want to remove "${agent.name}" (${agent.usercode || 'Member'}) from your organization team roster?`)) {
+    if (!confirm(`Are you sure you want to remove "${agent.name}" from your organization team roster?`)) {
       return;
     }
     try {
       await api.delete(`/agency/agents/${agent._id}`);
       toast.success(`Team member ${agent.name} removed successfully ✅`);
       fetchData();
-    } catch (err) {
+    } catch {
       try {
         await api.delete(`/company/agents/${agent._id}`);
         toast.success(`Team member ${agent.name} removed successfully ✅`);
         fetchData();
       } catch (fallbackErr) {
-        toast.error(err.response?.data?.message || 'Failed to remove team member');
+        toast.error(fallbackErr.response?.data?.message || 'Failed to remove team member');
       }
-    }
-  };
-
-  // Incentive Policy updates
-  const handleSavePolicy = async (e) => {
-    e.preventDefault();
-    try {
-      await api.post('/agency/incentive-policies', activePolicy);
-      toast.success('Active incentive policy updated');
-      fetchData();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to update policy');
     }
   };
 
@@ -321,7 +454,6 @@ function AgencyPageContent() {
     }
   };
 
-  // Permission selection logic
   const handleTogglePermission = (p) => {
     const current = [...roleForm.permissions];
     const idx = current.indexOf(p);
@@ -341,52 +473,90 @@ function AgencyPageContent() {
     );
   }
 
-  const isOwner = dashboardData.role === 'OWNER';
-  const isManager = dashboardData.role === 'MANAGER';
+  const isUserOwner = isOwner(currentUser) || dashboardData.role === 'OWNER';
+  const isUserManager = isManager(currentUser) || dashboardData.role === 'MANAGER';
+  const isRE = isRealEstateTenant(currentUser);
+
+  // Filtered & Sorted Performance Data
+  const filteredPerformance = [...teamPerformance]
+    .filter(a => {
+      if (!performanceSearch) return true;
+      const q = performanceSearch.toLowerCase();
+      return a.name.toLowerCase().includes(q) || (a.email && a.email.toLowerCase().includes(q));
+    })
+    .sort((a, b) => {
+      if (sortKey === 'revenue') return (b.bookingValue || 0) - (a.bookingValue || 0);
+      if (sortKey === 'leads') return (b.leadsAssigned || 0) - (a.leadsAssigned || 0);
+      if (sortKey === 'conversion') return parseFloat(b.conversionRate || 0) - parseFloat(a.conversionRate || 0);
+      return (b.bookings || 0) - (a.bookings || 0);
+    });
+
+  // Filtered Workload Data
+  const filteredWorkload = teamWorkload.filter(a => {
+    if (!workloadSearch) return true;
+    const q = workloadSearch.toLowerCase();
+    return a.name.toLowerCase().includes(q) || (a.email && a.email.toLowerCase().includes(q));
+  });
+
+  // Filtered Members Data
+  const filteredMembers = (teamMembers.length > 0 ? teamMembers : agents).filter(m => {
+    if (memberFilter === 'ACTIVE') return m.employeeStatus === 'active' || m.isActive !== false;
+    if (memberFilter === 'INACTIVE') return m.employeeStatus === 'inactive' || m.isActive === false;
+    if (memberFilter === 'AVAILABLE') return m.isAvailable !== false && m.isAvailableForRouting !== false;
+    return true;
+  });
 
   return (
     <div className="app-shell">
       <main className="main-content" style={{ flex: 1, padding: '24px 20px', paddingBottom: 80, overflowY: 'auto' }}>
         
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, letterSpacing: '-0.025em' }}>
-              🛡️ Agency Control Center
+            <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-0.025em', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Shield size={26} color="var(--accent)" /> Real Estate Team & Agency Command Center
             </h1>
             <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: 13 }}>
-              Manage customized roles, lead claim flows, and incentive calculations under your organization tenant.
+              Supervise sales agents, monitor team workloads, manage lead approvals & incentive distributions.
             </p>
           </div>
-          <button onClick={fetchData} className="btn btn-secondary btn-sm" style={{ gap: 6, borderRadius: 8 }}>
-            <RefreshCw size={14} /> Refresh
-          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button onClick={fetchData} className="btn btn-ghost btn-sm" style={{ gap: 6 }}>
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
+            </button>
+            {(isUserOwner || isUserManager) && (
+              <button
+                onClick={() => setShowForceTransferModal(true)}
+                className="btn btn-ghost btn-sm"
+                style={{ gap: 6, border: '1px solid var(--border)' }}
+              >
+                <ArrowRightLeft size={14} /> Force Transfer
+              </button>
+            )}
+            {isUserOwner && (
+              <button
+                onClick={() => setShowAddMemberModal(true)}
+                className="btn btn-primary btn-sm"
+                style={{ gap: 6 }}
+              >
+                <UserPlus size={14} /> Add Member
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Dynamic Warning for non-owners */}
-        {!isOwner && !isManager && (
-          <div className="card" style={{ padding: 16, borderLeft: '4px solid #ef4444', background: 'rgba(239, 68, 68, 0.08)', marginBottom: 20 }}>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <AlertTriangle color="#ef4444" size={20} />
-              <div>
-                <strong style={{ display: 'block', fontSize: 13 }}>Access Restricted</strong>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  You are viewing this dashboard as an agent. Administrative tabs like custom roles and settings are locked.
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Tab Selection */}
+        {/* Tab Navigation */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20, gap: 16, overflowX: 'auto' }}>
           {[
-            { id: 'overview', label: '📊 Metrics Overview', show: true },
-            { id: 'roster', label: '👥 Team Roster', show: true },
-            { id: 'forms', label: '📋 Forms & Custom Fields', show: isOwner || isManager },
-            { id: 'roles', label: '🛡️ Role Editor', show: isOwner },
-            { id: 'incentives', label: '💰 Incentive Policies', show: isOwner || isManager },
-            { id: 'logs', label: '📝 Audit Feed', show: isOwner }
+            { id: 'performance', label: '🏆 Agent Performance', show: true },
+            { id: 'workload', label: '⚡ Workload & Capacity', show: true },
+            { id: 'members', label: `👥 Team Members (${filteredMembers.length})`, show: true },
+            { id: 'transfers', label: `🔄 Transfers (${transferNotifications.length})`, show: isUserOwner || isUserManager },
+            { id: 'forms', label: '📋 Lead Forms & Schema', show: isUserOwner || isUserManager },
+            { id: 'roles', label: '🛡️ Role Editor', show: isUserOwner },
+            { id: 'incentives', label: '💰 Incentives & Payouts', show: isUserOwner || isUserManager },
+            { id: 'activity', label: '📝 Team Activity Logs', show: isUserOwner || isUserManager },
           ].map(tab => {
             if (!tab.show) return null;
             const active = activeTab === tab.id;
@@ -413,82 +583,294 @@ function AgencyPageContent() {
           })}
         </div>
 
-        {/* TAB CONTENTS */}
-
-        {/* 1. OVERVIEW TAB */}
-        {activeTab === 'overview' && (
+        {/* ========================================================================= */}
+        {/* 1. AGENT PERFORMANCE TAB                                                 */}
+        {/* ========================================================================= */}
+        {activeTab === 'performance' && (
           <div>
-            {/* Numeric KPI Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
-              {[
-                { title: 'Total Leads Handled', val: dashboardData.metrics.totalLeads, color: 'var(--accent)', icon: FileText },
-                { title: 'Closed / Won Deals', val: dashboardData.metrics.wonLeads, color: 'var(--green)', icon: UserCheck },
-                { title: 'Conversion Success Rate', val: `${Number(dashboardData.metrics.conversionRate).toFixed(1)}%`, color: 'var(--accent)', icon: TrendingUp },
-                { title: 'Incentives Generated', val: `₹${dashboardData.metrics.incentiveGenerated}`, color: 'var(--green)', icon: DollarSign },
-                { title: 'Pending Approval', val: `₹${dashboardData.metrics.incentivePending}`, color: '#f59e0b', icon: Clock },
-                { title: 'Approved Earnings', val: `₹${dashboardData.metrics.incentiveApproved}`, color: 'var(--green)', icon: ShieldCheck }
-              ].map((card, i) => {
-                const Icon = card.icon;
+            {/* Top Stat Overview Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 20 }}>
+              <div className="card" style={{ padding: '16px 18px' }}>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Total Team Leads</span>
+                <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: 'var(--accent)' }}>
+                  {teamPerformance.reduce((sum, a) => sum + (a.leadsAssigned || 0), 0)}
+                </h3>
+              </div>
+              <div className="card" style={{ padding: '16px 18px' }}>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Site Visits Completed</span>
+                <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: '#0ea5e9' }}>
+                  {teamPerformance.reduce((sum, a) => sum + (a.completedVisits || 0), 0)}
+                </h3>
+              </div>
+              <div className="card" style={{ padding: '16px 18px' }}>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Total Bookings Won</span>
+                <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: '#10b981' }}>
+                  {teamPerformance.reduce((sum, a) => sum + (a.bookings || 0), 0)}
+                </h3>
+              </div>
+              <div className="card" style={{ padding: '16px 18px' }}>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Total Revenue Closed</span>
+                <h3 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#10b981' }}>
+                  {formatINR(teamPerformance.reduce((sum, a) => sum + (a.bookingValue || 0), 0))}
+                </h3>
+              </div>
+            </div>
+
+            {/* Performance Controls Toolbar */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, maxWidth: 360 }}>
+                <div style={{ position: 'relative', width: '100%' }}>
+                  <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <input
+                    type="text"
+                    placeholder="Search sales agent..."
+                    value={performanceSearch}
+                    onChange={e => setPerformanceSearch(e.target.value)}
+                    className="input"
+                    style={{ paddingLeft: 30, fontSize: 13, height: 36 }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Sort by:</span>
+                <select
+                  value={sortKey}
+                  onChange={e => setSortKey(e.target.value)}
+                  className="input"
+                  style={{ height: 36, fontSize: 12, width: 'auto', paddingRight: 24 }}
+                >
+                  <option value="bookings">🏆 Total Bookings</option>
+                  <option value="revenue">💰 Booking Revenue</option>
+                  <option value="conversion">🎯 Conversion Rate</option>
+                  <option value="leads">📋 Leads Handled</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Performance Leaderboard Table */}
+            <div className="card" style={{ padding: 20 }}>
+              {filteredPerformance.length === 0 ? (
+                <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <Users size={32} style={{ margin: '0 auto 10px', opacity: 0.5 }} />
+                  <p style={{ margin: 0, fontWeight: 600 }}>No sales performance records found.</p>
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
+                        <th style={{ padding: '10px 8px' }}>Rank & Agent</th>
+                        <th style={{ padding: '10px 8px' }}>Leads Assigned</th>
+                        <th style={{ padding: '10px 8px' }}>Contacted</th>
+                        <th style={{ padding: '10px 8px' }}>Site Visits</th>
+                        <th style={{ padding: '10px 8px' }}>Opportunities</th>
+                        <th style={{ padding: '10px 8px' }}>Bookings</th>
+                        <th style={{ padding: '10px 8px' }}>Booking Value</th>
+                        <th style={{ padding: '10px 8px' }}>Win Rate %</th>
+                        <th style={{ padding: '10px 8px' }}>Commission</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredPerformance.map((agent, index) => (
+                        <tr key={agent.id || index} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '12px 8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <span style={{
+                                width: 22,
+                                height: 22,
+                                borderRadius: '50%',
+                                background: index === 0 ? '#f59e0b' : (index === 1 ? '#94a3b8' : (index === 2 ? '#b45309' : 'rgba(99,102,241,0.1)')),
+                                color: index < 3 ? '#fff' : 'var(--accent)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: 11,
+                                fontWeight: 800
+                              }}>
+                                {index + 1}
+                              </span>
+                              <div>
+                                <strong style={{ display: 'block', color: 'var(--text)' }}>{agent.name}</strong>
+                                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{agent.email || agent.phone}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px 8px', fontWeight: 600 }}>{agent.leadsAssigned}</td>
+                          <td style={{ padding: '12px 8px' }}>{agent.leadsContacted}</td>
+                          <td style={{ padding: '12px 8px' }}>
+                            <span style={{ color: '#0ea5e9', fontWeight: 700 }}>{agent.completedVisits}</span> / {agent.siteVisits}
+                          </td>
+                          <td style={{ padding: '12px 8px' }}>{agent.opportunities || 0}</td>
+                          <td style={{ padding: '12px 8px', fontWeight: 800, color: '#10b981' }}>{agent.bookings}</td>
+                          <td style={{ padding: '12px 8px', fontWeight: 800, color: 'var(--accent)' }}>{formatINR(agent.bookingValue)}</td>
+                          <td style={{ padding: '12px 8px', fontWeight: 700 }}>
+                            <span style={{
+                              padding: '2px 8px',
+                              borderRadius: 6,
+                              background: parseFloat(agent.conversionRate) > 10 ? 'rgba(16,185,129,0.12)' : 'rgba(99,102,241,0.08)',
+                              color: parseFloat(agent.conversionRate) > 10 ? '#10b981' : 'var(--text)'
+                            }}>
+                              {agent.conversionRate}
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 8px', fontWeight: 700, color: '#10b981' }}>
+                            {formatINR(agent.commissionEarned)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* 2. AGENT WORKLOAD & CAPACITY TAB                                         */}
+        {/* ========================================================================= */}
+        {activeTab === 'workload' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+              <div style={{ position: 'relative', width: 300 }}>
+                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  placeholder="Filter workload by agent..."
+                  value={workloadSearch}
+                  onChange={e => setWorkloadSearch(e.target.value)}
+                  className="input"
+                  style={{ paddingLeft: 30, fontSize: 13, height: 36 }}
+                />
+              </div>
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+              gap: 16
+            }}>
+              {filteredWorkload.map(agent => {
+                const leadCap = agent.leadCap || 50;
+                const activeLeads = agent.activeLeads || 0;
+                const pct = Math.min(100, Math.round((activeLeads / leadCap) * 100));
+                const isOverloaded = pct >= 90;
+
                 return (
-                  <div key={i} className="card" style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div key={agent.id} className="card" style={{ padding: 18, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                     <div>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        {card.title}
-                      </span>
-                      <strong style={{ fontSize: 22, fontWeight: 800, color: card.color, display: 'block', marginTop: 4 }}>
-                        {card.val}
-                      </strong>
+                      {/* Top Row: Name & Availability */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                        <div>
+                          <strong style={{ fontSize: 15, display: 'block' }}>{agent.name}</strong>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{agent.email || agent.phone}</span>
+                        </div>
+                        <span style={{
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: 20,
+                          background: agent.isAvailable ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+                          color: agent.isAvailable ? '#10b981' : '#ef4444',
+                        }}>
+                          ● {agent.isAvailable ? 'AVAILABLE FOR ROUTING' : 'PAUSED / BUSY'}
+                        </span>
+                      </div>
+
+                      {/* Workload Progress Bar */}
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                          <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Active Capacity</span>
+                          <strong style={{ color: isOverloaded ? '#ef4444' : 'var(--text)' }}>
+                            {activeLeads} / {leadCap} ({pct}%)
+                          </strong>
+                        </div>
+                        <div style={{ width: '100%', height: 7, borderRadius: 10, background: 'var(--border)', overflow: 'hidden' }}>
+                          <div style={{
+                            width: `${pct}%`,
+                            height: '100%',
+                            background: isOverloaded ? '#ef4444' : (pct > 70 ? '#f59e0b' : '#10b981'),
+                            borderRadius: 10,
+                            transition: 'width 0.3s ease'
+                          }} />
+                        </div>
+                      </div>
+
+                      {/* Metric Pills */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, textAlign: 'center', marginBottom: 14 }}>
+                        <div style={{ background: 'var(--surface)', padding: '8px 4px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>🔥 HOT Leads</span>
+                          <strong style={{ fontSize: 15, color: '#ef4444' }}>{agent.hotLeads || 0}</strong>
+                        </div>
+                        <div style={{ background: 'var(--surface)', padding: '8px 4px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>📅 Follow-ups</span>
+                          <strong style={{ fontSize: 15, color: '#f59e0b' }}>{agent.pendingFollowUps || 0}</strong>
+                        </div>
+                        <div style={{ background: 'var(--surface)', padding: '8px 4px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>📍 Site Visits</span>
+                          <strong style={{ fontSize: 15, color: '#0ea5e9' }}>{agent.upcomingVisits || 0}</strong>
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ background: 'var(--surface)', padding: 10, borderRadius: 12, border: '1px solid var(--border)' }}>
-                      <Icon size={20} color={card.color} />
+
+                    {/* Action Button */}
+                    <div style={{ display: 'flex', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                      <Link
+                        href={`/leads?agent=${agent.id}&tab=team_leads`}
+                        className="btn btn-ghost btn-sm"
+                        style={{ flex: 1, fontSize: 12, justifyContent: 'center', gap: 4 }}
+                      >
+                        <FileText size={13} /> View Leads
+                      </Link>
+                      <button
+                        onClick={() => {
+                          setForceTransferForm(f => ({ ...f, targetUserId: agent.id }));
+                          setShowForceTransferModal(true);
+                        }}
+                        className="btn btn-secondary btn-sm"
+                        style={{ flex: 1, fontSize: 12, justifyContent: 'center', gap: 4 }}
+                      >
+                        <ArrowRightLeft size={13} /> Assign Lead
+                      </button>
                     </div>
                   </div>
                 );
               })}
             </div>
-
-            {/* Audit Logs list in overview */}
-            {isOwner && (
-              <div className="card" style={{ padding: 20 }}>
-                <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700 }}>
-                  📝 Recent Administrative Audit Logs
-                </h3>
-                {dashboardData.auditLogs.length === 0 ? (
-                  <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>No audit events recorded yet.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {dashboardData.auditLogs.map(log => (
-                      <div key={log._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
-                        <div>
-                          <strong style={{ fontSize: 13, display: 'block' }}>{log.action.replace(/_/g, ' ')}</strong>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                            Actor: {log.actorId?.name || 'System Owner'} | Details: {log.reason}
-                          </span>
-                        </div>
-                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                          {new Date(log.createdAt).toLocaleString()}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
 
-        {/* 2. TEAM ROSTER TAB */}
-        {activeTab === 'roster' && (
+        {/* ========================================================================= */}
+        {/* 3. TEAM MEMBERS ROSTER TAB                                               */}
+        {/* ========================================================================= */}
+        {activeTab === 'members' && (
           <div className="card" style={{ padding: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
-                👥 Active Organization Team Roster ({agents.length})
-              </h3>
-              {isOwner && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {['ALL', 'ACTIVE', 'INACTIVE', 'AVAILABLE'].map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setMemberFilter(f)}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: 20,
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      border: '1px solid var(--border)',
+                      background: memberFilter === f ? 'var(--accent)' : 'var(--surface)',
+                      color: memberFilter === f ? '#fff' : 'var(--text-muted)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+
+              {isUserOwner && (
                 <button
-                  onClick={() => {
-                    setShowAddMemberModal(true);
-                  }}
+                  onClick={() => setShowAddMemberModal(true)}
                   className="btn btn-primary btn-sm"
                   style={{ gap: 4, borderRadius: 8 }}
                 >
@@ -501,17 +883,17 @@ function AgencyPageContent() {
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)', fontSize: 12 }}>
-                    <th style={{ padding: '10px 8px' }}>Name</th>
-                    <th style={{ padding: '10px 8px' }}>Email / Phone</th>
-                    <th style={{ padding: '10px 8px' }}>Custom Role</th>
-                    <th style={{ padding: '10px 8px' }}>Reporting Manager</th>
-                    <th style={{ padding: '10px 8px' }}>Status</th>
-                    {isOwner && <th style={{ padding: '10px 8px', textAlign: 'right' }}>Actions</th>}
+                    <th style={{ padding: '10px 8px' }}>Member</th>
+                    <th style={{ padding: '10px 8px' }}>Contact Info</th>
+                    <th style={{ padding: '10px 8px' }}>Role</th>
+                    <th style={{ padding: '10px 8px' }}>Manager</th>
+                    <th style={{ padding: '10px 8px' }}>Routing & Status</th>
+                    {isUserOwner && <th style={{ padding: '10px 8px', textAlign: 'right' }}>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {agents.map(ag => (
-                    <tr key={ag._id} style={{ borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                  {filteredMembers.map(ag => (
+                    <tr key={ag._id || ag.id} style={{ borderBottom: '1px solid var(--border)', fontSize: 13 }}>
                       <td style={{ padding: '12px 8px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 11 }}>
@@ -519,13 +901,13 @@ function AgencyPageContent() {
                           </div>
                           <div>
                             <strong style={{ display: 'block' }}>{ag.name}</strong>
-                            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>ID: {ag.usercode}</span>
+                            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>ID: {ag.usercode || ag._id?.slice(-6)}</span>
                           </div>
                         </div>
                       </td>
                       <td style={{ padding: '12px 8px' }}>
                         <span style={{ display: 'block' }}>{ag.email}</span>
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{ag.phone}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{ag.phone || '—'}</span>
                       </td>
                       <td style={{ padding: '12px 8px' }}>
                         <span style={{
@@ -543,20 +925,18 @@ function AgencyPageContent() {
                         }}>
                           {ag.roleId?.name ? `${ag.roleId.name}` : (
                             ag.companyRole === 'owner'
-                              ? 'OWNER (Default)'
+                              ? 'OWNER'
                               : (ag.companyRole === 'manager' || ag.role === 'manager'
                                 ? 'MANAGER'
-                                : (ag.companyRole === 'telecaller'
-                                  ? 'TELECALLER'
-                                  : (ag.companyRole === 'sales_rep' ? 'SALES REP' : 'AGENT (Default)')))
+                                : 'AGENT')
                           )}
                         </span>
                       </td>
                       <td style={{ padding: '12px 8px' }}>
                         {ag.managerId ? (
-                          <span>{ag.managerId.name || agents.find(a => a._id === ag.managerId)?.name || 'Assigned'}</span>
+                          <span>{ag.managerId.name || ag.managerName || 'Assigned'}</span>
                         ) : (
-                          <span style={{ color: 'var(--text-muted)' }}>None (Direct Report)</span>
+                          <span style={{ color: 'var(--text-muted)' }}>None (Direct)</span>
                         )}
                       </td>
                       <td style={{ padding: '12px 8px' }}>
@@ -568,14 +948,14 @@ function AgencyPageContent() {
                           ● {String(ag.employeeStatus || 'active').toUpperCase()}
                         </span>
                       </td>
-                      {isOwner && (
+                      {isUserOwner && (
                         <td style={{ padding: '12px 8px', textAlign: 'right' }}>
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                             <button
                               onClick={() => handleEditAgent(ag)}
                               className="btn btn-ghost btn-sm"
-                              style={{ padding: '6px 8px', color: 'var(--text-main)' }}
-                              title="Edit Roster Options"
+                              style={{ padding: '6px 8px' }}
+                              title="Edit Member Options"
                             >
                               <Edit2 size={13} />
                             </button>
@@ -583,7 +963,7 @@ function AgencyPageContent() {
                               onClick={() => handleDeleteAgent(ag)}
                               className="btn btn-ghost btn-sm"
                               style={{ padding: '6px 8px', color: '#ef4444' }}
-                              title="Delete / Remove Team Member"
+                              title="Remove Team Member"
                             >
                               <Trash2 size={13} />
                             </button>
@@ -598,380 +978,83 @@ function AgencyPageContent() {
           </div>
         )}
 
-        {/* 2.5 FORMS & CUSTOM FIELDS TAB */}
-        {activeTab === 'forms' && (
-          <div style={{ marginTop: 8 }}>
-            <FormsModule theme="light" />
-          </div>
-        )}
-
-        {/* 3. ROLE EDITOR TAB */}
-        {activeTab === 'roles' && (
-          <div>
-            {/* Custom Roles List */}
+        {/* ========================================================================= */}
+        {/* 4. LEAD TRANSFERS APPROVAL TAB                                           */}
+        {/* ========================================================================= */}
+        {activeTab === 'transfers' && (
+          <div className="card" style={{ padding: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
-                🛡️ Custom Tenant Roles Layout
-              </h3>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>
+                  🔄 Lead Transfer Approvals & Reallocation Queue
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                  Approve or reject agent-to-agent lead handover requests or initiate immediate manager force transfers.
+                </p>
+              </div>
               <button
-                onClick={() => {
-                  setEditingRole(null);
-                  setRoleForm({ name: '', roleType: 'AGENT', permissions: [] });
-                  setShowRoleModal(true);
-                }}
+                onClick={() => setShowForceTransferModal(true)}
                 className="btn btn-primary btn-sm"
-                style={{ gap: 4, borderRadius: 8 }}
+                style={{ gap: 6 }}
               >
-                <Plus size={14} /> Create Custom Role
+                <ArrowRightLeft size={14} /> New Force Transfer
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 20 }}>
-              {roles.map(r => (
-                <div key={r._id} className="card" style={{ padding: 18, borderLeft: '3px solid var(--accent)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                    <div>
-                      <strong style={{ fontSize: 15, display: 'block' }}>{r.name}</strong>
-                      <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Type: {r.roleType}</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button
-                        onClick={() => {
-                          setEditingRole(r);
-                          setRoleForm({
-                            name: r.name,
-                            roleType: r.roleType,
-                            permissions: r.permissions
-                          });
-                          setShowRoleModal(true);
-                        }}
-                        className="btn btn-ghost btn-sm"
-                        style={{ padding: 4 }}
-                      >
-                        <Edit2 size={13} />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteRole(r._id)}
-                        className="btn btn-ghost btn-sm"
-                        style={{ padding: 4, color: '#ef4444' }}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 12px', minHeight: 40 }}>
-                    {r.permissions.join(', ').slice(0, 80)}
-                    {r.permissions.join(', ').length > 80 ? '...' : ''}
-                  </div>
-
-                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)' }}>
-                    Total Permissions: {r.permissions.length}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {/* Custom Role Creation Modal */}
-            {showRoleModal && (
-              <div className="modal-overlay" onClick={() => setShowRoleModal(false)}>
-                <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
-                  <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700 }}>
-                    {editingRole ? '✏️ Modify Custom Role' : '🛡️ Create Custom Tenant Role'}
-                  </h3>
-
-                  <form onSubmit={handleSaveRole} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Role Display Name</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Lead Coordinator, Senior Manager"
-                        value={roleForm.name}
-                        onChange={e => setRoleForm({ ...roleForm, name: e.target.value })}
-                        className="form-control"
-                        style={{ width: '100%' }}
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Base Role Type</label>
-                      <select
-                        value={roleForm.roleType}
-                        onChange={e => setRoleForm({ ...roleForm, roleType: e.target.value })}
-                        className="form-control btn-full"
-                        style={{ width: '100%' }}
-                      >
-                        <option value="AGENT">AGENT</option>
-                        <option value="MANAGER">MANAGER</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
-                        Select Enabled Permissions (Permission Ceiling Enforced)
-                      </label>
-                      <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {PERMISSION_OPTIONS.map(opt => {
-                          const checked = roleForm.permissions.includes(opt.value);
-                          return (
-                            <label
-                              key={opt.value}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'flex-start',
-                                gap: 8,
-                                cursor: 'pointer',
-                                fontSize: 12,
-                                padding: 6,
-                                background: checked ? 'rgba(79, 70, 229, 0.05)' : 'transparent',
-                                borderRadius: 6
-                              }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => handleTogglePermission(opt.value)}
-                                style={{ marginTop: 2 }}
-                              />
-                              <div>
-                                <span style={{ fontWeight: 600, display: 'block' }}>{opt.label}</span>
-                                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{opt.desc}</span>
-                              </div>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-                      <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }}>
-                        {editingRole ? 'Save Changes' : 'Create Role'}
-                      </button>
-                      <button type="button" onClick={() => setShowRoleModal(false)} className="btn btn-ghost">Cancel</button>
-                    </div>
-                  </form>
-                </div>
+            {transferNotifications.length === 0 ? (
+              <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <CheckCircle2 size={36} color="#10b981" style={{ margin: '0 auto 10px' }} />
+                <strong style={{ fontSize: 15, display: 'block', color: 'var(--text)' }}>No Pending Transfer Requests</strong>
+                <p style={{ margin: '4px 0 0', fontSize: 12 }}>All agent handover requests have been approved or resolved.</p>
               </div>
-            )}
-          </div>
-        )}
-
-        {/* 4. INCENTIVES TAB */}
-        {activeTab === 'incentives' && (
-          <div>
-            {/* Split Policy Configuration */}
-            {isOwner && (
-              <div className="card" style={{ padding: 22, marginBottom: 20 }}>
-                <h3 style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 700 }}>
-                  🛠️ Configure Global Incentive Split Policies
-                </h3>
-                <p style={{ margin: '0 0 16px', fontSize: 12, color: 'var(--text-muted)' }}>
-                  Set split percentages for leads that pass through multiple agents before conversion.
-                </p>
-
-                <form onSubmit={handleSavePolicy} style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-                  <div style={{ minWidth: 160 }}>
-                    <span style={{ display: 'block', fontSize: 11, fontWeight: 600, marginBottom: 6 }}>Split Mode</span>
-                    <select
-                      value={activePolicy.calculationType}
-                      onChange={e => setActivePolicy({ ...activePolicy, calculationType: e.target.value })}
-                      className="form-control"
-                      style={{ width: '100%' }}
-                    >
-                      <option value="SPLIT">SPLIT (First Handler + Closer)</option>
-                      <option value="FINAL_OWNER">FINAL OWNER ONLY</option>
-                      <option value="FIRST_HANDLER">FIRST HANDLER ONLY</option>
-                    </select>
-                  </div>
-
-                  {activePolicy.calculationType === 'SPLIT' && (
-                    <>
-                      <div>
-                        <span style={{ display: 'block', fontSize: 11, fontWeight: 600, marginBottom: 6 }}>First Handler %</span>
-                        <input
-                          type="number"
-                          max={100}
-                          min={0}
-                          value={activePolicy.firstHandlerPercentage}
-                          onChange={e => {
-                            const val = Math.min(100, Math.max(0, Number(e.target.value)));
-                            setActivePolicy({
-                              ...activePolicy,
-                              firstHandlerPercentage: val,
-                              closerPercentage: 100 - val
-                            });
-                          }}
-                          className="form-control"
-                          style={{ width: 80 }}
-                        />
-                      </div>
-                      <div>
-                        <span style={{ display: 'block', fontSize: 11, fontWeight: 600, marginBottom: 6 }}>Closer / Closer %</span>
-                        <input
-                          type="number"
-                          max={100}
-                          min={0}
-                          value={activePolicy.closerPercentage}
-                          onChange={e => {
-                            const val = Math.min(100, Math.max(0, Number(e.target.value)));
-                            setActivePolicy({
-                              ...activePolicy,
-                              closerPercentage: val,
-                              firstHandlerPercentage: 100 - val
-                            });
-                          }}
-                          className="form-control"
-                          style={{ width: 80 }}
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  <button type="submit" className="btn btn-primary" style={{ height: 38, marginTop: 18 }}>
-                    Save Policy Configuration
-                  </button>
-                </form>
-              </div>
-            )}
-
-            {/* Incentives Table */}
-            <div className="card" style={{ padding: 20 }}>
-              <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700 }}>
-                💰 Tenant Incentive Records ({incentivesList.length})
-              </h3>
-              {incentivesList.length === 0 ? (
-                <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>No closed deals with incentives calculated yet.</p>
-              ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)', fontSize: 12 }}>
-                        <th style={{ padding: '10px 8px' }}>Beneficiary Agent</th>
-                        <th style={{ padding: '10px 8px' }}>Lead Reference</th>
-                        <th style={{ padding: '10px 8px' }}>Total Sales</th>
-                        <th style={{ padding: '10px 8px' }}>Incentive Amount</th>
-                        <th style={{ padding: '10px 8px' }}>Payout Status</th>
-                        {isOwner && <th style={{ padding: '10px 8px', textAlign: 'right' }}>Actions</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {incentivesList.map(inc => (
-                        <tr key={inc._id} style={{ borderBottom: '1px solid var(--border)', fontSize: 13 }}>
-                          <td style={{ padding: '12px 8px' }}>
-                            <strong style={{ display: 'block' }}>{inc.agentId?.name || 'Agent'}</strong>
-                            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{inc.agentId?.email}</span>
-                          </td>
-                          <td style={{ padding: '12px 8px' }}>
-                            <span>{inc.leadId?.name || 'Lead #'+String(inc.leadId).slice(-4)}</span>
-                          </td>
-                          <td style={{ padding: '12px 8px' }}>
-                            ₹{Number(inc.totalSales || 0).toLocaleString()}
-                          </td>
-                          <td style={{ padding: '12px 8px' }}>
-                            <strong style={{ color: 'var(--accent)' }}>₹{Number(inc.incentiveAmount || 0).toLocaleString()}</strong>
-                            <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>({inc.incentivePct}%)</span>
-                          </td>
-                          <td style={{ padding: '12px 8px' }}>
-                            <span style={{
-                              background: inc.status === 'PENDING' ? 'rgba(245,158,11,0.08)' : (inc.status === 'APPROVED' || inc.status === 'PAID' ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)'),
-                              color: inc.status === 'PENDING' ? '#f59e0b' : (inc.status === 'APPROVED' || inc.status === 'PAID' ? 'var(--green)' : '#ef4444'),
-                              padding: '2px 8px',
-                              borderRadius: 4,
-                              fontSize: 11,
-                              fontWeight: 700
-                            }}>
-                              {inc.status}
-                            </span>
-                          </td>
-                          {isOwner && (
-                            <td style={{ padding: '12px 8px', textAlign: 'right' }}>
-                              {inc.status === 'PENDING' && (
-                                <div style={{ display: 'inline-flex', gap: 6 }}>
-                                  <button
-                                    onClick={() => setIncentiveActionData({ id: inc._id, status: 'APPROVED', reason: '' })}
-                                    className="btn btn-ghost btn-sm"
-                                    style={{ padding: 4, color: 'var(--green)' }}
-                                    title="Approve Payout"
-                                  >
-                                    <CheckCircle2 size={14} />
-                                  </button>
-                                  <button
-                                    onClick={() => setIncentiveActionData({ id: inc._id, status: 'REJECTED', reason: '' })}
-                                    className="btn btn-ghost btn-sm"
-                                    style={{ padding: 4, color: '#ef4444' }}
-                                    title="Reject Payout"
-                                  >
-                                    <XCircle size={14} />
-                                  </button>
-                                </div>
-                              )}
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* Incentive Remarks Modal */}
-            {incentiveActionData && (
-              <div className="modal-overlay" onClick={() => setIncentiveActionData(null)}>
-                <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
-                  <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700 }}>
-                    {incentiveActionData.status === 'APPROVED' ? '✅ Confirm Incentive Approval' : '❌ Confirm Incentive Rejection'}
-                  </h3>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 14px' }}>
-                    Please add an explanatory remark to save in the system audit logs.
-                  </p>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Audit Remark / Reason</label>
-                    <textarea
-                      placeholder="e.g. Split calculated correctly based on first handler and closing agent."
-                      value={incentiveActionData.reason}
-                      onChange={e => setIncentiveActionData({ ...incentiveActionData, reason: e.target.value })}
-                      className="form-control"
-                      style={{ width: '100%', height: 70, resize: 'none' }}
-                    />
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-                    <button onClick={handleIncentiveStatus} className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }}>
-                      Submit Decision
-                    </button>
-                    <button onClick={() => setIncentiveActionData(null)} className="btn btn-ghost">Cancel</button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 5. AUDIT FEED TAB */}
-        {activeTab === 'logs' && (
-          <div className="card" style={{ padding: 20 }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700 }}>
-              📝 System Actions & Multi-Tenant Audit Logs
-            </h3>
-
-            {globalActivity.length === 0 ? (
-              <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>No logs recorded under tenant feed.</p>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {globalActivity.map(act => (
-                  <div key={act._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {transferNotifications.map(notif => (
+                  <div
+                    key={notif._id}
+                    style={{
+                      border: '1px solid var(--border)',
+                      borderRadius: 12,
+                      padding: 16,
+                      background: 'var(--card)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: 14
+                    }}
+                  >
                     <div>
-                      <strong style={{ fontSize: 13, display: 'block', textTransform: 'capitalize' }}>
-                        {String(act.action || act.eventType).replace(/_/g, ' ')}
-                      </strong>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        Details: {act.details || act.description} | Actor: {act.performedBy?.name || 'System Owner'}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(99,102,241,0.12)', color: 'var(--accent)' }}>
+                          TRANSFER REQUEST
+                        </span>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                          {new Date(notif.createdAt).toLocaleString()}
+                        </span>
+                      </div>
+                      <strong style={{ fontSize: 14, display: 'block' }}>{notif.title || 'Lead Transfer Request'}</strong>
+                      <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
+                        {notif.message || notif.details}
+                      </p>
                     </div>
-                    <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                      {new Date(act.createdAt).toLocaleString()}
-                    </span>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <button
+                        onClick={() => handleRejectTransfer(notif)}
+                        className="btn btn-ghost btn-sm"
+                        style={{ color: '#ef4444', gap: 4 }}
+                      >
+                        <X size={14} /> Reject
+                      </button>
+                      <button
+                        onClick={() => handleAcceptTransfer(notif)}
+                        className="btn btn-primary btn-sm"
+                        style={{ background: '#10b981', borderColor: '#10b981', gap: 4 }}
+                      >
+                        <Check size={14} /> Approve Transfer
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -979,208 +1062,369 @@ function AgencyPageContent() {
           </div>
         )}
 
-        {/* Modals outside the tab containers to prevent focus loss during renders */}
-        {editingAgent && (
-          <div className="modal-overlay" onClick={() => setEditingAgent(null)}>
+        {/* 5. FORMS TAB */}
+        {activeTab === 'forms' && <FormsModule />}
+
+        {/* 6. ROLE EDITOR TAB */}
+        {activeTab === 'roles' && (
+          <div className="card" style={{ padding: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Agency RBAC Roles & Permissions ({roles.length})</h3>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                  Default roles (Agent, Manager) are permanent. Customize permissions or create new custom roles anytime.
+                </p>
+              </div>
+              <button onClick={() => { setEditingRole(null); setRoleForm({ name: '', roleType: 'CUSTOM', permissions: [] }); setShowRoleModal(true); }} className="btn btn-primary btn-sm" style={{ gap: 4 }}>
+                <Plus size={14} /> Create Custom Role
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
+              {roles.map(r => (
+                <div key={r._id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 14, background: 'var(--surface)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <strong style={{ fontSize: 14, textTransform: 'capitalize' }}>{r.name}</strong>
+                      {r.isSystemRole && (
+                        <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: 'rgba(16, 185, 129, 0.12)', color: 'var(--green)', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+                          DEFAULT
+                        </span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(99,102,241,0.1)', color: 'var(--accent)' }}>{r.roleType}</span>
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 10px' }}>
+                    {r.description || `${r.permissions?.length || 0} permissions configured`}
+                  </p>
+                  <div style={{ display: 'flex', gap: 6, justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)' }}>
+                      {r.permissions?.length || 0} Permissions
+                    </span>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        onClick={() => {
+                          setEditingRole(r);
+                          setRoleForm({ name: (r.name || '').toLowerCase(), roleType: r.roleType || 'CUSTOM', permissions: r.permissions || [] });
+                          setShowRoleModal(true);
+                        }}
+                        className="btn btn-ghost btn-sm"
+                        style={{ padding: '4px 10px', fontSize: 12, gap: 4, border: '1px solid var(--border)' }}
+                        title="Edit Role & Permissions"
+                      >
+                        <Edit2 size={12} /> Edit Permissions
+                      </button>
+                      {!r.isSystemRole && r.roleType !== 'OWNER' && (
+                        <button
+                          onClick={() => handleDeleteRole(r._id)}
+                          className="btn btn-ghost btn-sm"
+                          style={{ padding: '4px 8px', color: '#ef4444' }}
+                          title="Delete Custom Role"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 7. INCENTIVES TAB */}
+        {activeTab === 'incentives' && (
+          <div className="card" style={{ padding: 20 }}>
+            <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700 }}>💰 Deal Incentives & Commission Approvals</h3>
+            {incentivesList.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No pending milestone incentive payouts.</p>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                      <th style={{ padding: '8px' }}>Agent</th>
+                      <th style={{ padding: '8px' }}>Lead / Deal</th>
+                      <th style={{ padding: '8px' }}>Milestone</th>
+                      <th style={{ padding: '8px' }}>Incentive Amount</th>
+                      <th style={{ padding: '8px' }}>Status</th>
+                      <th style={{ padding: '8px', textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {incentivesList.map(inc => (
+                      <tr key={inc._id} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '10px 8px', fontWeight: 700 }}>{inc.userId?.name || 'Sales Rep'}</td>
+                        <td style={{ padding: '10px 8px' }}>{inc.leadId?.name || 'Deal'}</td>
+                        <td style={{ padding: '10px 8px' }}>{inc.milestone || 'Closed Won'}</td>
+                        <td style={{ padding: '10px 8px', fontWeight: 800, color: '#10b981' }}>₹{inc.amount}</td>
+                        <td style={{ padding: '10px 8px' }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: inc.status === 'APPROVED' ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)', color: inc.status === 'APPROVED' ? '#10b981' : '#f59e0b' }}>
+                            {inc.status}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px 8px', textAlign: 'right' }}>
+                          {inc.status === 'PENDING' && (
+                            <div style={{ display: 'inline-flex', gap: 6 }}>
+                              <button onClick={() => setIncentiveActionData({ id: inc._id, status: 'APPROVED', reason: '' })} className="btn btn-ghost btn-sm" style={{ color: '#10b981' }}><Check size={14} /> Approve</button>
+                              <button onClick={() => setIncentiveActionData({ id: inc._id, status: 'REJECTED', reason: '' })} className="btn btn-ghost btn-sm" style={{ color: '#ef4444' }}><X size={14} /> Reject</button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 8. ACTIVITY LOGS TAB */}
+        {activeTab === 'activity' && (
+          <div className="card" style={{ padding: 20 }}>
+            <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700 }}>📝 Live Team Audit Logs & Activity Feed</h3>
+            {globalActivity.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No recent activity records.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {globalActivity.map(act => (
+                  <div key={act._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                    <div>
+                      <strong style={{ fontSize: 13, display: 'block' }}>{act.action?.replace(/_/g, ' ') || 'Action'}</strong>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Actor: {act.actorId?.name || 'User'} | {act.details}</span>
+                    </div>
+                    <span style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{new Date(act.createdAt).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Force Transfer Modal */}
+        {showForceTransferModal && (
+          <div className="modal-overlay" onClick={() => setShowForceTransferModal(false)} style={{ zIndex: 9999 }}>
             <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
-              <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700 }}>
-                ✏️ Configure Agent: {editingAgent.name}
-              </h3>
-              <form onSubmit={handleSaveAgent} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Organization Role</label>
-                  <select
-                    value={agentForm.companyRole}
-                    onChange={e => setAgentForm({ ...agentForm, companyRole: e.target.value })}
-                    className="input btn-full"
-                    style={{ width: '100%' }}
-                  >
-                    <option value="agent">👤 Sales Agent (Standard Agent)</option>
-                    <option value="manager">👔 Manager (Team Lead / Oversight)</option>
-                    <option value="telecaller">📞 Telecaller (Outreach & Calls)</option>
-                    <option value="sales_rep">💼 Sales Representative</option>
-                  </select>
-                </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <ArrowRightLeft size={18} color="var(--accent)" /> Immediate Force Transfer Override
+                </h3>
+                <button onClick={() => setShowForceTransferModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={18} /></button>
+              </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Custom Tenant Role Policy (Optional)</label>
+              <form onSubmit={handleForceTransferSubmit}>
+                <div style={{ marginBottom: 12 }}>
+                  <label className="label" style={{ fontWeight: 600 }}>Select Lead</label>
                   <select
-                    value={agentForm.roleId}
-                    onChange={e => {
-                      const selRoleId = e.target.value;
-                      const selectedRole = roles.find(r => r._id === selRoleId);
-                      let newCompanyRole = agentForm.companyRole;
-                      if (selectedRole?.roleType === 'MANAGER' || selectedRole?.name?.toLowerCase().includes('manager')) {
-                        newCompanyRole = 'manager';
-                      }
-                      setAgentForm({ ...agentForm, roleId: selRoleId, companyRole: newCompanyRole });
-                    }}
-                    className="input btn-full"
-                    style={{ width: '100%' }}
+                    value={forceTransferForm.leadId}
+                    onChange={e => setForceTransferForm(f => ({ ...f, leadId: e.target.value }))}
+                    className="input"
+                    required
                   >
-                    <option value="">Default permissions (Inherit Role Defaults)</option>
-                    {roles.map(r => (
-                      <option key={r._id} value={r._id}>{r.name} ({r.roleType})</option>
+                    <option value="">-- Choose Lead --</option>
+                    {unassignedLeadsList.map(l => (
+                      <option key={l._id} value={l._id}>
+                        {l.name} ({l.phone || 'No phone'}) - Current: {l.assignedTo?.name || 'Unassigned'}
+                      </option>
                     ))}
                   </select>
                 </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Reporting Manager</label>
+                <div style={{ marginBottom: 12 }}>
+                  <label className="label" style={{ fontWeight: 600 }}>Target Sales Agent</label>
                   <select
-                    value={agentForm.managerId}
-                    onChange={e => setAgentForm({ ...agentForm, managerId: e.target.value })}
-                    className="input btn-full"
-                    style={{ width: '100%' }}
+                    value={forceTransferForm.targetUserId}
+                    onChange={e => setForceTransferForm(f => ({ ...f, targetUserId: e.target.value }))}
+                    className="input"
+                    required
                   >
-                    <option value="">None (Reports to Owner)</option>
-                    {agents.filter(a => a._id !== editingAgent._id && (a.companyRole === 'manager' || a.role === 'manager')).map(a => (
-                      <option key={a._id} value={a._id}>{a.name} ({a.roleId?.name || 'Manager'})</option>
+                    <option value="">-- Choose Target Agent --</option>
+                    {agents.map(a => (
+                      <option key={a._id} value={a._id}>
+                        {a.name} ({a.companyRole || a.role})
+                      </option>
                     ))}
                   </select>
                 </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Employment Status</label>
-                  <select
-                    value={agentForm.employeeStatus}
-                    onChange={e => setAgentForm({ ...agentForm, employeeStatus: e.target.value })}
-                    className="input btn-full"
-                    style={{ width: '100%' }}
-                  >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="suspended">Suspended</option>
-                    <option value="terminated">Terminated</option>
-                  </select>
+                <div style={{ marginBottom: 16 }}>
+                  <label className="label" style={{ fontWeight: 600 }}>Reallocation Reason</label>
+                  <input
+                    type="text"
+                    value={forceTransferForm.reason}
+                    onChange={e => setForceTransferForm(f => ({ ...f, reason: e.target.value }))}
+                    placeholder="e.g. Workload balancing, Language match"
+                    className="input"
+                  />
                 </div>
 
-                <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-                  <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }}>Save Configuration</button>
-                  <button type="button" onClick={() => setEditingAgent(null)} className="btn btn-ghost">Cancel</button>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => setShowForceTransferModal(false)} className="btn btn-ghost btn-sm">Cancel</button>
+                  <button type="submit" className="btn btn-primary btn-sm">Execute Transfer</button>
                 </div>
               </form>
             </div>
           </div>
         )}
 
+        {/* Add Member Modal */}
         {showAddMemberModal && (
-          <div className="modal-overlay" onClick={() => setShowAddMemberModal(false)}>
+          <div className="modal-overlay" onClick={() => setShowAddMemberModal(false)} style={{ zIndex: 9999 }}>
             <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
-              <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700 }}>
-                ➕ Add New Team Member
-              </h3>
-              <form onSubmit={handleCreateMember} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Full Name</label>
-                  <input
-                    type="text"
-                    placeholder="Enter full name"
-                    value={newMemberForm.name}
-                    onChange={e => setNewMemberForm({ ...newMemberForm, name: e.target.value })}
-                    className="input"
-                    style={{ width: '100%' }}
-                    required
-                  />
-                </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>👤 Onboard New Team Member</h3>
+                <button onClick={() => setShowAddMemberModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={18} /></button>
+              </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Email Address</label>
-                  <input
-                    type="email"
-                    placeholder="e.g. agent@company.com"
-                    value={newMemberForm.email}
-                    onChange={e => setNewMemberForm({ ...newMemberForm, email: e.target.value })}
-                    className="input"
-                    style={{ width: '100%' }}
-                  />
+              <form onSubmit={handleCreateMember}>
+                <div style={{ marginBottom: 10 }}>
+                  <label className="label">Full Name</label>
+                  <input className="input" required value={newMemberForm.name} onChange={e => setNewMemberForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Rajesh Kumar" />
                 </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Phone Number</label>
-                  <input
-                    type="tel"
-                    placeholder="e.g. 9876543210"
-                    value={newMemberForm.phone}
-                    onChange={e => setNewMemberForm({ ...newMemberForm, phone: e.target.value })}
-                    className="input"
-                    style={{ width: '100%' }}
-                  />
+                <div style={{ marginBottom: 10 }}>
+                  <label className="label">Email Address</label>
+                  <input className="input" type="email" value={newMemberForm.email} onChange={e => setNewMemberForm(f => ({ ...f, email: e.target.value }))} placeholder="rajesh@company.com" />
                 </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Login Password</label>
-                  <input
-                    type="password"
-                    placeholder="Set agent login password"
-                    value={newMemberForm.password}
-                    onChange={e => setNewMemberForm({ ...newMemberForm, password: e.target.value })}
-                    className="input"
-                    style={{ width: '100%' }}
-                    required
-                  />
+                <div style={{ marginBottom: 10 }}>
+                  <label className="label">Phone Number</label>
+                  <input className="input" value={newMemberForm.phone} onChange={e => setNewMemberForm(f => ({ ...f, phone: e.target.value }))} placeholder="+91 98765 43210" />
                 </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Organization Role</label>
-                  <select
-                    value={newMemberForm.companyRole}
-                    onChange={e => setNewMemberForm({ ...newMemberForm, companyRole: e.target.value })}
-                    className="input btn-full"
-                    style={{ width: '100%' }}
-                  >
-                    <option value="agent">👤 Sales Agent (Standard Agent)</option>
-                    <option value="manager">👔 Manager (Team Lead / Oversight)</option>
-                    <option value="telecaller">📞 Telecaller (Outreach & Calls)</option>
-                    <option value="sales_rep">💼 Sales Representative</option>
+                <div style={{ marginBottom: 10 }}>
+                  <label className="label">Initial Password</label>
+                  <input className="input" type="password" required value={newMemberForm.password} onChange={e => setNewMemberForm(f => ({ ...f, password: e.target.value }))} placeholder="••••••••" />
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <label className="label">Company Role</label>
+                  <select className="input" value={newMemberForm.companyRole} onChange={e => setNewMemberForm(f => ({ ...f, companyRole: e.target.value }))}>
+                    <option value="agent">Agent / Sales Rep</option>
+                    <option value="manager">Manager / Supervisor</option>
+                    <option value="telecaller">Telecaller</option>
+                  </select>
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  <label className="label">Reporting Manager</label>
+                  <select className="input" value={newMemberForm.managerId} onChange={e => setNewMemberForm(f => ({ ...f, managerId: e.target.value }))}>
+                    <option value="">Direct to Company Owner</option>
+                    {agents.filter(a => a.companyRole === 'manager' || a.role === 'manager').map(m => (
+                      <option key={m._id} value={m._id}>{m.name} (Manager)</option>
+                    ))}
                   </select>
                 </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Custom Role Policy (Optional)</label>
-                  <select
-                    value={newMemberForm.roleId}
-                    onChange={e => {
-                      const selRoleId = e.target.value;
-                      const selectedRole = roles.find(r => r._id === selRoleId);
-                      let newCompanyRole = newMemberForm.companyRole;
-                      if (selectedRole?.roleType === 'MANAGER' || selectedRole?.name?.toLowerCase().includes('manager')) {
-                        newCompanyRole = 'manager';
-                      }
-                      setNewMemberForm({
-                        ...newMemberForm,
-                        roleId: selRoleId,
-                        companyRole: newCompanyRole
-                      });
-                    }}
-                    className="input btn-full"
-                    style={{ width: '100%' }}
-                  >
-                    <option value="">Default permissions (Inherit Role Defaults)</option>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => setShowAddMemberModal(false)} className="btn btn-ghost btn-sm">Cancel</button>
+                  <button type="submit" className="btn btn-primary btn-sm">Create Account</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Agent Modal */}
+        {editingAgent && (
+          <div className="modal-overlay" onClick={() => setEditingAgent(null)} style={{ zIndex: 9999 }}>
+            <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Edit {editingAgent.name}</h3>
+                <button onClick={() => setEditingAgent(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={18} /></button>
+              </div>
+
+              <form onSubmit={handleSaveAgent}>
+                <div style={{ marginBottom: 12 }}>
+                  <label className="label">Role Type</label>
+                  <select className="input" value={agentForm.companyRole} onChange={e => setAgentForm(f => ({ ...f, companyRole: e.target.value }))}>
+                    <option value="agent">Agent</option>
+                    <option value="manager">Manager</option>
+                    <option value="telecaller">Telecaller</option>
+                    <option value="sales_rep">Sales Rep</option>
+                  </select>
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                  <label className="label">Custom RBAC Role</label>
+                  <select className="input" value={agentForm.roleId} onChange={e => setAgentForm(f => ({ ...f, roleId: e.target.value }))}>
+                    <option value="">Default Permissions</option>
                     {roles.map(r => (
-                      <option key={r._id} value={r._id}>{r.name} ({r.roleType})</option>
+                      <option key={r._id} value={r._id}>{r.name}</option>
                     ))}
                   </select>
                 </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Reporting Manager</label>
-                  <select
-                    value={newMemberForm.managerId}
-                    onChange={e => setNewMemberForm({ ...newMemberForm, managerId: e.target.value })}
-                    className="input btn-full"
-                    style={{ width: '100%' }}
-                  >
+                <div style={{ marginBottom: 12 }}>
+                  <label className="label">Reporting Manager</label>
+                  <select className="input" value={agentForm.managerId} onChange={e => setAgentForm(f => ({ ...f, managerId: e.target.value }))}>
                     <option value="">None (Reports to Owner)</option>
-                    {agents.filter(a => a.companyRole === 'manager' || a.role === 'manager').map(a => (
-                      <option key={a._id} value={a._id}>{a.name} ({a.roleId?.name || 'Manager'})</option>
+                    {agents.filter(a => a._id !== editingAgent._id && (a.companyRole === 'manager' || a.role === 'manager')).map(m => (
+                      <option key={m._id} value={m._id}>{m.name} (Manager)</option>
                     ))}
                   </select>
                 </div>
 
-                <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-                  <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }}>Create Member</button>
-                  <button type="button" onClick={() => setShowAddMemberModal(false)} className="btn btn-ghost">Cancel</button>
+                <div style={{ marginBottom: 16 }}>
+                  <label className="label">Employee Status</label>
+                  <select className="input" value={agentForm.employeeStatus} onChange={e => setAgentForm(f => ({ ...f, employeeStatus: e.target.value }))}>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="on_leave">On Leave</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => setEditingAgent(null)} className="btn btn-ghost btn-sm">Cancel</button>
+                  <button type="submit" className="btn btn-primary btn-sm">Save Changes</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Custom Role Modal */}
+        {showRoleModal && (
+          <div className="modal-overlay" onClick={() => setShowRoleModal(false)} style={{ zIndex: 9999 }}>
+            <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{editingRole ? 'Edit Role' : 'Create Custom Role'}</h3>
+                <button onClick={() => setShowRoleModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={18} /></button>
+              </div>
+
+              <form onSubmit={handleSaveRole}>
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label className="label">Role Name</label>
+                    <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600 }}>Always Lowercase</span>
+                  </div>
+                  <input
+                    className="input"
+                    required
+                    value={roleForm.name}
+                    onChange={e => setRoleForm(f => ({ ...f, name: e.target.value.toLowerCase() }))}
+                    placeholder="e.g. senior_closer or closer"
+                    style={{ textTransform: 'lowercase' }}
+                  />
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, display: 'block' }}>
+                    Role names are automatically restricted and saved in lowercase.
+                  </span>
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label className="label" style={{ marginBottom: 8, display: 'block' }}>Assigned Permissions</label>
+                  <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
+                    {PERMISSION_OPTIONS.map(p => {
+                      const checked = roleForm.permissions.includes(p.value);
+                      return (
+                        <label key={p.value} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 12, cursor: 'pointer' }}>
+                          <input type="checkbox" checked={checked} onChange={() => handleTogglePermission(p.value)} />
+                          <span>{p.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => setShowRoleModal(false)} className="btn btn-ghost btn-sm">Cancel</button>
+                  <button type="submit" className="btn btn-primary btn-sm">Save Role</button>
                 </div>
               </form>
             </div>
@@ -1188,6 +1432,7 @@ function AgencyPageContent() {
         )}
 
       </main>
+
       <BottomNav active="agency" />
     </div>
   );
