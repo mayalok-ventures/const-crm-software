@@ -45,7 +45,7 @@ export const isLoggedIn = () => !!getToken();
 // ─────────────────────────────────────────────────────────────
 export const isSuperAdmin = (user) => {
   if (!user) return false;
-  return Boolean(user.role === 'superadmin' || user.isAdmin);
+  return Boolean(user.role === 'superadmin');
 };
 
 export const isOwner = (user) => {
@@ -81,6 +81,12 @@ export const isAgent = (user) => {
     user.workStatus === 'employee' ||
     user.roleId?.roleType === 'AGENT'
   );
+};
+
+export const isRealEstateTenant = (user) => {
+  if (!user) return false;
+  const ind = String(user.industryType || user.companyId?.industryType || '').toLowerCase();
+  return ind.includes('real') || ind.includes('estate') || ind.includes('property') || ind.includes('realty') || ind.includes('builder');
 };
 
 export const getUserRole = (user) => {

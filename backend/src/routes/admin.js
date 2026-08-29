@@ -46,7 +46,7 @@ router.route('/distribution-rules')
   .post(adminOnly, adminController.saveLeadDistributionRule);
 
 router.delete('/distribution-rules/:id', adminOnly, adminController.deleteLeadDistributionRule);
-router.post('/agents/reassign-leads', adminOnly, adminController.reassignAgentLeads);
+router.post('/agents/reassign-leads', managerOrAdminOnly, adminController.reassignAgentLeads);
 
 // 4. Pipelines Centre (Tenant Scoped)
 router.route('/pipeline-settings')

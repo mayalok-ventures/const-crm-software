@@ -1117,9 +1117,13 @@ exports.reassignAgentLeads = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Target assignee is required' });
     }
 
-    const targetUser = await User.findById(toAgentId).select('name managerId').lean();
+    const tenantUserScope = getTenantUserScope(req.user);
+    const targetUser = await User.findOne({
+      _id: toAgentId,
+      ...tenantUserScope,
+    }).select('name managerId').lean();
     if (!targetUser) {
-      return res.status(404).json({ success: false, message: 'Target assignee not found' });
+      return res.status(404).json({ success: false, message: 'Target assignee not found or not in authorized scope' });
     }
 
     let managerId = targetUser.managerId || null;
@@ -1129,7 +1133,8 @@ exports.reassignAgentLeads = async (req, res) => {
       managerName = mgr?.name || '';
     }
 
-    const filter = {};
+    const tenantScope = getTenantScope(req.user);
+    const filter = { ...tenantScope };
     if (leadIds && Array.isArray(leadIds) && leadIds.length > 0) {
       filter._id = { $in: leadIds };
     } else if (fromAgentId) {
@@ -1404,7 +1409,9 @@ exports.getAgentActivityLogs = async (req, res) => {
 
 exports.getAgentsPerformance = async (req, res) => {
   try {
+    const tenantUserScope = getTenantUserScope(req.user);
     const agents = await User.find({
+      ...tenantUserScope,
       $or: [
         { role: { $in: ['agent', 'manager', 'sales_rep'] } },
         { companyRole: { $in: ['agent', 'manager', 'sales_rep'] } },

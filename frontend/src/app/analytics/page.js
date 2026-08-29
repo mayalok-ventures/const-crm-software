@@ -1,11 +1,14 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
 import toast from 'react-hot-toast';
+import { isRealEstateTenant, isManager, isOwner, getUser } from '@/lib/auth';
 import {
   BarChart2, TrendingUp, Users, Calendar, MessageSquare, Mic,
-  Download, FileSpreadsheet, FileText, X, Award, DollarSign
+  Download, FileSpreadsheet, FileText, X, Award, DollarSign,
+  Building2, MapPin, Sparkles, UserCheck, Flame
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
@@ -99,11 +102,9 @@ function ExportAnalyticsModal({ onClose, isCompanyOwner }) {
                   cursor: 'pointer',
                 }}
               >
-                <FileSpreadsheet size={22} color="#10b981" />
-                <span style={{ fontSize: 13, fontWeight: format === 'xlsx' ? 700 : 500 }}>Excel (.xlsx)</span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Multi-sheet dataset</span>
+                <FileSpreadsheet size={24} color={format === 'xlsx' ? 'var(--accent)' : 'var(--text-muted)'} />
+                <span style={{ fontSize: 13, fontWeight: 700 }}>Excel (.xlsx)</span>
               </button>
-
               <button
                 type="button"
                 onClick={() => setFormat('pdf')}
@@ -119,17 +120,16 @@ function ExportAnalyticsModal({ onClose, isCompanyOwner }) {
                   cursor: 'pointer',
                 }}
               >
-                <FileText size={22} color="#ef4444" />
-                <span style={{ fontSize: 13, fontWeight: format === 'pdf' ? 700 : 500 }}>PDF Document</span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Executive report</span>
+                <FileText size={24} color={format === 'pdf' ? 'var(--accent)' : 'var(--text-muted)'} />
+                <span style={{ fontSize: 13, fontWeight: 700 }}>PDF Document</span>
               </button>
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button type="button" onClick={onClose} className="btn btn-ghost btn-full" disabled={downloading}>Cancel</button>
-            <button type="submit" className="btn btn-primary btn-full" disabled={downloading} style={{ background: '#16a34a', borderColor: '#16a34a' }}>
-              {downloading ? <div className="spinner" style={{ width: 16, height: 16 }} /> : 'Download Analytics 📊'}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={onClose} className="btn btn-ghost btn-sm">Cancel</button>
+            <button type="submit" disabled={downloading} className="btn btn-primary btn-sm" style={{ gap: 6 }}>
+              <Download size={14} /> {downloading ? 'Exporting...' : 'Download File'}
             </button>
           </div>
         </form>
@@ -138,25 +138,42 @@ function ExportAnalyticsModal({ onClose, isCompanyOwner }) {
   );
 }
 
-export default function AnalyticsPage() {
+function AnalyticsContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawTab = searchParams?.get('tab') || 'performance';
+
   const [data, setData] = useState(null);
+  const [reAnalytics, setReAnalytics] = useState(null);
+  const [teamPerformance, setTeamPerformance] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showExportModal, setShowExportModal] = useState(false);
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    try {
-      const u = localStorage.getItem('user');
-      if (u) setUser(JSON.parse(u));
-    } catch {}
+    const u = getUser();
+    if (u) setUser(u);
 
-    api.get('/analytics')
-      .then(r => setData(r.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.get('/analytics').catch(() => ({ data: null })),
+      api.get('/real-estate/analytics/summary').catch(() => ({ data: { data: null } })),
+      api.get('/real-estate/team/performance').catch(() => ({ data: { data: [] } })),
+    ]).then(([genRes, reRes, teamRes]) => {
+      setData(genRes.data || null);
+      setReAnalytics(reRes.data?.data || null);
+      setTeamPerformance(teamRes.data?.data || []);
+    }).finally(() => setLoading(false));
   }, []);
 
-  const isCompanyOwner = user?.workStatus === 'company_owner' || user?.companyRole === 'owner';
+  const isCompanyOwner = isOwner(user);
+  const isRE = isRealEstateTenant(user);
+
+  const formatINR = (val) => {
+    if (!val || isNaN(val)) return '₹0';
+    if (val >= 10000000) return `₹${(val / 10000000).toFixed(2)} Cr`;
+    if (val >= 100000) return `₹${(val / 100000).toFixed(2)} L`;
+    return `₹${Number(val).toLocaleString('en-IN')}`;
+  };
 
   if (loading) return (
     <div className="app-shell" style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100dvh' }}>
@@ -191,7 +208,7 @@ export default function AnalyticsPage() {
           <div>
             <h1 className="page-title">Performance Analytics</h1>
             <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-              Real-time pipeline metrics & revenue tracking
+              Real-time pipeline metrics, team performance & revenue tracking
             </p>
           </div>
           <button
@@ -204,6 +221,44 @@ export default function AnalyticsPage() {
         </div>
 
         <div className="page-content">
+          {/* Real Estate / Manager Funnel Stats if RE */}
+          {isRE && reAnalytics && (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 14,
+              marginBottom: 20
+            }}>
+              <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Total Pipeline Value</span>
+                <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: 'var(--accent)' }}>
+                  {formatINR(reAnalytics?.pipeline?.totalValue || 0)}
+                </h3>
+              </div>
+
+              <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Site Visit Conversion</span>
+                <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: '#0ea5e9' }}>
+                  {reAnalytics?.siteVisits?.conversionRate || '0%'}
+                </h3>
+              </div>
+
+              <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>EOI Conversion Rate</span>
+                <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: '#a855f7' }}>
+                  {reAnalytics?.eois?.conversionRate || '0%'}
+                </h3>
+              </div>
+
+              <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Bookings Revenue</span>
+                <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: '#10b981' }}>
+                  {formatINR(reAnalytics?.bookings?.totalAgreementValue || 0)}
+                </h3>
+              </div>
+            </div>
+          )}
+
           {/* Top KPI Banner */}
           <div style={{
             background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(79,70,229,0.1) 100%)',
@@ -250,6 +305,39 @@ export default function AnalyticsPage() {
             </button>
           </div>
 
+          {/* Team Performance Table for Managers */}
+          {teamPerformance.length > 0 && (
+            <div className="card" style={{ marginBottom: 20, padding: 20 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 800, margin: '0 0 14px' }}>Team Agent Performance Leaderboard</h3>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', textAlign: 'left' }}>
+                      <th style={{ padding: '10px 8px', fontWeight: 600 }}>Agent</th>
+                      <th style={{ padding: '10px 8px', fontWeight: 600 }}>Assigned Leads</th>
+                      <th style={{ padding: '10px 8px', fontWeight: 600 }}>Visits Completed</th>
+                      <th style={{ padding: '10px 8px', fontWeight: 600 }}>Bookings</th>
+                      <th style={{ padding: '10px 8px', fontWeight: 600 }}>Booking Value</th>
+                      <th style={{ padding: '10px 8px', fontWeight: 600 }}>Conversion %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {teamPerformance.map(agent => (
+                      <tr key={agent.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '12px 8px', fontWeight: 700 }}>👤 {agent.name}</td>
+                        <td style={{ padding: '12px 8px' }}>{agent.leadsAssigned}</td>
+                        <td style={{ padding: '12px 8px' }}>{agent.completedVisits} / {agent.siteVisits}</td>
+                        <td style={{ padding: '12px 8px', fontWeight: 700, color: '#10b981' }}>{agent.bookings}</td>
+                        <td style={{ padding: '12px 8px', fontWeight: 700, color: 'var(--accent)' }}>{formatINR(agent.bookingValue)}</td>
+                        <td style={{ padding: '12px 8px', fontWeight: 700 }}>{agent.conversionRate}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* Top 4 Stat Grid */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:10, marginBottom:20 }}>
             <div className="stat-card">
@@ -270,20 +358,6 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          {/* Conversion progress */}
-          <div className="card" style={{ marginBottom:16 }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-              <p style={{ margin:0, fontWeight:600, fontSize:14 }}>Pipeline Conversion Progress</p>
-              <span style={{ fontSize:20, fontWeight:700, color:'var(--green)' }}>{conversionRate}%</span>
-            </div>
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width:`${conversionRate}%` }} />
-            </div>
-            <p style={{ margin:'8px 0 0', fontSize:12, color:'var(--text-muted)' }}>
-              {byStatus.closed || 0} closed deals out of {totalLeads} total opportunities
-            </p>
-          </div>
-
           {/* Status breakdown */}
           <div className="card" style={{ marginBottom:16 }}>
             <p style={{ margin:'0 0 16px', fontWeight:600, fontSize:14 }}>Leads by Pipeline Stage</p>
@@ -299,53 +373,6 @@ export default function AnalyticsPage() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <div style={{ display:'flex', gap:12, flexWrap:'wrap', marginTop:8 }}>
-              {statusChartData.map(s => (
-                <div key={s.name} style={{ display:'flex', alignItems:'center', gap:6, fontSize:12 }}>
-                  <div style={{ width:8, height:8, borderRadius:'50%', background:s.color }} />
-                  <span style={{ color:'var(--text-muted)' }}>{s.name}: <strong style={{ color:'var(--text)' }}>{s.value}</strong></span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Last 7 days */}
-          {recentChartData.length > 0 && (
-            <div className="card" style={{ marginBottom:16 }}>
-              <p style={{ margin:'0 0 16px', fontWeight:600, fontSize:14 }}>Leads Added (Last 7 Days)</p>
-              <div style={{ height:130 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={recentChartData} margin={{ top:0, right:0, left:-20, bottom:0 }}>
-                    <XAxis dataKey="day" tick={{ fill:'var(--text-muted)', fontSize:11 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill:'var(--text-muted)', fontSize:11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <Tooltip content={<CustomTooltip />} cursor={{ fill:'rgba(99,102,241,0.05)' }} />
-                    <Bar dataKey="leads" fill="var(--accent)" radius={[4,4,0,0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
-
-          {/* Quick stats row */}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            <div className="card" style={{ display:'flex', alignItems:'center', gap:12 }}>
-              <div style={{ width:40, height:40, borderRadius:10, background:'rgba(34,197,94,0.15)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                <MessageSquare size={18} color="var(--green)" />
-              </div>
-              <div>
-                <p style={{ margin:0, fontSize:20, fontWeight:700 }}>{totalTemplates}</p>
-                <p style={{ margin:0, fontSize:11, color:'var(--text-muted)' }}>Templates</p>
-              </div>
-            </div>
-            <div className="card" style={{ display:'flex', alignItems:'center', gap:12 }}>
-              <div style={{ width:40, height:40, borderRadius:10, background:'rgba(239,68,68,0.15)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                <Mic size={18} color="var(--red)" />
-              </div>
-              <div>
-                <p style={{ margin:0, fontSize:20, fontWeight:700 }}>{totalRecordings}</p>
-                <p style={{ margin:0, fontSize:11, color:'var(--text-muted)' }}>Recordings</p>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -359,5 +386,13 @@ export default function AnalyticsPage() {
 
       <BottomNav active="analytics" />
     </div>
+  );
+}
+
+export default function AnalyticsPage() {
+  return (
+    <Suspense fallback={null}>
+      <AnalyticsContent />
+    </Suspense>
   );
 }

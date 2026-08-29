@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const User = require('../models/User');
 const Lead = require('../models/Lead');
 const Project = require('../models/Project');
 const FollowUp = require('../models/FollowUp');
@@ -20,6 +21,40 @@ const getTenantId = (user) => {
   if (!user) return null;
   if (user.companyId) return user.companyId;
   return user._id;
+};
+
+// Canonical team scoping helper
+const getManagerTeamUserIds = async (user) => {
+  if (!user) return [];
+  if (user.role === 'superadmin' || user.role === 'admin' || user.companyRole === 'owner' || user.workStatus === 'company_owner') {
+    return null; // Tenant-level scope (all tenant users)
+  }
+  if (user.role === 'manager' || user.companyRole === 'manager') {
+    const tenantId = getTenantId(user);
+    const teamAgents = await User.find({
+      $or: [{ companyId: tenantId }, { _id: tenantId }],
+      $or: [{ managerId: user._id }, { _id: user._id }],
+    }).select('_id').lean();
+    return teamAgents.map(a => a._id);
+  }
+  // Agent scope
+  return [user._id];
+};
+
+const getLeadIdsForUserScope = async (user, companyId) => {
+  const teamUserIds = await getManagerTeamUserIds(user);
+  if (teamUserIds === null) return null; // Tenant-level scope
+
+  const leads = await Lead.find({
+    $or: [{ companyId }, { userId: companyId }],
+    $or: [
+      { assignedTo: { $in: teamUserIds } },
+      { currentOwnerId: { $in: teamUserIds } },
+      { assignedManager: user._id },
+      { userId: { $in: teamUserIds } },
+    ],
+  }).select('_id').lean();
+  return leads.map(l => l._id);
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -309,8 +344,20 @@ const getRequirements = async (req, res) => {
     if (leadId) query.leadId = leadId;
     if (status) query.status = status;
 
+    const scopedLeadIds = await getLeadIdsForUserScope(req.user, companyId);
+    if (scopedLeadIds !== null) {
+      if (query.leadId) {
+        const isAllowed = scopedLeadIds.some(id => String(id) === String(query.leadId));
+        if (!isAllowed) {
+          return res.status(200).json({ success: true, count: 0, data: [] });
+        }
+      } else {
+        query.leadId = { $in: scopedLeadIds };
+      }
+    }
+
     const requirements = await Requirement.find(query)
-      .populate('leadId', 'name phone email status temperature score')
+      .populate('leadId', 'name phone email status temperature score assignedTo')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -345,18 +392,26 @@ const createRequirement = async (req, res) => {
       return res.status(400).json({ message: 'Lead ID is required' });
     }
 
-    // Validate Lead belongs to same tenant
-    const lead = await Lead.findOne({ _id: leadId, companyId });
-    if (!lead) {
-      return res.status(404).json({ message: 'Lead not found in this organization' });
+    // Normalize propertyType to model enum
+    let normalizedPropertyType = 'Apartment';
+    if (propertyType) {
+      const ptLower = String(propertyType).toLowerCase();
+      if (ptLower.includes('villa')) normalizedPropertyType = 'Villa';
+      else if (ptLower.includes('plot')) normalizedPropertyType = 'Plot';
+      else if (ptLower.includes('commercial')) normalizedPropertyType = 'Commercial';
+      else if (ptLower.includes('penthouse')) normalizedPropertyType = 'Penthouse';
+      else if (ptLower.includes('floor')) normalizedPropertyType = 'Independent Floor';
+      else if (ptLower.includes('office')) normalizedPropertyType = 'Office Space';
+      else if (ptLower.includes('other')) normalizedPropertyType = 'Other';
+      else normalizedPropertyType = 'Apartment';
     }
 
     const requirement = await Requirement.create({
       companyId,
       leadId,
       createdBy: req.user._id,
-      title: title || `${propertyType || 'Property'} Requirement`,
-      propertyType: propertyType || 'Apartment',
+      title: title || `${normalizedPropertyType} Requirement`,
+      propertyType: normalizedPropertyType,
       configurations: Array.isArray(configurations) ? configurations : (configurations ? [configurations] : []),
       preferredLocations: Array.isArray(preferredLocations) ? preferredLocations : (preferredLocations ? [preferredLocations] : []),
       budgetMin: Number(budgetMin) || 0,
@@ -477,8 +532,20 @@ const getOpportunities = async (req, res) => {
     if (stage) query.stage = stage;
     if (assignedTo) query.assignedTo = assignedTo;
 
+    const teamUserIds = await getManagerTeamUserIds(req.user);
+    if (teamUserIds !== null) {
+      if (query.assignedTo) {
+        const isAllowed = teamUserIds.some(id => String(id) === String(query.assignedTo));
+        if (!isAllowed) {
+          return res.status(200).json({ success: true, count: 0, data: [] });
+        }
+      } else {
+        query.assignedTo = { $in: teamUserIds };
+      }
+    }
+
     const opportunities = await Opportunity.find(query)
-      .populate('leadId', 'name phone email status temperature score')
+      .populate('leadId', 'name phone email status temperature score assignedTo')
       .populate('projectId', 'name location developer basePrice minPrice maxPrice')
       .populate('inventoryId', 'unitNumber tower floor configuration status totalPrice')
       .populate('assignedTo', 'name email')
@@ -1024,10 +1091,23 @@ const getEOIs = async (req, res) => {
     if (projectId) query.projectId = projectId;
     if (status) query.status = status;
 
+    const scopedLeadIds = await getLeadIdsForUserScope(req.user, companyId);
+    if (scopedLeadIds !== null) {
+      if (query.leadId) {
+        const isAllowed = scopedLeadIds.some(id => String(id) === String(query.leadId));
+        if (!isAllowed) {
+          return res.status(200).json({ success: true, count: 0, data: [] });
+        }
+      } else {
+        query.leadId = { $in: scopedLeadIds };
+      }
+    }
+
     const eois = await EOI.find(query)
-      .populate('leadId', 'name phone email')
+      .populate('leadId', 'name phone email assignedTo')
       .populate('projectId', 'name location developer')
       .populate('inventoryId', 'unitNumber tower configuration totalPrice')
+      .populate('createdBy', 'name email')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -1058,7 +1138,14 @@ const createEOI = async (req, res) => {
     // If specific inventory unit requested, atomically place on HOLD
     if (inventoryId) {
       const holdUpdated = await Inventory.findOneAndUpdate(
-        { _id: inventoryId, companyId, status: 'AVAILABLE' },
+        {
+          _id: inventoryId,
+          companyId,
+          $or: [
+            { status: 'AVAILABLE' },
+            { status: 'HOLD', holdByLeadId: leadId },
+          ],
+        },
         {
           $set: {
             status: 'HOLD',
@@ -1118,8 +1205,8 @@ const createEOI = async (req, res) => {
 const confirmEOI = async (req, res) => {
   try {
     const companyId = getTenantId(req.user);
-    const { id } = req.params;
-    const { paymentReference, paymentMode } = req.body;
+    const { id } = req.params || {};
+    const { paymentReference, paymentMode } = req.body || {};
 
     const eoi = await EOI.findOneAndUpdate(
       { _id: id, companyId },
@@ -1147,8 +1234,8 @@ const confirmEOI = async (req, res) => {
 const cancelEOI = async (req, res) => {
   try {
     const companyId = getTenantId(req.user);
-    const { id } = req.params;
-    const { cancellationReason } = req.body;
+    const { id } = req.params || {};
+    const { cancellationReason } = req.body || {};
 
     const eoi = await EOI.findOne({ _id: id, companyId });
     if (!eoi) return res.status(404).json({ message: 'EOI not found' });
@@ -1189,10 +1276,23 @@ const getBookings = async (req, res) => {
     if (projectId) query.projectId = projectId;
     if (status) query.status = status;
 
+    const scopedLeadIds = await getLeadIdsForUserScope(req.user, companyId);
+    if (scopedLeadIds !== null) {
+      if (query.leadId) {
+        const isAllowed = scopedLeadIds.some(id => String(id) === String(query.leadId));
+        if (!isAllowed) {
+          return res.status(200).json({ success: true, count: 0, data: [] });
+        }
+      } else {
+        query.leadId = { $in: scopedLeadIds };
+      }
+    }
+
     const bookings = await Booking.find(query)
-      .populate('leadId', 'name phone email')
+      .populate('leadId', 'name phone email assignedTo')
       .populate('projectId', 'name location developer')
       .populate('inventoryId', 'unitNumber tower floor configuration totalPrice')
+      .populate('createdBy', 'name email')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -1545,10 +1645,21 @@ const getPaymentsSummary = async (req, res) => {
     const companyId = getTenantId(req.user);
     const now = new Date();
 
-    const [allSchedules, bookings] = await Promise.all([
-      PaymentSchedule.find({ companyId }).lean(),
-      Booking.find({ companyId, status: { $ne: 'CANCELLED' } }).select('agreementValue totalPaid').lean(),
-    ]);
+    const scopedLeadIds = await getLeadIdsForUserScope(req.user, companyId);
+    const bookingQuery = { companyId, status: { $ne: 'CANCELLED' } };
+    if (scopedLeadIds !== null) {
+      bookingQuery.leadId = { $in: scopedLeadIds };
+    }
+
+    const bookings = await Booking.find(bookingQuery).select('_id agreementValue totalPaid leadId').lean();
+    const bookingIds = bookings.map(b => b._id);
+
+    const scheduleQuery = { companyId };
+    if (scopedLeadIds !== null) {
+      scheduleQuery.bookingId = { $in: bookingIds };
+    }
+
+    const allSchedules = await PaymentSchedule.find(scheduleQuery).lean();
 
     let totalCollected = 0;
     let upcomingAmount = 0;
@@ -1664,32 +1775,83 @@ const deleteOffer = async (req, res) => {
 const getRealEstateAnalytics = async (req, res) => {
   try {
     const companyId = getTenantId(req.user);
+    const teamUserIds = await getManagerTeamUserIds(req.user);
+    const scopedLeadIds = await getLeadIdsForUserScope(req.user, companyId);
+
+    const leadBaseQuery = { companyId, deletedAt: null };
+    if (scopedLeadIds !== null) {
+      leadBaseQuery._id = { $in: scopedLeadIds };
+    }
+
+    const reqBaseQuery = { companyId, status: 'ACTIVE' };
+    if (scopedLeadIds !== null) {
+      reqBaseQuery.leadId = { $in: scopedLeadIds };
+    }
+
+    const oppBaseQuery = { companyId, status: 'OPEN' };
+    if (teamUserIds !== null) {
+      oppBaseQuery.assignedTo = { $in: teamUserIds };
+    }
+
+    const eoiBaseQuery = { companyId };
+    if (scopedLeadIds !== null) {
+      eoiBaseQuery.leadId = { $in: scopedLeadIds };
+    }
+
+    const bookingBaseQuery = { companyId, status: { $ne: 'CANCELLED' } };
+    if (scopedLeadIds !== null) {
+      bookingBaseQuery.leadId = { $in: scopedLeadIds };
+    }
+
+    const followUpQuery = { companyId, type: 'site_visit' };
+    if (scopedLeadIds !== null) {
+      followUpQuery.$or = [{ lead_id: { $in: scopedLeadIds } }, { leadId: { $in: scopedLeadIds } }];
+    }
+
+    const allFollowUpsQuery = { companyId };
+    if (scopedLeadIds !== null) {
+      allFollowUpsQuery.$or = [{ lead_id: { $in: scopedLeadIds } }, { leadId: { $in: scopedLeadIds } }];
+    }
 
     const [
       totalLeads,
+      newLeads,
       hotLeads,
       warmLeads,
       coldLeads,
       activeRequirements,
       opportunities,
       totalEOIs,
+      pendingEOIs,
+      confirmedEOIs,
+      expiringEOIs,
       confirmedBookings,
       inventoryStats,
       siteVisits,
+      allFollowUps,
     ] = await Promise.all([
-      Lead.countDocuments({ companyId, deletedAt: null }),
-      Lead.countDocuments({ companyId, deletedAt: null, temperature: 'HOT' }),
-      Lead.countDocuments({ companyId, deletedAt: null, temperature: 'WARM' }),
-      Lead.countDocuments({ companyId, deletedAt: null, temperature: 'COLD' }),
-      Requirement.countDocuments({ companyId, status: 'ACTIVE' }),
-      Opportunity.find({ companyId, status: 'OPEN' }).select('expectedValue probability stage').lean(),
-      EOI.countDocuments({ companyId, status: { $in: ['SUBMITTED', 'CONFIRMED'] } }),
-      Booking.find({ companyId, status: { $ne: 'CANCELLED' } }).select('agreementValue bookingAmount totalPaid').lean(),
+      Lead.countDocuments(leadBaseQuery),
+      Lead.countDocuments({ ...leadBaseQuery, status: { $in: ['new_lead', 'new'] } }),
+      Lead.countDocuments({ ...leadBaseQuery, temperature: 'HOT' }),
+      Lead.countDocuments({ ...leadBaseQuery, temperature: 'WARM' }),
+      Lead.countDocuments({ ...leadBaseQuery, temperature: 'COLD' }),
+      Requirement.countDocuments(reqBaseQuery),
+      Opportunity.find(oppBaseQuery).select('expectedValue probability stage').lean(),
+      EOI.countDocuments({ ...eoiBaseQuery, status: { $in: ['SUBMITTED', 'CONFIRMED'] } }),
+      EOI.countDocuments({ ...eoiBaseQuery, status: 'SUBMITTED' }),
+      EOI.countDocuments({ ...eoiBaseQuery, status: 'CONFIRMED' }),
+      EOI.countDocuments({
+        ...eoiBaseQuery,
+        status: { $in: ['SUBMITTED', 'CONFIRMED'] },
+        createdAt: { $lt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000) }
+      }),
+      Booking.find(bookingBaseQuery).select('agreementValue bookingAmount totalPaid status').lean(),
       Inventory.aggregate([
         { $match: { companyId } },
         { $group: { _id: '$status', count: { $sum: 1 } } },
       ]),
-      FollowUp.find({ companyId, type: 'site_visit' }).select('status siteVisitDetails').lean(),
+      FollowUp.find(followUpQuery).select('status siteVisitDetails scheduledAt date time').lean(),
+      FollowUp.find(allFollowUpsQuery).select('status date scheduledAt').lean(),
     ]);
 
     // Pipeline Calculations
@@ -1710,15 +1872,55 @@ const getRealEstateAnalytics = async (req, res) => {
     // Revenue Calculations
     let totalAgreementValue = 0;
     let totalCollectedAmount = 0;
+    let totalOutstandingAmount = 0;
     for (const bk of confirmedBookings) {
-      totalAgreementValue += bk.agreementValue || 0;
-      totalCollectedAmount += bk.totalPaid || 0;
+      const agVal = bk.agreementValue || 0;
+      const pdVal = bk.totalPaid || 0;
+      totalAgreementValue += agVal;
+      totalCollectedAmount += pdVal;
+      totalOutstandingAmount += Math.max(0, agVal - pdVal);
     }
 
-    // Site Visit Conversion
+    // Site Visit Conversion & Metrics
     const totalSiteVisits = siteVisits.length;
     const completedSiteVisits = siteVisits.filter((s) => s.status === 'done' || s.status === 'completed').length;
+    const noShowVisits = siteVisits.filter((s) => s.status === 'no_show' || s.status === 'cancelled').length;
     const siteVisitConversionRate = totalSiteVisits > 0 ? ((completedSiteVisits / totalSiteVisits) * 100).toFixed(1) : 0;
+
+    // Follow-ups due
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    const todaySiteVisitsCount = siteVisits.filter(s => {
+      const visitDate = s.scheduledAt || s.date ? new Date(s.scheduledAt || s.date) : null;
+      return visitDate && visitDate >= startOfToday && visitDate <= endOfToday;
+    }).length;
+
+    const upcomingSiteVisitsCount = siteVisits.filter(s => {
+      const visitDate = s.scheduledAt || s.date ? new Date(s.scheduledAt || s.date) : null;
+      return visitDate && visitDate > endOfToday && (s.status === 'pending' || s.status === 'scheduled');
+    }).length;
+
+    const overdueFollowUpsCount = allFollowUps.filter(f => {
+      const fDate = f.scheduledAt || f.date ? new Date(f.scheduledAt || f.date) : null;
+      return fDate && fDate < startOfToday && f.status === 'pending';
+    }).length;
+
+    const todayFollowUpsCount = allFollowUps.filter(f => {
+      const fDate = f.scheduledAt || f.date ? new Date(f.scheduledAt || f.date) : null;
+      return fDate && fDate >= startOfToday && fDate <= endOfToday && f.status === 'pending';
+    }).length;
+
+    const upcomingFollowUpsCount = allFollowUps.filter(f => {
+      const fDate = f.scheduledAt || f.date ? new Date(f.scheduledAt || f.date) : null;
+      return fDate && fDate > endOfToday && f.status === 'pending';
+    }).length;
+
+    // EOI conversion rate
+    const eoiConversionRate = totalEOIs > 0 ? ((confirmedBookings.length / totalEOIs) * 100).toFixed(1) : 0;
+    // Lead conversion rate
+    const leadConversionRate = totalLeads > 0 ? ((confirmedBookings.length / totalLeads) * 100).toFixed(1) : 0;
 
     // Inventory status map
     const inventorySummary = {
@@ -1740,9 +1942,16 @@ const getRealEstateAnalytics = async (req, res) => {
       data: {
         leads: {
           total: totalLeads,
+          new: newLeads,
           hot: hotLeads,
           warm: warmLeads,
           cold: coldLeads,
+          conversionRate: `${leadConversionRate}%`,
+        },
+        followUps: {
+          overdue: overdueFollowUpsCount,
+          today: todayFollowUpsCount,
+          upcoming: upcomingFollowUpsCount,
         },
         requirements: {
           active: activeRequirements,
@@ -1755,22 +1964,241 @@ const getRealEstateAnalytics = async (req, res) => {
         },
         siteVisits: {
           total: totalSiteVisits,
+          today: todaySiteVisitsCount,
+          upcoming: upcomingSiteVisitsCount,
           completed: completedSiteVisits,
+          noShow: noShowVisits,
           conversionRate: `${siteVisitConversionRate}%`,
         },
         eois: {
-          active: totalEOIs,
+          total: totalEOIs,
+          pending: pendingEOIs,
+          confirmed: confirmedEOIs,
+          expiring: expiringEOIs,
+          conversionRate: `${eoiConversionRate}%`,
         },
         bookings: {
           count: confirmedBookings.length,
           totalAgreementValue,
           totalCollectedAmount,
+          totalOutstandingAmount,
         },
         inventory: inventorySummary,
       },
     });
   } catch (error) {
     return res.status(500).json({ message: 'Failed to generate real estate analytics', error: error.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// 11. TEAM MANAGEMENT & AGENT WORKLOAD (MANAGER & ADMIN)
+// ─────────────────────────────────────────────────────────────
+const getManagerTeamMembers = async (req, res) => {
+  try {
+    const companyId = getTenantId(req.user);
+    const teamUserIds = await getManagerTeamUserIds(req.user);
+
+    const filter = {
+      $or: [{ companyId }, { _id: companyId }],
+      $or: [
+        { role: { $in: ['agent', 'manager', 'sales_rep'] } },
+        { companyRole: { $in: ['agent', 'manager', 'sales_rep'] } },
+      ],
+    };
+
+    if (teamUserIds !== null) {
+      filter._id = { $in: teamUserIds };
+    }
+
+    const members = await User.find(filter)
+      .populate('managerId', 'name email')
+      .select('name email phone role companyRole managerId managerName leadCap isAvailable isAvailableForRouting isActive userStatus employeeStatus createdAt lastLogin')
+      .lean();
+
+    return res.status(200).json({ success: true, count: members.length, data: members });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to fetch team members', error: error.message });
+  }
+};
+
+const getManagerTeamPerformance = async (req, res) => {
+  try {
+    const companyId = getTenantId(req.user);
+    const teamUserIds = await getManagerTeamUserIds(req.user);
+
+    const filter = {
+      $or: [{ companyId }, { _id: companyId }],
+      $or: [
+        { role: { $in: ['agent', 'manager', 'sales_rep'] } },
+        { companyRole: { $in: ['agent', 'manager', 'sales_rep'] } },
+      ],
+    };
+
+    if (teamUserIds !== null) {
+      filter._id = { $in: teamUserIds };
+    }
+
+    const agents = await User.find(filter)
+      .select('name email phone role companyRole managerName leadCap isAvailableForRouting isActive incentive_pct')
+      .lean();
+
+    const performanceList = [];
+
+    for (const agent of agents) {
+      const [
+        assignedLeadsCount,
+        contactedLeadsCount,
+        reqCount,
+        siteVisits,
+        opps,
+        eoisCount,
+        bookings,
+        commissionAgg
+      ] = await Promise.all([
+        Lead.countDocuments({ companyId, assignedTo: agent._id, deletedAt: null }),
+        Lead.countDocuments({
+          companyId,
+          assignedTo: agent._id,
+          status: { $nin: ['new_lead', 'new'] },
+          deletedAt: null
+        }),
+        Requirement.countDocuments({ companyId, createdBy: agent._id }),
+        FollowUp.find({
+          companyId,
+          type: 'site_visit',
+          $or: [{ assignedTo: agent._id }, { userId: agent._id }, { agentId: agent._id }]
+        }).select('status').lean(),
+        Opportunity.find({ companyId, assignedTo: agent._id }).select('expectedValue stage status').lean(),
+        EOI.countDocuments({ companyId, $or: [{ createdBy: agent._id }, { assignedTo: agent._id }] }),
+        Booking.find({
+          companyId,
+          status: { $ne: 'CANCELLED' },
+          $or: [{ createdBy: agent._id }, { assignedTo: agent._id }]
+        }).select('agreementValue bookingAmount totalPaid').lean(),
+        CommissionPayout.aggregate([
+          { $match: { companyId, userId: agent._id, status: { $in: ['APPROVED', 'PAID', 'approved', 'paid'] } } },
+          { $group: { _id: null, total: { $sum: '$commissionEarned' } } }
+        ]),
+      ]);
+
+      const totalVisits = siteVisits.length;
+      const completedVisits = siteVisits.filter(s => s.status === 'done' || s.status === 'completed').length;
+      const totalBookings = bookings.length;
+      const totalBookingValue = bookings.reduce((sum, b) => sum + (b.agreementValue || 0), 0);
+      const conversionRate = assignedLeadsCount > 0 ? ((totalBookings / assignedLeadsCount) * 100).toFixed(1) : '0.0';
+      const commissionEarned = commissionAgg[0]?.total || 0;
+
+      performanceList.push({
+        id: agent._id,
+        agentId: agent._id,
+        name: agent.name,
+        email: agent.email,
+        phone: agent.phone,
+        role: agent.role,
+        managerName: agent.managerName || 'Direct',
+        leadsAssigned: assignedLeadsCount,
+        leadsContacted: contactedLeadsCount,
+        requirements: reqCount,
+        siteVisits: totalVisits,
+        completedVisits,
+        opportunities: opps.length,
+        eois: eoisCount,
+        bookings: totalBookings,
+        bookingValue: totalBookingValue,
+        conversionRate: `${conversionRate}%`,
+        commissionEarned,
+        isActive: agent.isActive !== false,
+      });
+    }
+
+    return res.status(200).json({ success: true, count: performanceList.length, data: performanceList });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to fetch team performance', error: error.message });
+  }
+};
+
+const getManagerTeamWorkload = async (req, res) => {
+  try {
+    const companyId = getTenantId(req.user);
+    const teamUserIds = await getManagerTeamUserIds(req.user);
+
+    const filter = {
+      $or: [{ companyId }, { _id: companyId }],
+      $or: [
+        { role: { $in: ['agent', 'manager', 'sales_rep'] } },
+        { companyRole: { $in: ['agent', 'manager', 'sales_rep'] } },
+      ],
+    };
+
+    if (teamUserIds !== null) {
+      filter._id = { $in: teamUserIds };
+    }
+
+    const agents = await User.find(filter)
+      .select('name email phone role companyRole managerName leadCap isAvailableForRouting isActive')
+      .lean();
+
+    const workloadList = [];
+
+    for (const agent of agents) {
+      const [
+        activeLeadsCount,
+        hotLeadsCount,
+        pendingFollowUpsCount,
+        upcomingVisitsCount,
+        openOppsCount
+      ] = await Promise.all([
+        Lead.countDocuments({
+          companyId,
+          assignedTo: agent._id,
+          status: { $nin: ['converted', 'closed', 'lost', 'deal_lost', 'not_interested'] },
+          deletedAt: null
+        }),
+        Lead.countDocuments({
+          companyId,
+          assignedTo: agent._id,
+          temperature: 'HOT',
+          deletedAt: null
+        }),
+        FollowUp.countDocuments({
+          companyId,
+          status: 'pending',
+          $or: [{ assignedTo: agent._id }, { userId: agent._id }, { agentId: agent._id }]
+        }),
+        FollowUp.countDocuments({
+          companyId,
+          type: 'site_visit',
+          status: { $in: ['pending', 'scheduled'] },
+          $or: [{ assignedTo: agent._id }, { userId: agent._id }, { agentId: agent._id }]
+        }),
+        Opportunity.countDocuments({
+          companyId,
+          assignedTo: agent._id,
+          status: 'OPEN'
+        }),
+      ]);
+
+      workloadList.push({
+        id: agent._id,
+        agentId: agent._id,
+        name: agent.name,
+        email: agent.email,
+        phone: agent.phone,
+        role: agent.role,
+        leadCap: agent.leadCap || 50,
+        isAvailable: agent.isAvailableForRouting !== false,
+        activeLeads: activeLeadsCount,
+        hotLeads: hotLeadsCount,
+        pendingFollowUps: pendingFollowUpsCount,
+        upcomingVisits: upcomingVisitsCount,
+        openOpportunities: openOppsCount,
+      });
+    }
+
+    return res.status(200).json({ success: true, count: workloadList.length, data: workloadList });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to fetch team workload', error: error.message });
   }
 };
 
@@ -1808,5 +2236,10 @@ module.exports = {
   createOffer,
   deleteOffer,
   getRealEstateAnalytics,
+  getManagerTeamMembers,
+  getManagerTeamPerformance,
+  getManagerTeamWorkload,
+  getManagerTeamUserIds,
+  getLeadIdsForUserScope,
   calculateLeadScoreInternal,
 };

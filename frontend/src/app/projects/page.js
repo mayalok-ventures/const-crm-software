@@ -1,6 +1,7 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
@@ -244,15 +245,24 @@ function ProjectModal({ project, onClose, onSaved }) {
   );
 }
 
-export default function ProjectsPage() {
+function ProjectsContent() {
+  const searchParams = useSearchParams();
+  const rawTab = searchParams?.get('tab');
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState(rawTab === 'availability' ? 'available' : '');
   const [activeModal, setActiveModal] = useState(false);
   const [selectedProject, setSelectedProject] = useState(null);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const [selectedInventoryProject, setSelectedInventoryProject] = useState(null);
+
+  useEffect(() => {
+    const tabParam = searchParams?.get('tab');
+    if (tabParam === 'availability') {
+      setStatusFilter('available');
+    }
+  }, [searchParams]);
 
   const fetchProjects = async () => {
     setLoading(true);
@@ -508,5 +518,13 @@ export default function ProjectsPage() {
 
       <BottomNav active="projects" />
     </div>
+  );
+}
+
+export default function ProjectsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ProjectsContent />
+    </Suspense>
   );
 }

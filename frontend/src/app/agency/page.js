@@ -43,8 +43,13 @@ function AgencyPageContent() {
 
   useEffect(() => {
     const tabParam = searchParams?.get('tab');
-    if (tabParam && ['overview', 'roster', 'forms', 'roles', 'incentives', 'logs'].includes(tabParam)) {
-      setActiveTab(tabParam);
+    if (tabParam) {
+      if (tabParam === 'members' || tabParam === 'workload') setActiveTab('roster');
+      else if (tabParam === 'performance') setActiveTab('overview');
+      else if (tabParam === 'activity') setActiveTab('logs');
+      else if (['overview', 'roster', 'forms', 'roles', 'incentives', 'logs'].includes(tabParam)) {
+        setActiveTab(tabParam);
+      }
     }
   }, [searchParams]);
 

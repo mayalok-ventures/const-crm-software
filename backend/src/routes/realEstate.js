@@ -35,6 +35,9 @@ const {
   createOffer,
   deleteOffer,
   getRealEstateAnalytics,
+  getManagerTeamMembers,
+  getManagerTeamPerformance,
+  getManagerTeamWorkload,
 } = require('../controllers/realEstateController');
 
 // All Real Estate routes require authentication
@@ -106,5 +109,10 @@ router.delete('/offers/:id', deleteOffer);
 
 // 10. Analytics
 router.get('/analytics/summary', getRealEstateAnalytics);
+
+// 11. Team Management, Workload & Performance
+router.get('/team/members', getManagerTeamMembers);
+router.get('/team/performance', getManagerTeamPerformance);
+router.get('/team/workload', getManagerTeamWorkload);
 
 module.exports = router;
