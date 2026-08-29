@@ -1182,3 +1182,73 @@ exports.updateAgent = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// @desc  Delete/Remove an agent from the agency team roster
+// @route DELETE /api/agency/agents/:agentId
+// @access Private (Tenant Owner)
+exports.deleteAgent = async (req, res) => {
+  try {
+    const { agentId } = req.params;
+    const tenantId = req.tenantId;
+
+    const agent = await User.findOne({ _id: agentId, companyId: tenantId });
+    if (!agent) {
+      return res.status(404).json({ message: 'Team member not found in your organization' });
+    }
+
+    // Reclaim leads back to owner
+    await Lead.updateMany(
+      {
+        $or: [
+          { assignedTo: agent._id },
+          { userId: agent._id, companyId: tenantId }
+        ]
+      },
+      {
+        $set: {
+          userId: tenantId,
+          assignedTo: null,
+          assignedToName: '',
+        },
+        $push: {
+          leadActivities: {
+            action: 'lead_reassigned',
+            performedBy: req.user._id,
+            performerName: req.user.name,
+            details: `Agent ${agent.name} removed from organization. Leads reclaimed by Tenant Owner.`,
+            timestamp: new Date(),
+          }
+        }
+      }
+    );
+
+    // If agent was created directly by the company, delete document or detach
+    if (agent.companyJoinMethod === 'created_by_company') {
+      await User.deleteOne({ _id: agent._id });
+    } else {
+      agent.companyId = null;
+      agent.companyRole = 'solo';
+      agent.role = 'agent';
+      agent.managerId = null;
+      agent.managerName = '';
+      agent.roleId = null;
+      await agent.save();
+    }
+
+    await logAudit({
+      actorId: req.user._id,
+      actorRole: req.user.role,
+      targetUserId: agent._id,
+      targetCompanyId: tenantId,
+      action: 'DELETE',
+      beforeState: { name: agent.name, email: agent.email, role: agent.role, companyRole: agent.companyRole },
+      afterState: null,
+      reason: `Tenant Owner removed agent ${agent.name} from roster.`,
+    });
+
+    res.json({ success: true, message: `Team member ${agent.name} removed successfully ✅` });
+  } catch (error) {
+    console.error('deleteAgent error:', error);
+    res.status(500).json({ message: error.message || 'Failed to remove team member' });
+  }
+};

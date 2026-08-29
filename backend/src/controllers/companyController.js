@@ -118,17 +118,36 @@ exports.createCompanyAgent = async (req, res) => {
       if (exists) return res.status(400).json({ message: 'Email already registered' });
     }
 
+    const Role = require('../models/Role');
     const username = await generateUniqueUsername(User);
     const usercode = await generateUniqueUsercode(User, 'REA');
 
     // Determine role & companyRole
     let finalRole = 'agent';
     let finalCompanyRole = 'agent';
+
+    if (roleId) {
+      const roleDoc = await Role.findById(roleId);
+      if (roleDoc && (roleDoc.roleType === 'MANAGER' || roleDoc.name?.toLowerCase().includes('manager'))) {
+        finalRole = 'manager';
+        finalCompanyRole = 'manager';
+      }
+    }
+
     if (role === 'manager' || companyRole === 'manager') {
       finalRole = 'manager';
       finalCompanyRole = 'manager';
     } else if (companyRole) {
       finalCompanyRole = companyRole;
+      if (['manager', 'admin', 'agent'].includes(companyRole)) {
+        finalRole = companyRole;
+      }
+    }
+
+    let managerName = '';
+    if (managerId) {
+      const mgr = await User.findById(managerId);
+      if (mgr) managerName = mgr.name;
     }
 
     const agentData = {
@@ -140,6 +159,7 @@ exports.createCompanyAgent = async (req, res) => {
       usercode,
       role: finalRole,
       companyRole: finalCompanyRole,
+      managerName,
       workStatus: 'independent_agent',
       companyId: req.user._id,
       companyJoinMethod: 'created_by_company', // SMART PERMISSION: Created by company
@@ -152,20 +172,14 @@ exports.createCompanyAgent = async (req, res) => {
 
     const agent = await User.create(agentData);
 
+    const populatedAgent = await User.findById(agent._id)
+      .populate('roleId', 'name roleType permissions')
+      .populate('managerId', 'name email usercode')
+      .lean();
+
     res.status(201).json({
       message: `Team member ${agent.name} created successfully ✅`,
-      agent: {
-        _id: agent._id,
-        name: agent.name,
-        email: agent.email,
-        phone: agent.phone,
-        usercode: agent.usercode,
-        role: agent.role,
-        companyRole: agent.companyRole,
-        roleId: agent.roleId,
-        managerId: agent.managerId,
-        companyJoinMethod: agent.companyJoinMethod,
-      }
+      agent: populatedAgent,
     });
   } catch (error) {
     console.error('createCompanyAgent error:', error);

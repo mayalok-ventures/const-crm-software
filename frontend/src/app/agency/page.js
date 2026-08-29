@@ -178,9 +178,13 @@ function AgencyPageContent() {
   // Agent Operations
   const handleEditAgent = (ag) => {
     setEditingAgent(ag);
+    let resolvedRole = ag.companyRole || ag.role || 'agent';
+    if (ag.role === 'manager' || ag.companyRole === 'manager') {
+      resolvedRole = 'manager';
+    }
     setAgentForm({
       roleId: ag.roleId?._id || ag.roleId || '',
-      companyRole: ag.companyRole || ag.role || 'agent',
+      companyRole: resolvedRole,
       managerId: ag.managerId?._id || ag.managerId || '',
       employeeStatus: ag.employeeStatus || 'active'
     });
@@ -249,6 +253,26 @@ function AgencyPageContent() {
       fetchData();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to create team member');
+    }
+  };
+
+  // Delete / Remove Agent from Roster
+  const handleDeleteAgent = async (agent) => {
+    if (!confirm(`Are you sure you want to remove "${agent.name}" (${agent.usercode || 'Member'}) from your organization team roster?`)) {
+      return;
+    }
+    try {
+      await api.delete(`/agency/agents/${agent._id}`);
+      toast.success(`Team member ${agent.name} removed successfully ✅`);
+      fetchData();
+    } catch (err) {
+      try {
+        await api.delete(`/company/agents/${agent._id}`);
+        toast.success(`Team member ${agent.name} removed successfully ✅`);
+        fetchData();
+      } catch (fallbackErr) {
+        toast.error(err.response?.data?.message || 'Failed to remove team member');
+      }
     }
   };
 
@@ -529,14 +553,24 @@ function AgencyPageContent() {
                       </td>
                       {isOwner && (
                         <td style={{ padding: '12px 8px', textAlign: 'right' }}>
-                          <button
-                            onClick={() => handleEditAgent(ag)}
-                            className="btn btn-ghost btn-sm"
-                            style={{ padding: 6 }}
-                            title="Edit Roster Options"
-                          >
-                            <Edit2 size={13} />
-                          </button>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <button
+                              onClick={() => handleEditAgent(ag)}
+                              className="btn btn-ghost btn-sm"
+                              style={{ padding: '6px 8px', color: 'var(--text-main)' }}
+                              title="Edit Roster Options"
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteAgent(ag)}
+                              className="btn btn-ghost btn-sm"
+                              style={{ padding: '6px 8px', color: '#ef4444' }}
+                              title="Delete / Remove Team Member"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -955,7 +989,15 @@ function AgencyPageContent() {
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Custom Tenant Role Policy (Optional)</label>
                   <select
                     value={agentForm.roleId}
-                    onChange={e => setAgentForm({ ...agentForm, roleId: e.target.value })}
+                    onChange={e => {
+                      const selRoleId = e.target.value;
+                      const selectedRole = roles.find(r => r._id === selRoleId);
+                      let newCompanyRole = agentForm.companyRole;
+                      if (selectedRole?.roleType === 'MANAGER' || selectedRole?.name?.toLowerCase().includes('manager')) {
+                        newCompanyRole = 'manager';
+                      }
+                      setAgentForm({ ...agentForm, roleId: selRoleId, companyRole: newCompanyRole });
+                    }}
                     className="input btn-full"
                     style={{ width: '100%' }}
                   >
@@ -1081,7 +1123,19 @@ function AgencyPageContent() {
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Custom Role Policy (Optional)</label>
                   <select
                     value={newMemberForm.roleId}
-                    onChange={e => setNewMemberForm({ ...newMemberForm, roleId: e.target.value })}
+                    onChange={e => {
+                      const selRoleId = e.target.value;
+                      const selectedRole = roles.find(r => r._id === selRoleId);
+                      let newCompanyRole = newMemberForm.companyRole;
+                      if (selectedRole?.roleType === 'MANAGER' || selectedRole?.name?.toLowerCase().includes('manager')) {
+                        newCompanyRole = 'manager';
+                      }
+                      setNewMemberForm({
+                        ...newMemberForm,
+                        roleId: selRoleId,
+                        companyRole: newCompanyRole
+                      });
+                    }}
                     className="input btn-full"
                     style={{ width: '100%' }}
                   >
