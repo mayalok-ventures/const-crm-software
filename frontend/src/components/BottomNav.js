@@ -39,6 +39,7 @@ function BottomNavContent({ active }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [profileHref, setProfileHref] = useState('/profile');
   const [generalControlsExpanded, setGeneralControlsExpanded] = useState(false);
+  const [leadsExpanded, setLeadsExpanded] = useState(false);
 
   const handleLogout = () => {
     clearAuth();
