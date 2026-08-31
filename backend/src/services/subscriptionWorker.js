@@ -175,6 +175,10 @@ const processSubscriptionLifecycle = async () => {
       ent.whatsapp.nextDripDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
       await ent.save();
     }
+  } catch (dripErr) {
+    console.error('[Billing Engine] Error processing feature drips:', dripErr.message);
+  }
+
   // ── 5. RUN PERIODIC RECONCILIATION BATCH ─────────────────────────────────
   try {
     const { runPeriodicReconciliation } = require('./reconciliationService');

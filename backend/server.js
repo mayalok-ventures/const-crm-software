@@ -4,7 +4,7 @@ validateEnvironment();
 
 // Process-level uncaught exception & unhandled rejection resilience
 process.on('uncaughtException', (err) => {
-  console.error('💥 [Fatal] Uncaught Exception:', err.message);
+  console.error('💥 [Fatal] Uncaught Exception:', err.stack || err.message);
 });
 
 process.on('unhandledRejection', (reason) => {
