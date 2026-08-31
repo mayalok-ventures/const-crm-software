@@ -380,26 +380,33 @@ function AgencyPageContent() {
     }
 
     try {
+      const isMgr = newMemberForm.companyRole === 'manager';
+      let assignedRoleId = newMemberForm.roleId || null;
+      if (!assignedRoleId && isMgr) {
+        const mgrRole = roles.find(r => (r.roleType === 'MANAGER' || r.name?.toLowerCase() === 'manager') && r._id && !String(r._id).startsWith('default_'));
+        if (mgrRole) assignedRoleId = mgrRole._id;
+      }
+
       const res = await api.post('/company/agents', {
         name: newMemberForm.name,
         email: newMemberForm.email,
         phone: newMemberForm.phone,
         password: newMemberForm.password,
-        role: newMemberForm.companyRole === 'manager' ? 'manager' : 'agent',
+        role: isMgr ? 'manager' : 'agent',
         companyRole: newMemberForm.companyRole || 'agent',
-        roleId: newMemberForm.roleId || null,
-        managerId: newMemberForm.managerId || null,
+        roleId: assignedRoleId,
+        managerId: isMgr ? null : (newMemberForm.managerId || null),
       });
 
       const newAgentId = res.data?.agent?._id;
 
-      if (newAgentId && (newMemberForm.roleId || newMemberForm.managerId || newMemberForm.companyRole)) {
+      if (newAgentId && (assignedRoleId || newMemberForm.managerId || newMemberForm.companyRole)) {
         await api.patch(`/agency/agents/${newAgentId}`, {
-          roleId: newMemberForm.roleId || null,
+          roleId: assignedRoleId,
           companyRole: newMemberForm.companyRole || 'agent',
-          role: newMemberForm.companyRole === 'manager' ? 'manager' : 'agent',
-          managerId: newMemberForm.managerId || null
-        });
+          role: isMgr ? 'manager' : 'agent',
+          managerId: isMgr ? null : (newMemberForm.managerId || null)
+        }).catch(() => {});
       }
 
       toast.success(res.data?.message || 'Team member created successfully! 🎉');
@@ -923,13 +930,11 @@ function AgencyPageContent() {
                           fontWeight: 700,
                           textTransform: 'uppercase',
                         }}>
-                          {ag.roleId?.name ? `${ag.roleId.name}` : (
-                            ag.companyRole === 'owner'
-                              ? 'OWNER'
-                              : (ag.companyRole === 'manager' || ag.role === 'manager'
-                                ? 'MANAGER'
-                                : 'AGENT')
-                          )}
+                          {ag.companyRole === 'owner'
+                            ? 'OWNER'
+                            : (ag.companyRole === 'manager' || ag.role === 'manager'
+                              ? (ag.roleId?.name && ag.roleId?.name !== 'agent' ? `${ag.roleId.name}` : 'MANAGER')
+                              : (ag.roleId?.name ? `${ag.roleId.name}` : (ag.companyRole?.toUpperCase() || 'AGENT')))}
                         </span>
                       </td>
                       <td style={{ padding: '12px 8px' }}>
@@ -1296,21 +1301,47 @@ function AgencyPageContent() {
                 </div>
                 <div style={{ marginBottom: 10 }}>
                   <label className="label">Company Role</label>
-                  <select className="input" value={newMemberForm.companyRole} onChange={e => setNewMemberForm(f => ({ ...f, companyRole: e.target.value }))}>
+                  <select
+                    className="input"
+                    value={newMemberForm.companyRole}
+                    onChange={e => {
+                      const selectedRole = e.target.value;
+                      setNewMemberForm(f => ({
+                        ...f,
+                        companyRole: selectedRole,
+                        managerId: selectedRole === 'manager' ? '' : f.managerId
+                      }));
+                    }}
+                  >
                     <option value="agent">Agent / Sales Rep</option>
                     <option value="manager">Manager / Supervisor</option>
                     <option value="telecaller">Telecaller</option>
                   </select>
                 </div>
-                <div style={{ marginBottom: 16 }}>
-                  <label className="label">Reporting Manager</label>
-                  <select className="input" value={newMemberForm.managerId} onChange={e => setNewMemberForm(f => ({ ...f, managerId: e.target.value }))}>
-                    <option value="">Direct to Company Owner</option>
-                    {agents.filter(a => a.companyRole === 'manager' || a.role === 'manager').map(m => (
-                      <option key={m._id} value={m._id}>{m.name} (Manager)</option>
-                    ))}
-                  </select>
-                </div>
+
+                {roles.filter(r => r._id && !String(r._id).startsWith('default_')).length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <label className="label">Custom RBAC Role (Optional)</label>
+                    <select className="input" value={newMemberForm.roleId} onChange={e => setNewMemberForm(f => ({ ...f, roleId: e.target.value }))}>
+                      <option value="">Default Permissions</option>
+                      {roles.filter(r => r._id && !String(r._id).startsWith('default_')).map(r => (
+                        <option key={r._id} value={r._id}>{r.name} ({r.roleType})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {newMemberForm.companyRole !== 'manager' && (
+                  <div style={{ marginBottom: 16 }}>
+                    <label className="label">Reporting Manager</label>
+                    <select className="input" value={newMemberForm.managerId} onChange={e => setNewMemberForm(f => ({ ...f, managerId: e.target.value }))}>
+                      <option value="">Direct to Company Owner</option>
+                      {agents.filter(a => a.companyRole === 'manager' || a.role === 'manager').map(m => (
+                        <option key={m._id} value={m._id}>{m.name} (Manager)</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                   <button type="button" onClick={() => setShowAddMemberModal(false)} className="btn btn-ghost btn-sm">Cancel</button>

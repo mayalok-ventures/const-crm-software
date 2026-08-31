@@ -86,8 +86,14 @@ exports.register = async (req, res) => {
       plan: 'free',
       isCustomPlan: false,
       billingCycle: 'monthly',
-      planStartDate: null,
-      planEndDate: null,
+      planStartDate: new Date(),
+      planEndDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+      lifecycleStatus: 'TRIAL',
+      lifecycleTimestamps: {
+        provisionedAt: new Date(),
+        trialStartedAt: new Date(),
+        trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+      },
       billing: {
         originalPrice: 0,
         discountedPrice: 0,

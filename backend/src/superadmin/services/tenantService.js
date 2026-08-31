@@ -9,6 +9,14 @@ const Integration = require('../../models/Integration');
 const AuditLog = require('../../models/AuditLog');
 const { getOrganisationsAggregation } = require('../queries/tenantQueries');
 
+const {
+  TENANT_LIFECYCLE_STATES,
+  ALLOWED_TRANSITIONS,
+  resolveCurrentLifecycleState,
+  transitionTenantState,
+  getTenantLifecycleDetails,
+} = require('./tenantLifecycleService');
+
 /**
  * List all organisations with pagination and search
  */
@@ -76,6 +84,8 @@ async function getTenantDetails(tenantId) {
     else stageCounts.new_lead++;
   });
 
+  const effectiveLifecycleStatus = resolveCurrentLifecycleState(orgOwner, subscription);
+
   return {
     organisation: {
       _id: orgOwner._id,
@@ -83,6 +93,13 @@ async function getTenantDetails(tenantId) {
       owner: orgOwner,
       companyInfo: orgOwner.companyInfo,
       status: orgOwner.isActive ? (orgOwner.userStatus === 'active' ? 'ACTIVE' : 'SUSPENDED') : 'BLOCKED',
+      lifecycleStatus: effectiveLifecycleStatus,
+      lifecycleTimestamps: orgOwner.lifecycleTimestamps || {},
+      allowedTransitions: ALLOWED_TRANSITIONS[effectiveLifecycleStatus] || [],
+      cancellationReason: orgOwner.cancellationReason || null,
+      suspensionReason: orgOwner.suspensionReason || null,
+      archivedReason: orgOwner.archivedReason || null,
+      lifecycleVersion: orgOwner.lifecycleVersion || 1,
       createdAt: orgOwner.createdAt,
     },
     users: {
@@ -106,46 +123,27 @@ async function getTenantDetails(tenantId) {
 }
 
 /**
- * Update tenant account status (BLOCK, UNBLOCK, SUSPEND, ACTIVATE)
+ * Update tenant account status (BLOCK, UNBLOCK, SUSPEND, ACTIVATE, CANCEL, ARCHIVE)
+ * Seamlessly mapped through centralized tenantLifecycleService
  */
 async function updateTenantStatus(tenantId, { status, reason = '' }, adminUser) {
-  const user = await User.findById(tenantId);
-  if (!user) throw new Error('Tenant not found');
+  const normalized = String(status || '').toUpperCase().trim();
+  let targetState = TENANT_LIFECYCLE_STATES.ACTIVE;
 
-  const prevStatus = user.userStatus;
-  const prevActive = user.isActive;
-
-  if (status === 'BLOCKED') {
-    user.isActive = false;
-    user.userStatus = 'disabled';
-  } else if (status === 'SUSPENDED') {
-    user.isActive = true;
-    user.userStatus = 'inactive';
-  } else if (status === 'ACTIVE') {
-    user.isActive = true;
-    user.userStatus = 'active';
+  if (normalized === 'BLOCKED' || normalized === 'SUSPENDED') {
+    targetState = TENANT_LIFECYCLE_STATES.SUSPENDED;
+  } else if (normalized === 'CANCELLED') {
+    targetState = TENANT_LIFECYCLE_STATES.CANCELLED;
+  } else if (normalized === 'ARCHIVED') {
+    targetState = TENANT_LIFECYCLE_STATES.ARCHIVED;
+  } else if (normalized === 'ACTIVE' || normalized === 'UNBLOCKED') {
+    targetState = TENANT_LIFECYCLE_STATES.ACTIVE;
+  } else if (Object.values(TENANT_LIFECYCLE_STATES).includes(normalized)) {
+    targetState = normalized;
   }
 
-  await user.save();
-
-  // Record Immutable Audit Log
-  await AuditLog.create({
-    actorId: adminUser._id,
-    actorName: adminUser.name,
-    actorEmail: adminUser.email,
-    actorRole: 'superadmin',
-    organizationId: user._id,
-    action: status === 'BLOCKED' ? 'TENANT_BLOCK' : 'TENANT_UNBLOCK',
-    resourceType: 'User',
-    resourceId: user._id.toString(),
-    resourceName: user.companyInfo?.companyName || user.name,
-    before: { status: prevStatus, isActive: prevActive },
-    after: { status: user.userStatus, isActive: user.isActive },
-    metadata: { reason, updatedBy: 'superadmin' },
-    timestamp: new Date(),
-  });
-
-  return user;
+  const result = await transitionTenantState(tenantId, targetState, adminUser, { reason });
+  return result.tenant;
 }
 
 /**
@@ -239,4 +237,7 @@ module.exports = {
   getTenantDetails,
   updateTenantStatus,
   updateTenantPlan,
+  transitionTenantState,
+  getTenantLifecycleDetails,
+  TENANT_LIFECYCLE_STATES,
 };

@@ -123,6 +123,48 @@ const protect = async (req, res, next) => {
     req.user = user;
 
     // ─────────────────────────────────────────────────────────────
+    // TENANT LIFECYCLE ACCESS ENFORCEMENT (SUSPENDED / CANCELLED / ARCHIVED)
+    // ─────────────────────────────────────────────────────────────
+    if (user.role !== 'superadmin' && !user.isAdmin) {
+      let tenantOwner = user;
+      if (user.companyId) {
+        tenantOwner = (await User.findById(user.companyId).select('lifecycleStatus userStatus isActive companyInfo name').lean()) || user;
+      }
+
+      const tenantLifecycleState = tenantOwner.lifecycleStatus || (
+        (!tenantOwner.isActive || tenantOwner.userStatus === 'disabled') ? 'CANCELLED' :
+        (tenantOwner.userStatus === 'inactive' ? 'SUSPENDED' : 'ACTIVE')
+      );
+
+      const isPaymentOrAuthRoute =
+        (req.baseUrl && (req.baseUrl.includes('/payments') || req.baseUrl.includes('/auth'))) ||
+        (req.path && (req.path.includes('/payments') || req.path.includes('/auth') || req.path.includes('/login') || req.path.includes('/me')));
+
+      if (tenantLifecycleState === 'ARCHIVED' && !isPaymentOrAuthRoute) {
+        return res.status(403).json({
+          code: 'TENANT_ARCHIVED',
+          message: 'This organization workspace has been archived. Operational access is disabled.',
+        });
+      }
+
+      if (tenantLifecycleState === 'CANCELLED' && !isPaymentOrAuthRoute) {
+        return res.status(403).json({
+          code: 'TENANT_CANCELLED',
+          message: 'Your organization subscription has been cancelled.',
+        });
+      }
+
+      if (tenantLifecycleState === 'SUSPENDED' && !isPaymentOrAuthRoute) {
+        if (req.method !== 'GET') {
+          return res.status(403).json({
+            code: 'TENANT_SUSPENDED',
+            message: 'Your organization workspace has been suspended. Please contact support.',
+          });
+        }
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // MULTI-TENANT 3-DAY GRACE PERIOD & HARD LOCKOUT ENFORCEMENT
     // ─────────────────────────────────────────────────────────────
     if (!user.isAdmin && lifecycle.isLocked) {

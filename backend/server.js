@@ -171,6 +171,16 @@ app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/agency', agencyRoutes);
 app.use('/api/real-estate', realEstateRoutes);
 
+// Public Dynamic Plan Catalog
+const planCatalogController = require('./src/superadmin/controllers/planCatalogController');
+app.get('/api/plans', planCatalogController.getPublicPlans);
+app.get('/plans', planCatalogController.getPublicPlans);
+
+// Customer Checkout Coupon Validation
+const couponValidationController = require('./src/controllers/couponValidationController');
+app.post('/api/coupons/validate', couponValidationController.validateCouponForCheckout);
+app.post('/api/payments/validate-coupon', couponValidationController.validateCouponForCheckout);
+
 // Production-Grade Health Check Framework
 const healthController = require('./src/monitoring/controllers/healthController').default || require('./src/monitoring/controllers/healthController');
 app.get('/health', healthController.getHealth);

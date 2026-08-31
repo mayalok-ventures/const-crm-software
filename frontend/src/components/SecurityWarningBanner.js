@@ -10,8 +10,14 @@ export default function SecurityWarningBanner() {
   const [showBanner, setShowBanner] = useState(false);
 
   const check2FAStatus = () => {
-    const isAuthPage = pathname === '/login' || pathname === '/signup';
-    if (isAuthPage) {
+    const isExcludedPage =
+      pathname === '/' ||
+      pathname === '/login' ||
+      pathname === '/signup' ||
+      pathname === '/terms' ||
+      pathname === '/privacy' ||
+      pathname === '/data-deletion';
+    if (isExcludedPage) {
       setShowBanner(false);
       return;
     }

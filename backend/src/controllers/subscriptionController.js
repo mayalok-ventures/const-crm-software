@@ -8,6 +8,7 @@ const AuditLog = require('../models/AuditLog');
 const User = require('../models/User');
 const Coupon = require('../models/Coupon');
 const { razorpayInstance, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET } = require('../config/razorpay');
+const { transitionTenantState } = require('../superadmin/services/tenantLifecycleService');
 
 /**
  * Helper: Resolve Tenant Identity & Account Type
@@ -533,6 +534,15 @@ exports.handleSubscriptionWebhook = async (req, res) => {
           if (user && subscription.planId) {
             await syncEntitlementsForSubscription(subscription, subscription.planId, user);
           }
+
+          // Transition Tenant Lifecycle to ACTIVE
+          try {
+            await transitionTenantState(subscription.companyId || subscription.userId, 'ACTIVE', { isSystem: true, role: 'system' }, {
+              reason: `Razorpay subscription activated & charged (${rzpSubId})`,
+            });
+          } catch (lifeErr) {
+            console.warn('[Billing Engine] Lifecycle transition note:', lifeErr.message);
+          }
         }
         break;
       }
@@ -565,6 +575,15 @@ exports.handleSubscriptionWebhook = async (req, res) => {
             rawGatewayResponse: payload,
           });
 
+          // Transition Tenant Lifecycle to PAST_DUE
+          try {
+            await transitionTenantState(subscription.companyId || subscription.userId, 'PAST_DUE', { isSystem: true, role: 'system' }, {
+              reason: `Automatic debit failed. Grace period active until ${subscription.gracePeriodEnd.toISOString()}`,
+            });
+          } catch (lifeErr) {
+            console.warn('[Billing Engine] Lifecycle transition note:', lifeErr.message);
+          }
+
           await AuditLog.create({
             actorRole: 'system',
             targetUserId: subscription.userId,
@@ -578,7 +597,7 @@ exports.handleSubscriptionWebhook = async (req, res) => {
         break;
       }
 
-      // ── Event: Subscription Halted (Grace Period Expired $\rightarrow$ Lock Plan) ────
+      // ── Event: Subscription Halted (Grace Period Expired -> Lock Plan) ────
       case 'subscription.halted': {
         if (subscription) {
           subscription.status = 'PLAN_LOCKED';
@@ -590,6 +609,15 @@ exports.handleSubscriptionWebhook = async (req, res) => {
             { userId: subscription.userId },
             { $set: { status: 'LOCKED' } }
           );
+
+          // Transition Tenant Lifecycle to SUSPENDED
+          try {
+            await transitionTenantState(subscription.companyId || subscription.userId, 'SUSPENDED', { isSystem: true, role: 'system' }, {
+              reason: 'Razorpay subscription halted. Grace period expired without payment resolution.',
+            });
+          } catch (lifeErr) {
+            console.warn('[Billing Engine] Lifecycle transition note:', lifeErr.message);
+          }
 
           await AuditLog.create({
             actorRole: 'system',
@@ -617,6 +645,14 @@ exports.handleSubscriptionWebhook = async (req, res) => {
               { userId: subscription.userId },
               { $set: { status: 'RESTRICTED' } }
             );
+
+            try {
+              await transitionTenantState(subscription.companyId || subscription.userId, 'CANCELLED', { isSystem: true, role: 'system' }, {
+                reason: 'Razorpay subscription explicitly cancelled.',
+              });
+            } catch (lifeErr) {
+              console.warn('[Billing Engine] Lifecycle transition note:', lifeErr.message);
+            }
           }
         }
         break;

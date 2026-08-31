@@ -393,10 +393,14 @@ function AdminControlCenterContent() {
   const handleCreateAgent = async (e) => {
     e.preventDefault();
     try {
+      const payload = {
+        ...agentFormData,
+        companyRole: agentFormData.role === 'manager' ? 'manager' : 'agent',
+      };
       const res = await fetch(`${API_BASE}/admin/agents`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(agentFormData)
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (data.success) {

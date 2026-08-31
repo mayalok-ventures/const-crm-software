@@ -15,14 +15,20 @@ exports.createCampaign = async (req, res) => {
       return res.status(400).json({ message: 'groupId, name, and template are required' });
     }
 
-    const plan = req.user.subscriptionLifecycle?.effectivePlan || req.user.plan || 'free';
-    const limits = PLAN_LIMITS[plan];
-
-    if (!limits?.canStartCampaign) {
-      return res.status(403).json({
-        code: 'PLAN_LIMIT',
-        message: 'Bulk messaging is not available on the free plan. Please upgrade.',
-      });
+    if (req.user.role !== 'superadmin' && !req.user.isAdmin) {
+      try {
+        const { assertFeature, assertLimit } = require('../services/entitlementService');
+        const targetSubject = req.user.companyId || req.user._id;
+        await assertFeature(targetSubject, 'whatsappBroadcast');
+        await assertLimit(targetSubject, 'monthlyBroadcasts', 1);
+      } catch (campErr) {
+        return res.status(campErr.statusCode || 403).json({
+          success: false,
+          code: campErr.code || 'FEATURE_NOT_AVAILABLE',
+          message: campErr.message,
+          upgradeRequired: true,
+        });
+      }
     }
 
     // WhatsApp must be connected

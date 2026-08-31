@@ -165,6 +165,10 @@ export default function PlansPage() {
   const [validatingCoupon, setValidatingCoupon] = useState(false);
   const [validatedCoupon, setValidatedCoupon] = useState(null);
 
+  // Dynamic Plans from Database
+  const [dynamicSoloPlans, setDynamicSoloPlans] = useState(SOLO_PLANS);
+  const [dynamicOrgPlans, setDynamicOrgPlans] = useState(ORG_PLANS);
+
   // Manual payment state
   const [showManualUpi, setShowManualUpi] = useState(false);
   const [selectedManualPlan, setSelectedManualPlan] = useState(null);
@@ -213,6 +217,28 @@ export default function PlansPage() {
         setLoadingUser(false);
       });
 
+    // Dynamic Plan Catalog Fetching from MongoDB
+    api.get('/plans')
+      .then(res => {
+        if (res.data?.plans) {
+          if (Array.isArray(res.data.plans.individual) && res.data.plans.individual.length > 0) {
+            setDynamicSoloPlans(res.data.plans.individual.map((p, idx) => ({
+              ...p,
+              icon: idx === 0 ? Zap : (idx === 1 ? Star : Shield),
+              color: idx === 0 ? '#3b82f6' : (idx === 1 ? '#f59e0b' : '#8b5cf6'),
+            })));
+          }
+          if (Array.isArray(res.data.plans.organization) && res.data.plans.organization.length > 0) {
+            setDynamicOrgPlans(res.data.plans.organization.map((p, idx) => ({
+              ...p,
+              icon: idx === 0 ? Users : (idx === 1 ? Building2 : ShieldCheck),
+              color: idx === 0 ? '#06b6d4' : (idx === 1 ? '#6366f1' : '#10b981'),
+            })));
+          }
+        }
+      })
+      .catch(() => {});
+
     api.get('/payments/my-request')
       .then(res => {
         if (res.data && res.data.status === 'pending') {
@@ -234,8 +260,18 @@ export default function PlansPage() {
     let discount = 0;
 
     if (validatedCoupon) {
-      discount = validatedCoupon.discountPercent || 0;
-      finalPrice = Math.max(0, Math.round(rawPrice * (1 - discount / 100)));
+      if (validatedCoupon.discountType === 'PERCENTAGE') {
+        discount = Math.round((rawPrice * (validatedCoupon.discountValue || validatedCoupon.discountPercent || 0)) / 100);
+        if (validatedCoupon.maxDiscountAmount && validatedCoupon.maxDiscountAmount > 0) {
+          discount = Math.min(discount, validatedCoupon.maxDiscountAmount);
+        }
+      } else if (validatedCoupon.discountType === 'FLAT') {
+        discount = validatedCoupon.discountValue || 0;
+      } else {
+        discount = Math.round((rawPrice * (validatedCoupon.discountPercent || 0)) / 100);
+      }
+      discount = Math.min(discount, rawPrice);
+      finalPrice = Math.max(0, rawPrice - discount);
     }
 
     return {
@@ -262,7 +298,7 @@ export default function PlansPage() {
       const { data: orderData } = await api.post('/payments/create-order', {
         planId: plan.id,
         cycle: billingCycle,
-        couponCode: validatedCoupon?.code || '',
+        couponCode: validatedCoupon?.couponCode || validatedCoupon?.code || '',
       });
 
       if (!orderData || !orderData.orderId) {
@@ -296,7 +332,7 @@ export default function PlansPage() {
                 razorpay_signature: response.razorpay_signature,
                 planId: orderData.planId,
                 cycle: orderData.cycle,
-                couponCode: validatedCoupon?.code || '',
+                couponCode: validatedCoupon?.couponCode || validatedCoupon?.code || '',
               });
 
               toast.dismiss(verifyToast);
@@ -342,10 +378,19 @@ export default function PlansPage() {
 
     setValidatingCoupon(true);
     try {
-      const res = await api.post('/auth/apply-coupon', { code: couponCode.trim() });
-      toast.success(res.data.message || 'Coupon validated successfully!');
-      fetchStatus();
+      const res = await api.post('/coupons/validate', {
+        couponCode: couponCode.trim(),
+        cycle: billingCycle,
+      });
+      if (res.data?.valid) {
+        setValidatedCoupon(res.data);
+        toast.success(res.data.message || `Coupon "${res.data.couponCode}" applied successfully! 🎉`);
+      } else {
+        setValidatedCoupon(null);
+        toast.error(res.data?.message || 'Invalid coupon code');
+      }
     } catch (err) {
+      setValidatedCoupon(null);
       toast.error(err.response?.data?.message || 'Invalid or expired coupon code.');
     } finally {
       setValidatingCoupon(false);
@@ -392,12 +437,12 @@ export default function PlansPage() {
   const isSoloUser = user?.workStatus === 'independent_agent';
   const isOrgUser = user?.workStatus === 'company_owner' || user?.companyRole === 'owner';
 
-  // Strict Split Pricing Selection
+  // Strict Split Pricing Selection (Powered by MongoDB Dynamic Plan Catalog)
   const activePlans = isSoloUser 
-    ? INDIVIDUAL_PLANS 
+    ? dynamicSoloPlans 
     : isOrgUser 
-      ? ORG_PLANS 
-      : (planCategory === 'org' ? ORG_PLANS : INDIVIDUAL_PLANS);
+      ? dynamicOrgPlans 
+      : (planCategory === 'org' ? dynamicOrgPlans : dynamicSoloPlans);
 
   if (loadingUser) {
     return (
@@ -929,24 +974,56 @@ export default function PlansPage() {
             </p>
           </div>
 
-          <form onSubmit={handleValidateCoupon} style={{ display: 'flex', gap: 8, minWidth: 280 }}>
-            <input
-              type="text"
-              placeholder="ENTER COUPON CODE"
-              value={couponCode}
-              onChange={e => setCouponCode(e.target.value.toUpperCase())}
-              className="input"
-              style={{ textTransform: 'uppercase', fontWeight: 700, letterSpacing: 0.5, height: 40, fontSize: 13 }}
-            />
-            <button
-              type="submit"
-              disabled={validatingCoupon || !couponCode.trim()}
-              className="btn btn-primary"
-              style={{ height: 40, padding: '0 16px', fontSize: 13 }}
-            >
-              {validatingCoupon ? 'Validating...' : 'Apply'}
-            </button>
-          </form>
+          {validatedCoupon ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                background: 'rgba(16,185,129,0.12)',
+                border: '1px solid rgba(16,185,129,0.35)',
+                color: '#10b981',
+                padding: '6px 14px',
+                borderRadius: 12,
+                fontSize: 13,
+                fontWeight: 700,
+              }}>
+                <CheckCircle2 size={16} />
+                <span>Coupon Applied: <strong>{validatedCoupon.couponCode}</strong> ({validatedCoupon.discountType === 'PERCENTAGE' ? `${validatedCoupon.discountValue}% OFF` : `₹${validatedCoupon.discountValue} OFF`})</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setValidatedCoupon(null);
+                  setCouponCode('');
+                  toast.success('Coupon removed');
+                }}
+                className="btn btn-secondary"
+                style={{ height: 36, padding: '0 12px', fontSize: 12 }}
+              >
+                Remove
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleValidateCoupon} style={{ display: 'flex', gap: 8, minWidth: 280 }}>
+              <input
+                type="text"
+                placeholder="ENTER COUPON CODE"
+                value={couponCode}
+                onChange={e => setCouponCode(e.target.value.toUpperCase())}
+                className="input"
+                style={{ textTransform: 'uppercase', fontWeight: 700, letterSpacing: 0.5, height: 40, fontSize: 13 }}
+              />
+              <button
+                type="submit"
+                disabled={validatingCoupon || !couponCode.trim()}
+                className="btn btn-primary"
+                style={{ height: 40, padding: '0 16px', fontSize: 13 }}
+              >
+                {validatingCoupon ? 'Validating...' : 'Apply'}
+              </button>
+            </form>
+          )}
         </div>
 
         {/* Secondary Manual UPI Transfer Drawer (Legacy fallback) */}

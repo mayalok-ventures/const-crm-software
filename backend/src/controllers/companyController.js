@@ -86,20 +86,20 @@ exports.createCompanyAgent = async (req, res) => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // TEAM ROSTER MEMBER CAP ENFORCEMENT (10 SEATS ON FREE TIER)
+    // CENTRALIZED TEAM SEAT CAP ENFORCEMENT
     // ─────────────────────────────────────────────────────────────
-    const { PLAN_LIMITS } = require('../utils/planLimits');
-    const companyPlan = req.user.plan || 'free';
-    const limits = PLAN_LIMITS[companyPlan] || PLAN_LIMITS.free;
-    const maxUsers = limits?.maxUsers || 10;
-
-    const currentAgentCount = await User.countDocuments({ companyId: req.user._id });
-    if (currentAgentCount >= maxUsers) {
-      return res.status(403).json({
-        code: 'ROSTER_LIMIT_REACHED',
-        message: `Your active plan (${limits?.name || companyPlan}) allows a maximum of ${maxUsers} team member(s). You currently have ${currentAgentCount}. Please upgrade your organization plan to add more agents.`,
-        currentCount: currentAgentCount,
-        maxUsers,
+    try {
+      const { assertLimit } = require('../services/entitlementService');
+      await assertLimit(req.user._id, 'seats', 1);
+    } catch (seatErr) {
+      return res.status(seatErr.statusCode || 403).json({
+        success: false,
+        code: seatErr.code || 'PLAN_LIMIT_EXCEEDED',
+        message: seatErr.message || 'You have reached the maximum team seats allowed on your plan. Please upgrade to add more agents.',
+        resource: 'seats',
+        limit: seatErr.limit,
+        currentUsage: seatErr.currentUsage,
+        upgradeRequired: true,
       });
     }
 
@@ -120,7 +120,6 @@ exports.createCompanyAgent = async (req, res) => {
 
     const Role = require('../models/Role');
     const username = await generateUniqueUsername(User);
-    const usercode = await generateUniqueUsercode(User, 'REA');
 
     // Determine role & companyRole
     let finalRole = 'agent';
@@ -144,8 +143,10 @@ exports.createCompanyAgent = async (req, res) => {
       }
     }
 
+    const usercode = await generateUniqueUsercode(User, finalRole === 'manager' ? 'MGR' : 'REA');
+
     let managerName = '';
-    if (managerId) {
+    if (managerId && finalRole !== 'manager') {
       const mgr = await User.findById(managerId);
       if (mgr) managerName = mgr.name;
     }
@@ -159,16 +160,19 @@ exports.createCompanyAgent = async (req, res) => {
       usercode,
       role: finalRole,
       companyRole: finalCompanyRole,
-      managerName,
-      workStatus: 'independent_agent',
+      workStatus: finalRole === 'manager' ? 'employee' : 'independent_agent',
+      industryType: req.user.industryType || 'Real Estate',
+      educationSubProfile: req.user.educationSubProfile || null,
+      managerName: finalRole === 'manager' ? '' : managerName,
+      managerId: finalRole === 'manager' ? null : (managerId || null),
       companyId: req.user._id,
+      connectedCompanyId: req.user._id,
       companyJoinMethod: 'created_by_company', // SMART PERMISSION: Created by company
       companyLeaveRequest: 'none',
       allowCompanyWhatsApp: req.user.companySettings?.allowAgentCompanyWhatsApp ?? true,
     };
 
     if (roleId) agentData.roleId = roleId;
-    if (managerId) agentData.managerId = managerId;
 
     const agent = await User.create(agentData);
 

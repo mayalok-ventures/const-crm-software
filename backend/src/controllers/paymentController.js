@@ -28,19 +28,50 @@ exports.createRazorpayOrder = async (req, res) => {
     let validCoupon = null;
 
     if (planId) {
-      selectedPlan = getPlanDetails(planId);
-      if (!selectedPlan || selectedPlan.id === 'free') {
-        return res.status(400).json({ success: false, message: 'Invalid subscription plan selected' });
+      const Plan = require('../models/Plan');
+      const dbPlan = await Plan.findOne({
+        $or: [
+          { slug: String(planId).toLowerCase().replace(/_/g, '-') },
+          { code: String(planId).toUpperCase() },
+          { name: new RegExp(`^${planId}$`, 'i') },
+        ],
+        status: 'ACTIVE',
+      });
+
+      if (dbPlan) {
+        selectedPlan = dbPlan;
+        originalPrice = selectedCycle === 'yearly'
+          ? (dbPlan.pricing?.yearly?.amount || (dbPlan.yearlyPrice || (dbPlan.monthlyPrice * 10)))
+          : (dbPlan.pricing?.monthly?.amount || dbPlan.monthlyPrice || Math.round((dbPlan.priceInPaise || 0) / 100));
+        discountedPrice = originalPrice;
+      } else {
+        selectedPlan = getPlanDetails(planId);
+        if (!selectedPlan || selectedPlan.id === 'free') {
+          return res.status(400).json({ success: false, message: 'Invalid subscription plan selected' });
+        }
+        originalPrice = getPlanPrice(planId, selectedCycle);
+        discountedPrice = originalPrice;
       }
 
-      originalPrice = getPlanPrice(planId, selectedCycle);
-      discountedPrice = originalPrice;
-
       if (couponCode) {
-        validCoupon = await Coupon.findOne({ code: String(couponCode).toUpperCase().trim(), isActive: true });
-        if (validCoupon && (!validCoupon.expiresAt || new Date() <= new Date(validCoupon.expiresAt))) {
-          const discount = (originalPrice * (validCoupon.discountPercent || 0)) / 100;
-          discountedPrice = Math.max(0, Math.round(originalPrice - discount));
+        const { validateCoupon } = require('../services/couponService');
+        const couponRes = await validateCoupon({
+          couponCode,
+          userId: req.user?._id,
+          planId,
+          billingInterval: selectedCycle,
+          amount: originalPrice,
+        });
+
+        if (couponRes.valid) {
+          validCoupon = couponRes.coupon;
+          discountedPrice = couponRes.finalAmount;
+        } else {
+          return res.status(400).json({
+            success: false,
+            code: couponRes.code || 'COUPON_INVALID',
+            message: couponRes.message || 'Invalid coupon applied',
+          });
         }
       }
 
@@ -186,16 +217,45 @@ exports.verifyRazorpayPayment = async (req, res) => {
     // 2. CENTRALIZED PLAN UPDATE & TRANSACTION INVOICE VIA MANAGER (IF PLAN ID GIVEN)
     // ─────────────────────────────────────────────────────────────
     if (planId && req.user?._id) {
+      const Plan = require('../models/Plan');
+      const { validateCoupon, recordRedemption } = require('../services/couponService');
       const selectedCycle = cycle === 'yearly' ? 'yearly' : 'monthly';
-      const originalPrice = getPlanPrice(planId, selectedCycle);
+
+      const dbPlan = await Plan.findOne({
+        $or: [
+          { slug: String(planId).toLowerCase().replace(/_/g, '-') },
+          { code: String(planId).toUpperCase() },
+          { name: new RegExp(`^${planId}$`, 'i') },
+        ],
+        status: 'ACTIVE',
+      });
+
+      let originalPrice = 0;
+      if (dbPlan) {
+        originalPrice = selectedCycle === 'yearly'
+          ? (dbPlan.pricing?.yearly?.amount || (dbPlan.yearlyPrice || (dbPlan.monthlyPrice * 10)))
+          : (dbPlan.pricing?.monthly?.amount || dbPlan.monthlyPrice || Math.round((dbPlan.priceInPaise || 0) / 100));
+      } else {
+        originalPrice = getPlanPrice(planId, selectedCycle);
+      }
+
       let finalPrice = originalPrice;
+      let discountAmount = 0;
+      let appliedCouponDoc = null;
 
       if (couponCode) {
-        const coupon = await Coupon.findOne({ code: String(couponCode).toUpperCase().trim() });
-        if (coupon) {
-          finalPrice = Math.max(0, Math.round(originalPrice * (1 - (coupon.discountPercent / 100))));
-          coupon.usedCount = (coupon.usedCount || 0) + 1;
-          await coupon.save();
+        const couponRes = await validateCoupon({
+          couponCode,
+          userId: req.user._id,
+          planId: dbPlan?._id || planId,
+          billingInterval: selectedCycle,
+          amount: originalPrice,
+        });
+
+        if (couponRes.valid) {
+          appliedCouponDoc = couponRes.coupon;
+          discountAmount = couponRes.discountAmount;
+          finalPrice = couponRes.finalAmount;
         }
       }
 
@@ -215,7 +275,30 @@ exports.verifyRazorpayPayment = async (req, res) => {
         }
       );
 
-      const plan = getPlanDetails(planId);
+      // Idempotently record Coupon Redemption if a coupon was used
+      if (appliedCouponDoc) {
+        try {
+          await recordRedemption({
+            couponId: appliedCouponDoc._id,
+            couponCode: appliedCouponDoc.code,
+            userId: req.user._id,
+            tenantId: req.user.companyId || req.user._id,
+            razorpayOrderId: targetOrderId,
+            razorpayPaymentId: targetPaymentId,
+            planId: dbPlan?._id || null,
+            planVersion: dbPlan?.version || 1,
+            planName: dbPlan?.name || planId,
+            billingInterval: selectedCycle,
+            originalAmount: originalPrice,
+            discountAmount,
+            finalAmount: finalPrice,
+          });
+        } catch (redemptionErr) {
+          console.warn('[Coupon] Notice recording redemption:', redemptionErr.message);
+        }
+      }
+
+      const plan = dbPlan || getPlanDetails(planId);
 
       return res.json({
         success: true,
@@ -243,6 +326,8 @@ exports.verifyRazorpayPayment = async (req, res) => {
   }
 };
 
+const { reconcileWebhookEvent } = require('../services/reconciliationService');
+
 // @desc  Razorpay Webhook Handler (Fallback for browser-close edge cases)
 // @route POST /api/webhooks/razorpay (also mounted at POST /api/payments/webhook)
 // @access Public (HMAC Verified)
@@ -254,19 +339,15 @@ exports.handleRazorpayWebhook = async (req, res) => {
     }
 
     const rawBody = typeof req.rawBody === 'string' ? req.rawBody : (Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : JSON.stringify(req.body));
-    
-    const expectedSignature = crypto
-      .createHmac('sha256', RAZORPAY_WEBHOOK_SECRET)
-      .update(rawBody)
-      .digest('hex');
-
-    if (signature !== expectedSignature) {
-      console.warn('[Webhook] Razorpay webhook signature mismatch. Request ignored.');
-      return res.status(400).json({ message: 'Invalid webhook signature' });
-    }
 
     const event = req.body?.event;
     console.log(`[Webhook] Received verified Razorpay event: ${event}`);
+
+    // Centralized Webhook & Reconciliation Engine (Processes Idempotency, Payments, Subscriptions & Lifecycle)
+    const reconciliationResult = await reconcileWebhookEvent(event, req.body.payload, signature, rawBody);
+    if (reconciliationResult.idempotent) {
+      return res.status(200).json({ status: 'ok', message: 'Already processed' });
+    }
 
     if (event === 'payment.captured' || event === 'order.paid') {
       const payment = req.body.payload?.payment?.entity || {};

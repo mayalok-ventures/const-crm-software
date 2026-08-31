@@ -175,8 +175,15 @@ const processSubscriptionLifecycle = async () => {
       ent.whatsapp.nextDripDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
       await ent.save();
     }
-  } catch (err) {
-    console.error('[Billing Engine] Error processing annual quota drip:', err.message);
+  // ── 5. RUN PERIODIC RECONCILIATION BATCH ─────────────────────────────────
+  try {
+    const { runPeriodicReconciliation } = require('./reconciliationService');
+    const recSummary = await runPeriodicReconciliation({ batchSize: 50 });
+    if (recSummary.healedCount > 0 || recSummary.mismatchedCount > 0) {
+      console.log(`[Billing Engine] Periodic Reconciliation: Reconciled ${recSummary.reconciledCount}, Healed ${recSummary.healedCount}, Flagged Mismatch ${recSummary.mismatchedCount}`);
+    }
+  } catch (recErr) {
+    console.warn('[Billing Engine] Notice: Reconciliation batch note:', recErr.message);
   }
 };
 

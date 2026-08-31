@@ -8,7 +8,7 @@ const AuditLog = require('../src/models/AuditLog');
 const { updateTenantPlan } = require('../src/superadmin/services/tenantService');
 const organisationController = require('../src/superadmin/controllers/organisationController');
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/test_superadmin_plan_override';
+const { MongoMemoryServer } = require('mongodb-memory-server');
 
 function mockResponse() {
   const res = {};
@@ -30,9 +30,9 @@ async function runTests() {
   console.log('===========================================================\n');
 
   try {
-    await mongoose.connect(MONGODB_URI);
+    const mongoServer = await MongoMemoryServer.create();
+    await mongoose.connect(mongoServer.getUri());
     console.log('✓ Connected to MongoDB test database');
-    await mongoose.connection.dropDatabase();
 
     // 1. Create Super Admin User
     const superAdmin = await User.create({

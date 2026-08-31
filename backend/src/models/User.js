@@ -265,6 +265,33 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+
+  // ─────────────────────────────────────────────────────────────
+  // TENANT LIFECYCLE MANAGEMENT (Enterprise State Machine)
+  // ─────────────────────────────────────────────────────────────
+  lifecycleStatus: {
+    type: String,
+    enum: ['PROVISIONING', 'TRIAL', 'ACTIVE', 'PAST_DUE', 'SUSPENDED', 'CANCELLED', 'ARCHIVED'],
+    default: 'TRIAL',
+    index: true,
+  },
+  lifecycleTimestamps: {
+    provisionedAt: { type: Date, default: null },
+    trialStartedAt: { type: Date, default: null },
+    trialEndsAt: { type: Date, default: null },
+    activatedAt: { type: Date, default: null },
+    pastDueAt: { type: Date, default: null },
+    suspendedAt: { type: Date, default: null },
+    cancelledAt: { type: Date, default: null },
+    archivedAt: { type: Date, default: null },
+  },
+  cancellationReason: { type: String, default: null },
+  cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  suspensionReason: { type: String, default: null },
+  suspendedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  archivedReason: { type: String, default: null },
+  archivedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  lifecycleVersion: { type: Number, default: 1 },
 }, { timestamps: true });
 
 // Validate at least one of email or phone and assign unique default username/usercode if missing

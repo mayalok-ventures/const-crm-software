@@ -1158,17 +1158,24 @@ exports.updateAgent = async (req, res) => {
       if (target === 'manager') {
         agent.role = 'manager';
         agent.companyRole = 'manager';
+        agent.workStatus = 'employee';
+        agent.managerId = null;
+        agent.managerName = '';
       } else if (target === 'sales_rep') {
         agent.role = 'agent';
         agent.companyRole = 'sales_rep';
+        agent.workStatus = 'independent_agent';
       } else if (target === 'telecaller') {
         agent.role = 'agent';
         agent.companyRole = 'telecaller';
+        agent.workStatus = 'independent_agent';
       } else if (target === 'owner') {
         agent.companyRole = 'owner';
+        agent.workStatus = 'company_owner';
       } else {
         agent.role = 'agent';
         agent.companyRole = 'agent';
+        agent.workStatus = 'independent_agent';
       }
     }
 

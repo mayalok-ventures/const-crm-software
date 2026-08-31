@@ -2017,7 +2017,8 @@ const getManagerTeamMembers = async (req, res) => {
 
     const members = await User.find(filter)
       .populate('managerId', 'name email')
-      .select('name email phone role companyRole managerId managerName leadCap isAvailable isAvailableForRouting isActive userStatus employeeStatus createdAt lastLogin')
+      .populate('roleId', 'name roleType permissions')
+      .select('name email phone role roleId companyRole managerId managerName leadCap isAvailable isAvailableForRouting isActive userStatus employeeStatus createdAt lastLogin')
       .lean();
 
     return res.status(200).json({ success: true, count: members.length, data: members });

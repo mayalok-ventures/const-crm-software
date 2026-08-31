@@ -732,31 +732,22 @@ exports.createLead = async (req, res) => {
       }
     }
 
-    // Plan limits check (Handles Solo, Organization, and Free tiers; bypassed for SuperAdmin)
+    // Centralized Plan Entitlements & Resource Cap Enforcement
     const isSuperAdminUser = req.user.role === 'superadmin' || req.user.isAdmin;
     if (!isSuperAdminUser) {
-      const { PLAN_LIMITS } = require('../utils/planLimits');
-      const lifecycle = req.user.subscriptionLifecycle;
-      const effectivePlan = lifecycle?.effectivePlan || req.user.plan || 'free';
-      const limits = PLAN_LIMITS[effectivePlan];
-      const maxLeads = limits?.maxLeads ?? 10;
-
-      if (maxLeads !== Infinity) {
-        const query = isOwner
-          ? { companyId: req.user._id }
-          : (req.user.companyRole === 'agent' && req.user.companyId
-            ? { companyId: req.user.companyId }
-            : { userId: req.user._id });
-
-        const count = await Lead.countDocuments(query);
-        if (count >= maxLeads) {
-          return res.status(403).json({
-            code: 'LIMIT_REACHED',
-            message: `You have reached the maximum limit of ${maxLeads} leads on the ${limits?.name || effectivePlan} plan. Please upgrade to add more leads.`,
-            currentCount: count,
-            maxLeads,
-          });
-        }
+      try {
+        const { assertLimit } = require('../services/entitlementService');
+        await assertLimit(companyId || req.user._id, 'leads', 1);
+      } catch (limitErr) {
+        return res.status(limitErr.statusCode || 403).json({
+          success: false,
+          code: limitErr.code || 'PLAN_LIMIT_EXCEEDED',
+          message: limitErr.message,
+          resource: 'leads',
+          limit: limitErr.limit,
+          currentUsage: limitErr.currentUsage,
+          upgradeRequired: true,
+        });
       }
     }
 
@@ -1557,6 +1548,21 @@ exports.exportLeads = async (req, res) => {
     const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner';
     const companyId = isOwner ? req.user._id : req.user.companyId;
 
+    if (req.user.role !== 'superadmin' && !req.user.isAdmin) {
+      try {
+        const { assertFeature } = require('../services/entitlementService');
+        await assertFeature(companyId || req.user._id, 'leadExport');
+      } catch (featErr) {
+        return res.status(featErr.statusCode || 403).json({
+          success: false,
+          code: featErr.code || 'FEATURE_NOT_AVAILABLE',
+          feature: 'leadExport',
+          message: featErr.message,
+          upgradeRequired: true,
+        });
+      }
+    }
+
     if (!isOwner && req.user.companyId) {
       const agentExportStatus = req.user.exportPermissionStatus;
       const companyOwner = await User.findById(companyId).select('companySettings').lean();
@@ -1844,19 +1850,14 @@ exports.importLeads = async (req, res) => {
     // ─────────────────────────────────────────────────────────────
     // PLAN LIMITS & REMAINING QUOTA ENFORCEMENT
     // ─────────────────────────────────────────────────────────────
-    const { PLAN_LIMITS } = require('../utils/planLimits');
-    const lifecycle = req.user.subscriptionLifecycle;
-    const effectivePlan = lifecycle?.effectivePlan || req.user.plan || 'free';
-    const limits = PLAN_LIMITS[effectivePlan];
-    const maxLeads = limits?.maxLeads ?? 10;
-
-    const basePermissionQuery = await buildLeadPermissionQuery(req.user);
-    const currentCount = await Lead.countDocuments(basePermissionQuery);
+    const { getLimit, getUsage, isUnlimited } = require('../services/entitlementService');
+    const targetTenantId = companyId || req.user._id;
+    const maxLeadsLimit = req.user.role === 'superadmin' ? -1 : await getLimit(targetTenantId, 'leads');
+    const currentCount = await getUsage(targetTenantId, 'leads');
 
     // Anti-Fraud Daily Import Velocity Enforcement
     const { checkImportVelocity } = require('../middleware/antiFraud');
-    const tenantId = companyId || req.user._id;
-    const velocityCheck = await checkImportVelocity(tenantId, 1);
+    const velocityCheck = await checkImportVelocity(targetTenantId, 1);
     if (!velocityCheck.allowed) {
       return res.status(429).json({
         success: false,
@@ -1867,16 +1868,19 @@ exports.importLeads = async (req, res) => {
       });
     }
 
-    if (maxLeads !== Infinity && currentCount >= maxLeads) {
+    if (maxLeadsLimit !== -1 && currentCount >= maxLeadsLimit) {
       return res.status(403).json({
-        code: 'LIMIT_REACHED',
-        message: `You have reached the maximum limit of ${maxLeads} leads on the ${limits?.name || effectivePlan} plan. Please upgrade your subscription to import more leads.`,
-        currentCount,
-        maxLeads,
+        success: false,
+        code: 'PLAN_LIMIT_EXCEEDED',
+        message: `You have reached the maximum limit of ${maxLeadsLimit} leads on your active plan. Please upgrade your subscription to import more leads.`,
+        resource: 'leads',
+        currentUsage: currentCount,
+        limit: maxLeadsLimit,
+        upgradeRequired: true,
       });
     }
 
-    const maxAllowedNew = maxLeads === Infinity ? Infinity : Math.max(0, maxLeads - currentCount);
+    const maxAllowedNew = maxLeadsLimit === -1 ? Infinity : Math.max(0, maxLeadsLimit - currentCount);
     let totalImported = 0;
     let skippedCount = 0;
     let quotaReached = false;

@@ -40,6 +40,17 @@ const subscriptionSchema = new mongoose.Schema(
       default: 1,
       min: 1,
     },
+    provider: {
+      type: String,
+      enum: ['razorpay', 'manual', 'stripe', 'other'],
+      default: 'razorpay',
+      index: true,
+    },
+    providerPlanId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     // Razorpay Subscription ID (e.g. sub_00000000000001)
     razorpaySubscriptionId: {
       type: String,
@@ -54,6 +65,24 @@ const subscriptionSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
+    amount: {
+      type: Number,
+      default: 0,
+    },
+    amountInPaise: {
+      type: Number,
+      default: 0,
+    },
+    currency: {
+      type: String,
+      default: 'INR',
+      uppercase: true,
+    },
+    billingCycle: {
+      type: String,
+      enum: ['monthly', 'yearly'],
+      default: 'monthly',
+    },
     // Lifecycle Status Machine
     status: {
       type: String,
@@ -65,11 +94,90 @@ const subscriptionSchema = new mongoose.Schema(
         'GRACE_PERIOD',     // Renewal failed; in 3-day recovery window with warning banners
         'PLAN_LOCKED',      // Grace window elapsed; WhatsApp send, export & lead add locked
         'PAST_DUE',         // Retries exhausted
+        'PAUSED',           // Temporarily paused
         'CANCELLED',        // Explicitly cancelled by user or SuperAdmin
+        'EXPIRED',          // Terminated after validity
+        'COMPLETED',        // Fixed tenure completed
         'ARCHIVED',         // Purged/archived after 60+ days of inactive lock
       ],
       default: 'CREATED',
       index: true,
+    },
+    // Reconciliation telemetry
+    reconciliationStatus: {
+      type: String,
+      enum: ['MATCHED', 'MISMATCHED', 'RECOVERABLE', 'MANUAL_REVIEW', 'LAST_RECONCILED', 'RECONCILIATION_REQUIRED', 'RECONCILIATION_FAILED'],
+      default: 'MATCHED',
+      index: true,
+    },
+    lastReconciledAt: {
+      type: Date,
+      default: null,
+    },
+    reconciliationNotes: {
+      type: String,
+      default: null,
+    },
+    trialStart: {
+      type: Date,
+      default: null,
+    },
+    trialEnd: {
+      type: Date,
+      default: null,
+    },
+    pausedAt: {
+      type: Date,
+      default: null,
+    },
+    endedAt: {
+      type: Date,
+      default: null,
+    },
+    nextBillingAt: {
+      type: Date,
+      default: null,
+    },
+    lastEventTimestamp: {
+      type: Date,
+      default: null,
+    },
+    eventVersion: {
+      type: Number,
+      default: 1,
+    },
+    lastWebhookEvent: {
+      type: String,
+      default: null,
+    },
+    // Dynamic Plan Versioning & Entitlement Snapshot
+    planVersion: {
+      type: Number,
+      default: 1,
+    },
+    billingInterval: {
+      type: String,
+      enum: ['monthly', 'yearly'],
+      default: function() { return this.billingCycle || 'monthly'; },
+    },
+    entitlementSnapshot: {
+      limits: {
+        type: mongoose.Schema.Types.Mixed,
+        default: {},
+      },
+      features: {
+        type: mongoose.Schema.Types.Mixed,
+        default: {},
+      },
+      whatsIncluded: [
+        {
+          type: String,
+        },
+      ],
+      snapshotCreatedAt: {
+        type: Date,
+        default: Date.now,
+      },
     },
     // Period Timestamps
     currentPeriodStart: {

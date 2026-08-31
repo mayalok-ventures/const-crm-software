@@ -77,6 +77,13 @@ const updateUserPlan = async (userId, planName, cycle = 'monthly', isManualAdmin
     user.planStartDate = now;
     user.planEndDate = expiryDate;
     user.isCustomPlan = Boolean(isManualAdminOverride || options.isCustomPlan);
+    user.isActive = true;
+    user.userStatus = 'active';
+    user.lifecycleStatus = 'ACTIVE';
+    if (!user.lifecycleTimestamps) user.lifecycleTimestamps = {};
+    if (!user.lifecycleTimestamps.activatedAt) {
+      user.lifecycleTimestamps.activatedAt = now;
+    }
     user.billing = {
       originalPrice,
       discountedPrice,
@@ -124,6 +131,56 @@ const updateUserPlan = async (userId, planName, cycle = 'monthly', isManualAdmin
     } catch (txErr) {
       console.warn('[SubscriptionManager] Transaction record creation notice:', txErr.message);
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // 4. ENTITLEMENT SNAPSHOT SYNCHRONIZATION
+  // ─────────────────────────────────────────────────────────────
+  try {
+    const Plan = require('../models/Plan');
+    const Subscription = require('../models/Subscription');
+    const { createPlanSnapshot } = require('../services/entitlementService');
+
+    const dbPlan = await Plan.findOne({
+      $or: [
+        { slug: normalizedPlan.replace(/_/g, '-') },
+        { code: normalizedPlan.toUpperCase() },
+        { name: new RegExp(`^${normalizedPlan}$`, 'i') },
+      ],
+    });
+
+    if (dbPlan) {
+      const nowTime = user.planStartDate || new Date();
+      const endTime = user.planEndDate || new Date(Date.now() + (selectedCycle === 'yearly' ? 365 : 30) * 24 * 60 * 60 * 1000);
+      const snapshot = createPlanSnapshot(dbPlan, selectedCycle);
+
+      await Subscription.findOneAndUpdate(
+        {
+          $or: [{ userId: user._id }, { companyId: user.companyId || user._id }],
+          status: { $in: ['ACTIVE', 'TRIAL', 'GRACE_PERIOD', 'CREATED', 'AUTHENTICATED'] },
+        },
+        {
+          $set: {
+            userId: user._id,
+            companyId: user.companyId || (user.workStatus === 'company_owner' ? user._id : null),
+            accountType: user.companyId || user.workStatus === 'company_owner' ? 'ORGANIZATION' : 'INDIVIDUAL',
+            planId: dbPlan._id,
+            planVersion: dbPlan.version || 1,
+            billingInterval: selectedCycle,
+            billingCycle: selectedCycle,
+            status: normalizedPlan === 'free' ? 'TRIAL' : 'ACTIVE',
+            amount: user.billing?.discountedPrice || 0,
+            amountInPaise: (user.billing?.discountedPrice || 0) * 100,
+            currentPeriodStart: nowTime,
+            currentPeriodEnd: endTime,
+            entitlementSnapshot: snapshot,
+          },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    }
+  } catch (subSyncErr) {
+    console.warn('[SubscriptionManager] Subscription snapshot sync notice:', subSyncErr.message);
   }
 
   // Calculate live subscription lifecycle

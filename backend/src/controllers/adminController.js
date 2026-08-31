@@ -1300,17 +1300,21 @@ exports.getAdminAgents = exports.getHierarchy;
 
 exports.createAdminAgent = async (req, res) => {
   try {
-    const { name, email, phone, password, role = 'agent', managerId, incentive_pct, leadCap, isAvailableForRouting, isActive } = req.body;
+    const { name, email, phone, password, role = 'agent', companyRole, managerId, incentive_pct, leadCap, isAvailableForRouting, isActive } = req.body;
 
     if (!name || !password || (!email && !phone)) {
       return res.status(400).json({ success: false, message: 'Name, password, and Email or Phone are required' });
     }
 
+    const isManagerRole = role === 'manager' || companyRole === 'manager';
+    const finalRole = isManagerRole ? 'manager' : 'agent';
+    const finalCompanyRole = isManagerRole ? 'manager' : (companyRole || 'agent');
+
     const username = await generateUniqueUsername();
-    const usercode = await generateUniqueUsercode(role === 'manager' ? 'CMP' : 'REA');
+    const usercode = await generateUniqueUsercode(isManagerRole ? 'MGR' : 'REA');
 
     let managerName = '';
-    if (managerId) {
+    if (managerId && !isManagerRole) {
       const mgr = await User.findById(managerId).select('name').lean();
       managerName = mgr?.name || '';
     }
@@ -1324,11 +1328,17 @@ exports.createAdminAgent = async (req, res) => {
       password,
       username,
       usercode,
-      role: role === 'manager' ? 'manager' : 'agent',
+      role: finalRole,
+      companyRole: finalCompanyRole,
+      workStatus: finalRole === 'manager' ? 'employee' : 'independent_agent',
+      industryType: req.user.industryType || 'Real Estate',
+      educationSubProfile: req.user.educationSubProfile || null,
       companyId: companyId || undefined,
-      managerId: managerId || null,
-      managerName,
-      incentive_pct: Number(incentive_pct) || (role === 'manager' ? 15 : 10),
+      connectedCompanyId: companyId || undefined,
+      companyJoinMethod: 'created_by_company',
+      managerId: isManagerRole ? null : (managerId || null),
+      managerName: isManagerRole ? '' : managerName,
+      incentive_pct: Number(incentive_pct) || (finalRole === 'manager' ? 15 : 10),
       leadCap: Number(leadCap) || 50,
       isAvailableForRouting: isAvailableForRouting !== undefined ? isAvailableForRouting : true,
       isAvailable: isAvailableForRouting !== undefined ? isAvailableForRouting : true,
@@ -1343,12 +1353,12 @@ exports.createAdminAgent = async (req, res) => {
       action: 'CREATE',
       entityType: 'User',
       entityId: user._id,
-      newValue: { name: user.name, role: user.role, email: user.email, managerId: user.managerId, leadCap: user.leadCap },
+      newValue: { name: user.name, role: user.role, companyRole: user.companyRole, email: user.email, managerId: user.managerId, leadCap: user.leadCap },
       details: `Created new team member: ${user.name} (${user.role.toUpperCase()})`,
       ipAddress: req.ip,
     });
 
-    res.status(201).json({ success: true, message: `${role.toUpperCase()} created successfully`, user, agent: user });
+    res.status(201).json({ success: true, message: `${finalRole.toUpperCase()} created successfully`, user, agent: user });
   } catch (error) {
     console.error('createAdminAgent error:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -1362,6 +1372,34 @@ exports.updateAdminAgent = async (req, res) => {
 
     const beforeUser = await User.findById(id).lean();
     if (!beforeUser) return res.status(404).json({ success: false, message: 'User not found' });
+
+    if (updates.role) {
+      if (updates.role === 'manager' || updates.companyRole === 'manager') {
+        updates.role = 'manager';
+        updates.companyRole = 'manager';
+        updates.workStatus = 'employee';
+        updates.managerId = null;
+        updates.managerName = '';
+      } else if (updates.role === 'agent') {
+        updates.role = 'agent';
+        updates.companyRole = updates.companyRole || 'agent';
+        updates.workStatus = 'independent_agent';
+      }
+    }
+
+    if (updates.companyRole && !updates.role) {
+      if (updates.companyRole === 'manager') {
+        updates.role = 'manager';
+        updates.companyRole = 'manager';
+        updates.workStatus = 'employee';
+        updates.managerId = null;
+        updates.managerName = '';
+      } else {
+        updates.role = 'agent';
+        updates.companyRole = updates.companyRole || 'agent';
+        updates.workStatus = 'independent_agent';
+      }
+    }
 
     if (updates.managerId !== undefined) {
       if (updates.managerId) {

@@ -105,6 +105,45 @@ const paymentAttemptSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Reconciliation & Refund tracking
+    reconciliationStatus: {
+      type: String,
+      enum: ['MATCHED', 'MISMATCHED', 'RECOVERABLE', 'MANUAL_REVIEW', 'NOT_APPLICABLE'],
+      default: 'MATCHED',
+      index: true,
+    },
+    invoiceNumber: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    refundAmountInPaise: {
+      type: Number,
+      default: 0,
+    },
+    refundedAt: {
+      type: Date,
+      default: null,
+    },
+    refundId: {
+      type: String,
+      default: null,
+    },
+    netAmountInPaise: {
+      type: Number,
+      default: function() {
+        return Math.max(0, (this.amountInPaise || 0) - (this.refundAmountInPaise || 0));
+      },
+    },
+    eventVersion: {
+      type: Number,
+      default: 1,
+    },
+    eventTimestamp: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
   },
   {
     timestamps: true,
@@ -113,5 +152,8 @@ const paymentAttemptSchema = new mongoose.Schema(
 
 paymentAttemptSchema.index({ subscriptionId: 1, createdAt: -1 });
 paymentAttemptSchema.index({ userId: 1, createdAt: -1 });
+paymentAttemptSchema.index({ companyId: 1, createdAt: -1 });
+paymentAttemptSchema.index({ razorpayPaymentId: 1, status: 1 });
+paymentAttemptSchema.index({ razorpaySubscriptionId: 1, createdAt: -1 });
 
 module.exports = mongoose.models.PaymentAttempt || mongoose.model('PaymentAttempt', paymentAttemptSchema);

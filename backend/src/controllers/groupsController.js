@@ -22,23 +22,21 @@ exports.createGroup = async (req, res) => {
     const { name, type, tags, leadIds, description } = req.body;
     if (!name) return res.status(400).json({ message: 'Group name is required' });
 
-    const plan = req.user.subscriptionLifecycle?.effectivePlan || req.user.plan || 'free';
-    const limits = PLAN_LIMITS[plan];
-
-    if (!limits || !limits.canCreateGroup) {
-      return res.status(403).json({
-        code: 'PLAN_LIMIT',
-        message: `Your ${plan} plan does not support creating groups. Please upgrade.`,
-      });
-    }
-
-    // Check existing groups count
-    const existingCount = await Group.countDocuments({ userId: req.user._id });
-    if (existingCount >= limits.maxGroups) {
-      return res.status(403).json({
-        code: 'PLAN_LIMIT',
-        message: `Your ${plan} plan limits you to a maximum of ${limits.maxGroups} groups. Please upgrade to create more.`,
-      });
+    if (req.user.role !== 'superadmin' && !req.user.isAdmin) {
+      try {
+        const { assertLimit } = require('../services/entitlementService');
+        await assertLimit(req.user.companyId || req.user._id, 'contactGroups', 1);
+      } catch (groupErr) {
+        return res.status(groupErr.statusCode || 403).json({
+          success: false,
+          code: groupErr.code || 'PLAN_LIMIT_EXCEEDED',
+          message: groupErr.message,
+          resource: 'contactGroups',
+          limit: groupErr.limit,
+          currentUsage: groupErr.currentUsage,
+          upgradeRequired: true,
+        });
+      }
     }
 
     const group = await Group.create({

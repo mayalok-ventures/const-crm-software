@@ -42,7 +42,7 @@ async function getOrganisationsAggregation({ search = '', status = 'all', page =
   const [totalCount, rawOrgs] = await Promise.all([
     User.countDocuments(matchOrg),
     User.find(matchOrg)
-      .select('name email phone companyInfo role workStatus companyRole userStatus isActive createdAt plan planEndDate billingCycle')
+      .select('name email phone companyInfo role workStatus companyRole userStatus isActive createdAt plan planEndDate billingCycle lifecycleStatus lifecycleTimestamps cancellationReason suspensionReason archivedReason')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(Number(limit))
@@ -95,15 +95,19 @@ async function getOrganisationsAggregation({ search = '', status = 'all', page =
     const leads = leadMap.get(orgIdStr) || { totalLeads: 0, convertedLeads: 0 };
     const sub = subMap.get(orgIdStr);
 
-    let calculatedStatus = 'ACTIVE';
-    if (!org.isActive || org.userStatus === 'disabled') {
-      calculatedStatus = 'BLOCKED';
-    } else if (org.userStatus === 'inactive') {
-      calculatedStatus = 'SUSPENDED';
-    } else if (sub?.status) {
-      calculatedStatus = sub.status;
-    } else if (org.plan === 'free' || !org.plan) {
-      calculatedStatus = 'TRIAL';
+    let calculatedStatus = org.lifecycleStatus;
+    if (!calculatedStatus) {
+      if (!org.isActive || org.userStatus === 'disabled') {
+        calculatedStatus = 'BLOCKED';
+      } else if (org.userStatus === 'inactive') {
+        calculatedStatus = 'SUSPENDED';
+      } else if (sub?.status) {
+        calculatedStatus = sub.status;
+      } else if (org.plan === 'free' || !org.plan) {
+        calculatedStatus = 'TRIAL';
+      } else {
+        calculatedStatus = 'ACTIVE';
+      }
     }
 
     const estimatedMRR = sub?.planId?.price || sub?.planId?.monthlyPrice || (org.plan === 'enterprise' ? 9999 : org.plan === 'business' ? 4999 : org.plan === 'pro' ? 1999 : 0);
@@ -123,6 +127,8 @@ async function getOrganisationsAggregation({ search = '', status = 'all', page =
       convertedLeads: leads.convertedLeads,
       mrr: estimatedMRR,
       status: calculatedStatus,
+      lifecycleStatus: calculatedStatus,
+      lifecycleTimestamps: org.lifecycleTimestamps || {},
       createdAt: org.createdAt,
       lastActivity: org.updatedAt || org.createdAt,
       companyInfo: org.companyInfo,

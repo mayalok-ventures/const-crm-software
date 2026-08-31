@@ -11,8 +11,14 @@ export default function SubscriptionLifecycleBanner() {
   const [user, setUser] = useState(null);
 
   const checkStatus = () => {
-    const isAuthPage = pathname === '/login' || pathname === '/signup';
-    if (isAuthPage) {
+    const isExcludedPage =
+      pathname === '/' ||
+      pathname === '/login' ||
+      pathname === '/signup' ||
+      pathname === '/terms' ||
+      pathname === '/privacy' ||
+      pathname === '/data-deletion';
+    if (isExcludedPage) {
       setLifecycle(null);
       setUser(null);
       return;
