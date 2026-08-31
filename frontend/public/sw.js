@@ -1,22 +1,17 @@
-// CoreSetu CRM Service Worker — v4
+// CoreSetu CRM Service Worker — v5
 // Network-first with stale-while-revalidate fallback for offline support.
 
-const CACHE_VERSION = 'coresetu-v4';
+const CACHE_VERSION = 'coresetu-v5';
 const STATIC_ASSETS = [
   '/',
-  '/dashboard/',
   '/login/',
-  '/projects/',
-  '/whatsapp/',
-  '/templates/',
-  '/profile/',
   '/manifest.json',
   '/favicon.ico',
   '/android-chrome-192x192.png',
   '/android-chrome-512x512.png',
 ];
 
-// ── INSTALL: Pre-cache critical assets ──────────────────────────────────────
+// ── INSTALL: Pre-cache critical static assets ────────────────────────────────
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
@@ -46,14 +41,17 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
 
-  // Never intercept non-GET, APIs, or external 3rd-party services
+  // Never intercept non-GET, APIs, analytics, or external 3rd-party services
   if (
     req.method !== 'GET' ||
     req.url.includes('/api/') ||
+    req.url.includes('cloudflareinsights.com') ||
     req.url.includes('cloudinary.com') ||
     req.url.includes('fonts.googleapis.com') ||
     req.url.includes('fonts.gstatic.com') ||
     req.url.includes('checkout.razorpay.com') ||
+    req.url.includes('google-analytics.com') ||
+    req.url.includes('googletagmanager.com') ||
     !req.url.startsWith('http')
   ) {
     return; // Pass through to browser natively
@@ -79,9 +77,9 @@ self.addEventListener('fetch', (event) => {
 
         return networkResponse;
       } catch (networkError) {
-        // If aborted by client navigation, do not synthesize 503
+        // If aborted by client navigation, do not synthesize error
         if (networkError.name === 'AbortError') {
-          throw networkError;
+          return new Response(null, { status: 204 });
         }
 
         // Try exact cache match
@@ -92,12 +90,15 @@ self.addEventListener('fetch', (event) => {
 
         // For navigation requests when offline, serve cached SPA root
         if (req.mode === 'navigate') {
-          const fallback = await cache.match('/') || await cache.match('/dashboard/');
+          const fallback = await cache.match('/') || await cache.match('/login/');
           if (fallback) return fallback;
         }
 
-        // Rethrow network error to allow native browser / router fallback
-        throw networkError;
+        return new Response('Network request failed', {
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { 'Content-Type': 'text/plain' }
+        });
       }
     })()
   );
