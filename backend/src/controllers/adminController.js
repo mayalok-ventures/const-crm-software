@@ -1370,6 +1370,10 @@ exports.updateAdminAgent = async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
 
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid user ID' });
+    }
+
     const beforeUser = await User.findById(id).lean();
     if (!beforeUser) return res.status(404).json({ success: false, message: 'User not found' });
 
@@ -1401,8 +1405,16 @@ exports.updateAdminAgent = async (req, res) => {
       }
     }
 
+    if (updates.roleId !== undefined) {
+      if (updates.roleId && mongoose.Types.ObjectId.isValid(updates.roleId) && !String(updates.roleId).startsWith('default_')) {
+        // Valid custom role
+      } else {
+        updates.roleId = null;
+      }
+    }
+
     if (updates.managerId !== undefined) {
-      if (updates.managerId) {
+      if (updates.managerId && mongoose.Types.ObjectId.isValid(updates.managerId) && !String(updates.managerId).startsWith('default_')) {
         const mgr = await User.findById(updates.managerId).select('name').lean();
         updates.managerName = mgr?.name || '';
       } else {

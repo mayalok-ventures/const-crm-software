@@ -345,10 +345,12 @@ function AgencyPageContent() {
     if (ag.role === 'manager' || ag.companyRole === 'manager') {
       resolvedRole = 'manager';
     }
+    const rawRoleId = ag.roleId?._id || (typeof ag.roleId === 'string' ? ag.roleId : '');
+    const cleanRoleId = (rawRoleId && !rawRoleId.startsWith('default_')) ? rawRoleId : '';
     setAgentForm({
-      roleId: ag.roleId?._id || ag.roleId || '',
+      roleId: cleanRoleId,
       companyRole: resolvedRole,
-      managerId: ag.managerId?._id || ag.managerId || '',
+      managerId: ag.managerId?._id || (typeof ag.managerId === 'string' ? ag.managerId : '') || '',
       employeeStatus: ag.employeeStatus || 'active'
     });
   };
@@ -356,14 +358,19 @@ function AgencyPageContent() {
   const handleSaveAgent = async (e) => {
     e.preventDefault();
     try {
+      const isMgr = agentForm.companyRole === 'manager';
+      let cleanRoleId = agentForm.roleId || null;
+      if (cleanRoleId && String(cleanRoleId).startsWith('default_')) {
+        cleanRoleId = null;
+      }
       await api.patch(`/agency/agents/${editingAgent._id}`, {
-        roleId: agentForm.roleId || null,
+        roleId: cleanRoleId,
         companyRole: agentForm.companyRole || 'agent',
-        role: agentForm.companyRole === 'manager' ? 'manager' : 'agent',
-        managerId: agentForm.managerId || null,
-        employeeStatus: agentForm.employeeStatus
+        role: isMgr ? 'manager' : (['admin', 'manager', 'agent'].includes(agentForm.companyRole) ? agentForm.companyRole : 'agent'),
+        managerId: isMgr ? null : (agentForm.managerId || null),
+        employeeStatus: agentForm.employeeStatus || 'active'
       });
-      toast.success(`Agent configuration updated for ${editingAgent.name}`);
+      toast.success(`Agent configuration updated for ${editingAgent.name} ✅`);
       setEditingAgent(null);
       fetchData();
     } catch (err) {
@@ -382,17 +389,20 @@ function AgencyPageContent() {
     try {
       const isMgr = newMemberForm.companyRole === 'manager';
       let assignedRoleId = newMemberForm.roleId || null;
+      if (assignedRoleId && String(assignedRoleId).startsWith('default_')) {
+        assignedRoleId = null;
+      }
       if (!assignedRoleId && isMgr) {
         const mgrRole = roles.find(r => (r.roleType === 'MANAGER' || r.name?.toLowerCase() === 'manager') && r._id && !String(r._id).startsWith('default_'));
         if (mgrRole) assignedRoleId = mgrRole._id;
       }
 
       const res = await api.post('/company/agents', {
-        name: newMemberForm.name,
-        email: newMemberForm.email,
-        phone: newMemberForm.phone,
+        name: newMemberForm.name.trim(),
+        email: newMemberForm.email ? newMemberForm.email.trim() : undefined,
+        phone: newMemberForm.phone ? newMemberForm.phone.trim() : undefined,
         password: newMemberForm.password,
-        role: isMgr ? 'manager' : 'agent',
+        role: isMgr ? 'manager' : (['admin', 'manager', 'agent'].includes(newMemberForm.companyRole) ? newMemberForm.companyRole : 'agent'),
         companyRole: newMemberForm.companyRole || 'agent',
         roleId: assignedRoleId,
         managerId: isMgr ? null : (newMemberForm.managerId || null),
@@ -404,7 +414,7 @@ function AgencyPageContent() {
         await api.patch(`/agency/agents/${newAgentId}`, {
           roleId: assignedRoleId,
           companyRole: newMemberForm.companyRole || 'agent',
-          role: isMgr ? 'manager' : 'agent',
+          role: isMgr ? 'manager' : (['admin', 'manager', 'agent'].includes(newMemberForm.companyRole) ? newMemberForm.companyRole : 'agent'),
           managerId: isMgr ? null : (newMemberForm.managerId || null)
         }).catch(() => {});
       }
@@ -1316,6 +1326,7 @@ function AgencyPageContent() {
                     <option value="agent">Agent / Sales Rep</option>
                     <option value="manager">Manager / Supervisor</option>
                     <option value="telecaller">Telecaller</option>
+                    <option value="sales_rep">Field Sales Rep</option>
                   </select>
                 </div>
 
@@ -1323,7 +1334,7 @@ function AgencyPageContent() {
                   <div style={{ marginBottom: 10 }}>
                     <label className="label">Custom RBAC Role (Optional)</label>
                     <select className="input" value={newMemberForm.roleId} onChange={e => setNewMemberForm(f => ({ ...f, roleId: e.target.value }))}>
-                      <option value="">Default Permissions</option>
+                      <option value="">Default Built-in Permissions</option>
                       {roles.filter(r => r._id && !String(r._id).startsWith('default_')).map(r => (
                         <option key={r._id} value={r._id}>{r.name} ({r.roleType})</option>
                       ))}
@@ -1364,33 +1375,46 @@ function AgencyPageContent() {
               <form onSubmit={handleSaveAgent}>
                 <div style={{ marginBottom: 12 }}>
                   <label className="label">Role Type</label>
-                  <select className="input" value={agentForm.companyRole} onChange={e => setAgentForm(f => ({ ...f, companyRole: e.target.value }))}>
-                    <option value="agent">Agent</option>
-                    <option value="manager">Manager</option>
+                  <select
+                    className="input"
+                    value={agentForm.companyRole}
+                    onChange={e => {
+                      const sel = e.target.value;
+                      setAgentForm(f => ({
+                        ...f,
+                        companyRole: sel,
+                        managerId: sel === 'manager' ? '' : f.managerId
+                      }));
+                    }}
+                  >
+                    <option value="agent">Agent / Sales Rep</option>
+                    <option value="manager">Manager / Supervisor</option>
                     <option value="telecaller">Telecaller</option>
-                    <option value="sales_rep">Sales Rep</option>
+                    <option value="sales_rep">Field Sales Rep</option>
                   </select>
                 </div>
 
                 <div style={{ marginBottom: 12 }}>
-                  <label className="label">Custom RBAC Role</label>
+                  <label className="label">Custom RBAC Role (Optional)</label>
                   <select className="input" value={agentForm.roleId} onChange={e => setAgentForm(f => ({ ...f, roleId: e.target.value }))}>
-                    <option value="">Default Permissions</option>
-                    {roles.map(r => (
-                      <option key={r._id} value={r._id}>{r.name}</option>
+                    <option value="">Default Built-in Permissions</option>
+                    {roles.filter(r => r._id && !String(r._id).startsWith('default_')).map(r => (
+                      <option key={r._id} value={r._id}>{r.name} ({r.roleType})</option>
                     ))}
                   </select>
                 </div>
 
-                <div style={{ marginBottom: 12 }}>
-                  <label className="label">Reporting Manager</label>
-                  <select className="input" value={agentForm.managerId} onChange={e => setAgentForm(f => ({ ...f, managerId: e.target.value }))}>
-                    <option value="">None (Reports to Owner)</option>
-                    {agents.filter(a => a._id !== editingAgent._id && (a.companyRole === 'manager' || a.role === 'manager')).map(m => (
-                      <option key={m._id} value={m._id}>{m.name} (Manager)</option>
-                    ))}
-                  </select>
-                </div>
+                {agentForm.companyRole !== 'manager' && (
+                  <div style={{ marginBottom: 12 }}>
+                    <label className="label">Reporting Manager</label>
+                    <select className="input" value={agentForm.managerId} onChange={e => setAgentForm(f => ({ ...f, managerId: e.target.value }))}>
+                      <option value="">None (Reports to Owner)</option>
+                      {agents.filter(a => a._id !== editingAgent._id && (a.companyRole === 'manager' || a.role === 'manager')).map(m => (
+                        <option key={m._id} value={m._id}>{m.name} (Manager)</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div style={{ marginBottom: 16 }}>
                   <label className="label">Employee Status</label>

@@ -991,14 +991,15 @@ exports.getIncentivePolicies = async (req, res) => {
 
 exports.getIncentives = async (req, res) => {
   try {
+    const tenantId = req.tenantId || resolveTenantId(req.user);
     // Filter strictly by tenantId isolation
-    const query = { tenantId: req.tenantId };
+    const query = { tenantId };
     
     // Non-owner role visibility limits
-    const isOwner = req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' || req.user.role === 'superadmin';
+    const isOwner = req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' || req.user.role === 'superadmin' || req.user.role === 'admin';
     if (!isOwner) {
-      const managerRole = req.user.roleId ? (await Role.findById(req.user.roleId).lean()) : null;
-      const isManager = managerRole && managerRole.roleType === 'MANAGER';
+      const managerRole = (req.user.roleId && mongoose.Types.ObjectId.isValid(req.user.roleId)) ? (await Role.findById(req.user.roleId).lean()) : null;
+      const isManager = req.user.role === 'manager' || req.user.companyRole === 'manager' || (managerRole && managerRole.roleType === 'MANAGER');
 
       if (isManager) {
         // Manager views team incentives (where agent is managed by the manager)
@@ -1031,7 +1032,8 @@ exports.updateIncentiveStatus = async (req, res) => {
       return res.status(400).json({ message: 'A valid status is required' });
     }
 
-    const incentive = await Incentive.findOne({ _id: id, tenantId: req.tenantId });
+    const tenantId = req.tenantId || resolveTenantId(req.user);
+    const incentive = await Incentive.findOne({ _id: id, tenantId });
     if (!incentive) return res.status(404).json({ message: 'Incentive not found' });
 
     const beforeState = incentive.toObject();
@@ -1053,7 +1055,7 @@ exports.updateIncentiveStatus = async (req, res) => {
       actorId: req.user._id,
       actorRole: req.user.role,
       targetUserId: incentive.agentId,
-      targetCompanyId: req.tenantId,
+      targetCompanyId: tenantId,
       action: 'OWNER_MODIFIED_INCENTIVE',
       beforeState,
       afterState: incentive.toObject(),
@@ -1069,14 +1071,15 @@ exports.updateIncentiveStatus = async (req, res) => {
 // 6. Dashboards Implementation
 exports.getDashboard = async (req, res) => {
   try {
-    const isOwner = req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' || req.user.role === 'superadmin';
-    const managerRole = req.user.roleId ? (await Role.findById(req.user.roleId).lean()) : null;
-    const isManager = managerRole && managerRole.roleType === 'MANAGER';
+    const tenantId = req.tenantId || resolveTenantId(req.user);
+    const isOwner = req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' || req.user.role === 'superadmin' || req.user.role === 'admin';
+    const managerRole = (req.user.roleId && mongoose.Types.ObjectId.isValid(req.user.roleId)) ? (await Role.findById(req.user.roleId).lean()) : null;
+    const isManager = req.user.role === 'manager' || req.user.companyRole === 'manager' || (managerRole && managerRole.roleType === 'MANAGER');
 
     // Define context-level employee filters
     let targetAgentIds = [req.user._id];
     if (isOwner) {
-      targetAgentIds = (await User.find({ $or: [{ companyId: req.tenantId }, { _id: req.tenantId }] }).select('_id').lean()).map(u => u._id);
+      targetAgentIds = (await User.find({ $or: [{ companyId: tenantId }, { _id: tenantId }] }).select('_id').lean()).map(u => u._id);
     } else if (isManager) {
       const teamAgentIds = (await User.find({ managerId: req.user._id }).select('_id').lean()).map(u => u._id);
       targetAgentIds = [...teamAgentIds, req.user._id];
@@ -1128,25 +1131,49 @@ exports.updateAgent = async (req, res) => {
     const { agentId } = req.params;
     const { roleId, role, companyRole, managerId, employeeStatus } = req.body;
 
-    const agent = await User.findOne({ _id: agentId, companyId: req.tenantId });
+    if (!agentId || !mongoose.Types.ObjectId.isValid(agentId)) {
+      return res.status(400).json({ message: 'Invalid agent ID provided' });
+    }
+
+    const tenantId = req.tenantId || resolveTenantId(req.user);
+    const agent = await User.findOne({
+      _id: agentId,
+      $or: [{ companyId: tenantId }, { _id: tenantId }]
+    });
+
     if (!agent) {
       return res.status(404).json({ message: 'Agent not found under this tenant' });
     }
 
+    // Safely handle custom or system roleId
     if (roleId !== undefined) {
-      if (roleId) {
-        const roleExists = await Role.findOne({ _id: roleId, tenantId: req.tenantId });
-        if (!roleExists) return res.status(400).json({ message: 'Invalid custom role' });
-        agent.roleId = roleId;
-        if (roleExists.roleType === 'MANAGER') {
-          agent.role = 'manager';
-          agent.companyRole = 'manager';
-        } else if (roleExists.roleType === 'OWNER') {
-          agent.companyRole = 'owner';
+      if (roleId && mongoose.Types.ObjectId.isValid(roleId) && !String(roleId).startsWith('default_')) {
+        const roleExists = await Role.findOne({ _id: roleId, tenantId });
+        if (roleExists) {
+          agent.roleId = roleId;
+          if (roleExists.roleType === 'MANAGER') {
+            agent.role = 'manager';
+            agent.companyRole = 'manager';
+          } else if (roleExists.roleType === 'OWNER') {
+            agent.role = 'admin';
+            agent.companyRole = 'owner';
+          } else {
+            agent.role = 'agent';
+            agent.companyRole = 'agent';
+          }
         } else {
-          agent.role = 'agent';
-          agent.companyRole = 'agent';
+          agent.roleId = null;
         }
+      } else if (roleId === 'default_manager' || (typeof roleId === 'string' && roleId.toLowerCase().includes('manager'))) {
+        const seededMgr = await Role.findOne({ tenantId, roleType: 'MANAGER' });
+        agent.roleId = seededMgr?._id || null;
+        agent.role = 'manager';
+        agent.companyRole = 'manager';
+      } else if (roleId === 'default_agent' || (typeof roleId === 'string' && roleId.toLowerCase().includes('agent'))) {
+        const seededAg = await Role.findOne({ tenantId, roleType: 'AGENT' });
+        agent.roleId = seededAg?._id || null;
+        agent.role = 'agent';
+        agent.companyRole = 'agent';
       } else {
         agent.roleId = null;
       }
@@ -1169,7 +1196,8 @@ exports.updateAgent = async (req, res) => {
         agent.role = 'agent';
         agent.companyRole = 'telecaller';
         agent.workStatus = 'independent_agent';
-      } else if (target === 'owner') {
+      } else if (target === 'owner' || target === 'admin') {
+        agent.role = 'admin';
         agent.companyRole = 'owner';
         agent.workStatus = 'company_owner';
       } else {
@@ -1180,11 +1208,15 @@ exports.updateAgent = async (req, res) => {
     }
 
     if (managerId !== undefined) {
-      if (managerId) {
-        const managerExists = await User.findOne({ _id: managerId, companyId: req.tenantId });
-        if (!managerExists) return res.status(400).json({ message: 'Invalid manager assignment' });
-        agent.managerId = managerId;
-        agent.managerName = managerExists.name || '';
+      if (managerId && mongoose.Types.ObjectId.isValid(managerId) && !String(managerId).startsWith('default_') && String(managerId) !== String(agent._id)) {
+        const managerExists = await User.findOne({ _id: managerId, $or: [{ companyId: tenantId }, { _id: tenantId }] });
+        if (managerExists) {
+          agent.managerId = managerId;
+          agent.managerName = managerExists.name || '';
+        } else {
+          agent.managerId = null;
+          agent.managerName = '';
+        }
       } else {
         agent.managerId = null;
         agent.managerName = '';
@@ -1215,7 +1247,7 @@ exports.updateAgent = async (req, res) => {
       actorId: req.user._id,
       actorRole: req.user.role,
       targetUserId: agent._id,
-      targetCompanyId: req.tenantId,
+      targetCompanyId: tenantId,
       action: 'OWNER_CHANGED_ROLE',
       beforeState: {},
       afterState: populatedAgent,
@@ -1234,9 +1266,16 @@ exports.updateAgent = async (req, res) => {
 exports.deleteAgent = async (req, res) => {
   try {
     const { agentId } = req.params;
-    const tenantId = req.tenantId;
+    if (!agentId || !mongoose.Types.ObjectId.isValid(agentId)) {
+      return res.status(400).json({ message: 'Invalid agent ID' });
+    }
 
-    const agent = await User.findOne({ _id: agentId, companyId: tenantId });
+    const tenantId = req.tenantId || resolveTenantId(req.user);
+    const agent = await User.findOne({
+      _id: agentId,
+      $or: [{ companyId: tenantId }, { _id: tenantId }]
+    });
+
     if (!agent) {
       return res.status(404).json({ message: 'Team member not found in your organization' });
     }

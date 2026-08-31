@@ -30,7 +30,7 @@ router.delete(
 );
 router.patch(
   '/agents/:agentId',
-  requirePermission(PERMISSIONS.ROLE_CREATE),
+  requirePermission(PERMISSIONS.STAFF_EDIT),
   agencyController.updateAgent
 );
 router.delete(

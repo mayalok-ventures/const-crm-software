@@ -2006,8 +2006,8 @@ const getManagerTeamMembers = async (req, res) => {
     const filter = {
       companyId,
       $or: [
-        { role: { $in: ['agent', 'manager', 'sales_rep'] } },
-        { companyRole: { $in: ['agent', 'manager', 'sales_rep'] } },
+        { role: { $in: ['agent', 'manager', 'sales_rep', 'telecaller', 'admin', 'user'] } },
+        { companyRole: { $in: ['agent', 'manager', 'sales_rep', 'telecaller', 'solo', 'owner'] } },
       ],
     };
 
@@ -2035,8 +2035,8 @@ const getManagerTeamPerformance = async (req, res) => {
     const filter = {
       companyId,
       $or: [
-        { role: { $in: ['agent', 'manager', 'sales_rep'] } },
-        { companyRole: { $in: ['agent', 'manager', 'sales_rep'] } },
+        { role: { $in: ['agent', 'manager', 'sales_rep', 'telecaller', 'admin', 'user'] } },
+        { companyRole: { $in: ['agent', 'manager', 'sales_rep', 'telecaller', 'solo', 'owner'] } },
       ],
     };
 
@@ -2131,8 +2131,8 @@ const getManagerTeamWorkload = async (req, res) => {
     const filter = {
       companyId,
       $or: [
-        { role: { $in: ['agent', 'manager', 'sales_rep'] } },
-        { companyRole: { $in: ['agent', 'manager', 'sales_rep'] } },
+        { role: { $in: ['agent', 'manager', 'sales_rep', 'telecaller', 'admin', 'user'] } },
+        { companyRole: { $in: ['agent', 'manager', 'sales_rep', 'telecaller', 'solo', 'owner'] } },
       ],
     };
 

@@ -1,6 +1,8 @@
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const Lead = require('../models/Lead');
 const Notification = require('../models/Notification');
+const Role = require('../models/Role');
 const { generateUniqueUsername } = require('../utils/generateUsername');
 const { generateUniqueUsercode } = require('../utils/generateUsercode');
 const xlsx = require('xlsx');
@@ -118,19 +120,25 @@ exports.createCompanyAgent = async (req, res) => {
       if (exists) return res.status(400).json({ message: 'Email already registered' });
     }
 
-    const Role = require('../models/Role');
     const username = await generateUniqueUsername(User);
 
     // Determine role & companyRole
     let finalRole = 'agent';
     let finalCompanyRole = 'agent';
+    let cleanRoleId = null;
 
-    if (roleId) {
+    if (roleId && mongoose.Types.ObjectId.isValid(roleId) && !String(roleId).startsWith('default_')) {
       const roleDoc = await Role.findById(roleId);
-      if (roleDoc && (roleDoc.roleType === 'MANAGER' || roleDoc.name?.toLowerCase().includes('manager'))) {
-        finalRole = 'manager';
-        finalCompanyRole = 'manager';
+      if (roleDoc) {
+        cleanRoleId = roleDoc._id;
+        if (roleDoc.roleType === 'MANAGER' || roleDoc.name?.toLowerCase().includes('manager')) {
+          finalRole = 'manager';
+          finalCompanyRole = 'manager';
+        }
       }
+    } else if (roleId === 'default_manager' || (typeof roleId === 'string' && roleId.toLowerCase().includes('manager'))) {
+      finalRole = 'manager';
+      finalCompanyRole = 'manager';
     }
 
     if (role === 'manager' || companyRole === 'manager') {
@@ -140,15 +148,24 @@ exports.createCompanyAgent = async (req, res) => {
       finalCompanyRole = companyRole;
       if (['manager', 'admin', 'agent'].includes(companyRole)) {
         finalRole = companyRole;
+      } else {
+        finalRole = 'agent';
       }
+    } else if (role) {
+      finalRole = role === 'manager' ? 'manager' : 'agent';
+      finalCompanyRole = role;
     }
 
     const usercode = await generateUniqueUsercode(User, finalRole === 'manager' ? 'MGR' : 'REA');
 
     let managerName = '';
-    if (managerId && finalRole !== 'manager') {
+    let cleanManagerId = null;
+    if (managerId && finalRole !== 'manager' && mongoose.Types.ObjectId.isValid(managerId) && !String(managerId).startsWith('default_')) {
       const mgr = await User.findById(managerId);
-      if (mgr) managerName = mgr.name;
+      if (mgr) {
+        cleanManagerId = mgr._id;
+        managerName = mgr.name;
+      }
     }
 
     const agentData = {
@@ -164,7 +181,7 @@ exports.createCompanyAgent = async (req, res) => {
       industryType: req.user.industryType || 'Real Estate',
       educationSubProfile: req.user.educationSubProfile || null,
       managerName: finalRole === 'manager' ? '' : managerName,
-      managerId: finalRole === 'manager' ? null : (managerId || null),
+      managerId: finalRole === 'manager' ? null : cleanManagerId,
       companyId: req.user._id,
       connectedCompanyId: req.user._id,
       companyJoinMethod: 'created_by_company', // SMART PERMISSION: Created by company
@@ -172,7 +189,7 @@ exports.createCompanyAgent = async (req, res) => {
       allowCompanyWhatsApp: req.user.companySettings?.allowAgentCompanyWhatsApp ?? true,
     };
 
-    if (roleId) agentData.roleId = roleId;
+    if (cleanRoleId) agentData.roleId = cleanRoleId;
 
     const agent = await User.create(agentData);
 
