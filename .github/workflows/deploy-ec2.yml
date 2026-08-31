@@ -1,0 +1,79 @@
+name: Deploy Backend to AWS EC2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-ec2.yml'
+      - 'nginx.conf'
+      - 'deploy_ec2.sh'
+      - 'package.json'
+  workflow_dispatch:
+
+concurrency:
+  group: production-backend-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy-ec2:
+    name: Deploy to EC2 (crm-backend-server)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to AWS EC2 via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_SSH_PORT || 22 }}
+          script_stop: true
+          command_timeout: 10m
+          script: |
+            set -e
+            echo "=========================================================="
+            echo "🚀 [Deploy] Starting SAHYAK CRM Backend Deployment on EC2"
+            echo "=========================================================="
+
+            # 1. Navigate to application root
+            cd /home/ubuntu/mobile-crm
+
+            # 2. Fetch latest code from GitHub main branch
+            echo "📥 [Git] Fetching latest main branch from origin..."
+            git fetch origin main
+            git checkout main
+            git reset --hard origin/main
+
+            # 3. Install production dependencies for backend
+            echo "📦 [NPM] Installing backend production dependencies..."
+            cd backend
+            npm ci --omit=dev
+
+            # 4. Graceful Zero-Downtime Reload of PM2 process
+            echo "⚡ [PM2] Reloading crm-backend process..."
+            pm2 reload crm-backend --update-env || pm2 start server.js --name "crm-backend"
+            pm2 save
+
+            # 5. Verify Backend Health Probe
+            echo "🔍 [Health] Verifying backend health on http://127.0.0.1:5000/api/health/live..."
+            sleep 3
+
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5000/api/health/live || true)
+            echo "Health check HTTP response code: $HTTP_CODE"
+
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "❌ [Health Check Failed] Expected HTTP 200, received: $HTTP_CODE"
+              echo "=== Recent PM2 Process Logs ==="
+              pm2 logs crm-backend --lines 40 --nostream
+              exit 1
+            fi
+
+            echo "=========================================================="
+            echo "✅ [Deploy] SAHYAK CRM Backend successfully deployed and healthy!"
+            echo "=========================================================="

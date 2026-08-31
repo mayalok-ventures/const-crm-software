@@ -1,89 +1,120 @@
-# CoreSetu CRM — Production Deployment Runbook
+# SAHYAK / CoreSetu CRM — Production Deployment Runbook
 
 ## Overview
-This document outlines the standard, repeatable deployment procedure for CoreSetu CRM across single-instance and containerized environments.
+This document outlines the production deployment architecture and procedures for SAHYAK CRM across Frontend (Cloudflare Pages) and Backend (AWS EC2).
 
 ---
 
-## 1. Prerequisites
-- Node.js 20 LTS
-- MongoDB Atlas (7.0+) Cluster with TLS connection string
-- Cloudinary Account (Cloud Name, API Key, API Secret)
-- Domain Names: `crm.coresetu.com` (Frontend), `api.coresetu.com` (API)
-- Edge Reverse Proxy / WAF (Cloudflare or Nginx / AWS ALB)
+## 1. Dual Deployment Architecture
 
----
-
-## 2. Environment Setup
-Create `/app/backend/.env` on the host with production secrets:
-```env
-PORT=5000
-NODE_ENV=production
-MONGO_URI=mongodb+srv://<db_user>:<db_pass>@<cluster>.mongodb.net/crm_production?retryWrites=true&w=majority
-JWT_SECRET=<min-32-char-random-jwt-secret>
-
-FRONTEND_URL=https://crm.coresetu.com
-BACKEND_URL=https://api.coresetu.com
-
-CLOUDINARY_CLOUD_NAME=<cloud_name>
-CLOUDINARY_API_KEY=<api_key>
-CLOUDINARY_API_SECRET=<api_secret>
-
-RAZORPAY_KEY_ID=<rzp_key_id>
-RAZORPAY_KEY_SECRET=<rzp_key_secret>
-RAZORPAY_WEBHOOK_SECRET=<rzp_webhook_secret>
-
-META_APP_ID=<meta_app_id>
-META_APP_SECRET=<meta_app_secret>
-META_VERIFY_TOKEN=<meta_verify_token>
-META_REDIRECT_URI=https://api.coresetu.com/api/integrations/meta/oauth/callback
-
-GOOGLE_CLIENT_ID=<google_client_id>
-GOOGLE_CLIENT_SECRET=<google_client_secret>
-GOOGLE_REDIRECT_URI=https://api.coresetu.com/api/integrations/google/oauth/callback
-GOOGLE_WEBHOOK_SECRET=<google_webhook_secret>
+```
+GitHub (Repository: mayalok-ventures/mobile-crm)
+  │
+  ├──► [Branch: main] ──► Cloudflare Pages (Git Integration) ──► Frontend PWA (https://crm.coresetu.com)
+  │
+  └──► [Branch: main] ──► GitHub Actions (.github/workflows/deploy-ec2.yml)
+                             │ (SSH over port 22 via appleboy/ssh-action)
+                             ▼
+                         AWS EC2 (crm-backend-server | Ubuntu 22.04 LTS)
+                             │
+                             ├──► /home/ubuntu/mobile-crm
+                             ├──► git fetch & reset --hard origin/main
+                             ├──► cd backend && npm ci --omit=dev
+                             ├──► pm2 reload crm-backend --update-env
+                             └──► Health Probe: http://127.0.0.1:5000/api/health/live (HTTP 200)
 ```
 
 ---
 
-## 3. Docker Deployment Procedure
-```bash
-# 1. Build backend container image
-docker build -t coresetu-crm-backend:latest ./backend
+## 2. GitHub Actions Secrets Configuration
 
-# 2. Run backend container
-docker run -d \
-  --name crm-backend \
-  --restart unless-stopped \
-  -p 5000:5000 \
-  --env-file ./backend/.env \
-  coresetu-crm-backend:latest
+To enable automated backend deployment to the EC2 server, configure the following encrypted secrets in GitHub repository settings (**Settings > Secrets and variables > Actions**):
 
-# 3. Verify health & readiness
-curl -f http://localhost:5000/health/live
-curl -f http://localhost:5000/health/ready
-```
+| Secret Name | Description | Example / Default |
+| :--- | :--- | :--- |
+| `EC2_HOST` | Public IP or DNS of the EC2 instance | `13.51.219.53` |
+| `EC2_USER` | SSH Username for the instance | `ubuntu` |
+| `EC2_SSH_KEY` | Private SSH Key (.pem) for EC2 authentication | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
+| `EC2_SSH_PORT` | *(Optional)* SSH Port | `22` |
 
 ---
 
-## 4. PM2 / Host Deployment Procedure
+## 3. Automated Deployment Sequence (GitHub Actions)
+
+When code is pushed to `main` impacting the backend, the workflow `.github/workflows/deploy-ec2.yml` runs the following commands on EC2 non-destructively:
+
 ```bash
-# Backend
+# 1. Navigate to application root
+cd /home/ubuntu/mobile-crm
+
+# 2. Synchronize codebase with origin/main
+git fetch origin main
+git checkout main
+git reset --hard origin/main
+
+# 3. Install production dependencies
 cd backend
 npm ci --omit=dev
-pm2 restart crm-backend --update-env || pm2 start server.js --name "crm-backend"
 
-# Frontend
-cd ../frontend
-npm ci
-npm run build
-pm2 restart crm-frontend --update-env || pm2 start npm --name "crm-frontend" -- start
+# 4. Zero-downtime PM2 reload
+pm2 reload crm-backend --update-env || pm2 start server.js --name "crm-backend"
+pm2 save
+
+# 5. Automated Health Verification
+curl -f http://127.0.0.1:5000/api/health/live
 ```
 
 ---
 
-## 5. Post-Deployment Verification
-1. Verify `GET https://api.coresetu.com/health/live` returns HTTP 200.
-2. Verify `GET https://api.coresetu.com/health/ready` returns HTTP 200 with `ready: true`.
-3. Open `https://crm.coresetu.com/login` and verify administrative login.
-4. Check error logs: `pm2 logs crm-backend` or `docker logs crm-backend`.
+## 4. Manual / Host Deployment (Fallback)
+
+If manual deployment or server bootstrapping is required:
+
+```bash
+# 1. SSH into EC2 instance
+ssh -i ~/.ssh/your-key.pem ubuntu@13.51.219.53
+
+# 2. Navigate and update repository
+cd /home/ubuntu/mobile-crm
+git pull origin main
+
+# 3. Update backend dependencies & reload PM2
+cd backend
+npm ci --omit=dev
+pm2 reload crm-backend --update-env
+pm2 save
+
+# 4. Verify health
+curl -f http://127.0.0.1:5000/api/health/live
+```
+
+---
+
+## 5. Rollback Procedure
+
+If a deployment introduces issues, execute the following fast rollback steps on EC2:
+
+1. **Identify Previous Working Commit**:
+   ```bash
+   cd /home/ubuntu/mobile-crm
+   git log -n 5 --oneline
+   ```
+2. **Checkout Previous Commit**:
+   ```bash
+   git checkout <PREVIOUS_KNOWN_GOOD_COMMIT_HASH>
+   ```
+3. **Re-install dependencies & Reload PM2**:
+   ```bash
+   cd backend
+   npm ci --omit=dev
+   pm2 reload crm-backend --update-env
+   ```
+4. **Verify Health**:
+   ```bash
+   curl -f http://127.0.0.1:5000/api/health/live
+   ```
+5. **Inspect Error Logs**:
+   ```bash
+   pm2 logs crm-backend --lines 100 --nostream
+   ```
+
