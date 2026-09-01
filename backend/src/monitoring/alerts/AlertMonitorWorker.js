@@ -470,7 +470,7 @@ class AlertMonitorWorker {
                 name: 'Default DevOps Webhook',
                 type: 'WEBHOOK',
                 config: {
-                    webhookUrl: 'https://api.coresetu.com/api/admin/alerts/webhook-sink',
+                    webhookUrl: 'https://api.sahyak.com/api/admin/alerts/webhook-sink',
                     secretKey: 'crm_alert_hmac_secret',
                 },
                 enabled: true,

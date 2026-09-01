@@ -1,4 +1,4 @@
-# SAHYAK / CoreSetu CRM — Production Deployment Runbook
+# SAHYAK CRM — Production Deployment Runbook
 
 ## Overview
 This document outlines the stabilized production deployment architecture, automated CI/CD pipeline, bounded health verification, rollback procedures, and operational runbook for SAHYAK CRM across Frontend (Cloudflare Pages) and Backend (AWS EC2).
@@ -10,7 +10,7 @@ This document outlines the stabilized production deployment architecture, automa
 ```
 GitHub (Repository: mayalok-ventures/mobile-crm)
   │
-  ├──► [Branch: main] ──► Cloudflare Pages (Git Integration) ──► Frontend PWA (https://crm.coresetu.com)
+  ├──► [Branch: main] ──► Cloudflare Pages (Git Integration) ──► Frontend PWA (https://crm.sahyak.com)
   │
   └──► [Branch: main] ──► GitHub Actions (.github/workflows/deploy-ec2.yml)
                              │ Concurrency Group: production-backend-deployment (cancel-in-progress: false)
@@ -37,7 +37,7 @@ To enable automated backend deployment to the EC2 server, configure the followin
 
 | Secret Name | Description | Example / Default |
 | :--- | :--- | :--- |
-| `EC2_HOST` | Public IP or DNS of the EC2 instance | `13.51.219.53` |
+| `EC2_HOST` | Public IP or DNS of the EC2 instance | `13.60.24.220` |
 | `EC2_USER` | SSH Username for the instance | `ubuntu` |
 | `EC2_SSH_KEY` | Private SSH Key (.pem) for EC2 authentication | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
 | `EC2_SSH_PORT` | *(Optional)* SSH Port | `22` |
@@ -134,7 +134,7 @@ If manual deployment or server troubleshooting is required:
 
 ```bash
 # 1. SSH into EC2 instance
-ssh -i ~/.ssh/your-key.pem ubuntu@13.51.219.53
+ssh -i ~/.ssh/your-key.pem ubuntu@13.60.24.220
 
 # 2. Navigate and update repository
 cd /home/ubuntu/mobile-crm

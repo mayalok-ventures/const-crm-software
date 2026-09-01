@@ -13,7 +13,7 @@ module.exports = defineConfig({
   workers: 2,
   reporter: [['html', { open: 'never' }], ['list']],
   use: {
-    baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || 'https://crm.coresetu.com',
+    baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || 'https://crm.sahyak.com',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },

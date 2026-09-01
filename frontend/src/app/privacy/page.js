@@ -354,7 +354,7 @@ export default function PrivacyPolicyPage() {
                 <strong>Right to Rectification:</strong> You can update personal profile information, regional currencies, phone codes, and custom CRM form schemas in real-time.
               </li>
               <li>
-                <strong>Account Deletion:</strong> You may submit an explicit account erasure request by emailing <code className="text-indigo-300">support@coresetu.com</code>. Upon verification, all active records will be permanently removed within 30 business days.
+                <strong>Account Deletion:</strong> You may submit an explicit account erasure request by emailing <code className="text-indigo-300">support@sahyak.com</code>. Upon verification, all active records will be permanently removed within 30 business days.
               </li>
             </ul>
           </section>

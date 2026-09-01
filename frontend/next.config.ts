@@ -29,23 +29,13 @@ const nextConfig: NextConfig = {
         pathname: '/**',
       },
       {
-        protocol: 'https',
-        hostname: 'api.coresetu.com',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'crm.coresetu.com',
-        pathname: '/**',
-      },
-      {
         protocol: 'http',
         hostname: 'localhost',
         pathname: '/**',
       },
       {
         protocol: 'http',
-        hostname: '13.51.219.53',
+        hostname: '13.60.24.220',
         pathname: '/**',
       },
     ],

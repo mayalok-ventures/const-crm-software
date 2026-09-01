@@ -72,7 +72,7 @@ Traditional enterprise CRMs (e.g., Salesforce, HubSpot, Zoho) suffer from fundam
                                   v
            +-----------------------------------------------+
            |         AWS EC2 Ubuntu 22.04 LTS Server       |
-           |                  (13.51.219.53)               |
+           |                  (13.60.24.220)               |
            |                                               |
            |  [ NGINX Reverse Proxy (Port 80/443) ]        |
            |    ├── /          --> /frontend/out (SSG)     |
@@ -97,7 +97,7 @@ server {
     listen 80 default_server;
     listen [::]:80 default_server;
 
-    server_name crm.coresetu.com 13.51.219.53 _;
+    server_name api.sahyak.com 13.60.24.220 _;
 
     root /home/ubuntu/mobile-crm/frontend/out;
     index index.html;

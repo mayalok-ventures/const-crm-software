@@ -1,12 +1,12 @@
 #!/bin/bash
 # =============================================================================
 # Automated Production Deployment Script for AWS EC2 (Ubuntu 22.04 / 24.04 LTS)
-# Domain: crm.coresetu.com | Node.js (5000) + Next.js (3000) + Nginx + SSL
+# Domain: api.sahyak.com | Node.js (5000) + Next.js (3000) + Nginx + SSL
 # =============================================================================
 
 set -e
 
-DOMAIN="${1:-crm.coresetu.com}"
+DOMAIN="${1:-api.sahyak.com}"
 echo "🚀 Starting AWS EC2 Production Deployment for: $DOMAIN ..."
 
 # 1. System Updates & Prerequisites
