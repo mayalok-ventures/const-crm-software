@@ -64,23 +64,27 @@ jobs:
             echo "✅ [Git] Working tree synchronized at commit: ${CURRENT_COMMIT}"
 
             # Function to poll liveness endpoint
-            # Polls every 2 seconds for up to 60 seconds (30 attempts)
+            # Polls every 2 seconds for up to 120 seconds (60 attempts)
             # Returns 0 on HTTP 200, 1 on timeout
             poll_health() {
-              local max_attempts=30
+              local max_attempts=60
               local interval=2
               local attempt=1
               local endpoint="http://127.0.0.1:5000/api/health/live"
 
-              echo "🔍 [Health] Polling liveness probe at ${endpoint} (max ${max_attempts} attempts, every ${interval}s)..."
+              echo "🔍 [Health] Polling liveness probe at ${endpoint} (max ${max_attempts} attempts, every ${interval}s / 120s ceiling)..."
 
               while [ $attempt -le $max_attempts ]; do
-                HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${endpoint}" || echo "000")
-                if [ "$HTTP_CODE" = "200" ]; then
+                local raw_code
+                raw_code=$(curl -s -m 4 --connect-timeout 2 -o /dev/null -w "%{http_code}" "${endpoint}" 2>/dev/null || true)
+                local http_code
+                http_code=$(echo "${raw_code:-000}" | tr -d '[:space:]' | tail -c 3)
+
+                if [ "$http_code" = "200" ]; then
                   echo "✅ [Health] Liveness probe returned HTTP 200 on attempt ${attempt}/${max_attempts}!"
                   return 0
                 else
-                  echo "⏳ [Health] Attempt ${attempt}/${max_attempts}: HTTP ${HTTP_CODE} - waiting ${interval}s..."
+                  echo "⏳ [Health] Attempt ${attempt}/${max_attempts}: HTTP ${http_code} - waiting ${interval}s..."
                   sleep $interval
                   attempt=$((attempt + 1))
                 fi
@@ -103,6 +107,7 @@ jobs:
               pm2 reload crm-backend --update-env || pm2 start server.js --name "crm-backend"
             fi
             pm2 save
+            sleep 2
 
             # 7. Bounded health polling for the target deployment
             if poll_health; then
@@ -139,6 +144,7 @@ jobs:
                   pm2 reload crm-backend --update-env || pm2 start server.js --name "crm-backend"
                 fi
                 pm2 save
+                sleep 2
 
                 echo "🔍 [Rollback] Verifying health of rolled-back commit ${PREVIOUS_COMMIT}..."
                 if poll_health; then
