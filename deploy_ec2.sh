@@ -54,7 +54,11 @@ cd ..
 echo "⚡ Starting Services with PM2..."
 cd backend
 pm2 delete crm-backend 2>/dev/null || true
-pm2 start server.js --name "crm-backend"
+if [ -f "ecosystem.config.js" ]; then
+    pm2 start ecosystem.config.js
+else
+    pm2 start server.js --name "crm-backend"
+fi
 cd ../frontend
 pm2 delete crm-frontend 2>/dev/null || true
 pm2 start npm --name "crm-frontend" -- start
