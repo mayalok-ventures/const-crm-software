@@ -364,6 +364,26 @@ const leadSchema = new mongoose.Schema({
     default: 'unclaimed',
     index: true,
   },
+  // Lead Release Tracking (Returned to Unassigned Pool with Reason)
+  releaseReason: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  releasedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+  releasedByName: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  releasedAt: {
+    type: Date,
+    default: null,
+  },
 }, {
   timestamps: true,
   toJSON: { virtuals: true },

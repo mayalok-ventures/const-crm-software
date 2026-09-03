@@ -68,6 +68,16 @@ function LeadsContent() {
   const [reassignFromAgent, setReassignFromAgent] = useState('');
   const [reassignToAgent, setReassignToAgent] = useState('');
 
+  // Transfer & Release Modals State
+  const [transferringLead, setTransferringLead] = useState(null);
+  const [transferToAgentId, setTransferToAgentId] = useState('');
+  const [transferReason, setTransferReason] = useState('');
+  const [isTransferring, setIsTransferring] = useState(false);
+
+  const [releasingLead, setReleasingLead] = useState(null);
+  const [releaseReason, setReleaseReason] = useState('');
+  const [isReleasing, setIsReleasing] = useState(false);
+
   useEffect(() => {
     const u = getUser();
     if (!u) {
@@ -85,12 +95,18 @@ function LeadsContent() {
     api.get('/projects').then(res => setProjects(res.data || [])).catch(() => {});
   }, []);
 
-  // Fetch Team Agents for Manager / Owner
+  // Fetch Team Agents for Manager, Owner & Agents
   useEffect(() => {
-    if (user && isOwnerOrManager) {
-      api.get('/agency/agents').then(res => setAgents(res.data?.agents || res.data || [])).catch(() => {});
+    if (user) {
+      api.get('/company/agents')
+        .then(res => setAgents(res.data?.agents || res.data || []))
+        .catch(() => {
+          api.get('/agency/agents')
+            .then(res => setAgents(res.data?.agents || res.data || []))
+            .catch(() => {});
+        });
     }
-  }, [user, isOwnerOrManager]);
+  }, [user]);
 
   // Format Indian Currency
   const formatINR = (val) => {
@@ -168,6 +184,7 @@ function LeadsContent() {
 
   useEffect(() => {
     setSelectedLeadIds([]);
+    fetchUnclaimedLeads();
     if (activeTab === 'unassigned') {
       fetchUnclaimedLeads();
     } else if (activeTab === 'distribution') {
@@ -188,8 +205,8 @@ function LeadsContent() {
         reason: 'Claimed by Agent from common pool'
       });
       toast.success('Lead claimed and assigned to your pipeline! 🎉', { id: 'claim-lead' });
-      fetchUnclaimedLeads();
-      fetchLeads();
+      setUnclaimedLeads(prev => prev.filter(l => l._id !== leadId));
+      await Promise.all([fetchUnclaimedLeads(), fetchLeads()]);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to claim lead', { id: 'claim-lead' });
     }
@@ -238,6 +255,56 @@ function LeadsContent() {
       fetchDistributionData();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to reassign leads');
+    }
+  };
+
+  const handleTransferLead = async (e) => {
+    e.preventDefault();
+    if (!transferringLead) return;
+    if (!transferToAgentId) {
+      toast.error('Please select an agent to transfer this lead to');
+      return;
+    }
+    setIsTransferring(true);
+    try {
+      await api.put(`/leads/${transferringLead._id}/reassign`, {
+        toAgentId: transferToAgentId,
+        reason: transferReason || 'Transferred by agent'
+      });
+      toast.success('Lead transferred successfully! 🚀');
+      setTransferringLead(null);
+      setTransferToAgentId('');
+      setTransferReason('');
+      fetchLeads();
+      fetchUnclaimedLeads();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to transfer lead');
+    } finally {
+      setIsTransferring(false);
+    }
+  };
+
+  const handleReleaseLead = async (e) => {
+    e.preventDefault();
+    if (!releasingLead) return;
+    if (!releaseReason || !releaseReason.trim()) {
+      toast.error('Please provide a reason for releasing this lead');
+      return;
+    }
+    setIsReleasing(true);
+    try {
+      await api.put(`/leads/${releasingLead._id}/release`, {
+        reason: releaseReason.trim()
+      });
+      toast.success('Lead released to Unassigned Pool! 📦');
+      setReleasingLead(null);
+      setReleaseReason('');
+      fetchLeads();
+      fetchUnclaimedLeads();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to release lead');
+    } finally {
+      setIsReleasing(false);
     }
   };
 
@@ -715,7 +782,7 @@ function LeadsContent() {
                           </div>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                           <Link
                             href={`/leads/${lead._id}`}
                             className="btn btn-ghost btn-sm"
@@ -723,6 +790,31 @@ function LeadsContent() {
                           >
                             Details & Match →
                           </Link>
+
+                          <button
+                            onClick={() => {
+                              setTransferringLead(lead);
+                              setTransferToAgentId('');
+                              setTransferReason('');
+                            }}
+                            className="btn btn-ghost btn-sm"
+                            style={{ padding: '6px 10px', fontSize: 11, color: 'var(--text)', border: '1px solid var(--border)', gap: 4 }}
+                            title="Transfer Lead to another agent"
+                          >
+                            <ArrowRightLeft size={13} /> Transfer
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setReleasingLead(lead);
+                              setReleaseReason('');
+                            }}
+                            className="btn btn-ghost btn-sm"
+                            style={{ padding: '6px 10px', fontSize: 11, color: '#ef4444', border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.04)', gap: 4 }}
+                            title="Release to Unassigned Pool"
+                          >
+                            📦 Release
+                          </button>
 
                           <a
                             href={`tel:${lead.phone}`}
@@ -863,6 +955,27 @@ function LeadsContent() {
                               {lead.location && <span>📍 {lead.location}</span>}
                               {lead.budget && <span>💰 {formatINR(lead.budget)}</span>}
                             </div>
+
+                            {(lead.releaseReason || lead.customData?.releaseReason) && (
+                              <div style={{
+                                marginTop: 6,
+                                padding: '4px 10px',
+                                borderRadius: 6,
+                                background: 'rgba(239, 68, 68, 0.08)',
+                                border: '1px dashed rgba(239, 68, 68, 0.35)',
+                                fontSize: 11.5,
+                                color: '#ef4444',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                flexWrap: 'wrap'
+                              }}>
+                                <span>⚠️ <strong>Released Reason:</strong> &ldquo;{lead.releaseReason || lead.customData?.releaseReason}&rdquo;</span>
+                                {(lead.releasedByName || lead.customData?.releasedByName) && (
+                                  <span style={{ color: 'var(--text-muted)' }}>— Dropped by {lead.releasedByName || lead.customData?.releasedByName}</span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -1120,6 +1233,87 @@ function LeadsContent() {
                 <button onClick={handleReassignAgentLeads} className="btn btn-primary btn-sm">Confirm Reassign</button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Transfer Lead */}
+      {transferringLead && (
+        <div className="modal-backdrop" onClick={() => setTransferringLead(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 800, margin: '0 0 8px' }}>🔄 Transfer Lead</h3>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
+              Transfer <strong>{transferringLead.name || 'Prospect'}</strong> ({transferringLead.phone}) to another team agent.
+            </p>
+
+            <form onSubmit={handleTransferLead} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>Select Target Agent *</label>
+                <select
+                  className="input"
+                  value={transferToAgentId}
+                  onChange={e => setTransferToAgentId(e.target.value)}
+                  style={{ width: '100%' }}
+                  required
+                >
+                  <option value="">-- Choose Agent --</option>
+                  {agents.filter(a => String(a._id) !== String(user?._id)).map(a => (
+                    <option key={a._id} value={a._id}>👤 {a.name} ({a.roleId?.name || a.role || 'Agent'})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>Transfer Reason / Handover Notes</label>
+                <textarea
+                  className="input"
+                  placeholder="e.g. Client requested local representative or language specialist."
+                  value={transferReason}
+                  onChange={e => setTransferReason(e.target.value)}
+                  style={{ width: '100%', height: 75, resize: 'none', padding: 8 }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+                <button type="button" onClick={() => setTransferringLead(null)} className="btn btn-ghost btn-sm">Cancel</button>
+                <button type="submit" disabled={isTransferring} className="btn btn-primary btn-sm">
+                  {isTransferring ? 'Transferring...' : 'Confirm Transfer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Release Lead to Pool */}
+      {releasingLead && (
+        <div className="modal-backdrop" onClick={() => setReleasingLead(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 800, margin: '0 0 8px', color: '#ef4444' }}>📦 Release Lead to Unassigned Pool</h3>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
+              Release <strong>{releasingLead.name || 'Prospect'}</strong> ({releasingLead.phone}) back to the common Unassigned Pool. Please specify why you are releasing this lead.
+            </p>
+
+            <form onSubmit={handleReleaseLead} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>Reason for Release *</label>
+                <textarea
+                  className="input"
+                  placeholder="e.g. Client budget does not match / Client looking for different location / Unresponsive on call."
+                  value={releaseReason}
+                  onChange={e => setReleaseReason(e.target.value)}
+                  style={{ width: '100%', height: 80, resize: 'none', padding: 8 }}
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+                <button type="button" onClick={() => setReleasingLead(null)} className="btn btn-ghost btn-sm">Cancel</button>
+                <button type="submit" disabled={isReleasing} className="btn btn-primary btn-sm" style={{ background: '#ef4444', borderColor: '#ef4444' }}>
+                  {isReleasing ? 'Releasing...' : 'Confirm Release to Pool'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

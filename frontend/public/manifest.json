@@ -1,7 +1,7 @@
 {
-  "name": "CoreSetu CRM",
-  "short_name": "CoreSetu",
-  "description": "Fast, mobile-first CRM with WhatsApp follow-ups, lead tracking, and sales pipeline management.",
+  "name": "Sahyak CRM",
+  "short_name": "Sahyak",
+  "description": "Fast, mobile-first Real Estate CRM with WhatsApp follow-ups, lead tracking, and sales pipeline management.",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
@@ -9,7 +9,10 @@
   "theme_color": "#6366f1",
   "orientation": "portrait-primary",
   "lang": "en",
-  "categories": ["business", "productivity"],
+  "categories": [
+    "business",
+    "productivity"
+  ],
   "icons": [
     {
       "src": "/favicon-16x16.png",
@@ -57,21 +60,48 @@
       "short_name": "Home",
       "url": "/dashboard",
       "description": "View your sales dashboard",
-      "icons": [{ "src": "/favicon-32x32.png", "sizes": "32x32" }]
+      "icons": [
+        {
+          "src": "/favicon-32x32.png",
+          "sizes": "32x32"
+        }
+      ]
     },
     {
-      "name": "My Leads",
+      "name": "Leads",
       "short_name": "Leads",
-      "url": "/leads/placeholder",
+      "url": "/leads",
       "description": "Browse and manage your leads",
-      "icons": [{ "src": "/favicon-32x32.png", "sizes": "32x32" }]
+      "icons": [
+        {
+          "src": "/favicon-32x32.png",
+          "sizes": "32x32"
+        }
+      ]
+    },
+    {
+      "name": "Follow-ups",
+      "short_name": "Follow-ups",
+      "url": "/follow-ups",
+      "description": "Open urgent follow-up queue",
+      "icons": [
+        {
+          "src": "/favicon-32x32.png",
+          "sizes": "32x32"
+        }
+      ]
     },
     {
       "name": "WhatsApp",
       "short_name": "WA",
       "url": "/whatsapp",
       "description": "Open WhatsApp chat inbox",
-      "icons": [{ "src": "/favicon-32x32.png", "sizes": "32x32" }]
+      "icons": [
+        {
+          "src": "/favicon-32x32.png",
+          "sizes": "32x32"
+        }
+      ]
     }
   ],
   "screenshots": [],

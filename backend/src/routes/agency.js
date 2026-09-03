@@ -28,6 +28,10 @@ router.delete(
   requirePermission(PERMISSIONS.ROLE_DELETE),
   agencyController.deleteRole
 );
+router.get(
+  '/agents',
+  require('../controllers/companyController').getCompanyAgents
+);
 router.patch(
   '/agents/:agentId',
   requirePermission(PERMISSIONS.STAFF_EDIT),
@@ -38,11 +42,19 @@ router.delete(
   agencyController.deleteAgent
 );
 
-// 2. Lead Claims
+// 2. Lead Claims & Releases
 router.post(
   '/leads/:id/claim',
   requirePermission(PERMISSIONS.LEAD_CLAIM),
   agencyController.claimLead
+);
+router.post(
+  '/leads/:id/release',
+  require('../controllers/leadsController').releaseLead
+);
+router.put(
+  '/leads/:id/release',
+  require('../controllers/leadsController').releaseLead
 );
 
 // 3. Lead Transfer Requests

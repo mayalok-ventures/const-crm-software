@@ -4,7 +4,7 @@ const multer = require('multer');
 const {
   getLeads, getLead, createLead, updateLead,
   addNote, deleteLead, getTodayFollowUps, getDueFollowUps, getTags, trackMessage, trackCall,
-  reassignLead, exportLeads, importLeads, toggleLeadOrgSharing,
+  reassignLead, releaseLead, exportLeads, importLeads, toggleLeadOrgSharing,
   addChildInquiry, updateChildInquiry, deleteChildInquiry,
   scheduleFollowUp, delayFollowUp, completeFollowUp,
 } = require('../controllers/leadsController');
@@ -37,6 +37,9 @@ router.get('/tags', getTags);
 router.post('/:id/track-message', checkPlanExpiry, trackMessage);
 router.post('/:id/track-call', checkPlanExpiry, trackCall);
 router.put('/:id/reassign', checkPlanExpiry, reassignLead);
+router.post('/:id/reassign', checkPlanExpiry, reassignLead);
+router.put('/:id/release', checkPlanExpiry, releaseLead);
+router.post('/:id/release', checkPlanExpiry, releaseLead);
 router.put('/:id/share-organization', checkPlanExpiry, toggleLeadOrgSharing);
 
 // K-12 Parent-Child Multi-Inquiry Sub-routes

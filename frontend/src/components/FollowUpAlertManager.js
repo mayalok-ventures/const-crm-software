@@ -329,11 +329,11 @@ export default function FollowUpAlertManager() {
       {/* ── ALARM RESOLUTION MODAL ── */}
       {resolvingLead && (
         <div
-          className="fixed inset-0 z-[10000] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-[10000] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
           onClick={() => setResolvingLead(null)}
         >
           <div
-            className="bg-white border border-slate-200 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-fade-in text-left"
+            className="bg-white border border-slate-200 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-fade-in text-left max-h-[92vh] flex flex-col my-auto"
             onClick={e => e.stopPropagation()}
           >
             {/* Modal Top Header */}
@@ -370,7 +370,7 @@ export default function FollowUpAlertManager() {
             </div>
 
             {/* Modal Body & Tabs */}
-            <div className="p-4 sm:p-5">
+            <div className="p-4 sm:p-5 overflow-y-auto flex-1">
               {modalError && (
                 <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl mb-3.5 flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
@@ -644,7 +644,7 @@ export default function FollowUpAlertManager() {
       {/* ── FLOATING URGENT ALARM BAR ── */}
       {isOpen && dueLeads.length > 0 && (
         <div
-          className="fixed bottom-16 right-4 left-4 sm:left-auto sm:right-6 sm:w-[420px] z-[9000] bg-slate-900 border-2 border-rose-500 rounded-2xl shadow-2xl overflow-hidden animate-slide-up text-white"
+          className="fixed bottom-[72px] sm:bottom-6 right-3 left-3 sm:left-auto sm:right-6 sm:w-[420px] z-[8500] bg-slate-900 border-2 border-rose-500 rounded-2xl shadow-2xl overflow-hidden animate-slide-up text-white"
         >
           {/* Header */}
           <div className="bg-gradient-to-r from-rose-600 to-red-700 px-4 py-3 flex items-center justify-between gap-2">

@@ -1147,6 +1147,9 @@ exports.reassignAgentLeads = async (req, res) => {
       $set: {
         assignedTo: targetUser._id,
         assignedToName: targetUser.name,
+        currentOwnerId: targetUser._id,
+        ownershipStatus: 'assigned',
+        releaseReason: '',
         assignedManager: managerId,
         assignedManagerName: managerName,
       },
@@ -1155,7 +1158,7 @@ exports.reassignAgentLeads = async (req, res) => {
           action: 'assigned_agent',
           performedBy: req.user._id,
           performerName: req.user.name,
-          details: `Reassigned to ${targetUser.name} by Admin`,
+          details: `Reassigned to ${targetUser.name} by Manager/Admin`,
           timestamp: new Date(),
         },
       },
@@ -1514,54 +1517,6 @@ exports.getAgentsPerformance = async (req, res) => {
   }
 };
 
-exports.reassignAgentLeads = async (req, res) => {
-  try {
-    const { fromAgentId, toAgentId, leadIds } = req.body;
-    if (!fromAgentId || !toAgentId) {
-      return res.status(400).json({ success: false, message: 'fromAgentId and toAgentId are required' });
-    }
-
-    const [fromAgent, toAgent] = await Promise.all([
-      User.findById(fromAgentId).select('name email role'),
-      User.findById(toAgentId).select('name email role'),
-    ]);
-
-    if (!fromAgent || !toAgent) {
-      return res.status(404).json({ success: false, message: 'Agent not found' });
-    }
-
-    const filter = { assignedTo: fromAgentId };
-    if (Array.isArray(leadIds) && leadIds.length > 0) {
-      filter._id = { $in: leadIds };
-    } else {
-      filter.status = { $nin: ['converted', 'payment_done'] };
-    }
-
-    const updateResult = await Lead.updateMany(filter, { $set: { assignedTo: toAgentId } });
-
-    await logActivity({
-      actor: req.user._id,
-      actorRole: req.user.role || 'admin',
-      action: 'ASSIGN',
-      entityType: 'Lead',
-      details: `Reassigned ${updateResult.modifiedCount} active leads from ${fromAgent.name} to ${toAgent.name}`,
-      metadata: {
-        fromAgent: { id: fromAgent._id, name: fromAgent.name },
-        toAgent: { id: toAgent._id, name: toAgent.name },
-        reassignedCount: updateResult.modifiedCount,
-      },
-      ipAddress: req.ip,
-    });
-
-    res.json({
-      success: true,
-      message: `Successfully reassigned ${updateResult.modifiedCount} leads from ${fromAgent.name} to ${toAgent.name}`,
-      modifiedCount: updateResult.modifiedCount,
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
 
 // ─────────────────────────────────────────────────────────────
 // 6. FORMS CENTRE

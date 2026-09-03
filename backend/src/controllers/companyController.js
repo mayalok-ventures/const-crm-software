@@ -13,15 +13,20 @@ const PDFDocument = require('pdfkit');
 // @access Private (Company Owner or mapped Agent)
 exports.getCompanyAgents = async (req, res) => {
   try {
-    const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner';
-    const companyId = isOwner ? req.user._id : req.user.companyId;
+    const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner' || req.user.role === 'admin';
+    const companyId = req.user.companyId || (isOwner ? req.user._id : null);
 
     if (!companyId) {
-      return res.status(400).json({ message: 'User is not associated with any organization.' });
+      return res.status(400).json({ success: false, message: 'User is not associated with any organization.' });
     }
 
     const company = await User.findById(companyId).select('name usercode companyInfo companySettings');
-    const agents = await User.find({ companyId })
+    const agents = await User.find({
+      $or: [
+        { companyId: companyId },
+        { connectedCompanyId: companyId }
+      ]
+    })
       .select('name email phone usercode role roleId companyRole employeeStatus managerId companyJoinMethod companyLeaveRequest allowCompanyWhatsApp defaultSender createdAt lastLogin')
       .populate('roleId', 'name roleType permissions')
       .populate('managerId', 'name email usercode')

@@ -15,7 +15,7 @@ import {
 } from '@/lib/auth';
 import api from '@/lib/api';
 import {
-  Home, FileText, Users, BarChart2, User, MessageCircle,
+  Home, FileText, Users, BarChart2, User, MessageCircle, MoreHorizontal, Grid, X as CloseIcon,
   Package, Send, Zap, Shield, Crown, GraduationCap,
   ChevronLeft, ChevronRight, Building2, Calendar, TrendingUp,
   Award, MapPin, ChevronDown, Sliders, Bell, DollarSign,
@@ -37,6 +37,8 @@ function BottomNavContent({ active }) {
   const [isEducation, setIsEducation] = useState(false);
   const [isRealEstate, setIsRealEstate] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isMoreDrawerOpen, setIsMoreDrawerOpen] = useState(false);
+  const [overdueCount, setOverdueCount] = useState(0);
   const [profileHref, setProfileHref] = useState('/profile');
   const [generalControlsExpanded, setGeneralControlsExpanded] = useState(false);
   const [leadsExpanded, setLeadsExpanded] = useState(false);
@@ -45,6 +47,22 @@ function BottomNavContent({ active }) {
     clearAuth();
     router.replace('/login');
   };
+
+  useEffect(() => {
+    const fetchOverdueBadge = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const res = await api.get('/leads/follow-ups/due');
+        if (Array.isArray(res.data)) {
+          setOverdueCount(res.data.length);
+        }
+      } catch (e) {}
+    };
+    fetchOverdueBadge();
+    const iv = setInterval(fetchOverdueBadge, 30000);
+    return () => clearInterval(iv);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -236,32 +254,327 @@ function BottomNavContent({ active }) {
 
   return (
     <>
-      {/* Mobile Bottom Navigation (Visible only on small screens < 768px) */}
-      <nav className="bottom-nav flex md:hidden">
-        {mobileItems.map(({ href, label, icon: Icon, key }) => {
-          const activeState = isLinkActive(key, href);
-          return (
-            <Link
-              key={key}
-              href={href}
-              className={`bottom-nav-link ${activeState ? 'active' : ''}`}
-            >
-              <Icon size={20} />
-              <span>{label}</span>
-            </Link>
-          );
-        })}
-        {isSuper && (
-          <Link
-            href="/admin"
-            className={`bottom-nav-link ${isLinkActive('admin', '/admin') ? 'active' : ''}`}
-            style={{ color: '#f59e0b' }}
-          >
-            <Crown size={20} />
-            <span>Admin</span>
-          </Link>
-        )}
+      {/* Mobile Bottom Navigation (Unified 5-Anchor Real Estate Action Bar) */}
+      <nav className="bottom-nav flex md:hidden" style={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: 'calc(3.75rem + env(safe-area-inset-bottom, 0px))',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        backgroundColor: '#ffffff',
+        borderTop: '1px solid #e2e8f0',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(5, 1fr)',
+        zIndex: 8000,
+        boxShadow: '0 -4px 16px rgba(0, 0, 0, 0.04)'
+      }}>
+        {/* 1. Home */}
+        <Link
+          href="/dashboard"
+          className={`bottom-nav-link ${isLinkActive('dashboard', '/dashboard') ? 'active' : ''}`}
+          onClick={() => setIsMoreDrawerOpen(false)}
+          style={{ minHeight: 48, minWidth: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, textDecoration: 'none', color: isLinkActive('dashboard', '/dashboard') ? '#4f46e5' : '#64748b' }}
+        >
+          <Home size={19} />
+          <span style={{ fontSize: 10.5, fontWeight: isLinkActive('dashboard', '/dashboard') ? 700 : 500 }}>Home</span>
+        </Link>
+
+        {/* 2. Leads */}
+        <Link
+          href="/leads"
+          className={`bottom-nav-link ${isLinkActive('leads', '/leads') ? 'active' : ''}`}
+          onClick={() => setIsMoreDrawerOpen(false)}
+          style={{ minHeight: 48, minWidth: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, textDecoration: 'none', color: isLinkActive('leads', '/leads') ? '#4f46e5' : '#64748b' }}
+        >
+          <Users size={19} />
+          <span style={{ fontSize: 10.5, fontWeight: isLinkActive('leads', '/leads') ? 700 : 500 }}>Leads</span>
+        </Link>
+
+        {/* 3. Follow-ups (with dynamic overdue alarm badge) */}
+        <Link
+          href="/follow-ups"
+          className={`bottom-nav-link ${isLinkActive('follow_ups', '/follow-ups') ? 'active' : ''}`}
+          onClick={() => setIsMoreDrawerOpen(false)}
+          style={{ minHeight: 48, minWidth: 48, position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, textDecoration: 'none', color: isLinkActive('follow_ups', '/follow-ups') ? '#4f46e5' : '#64748b' }}
+        >
+          <Calendar size={19} />
+          <span style={{ fontSize: 10.5, fontWeight: isLinkActive('follow_ups', '/follow-ups') ? 700 : 500 }}>Follow-ups</span>
+          {overdueCount > 0 && (
+            <span style={{
+              position: 'absolute',
+              top: 4,
+              right: '24%',
+              background: '#e11d48',
+              color: '#ffffff',
+              fontSize: 9,
+              fontWeight: 800,
+              padding: '1px 5px',
+              borderRadius: 9999,
+              lineHeight: 1.2,
+              animation: 'pulse 2s infinite'
+            }}>
+              {overdueCount}
+            </span>
+          )}
+        </Link>
+
+        {/* 4. WhatsApp */}
+        <Link
+          href="/whatsapp"
+          className={`bottom-nav-link ${isLinkActive('whatsapp', '/whatsapp') ? 'active' : ''}`}
+          onClick={() => setIsMoreDrawerOpen(false)}
+          style={{ minHeight: 48, minWidth: 48, position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, textDecoration: 'none', color: isLinkActive('whatsapp', '/whatsapp') ? '#4f46e5' : '#64748b' }}
+        >
+          <MessageCircle size={19} />
+          <span style={{ fontSize: 10.5, fontWeight: isLinkActive('whatsapp', '/whatsapp') ? 700 : 500 }}>WhatsApp</span>
+          {unreadCount > 0 && (
+            <span style={{
+              position: 'absolute',
+              top: 4,
+              right: '24%',
+              background: '#22c55e',
+              color: '#ffffff',
+              fontSize: 9,
+              fontWeight: 800,
+              padding: '1px 5px',
+              borderRadius: 9999,
+              lineHeight: 1.2
+            }}>
+              {unreadCount}
+            </span>
+          )}
+        </Link>
+
+        {/* 5. More (Workspaces & Settings Sheet Trigger) */}
+        <button
+          type="button"
+          onClick={() => setIsMoreDrawerOpen(!isMoreDrawerOpen)}
+          className={`bottom-nav-link ${isMoreDrawerOpen ? 'active' : ''}`}
+          style={{
+            minHeight: 48,
+            minWidth: 48,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 2,
+            color: isMoreDrawerOpen ? '#4f46e5' : '#64748b',
+            padding: 0
+          }}
+          aria-label="More Workspaces and Settings"
+        >
+          <MoreHorizontal size={19} />
+          <span style={{ fontSize: 10.5, fontWeight: isMoreDrawerOpen ? 700 : 500 }}>More</span>
+        </button>
       </nav>
+
+      {/* Mobile More Workspaces Slide-Up Drawer */}
+      {isMoreDrawerOpen && (
+        <div
+          className="fixed inset-0 z-[9500] bg-slate-950/70 backdrop-blur-sm flex flex-col justify-end md:hidden animate-fade-in"
+          onClick={() => setIsMoreDrawerOpen(false)}
+        >
+          <div
+            className="bg-white rounded-t-3xl border-t border-slate-200 shadow-2xl max-h-[82vh] overflow-y-auto p-5 animate-slide-up pb-mobile-sheet"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+                  <Grid size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 m-0">All Workspaces</h3>
+                  <p className="text-[11px] text-slate-500 m-0">{orgName} • {isTenantAgent ? 'Agent' : isTenantManager ? 'Manager' : 'Owner'}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMoreDrawerOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition"
+              >
+                <CloseIcon size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Category 1: Real Estate Sales Operations */}
+              <div>
+                <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                  Sales Operations
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <Link
+                    href="/site-visits"
+                    onClick={() => setIsMoreDrawerOpen(false)}
+                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                  >
+                    <MapPin size={16} className="text-indigo-600 shrink-0" />
+                    <span>Site Visits</span>
+                  </Link>
+
+                  <Link
+                    href="/pipeline"
+                    onClick={() => setIsMoreDrawerOpen(false)}
+                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                  >
+                    <TrendingUp size={16} className="text-indigo-600 shrink-0" />
+                    <span>Deals Pipeline</span>
+                  </Link>
+
+                  <Link
+                    href="/projects"
+                    onClick={() => setIsMoreDrawerOpen(false)}
+                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                  >
+                    <Building2 size={16} className="text-indigo-600 shrink-0" />
+                    <span>Projects & Units</span>
+                  </Link>
+
+                  <Link
+                    href="/commission"
+                    onClick={() => setIsMoreDrawerOpen(false)}
+                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                  >
+                    <Percent size={16} className="text-emerald-600 shrink-0" />
+                    <span>Commissions</span>
+                  </Link>
+                </div>
+              </div>
+
+              {/* Category 2: Marketing & Comms */}
+              <div>
+                <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                  Marketing & Integrations
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <Link
+                    href="/campaigns"
+                    onClick={() => setIsMoreDrawerOpen(false)}
+                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                  >
+                    <Send size={16} className="text-violet-600 shrink-0" />
+                    <span>Broadcasts</span>
+                  </Link>
+
+                  <Link
+                    href="/templates"
+                    onClick={() => setIsMoreDrawerOpen(false)}
+                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                  >
+                    <FileText size={16} className="text-violet-600 shrink-0" />
+                    <span>HSM Templates</span>
+                  </Link>
+
+                  <Link
+                    href="/integrations"
+                    onClick={() => setIsMoreDrawerOpen(false)}
+                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition col-span-2"
+                  >
+                    <Zap size={16} className="text-amber-600 shrink-0" />
+                    <span>Meta Lead Ads & Webhook Integrations</span>
+                  </Link>
+                </div>
+              </div>
+
+              {/* Category 3: Analytics & Management */}
+              <div>
+                <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                  Management & Reporting
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <Link
+                    href="/analytics"
+                    onClick={() => setIsMoreDrawerOpen(false)}
+                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                  >
+                    <BarChart2 size={16} className="text-blue-600 shrink-0" />
+                    <span>Sales Analytics</span>
+                  </Link>
+
+                  <Link
+                    href="/notifications"
+                    onClick={() => setIsMoreDrawerOpen(false)}
+                    className="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Bell size={16} className="text-amber-600 shrink-0" />
+                      <span>Alerts</span>
+                    </div>
+                    {unreadCount > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-extrabold">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </Link>
+
+                  {(isTenantOwner || isTenantManager) && (
+                    <Link
+                      href="/agency"
+                      onClick={() => setIsMoreDrawerOpen(false)}
+                      className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                    >
+                      <Shield size={16} className="text-indigo-600 shrink-0" />
+                      <span>Agency Roster</span>
+                    </Link>
+                  )}
+
+                  {(isTenantOwner || isTenantManager || isSuper) && (
+                    <Link
+                      href="/admin"
+                      onClick={() => setIsMoreDrawerOpen(false)}
+                      className="flex items-center gap-2.5 p-3 rounded-xl bg-amber-50/70 hover:bg-amber-100/70 border border-amber-200 text-amber-900 text-xs font-bold transition"
+                    >
+                      <Crown size={16} className="text-amber-600 shrink-0" />
+                      <span>Admin Control</span>
+                    </Link>
+                  )}
+
+                  {isTenantOwner && (
+                    <Link
+                      href="/plans"
+                      onClick={() => setIsMoreDrawerOpen(false)}
+                      className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition col-span-2"
+                    >
+                      <Award size={16} className="text-indigo-600 shrink-0" />
+                      <span>Subscription Plans & Invoices</span>
+                    </Link>
+                  )}
+                </div>
+              </div>
+
+              {/* Category 4: Profile & Logout */}
+              <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+                <Link
+                  href={profileHref}
+                  onClick={() => setIsMoreDrawerOpen(false)}
+                  className="flex-1 flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition"
+                >
+                  <User size={15} />
+                  <span>My Profile</span>
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMoreDrawerOpen(false);
+                    handleLogout();
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 p-3 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-bold transition"
+                >
+                  <LogOut size={15} />
+                  <span>Log Out</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Desktop Sidebar Navigation (Visible only on desktop screens >= 768px) */}
       <aside className="sidebar-nav hidden md:flex">
