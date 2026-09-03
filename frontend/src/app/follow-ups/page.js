@@ -132,14 +132,15 @@ export default function FollowUpsPage() {
           </div>
 
           {/* Sub-Tabs Selector */}
-          <div style={{
+          <div className="no-scrollbar" style={{
             display: 'flex',
             alignItems: 'center',
             gap: 8,
             borderBottom: '1px solid var(--border)',
             paddingBottom: 12,
             marginBottom: 20,
-            overflowX: 'auto'
+            overflowX: 'auto',
+            WebkitOverflowScrolling: 'touch'
           }}>
             {[
               { id: 'today', label: "Today's Calls", count: counts.today, color: 'var(--accent)' },

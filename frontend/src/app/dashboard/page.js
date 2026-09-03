@@ -1200,6 +1200,16 @@ export default function DashboardPage() {
           )}
 
         </div>
+        {/* Mobile Floating Action Button (1-Tap Quick Lead Intake) */}
+        <button
+          type="button"
+          onClick={() => setShowAddModal(true)}
+          className="fab-button md:hidden"
+          title="Add New Prospect"
+          aria-label="Add New Lead"
+        >
+          <Plus size={28} />
+        </button>
       </main>
 
       {/* Floating Quick Action */}

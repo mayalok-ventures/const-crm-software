@@ -138,14 +138,15 @@ function SiteVisitsContent() {
           </div>
 
           {/* Sub-Tabs */}
-          <div style={{
+          <div className="no-scrollbar" style={{
             display: 'flex',
             alignItems: 'center',
             gap: 8,
             borderBottom: '1px solid var(--border)',
             paddingBottom: 12,
             marginBottom: 20,
-            overflowX: 'auto'
+            overflowX: 'auto',
+            WebkitOverflowScrolling: 'touch'
           }}>
             <button
               onClick={() => router.push('/site-visits?tab=today')}

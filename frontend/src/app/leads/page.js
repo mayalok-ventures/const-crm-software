@@ -379,14 +379,15 @@ function LeadsContent() {
           </div>
 
           {/* Sub-Tab Navigation Bar */}
-          <div style={{
+          <div className="no-scrollbar" style={{
             display: 'flex',
             alignItems: 'center',
             gap: 8,
             borderBottom: '1px solid var(--border)',
             paddingBottom: 12,
             marginBottom: 20,
-            overflowX: 'auto'
+            overflowX: 'auto',
+            WebkitOverflowScrolling: 'touch'
           }}>
             {/* 1. Team Leads */}
             <button
@@ -1186,6 +1187,16 @@ function LeadsContent() {
           )}
 
         </div>
+        {/* Mobile Floating Action Button for Instant Lead Intake */}
+        <button
+          type="button"
+          onClick={() => setShowAddModal(true)}
+          className="fab-button md:hidden"
+          title="Add New Prospect"
+          aria-label="Add New Lead"
+        >
+          <Plus size={28} />
+        </button>
       </main>
 
       {/* Modal: Reassign Leads */}

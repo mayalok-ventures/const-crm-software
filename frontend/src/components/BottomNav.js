@@ -262,49 +262,57 @@ function BottomNavContent({ active }) {
         right: 0,
         height: 'calc(3.75rem + env(safe-area-inset-bottom, 0px))',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-        backgroundColor: '#ffffff',
+        backgroundColor: 'rgba(255, 255, 255, 0.96)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
         borderTop: '1px solid #e2e8f0',
         display: 'grid',
         gridTemplateColumns: 'repeat(5, 1fr)',
         zIndex: 8000,
-        boxShadow: '0 -4px 16px rgba(0, 0, 0, 0.04)'
+        boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.05)'
       }}>
         {/* 1. Home */}
         <Link
           href="/dashboard"
-          className={`bottom-nav-link ${isLinkActive('dashboard', '/dashboard') ? 'active' : ''}`}
+          className={`bottom-nav-link btn-touch ${isLinkActive('dashboard', '/dashboard') ? 'active' : ''}`}
           onClick={() => setIsMoreDrawerOpen(false)}
-          style={{ minHeight: 48, minWidth: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, textDecoration: 'none', color: isLinkActive('dashboard', '/dashboard') ? '#4f46e5' : '#64748b' }}
+          style={{ minHeight: 48, minWidth: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, textDecoration: 'none', position: 'relative', color: isLinkActive('dashboard', '/dashboard') ? '#4f46e5' : '#64748b' }}
         >
-          <Home size={19} />
-          <span style={{ fontSize: 10.5, fontWeight: isLinkActive('dashboard', '/dashboard') ? 700 : 500 }}>Home</span>
+          <Home size={19} className={isLinkActive('dashboard', '/dashboard') ? 'stroke-[2.5]' : 'stroke-[1.8]'} />
+          <span style={{ fontSize: 10.5, fontWeight: isLinkActive('dashboard', '/dashboard') ? 800 : 500 }}>Home</span>
+          {isLinkActive('dashboard', '/dashboard') && (
+            <span style={{ position: 'absolute', bottom: 3, width: 4, height: 4, borderRadius: 9999, backgroundColor: '#4f46e5' }} />
+          )}
         </Link>
 
         {/* 2. Leads */}
         <Link
           href="/leads"
-          className={`bottom-nav-link ${isLinkActive('leads', '/leads') ? 'active' : ''}`}
+          className={`bottom-nav-link btn-touch ${isLinkActive('leads', '/leads') ? 'active' : ''}`}
           onClick={() => setIsMoreDrawerOpen(false)}
-          style={{ minHeight: 48, minWidth: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, textDecoration: 'none', color: isLinkActive('leads', '/leads') ? '#4f46e5' : '#64748b' }}
+          style={{ minHeight: 48, minWidth: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, textDecoration: 'none', position: 'relative', color: isLinkActive('leads', '/leads') ? '#4f46e5' : '#64748b' }}
         >
-          <Users size={19} />
-          <span style={{ fontSize: 10.5, fontWeight: isLinkActive('leads', '/leads') ? 700 : 500 }}>Leads</span>
+          <Users size={19} className={isLinkActive('leads', '/leads') ? 'stroke-[2.5]' : 'stroke-[1.8]'} />
+          <span style={{ fontSize: 10.5, fontWeight: isLinkActive('leads', '/leads') ? 800 : 500 }}>Leads</span>
+          {isLinkActive('leads', '/leads') && (
+            <span style={{ position: 'absolute', bottom: 3, width: 4, height: 4, borderRadius: 9999, backgroundColor: '#4f46e5' }} />
+          )}
         </Link>
 
         {/* 3. Follow-ups (with dynamic overdue alarm badge) */}
         <Link
           href="/follow-ups"
-          className={`bottom-nav-link ${isLinkActive('follow_ups', '/follow-ups') ? 'active' : ''}`}
+          className={`bottom-nav-link btn-touch ${isLinkActive('follow_ups', '/follow-ups') ? 'active' : ''}`}
           onClick={() => setIsMoreDrawerOpen(false)}
           style={{ minHeight: 48, minWidth: 48, position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, textDecoration: 'none', color: isLinkActive('follow_ups', '/follow-ups') ? '#4f46e5' : '#64748b' }}
         >
-          <Calendar size={19} />
-          <span style={{ fontSize: 10.5, fontWeight: isLinkActive('follow_ups', '/follow-ups') ? 700 : 500 }}>Follow-ups</span>
+          <Calendar size={19} className={isLinkActive('follow_ups', '/follow-ups') ? 'stroke-[2.5]' : 'stroke-[1.8]'} />
+          <span style={{ fontSize: 10.5, fontWeight: isLinkActive('follow_ups', '/follow-ups') ? 800 : 500 }}>Follow-ups</span>
           {overdueCount > 0 && (
             <span style={{
               position: 'absolute',
-              top: 4,
-              right: '24%',
+              top: 3,
+              right: '20%',
               background: '#e11d48',
               color: '#ffffff',
               fontSize: 9,
@@ -312,37 +320,44 @@ function BottomNavContent({ active }) {
               padding: '1px 5px',
               borderRadius: 9999,
               lineHeight: 1.2,
-              animation: 'pulse 2s infinite'
+              boxShadow: '0 2px 6px rgba(225, 29, 72, 0.4)'
             }}>
               {overdueCount}
             </span>
+          )}
+          {isLinkActive('follow_ups', '/follow-ups') && (
+            <span style={{ position: 'absolute', bottom: 3, width: 4, height: 4, borderRadius: 9999, backgroundColor: '#4f46e5' }} />
           )}
         </Link>
 
         {/* 4. WhatsApp */}
         <Link
           href="/whatsapp"
-          className={`bottom-nav-link ${isLinkActive('whatsapp', '/whatsapp') ? 'active' : ''}`}
+          className={`bottom-nav-link btn-touch ${isLinkActive('whatsapp', '/whatsapp') ? 'active' : ''}`}
           onClick={() => setIsMoreDrawerOpen(false)}
           style={{ minHeight: 48, minWidth: 48, position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, textDecoration: 'none', color: isLinkActive('whatsapp', '/whatsapp') ? '#4f46e5' : '#64748b' }}
         >
-          <MessageCircle size={19} />
-          <span style={{ fontSize: 10.5, fontWeight: isLinkActive('whatsapp', '/whatsapp') ? 700 : 500 }}>WhatsApp</span>
+          <MessageCircle size={19} className={isLinkActive('whatsapp', '/whatsapp') ? 'stroke-[2.5]' : 'stroke-[1.8]'} />
+          <span style={{ fontSize: 10.5, fontWeight: isLinkActive('whatsapp', '/whatsapp') ? 800 : 500 }}>WhatsApp</span>
           {unreadCount > 0 && (
             <span style={{
               position: 'absolute',
-              top: 4,
-              right: '24%',
-              background: '#22c55e',
+              top: 3,
+              right: '20%',
+              background: '#10b981',
               color: '#ffffff',
               fontSize: 9,
               fontWeight: 800,
               padding: '1px 5px',
               borderRadius: 9999,
-              lineHeight: 1.2
+              lineHeight: 1.2,
+              boxShadow: '0 2px 6px rgba(16, 185, 129, 0.4)'
             }}>
               {unreadCount}
             </span>
+          )}
+          {isLinkActive('whatsapp', '/whatsapp') && (
+            <span style={{ position: 'absolute', bottom: 3, width: 4, height: 4, borderRadius: 9999, backgroundColor: '#4f46e5' }} />
           )}
         </Link>
 
@@ -350,7 +365,7 @@ function BottomNavContent({ active }) {
         <button
           type="button"
           onClick={() => setIsMoreDrawerOpen(!isMoreDrawerOpen)}
-          className={`bottom-nav-link ${isMoreDrawerOpen ? 'active' : ''}`}
+          className={`bottom-nav-link btn-touch ${isMoreDrawerOpen ? 'active' : ''}`}
           style={{
             minHeight: 48,
             minWidth: 48,
@@ -362,13 +377,17 @@ function BottomNavContent({ active }) {
             alignItems: 'center',
             justifyContent: 'center',
             gap: 2,
+            position: 'relative',
             color: isMoreDrawerOpen ? '#4f46e5' : '#64748b',
             padding: 0
           }}
           aria-label="More Workspaces and Settings"
         >
-          <MoreHorizontal size={19} />
-          <span style={{ fontSize: 10.5, fontWeight: isMoreDrawerOpen ? 700 : 500 }}>More</span>
+          <MoreHorizontal size={19} className={isMoreDrawerOpen ? 'stroke-[2.5]' : 'stroke-[1.8]'} />
+          <span style={{ fontSize: 10.5, fontWeight: isMoreDrawerOpen ? 800 : 500 }}>More</span>
+          {isMoreDrawerOpen && (
+            <span style={{ position: 'absolute', bottom: 3, width: 4, height: 4, borderRadius: 9999, backgroundColor: '#4f46e5' }} />
+          )}
         </button>
       </nav>
 
