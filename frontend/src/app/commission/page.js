@@ -70,7 +70,7 @@ function CommissionContent() {
       <BottomNav active="commission" />
 
       <main className="main-content">
-        <div style={{ width: '100%', paddingBottom: 60 }}>
+        <div style={{ width: '100%' }} className="pb-mobile-nav">
           
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
@@ -95,12 +95,7 @@ function CommissionContent() {
           </div>
 
           {/* Stats Bar */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: 14,
-            marginBottom: 24
-          }}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
             <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
               <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Total Team Incentives Earned</span>
               <h2 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: 'var(--accent)' }}>
@@ -124,13 +119,15 @@ function CommissionContent() {
           </div>
 
           {/* Sub-Tabs */}
-          <div style={{
+          <div className="no-scrollbar" style={{
             display: 'flex',
             alignItems: 'center',
             gap: 8,
             borderBottom: '1px solid var(--border)',
             paddingBottom: 12,
-            marginBottom: 20
+            marginBottom: 20,
+            overflowX: 'auto',
+            WebkitOverflowScrolling: 'touch'
           }}>
             <button
               onClick={() => router.push('/commission?tab=team')}

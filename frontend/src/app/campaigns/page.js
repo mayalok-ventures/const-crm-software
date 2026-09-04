@@ -101,35 +101,35 @@ export default function CampaignsPage() {
   };
 
   return (
-    <div className="app-shell">
-      <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
-        <div className="page-header">
+    <div className="app-shell pb-mobile-nav">
+      <div className="page-container max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8">
+        <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
-            <h1 className="page-title">Broadcast Campaigns</h1>
-            <p className="page-subtitle" style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>Track and manage your bulk WhatsApp broadcasts</p>
+            <h1 className="page-title text-xl sm:text-2xl font-extrabold m-0 text-slate-900">Broadcast Campaigns</h1>
+            <p className="page-subtitle m-0 mt-1 text-xs sm:text-sm text-slate-500">Track and manage your bulk WhatsApp broadcasts</p>
           </div>
         </div>
 
-        <div className="page-content">
+        <div className="page-content" style={{ padding: 0 }}>
           {/* Statistics Panel */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
-          <div className="stat-card" style={{ flex: 1, minWidth: 90 }}>
-            <div className="stat-value">{stats.total}</div>
-            <div className="stat-label">Total</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3.5 mb-5">
+            <div className="stat-card" style={{ padding: '12px 14px' }}>
+              <div className="stat-value">{stats.total}</div>
+              <div className="stat-label">Total</div>
+            </div>
+            <div className="stat-card" style={{ padding: '12px 14px' }}>
+              <div className="stat-value" style={{ color: '#3b82f6' }}>{stats.active}</div>
+              <div className="stat-label">Sending</div>
+            </div>
+            <div className="stat-card" style={{ padding: '12px 14px' }}>
+              <div className="stat-value" style={{ color: '#22c55e' }}>{stats.completed}</div>
+              <div className="stat-label">Done</div>
+            </div>
+            <div className="stat-card" style={{ padding: '12px 14px' }}>
+              <div className="stat-value" style={{ color: '#f97316' }}>{stats.paused}</div>
+              <div className="stat-label">Paused</div>
+            </div>
           </div>
-          <div className="stat-card" style={{ flex: 1, minWidth: 90 }}>
-            <div className="stat-value" style={{ color: '#3b82f6' }}>{stats.active}</div>
-            <div className="stat-label">Sending</div>
-          </div>
-          <div className="stat-card" style={{ flex: 1, minWidth: 90 }}>
-            <div className="stat-value" style={{ color: '#22c55e' }}>{stats.completed}</div>
-            <div className="stat-label">Done</div>
-          </div>
-          <div className="stat-card" style={{ flex: 1, minWidth: 90 }}>
-            <div className="stat-value" style={{ color: '#f97316' }}>{stats.paused}</div>
-            <div className="stat-label">Paused</div>
-          </div>
-        </div>
 
         {/* Search & Filter bar */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>

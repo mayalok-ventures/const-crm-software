@@ -113,20 +113,20 @@ function SiteVisitsContent() {
       <BottomNav active="site_visits" />
 
       <main className="main-content">
-        <div style={{ width: '100%', paddingBottom: 60 }}>
+        <div style={{ width: '100%' }} className="pb-mobile-nav">
           
           {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
             <div>
-              <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <MapPin size={26} color="#0ea5e9" /> Site Visits & Project Tours
+              <h1 className="text-xl sm:text-2xl font-extrabold m-0 text-slate-900 flex items-center gap-2.5">
+                <MapPin size={24} className="text-sky-500 shrink-0" /> Site Visits & Project Tours
               </h1>
-              <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
+              <p className="m-0 mt-1 text-xs sm:text-sm text-slate-500">
                 Track property inspections, upcoming prospect tours, completed site visits, and visitor conversions.
               </p>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="flex items-center gap-2">
               <button
                 onClick={fetchVisits}
                 className="btn btn-ghost btn-sm"
@@ -333,11 +333,11 @@ function SiteVisitsContent() {
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-start sm:justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                         <a
                           href={`tel:${lead.phone}`}
-                          className="btn btn-ghost btn-sm"
-                          style={{ color: '#10b981', border: '1px solid rgba(16,185,129,0.3)', padding: '5px 10px' }}
+                          className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
+                          style={{ color: '#10b981', border: '1px solid rgba(16,185,129,0.3)', padding: '6px 10px', height: 34 }}
                         >
                           <Phone size={14} /> Call
                         </a>
@@ -345,15 +345,15 @@ function SiteVisitsContent() {
                           href={waLink(lead.phone, `Hi ${lead.name || ''}, regarding your upcoming site visit...`)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="btn btn-ghost btn-sm"
-                          style={{ color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)', padding: '5px 10px' }}
+                          className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
+                          style={{ color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)', padding: '6px 10px', height: 34 }}
                         >
                           <MessageSquare size={14} /> WA
                         </a>
                         <button
                           onClick={() => setCompletingLead(lead)}
-                          className="btn btn-primary btn-sm"
-                          style={{ fontSize: 11, padding: '5px 10px' }}
+                          className="btn btn-primary btn-sm flex-1 sm:flex-none justify-center"
+                          style={{ fontSize: 12, padding: '6px 12px', height: 34 }}
                         >
                           Complete Visit
                         </button>

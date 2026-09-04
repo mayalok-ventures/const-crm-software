@@ -85,7 +85,7 @@ export default function NotificationsPage() {
       <BottomNav active="notifications" />
 
       <main className="main-content">
-        <div style={{ width: '100%', paddingBottom: 60 }}>
+        <div style={{ width: '100%' }} className="pb-mobile-nav">
           
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14, marginBottom: 20 }}>
@@ -120,13 +120,15 @@ export default function NotificationsPage() {
           </div>
 
           {/* Filter Chips */}
-          <div style={{
+          <div className="no-scrollbar" style={{
             display: 'flex',
             alignItems: 'center',
             gap: 8,
             borderBottom: '1px solid var(--border)',
             paddingBottom: 12,
-            marginBottom: 20
+            marginBottom: 20,
+            overflowX: 'auto',
+            WebkitOverflowScrolling: 'touch'
           }}>
             {[
               { id: 'all', label: 'All Notifications', count: notifications.length },
@@ -290,13 +292,13 @@ export default function NotificationsPage() {
                     </div>
 
                     {/* Action Buttons */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-start sm:justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                       {isPending && n.transferRequestId && (
                         <>
                           <button
                             disabled={isProcessing}
                             onClick={() => handleAcceptTransfer(n.transferRequestId, n._id)}
-                            className="btn btn-primary btn-sm"
+                            className="btn btn-primary btn-sm flex-1 sm:flex-none justify-center"
                             style={{
                               background: '#10b981',
                               borderColor: '#10b981',
@@ -313,7 +315,7 @@ export default function NotificationsPage() {
                           <button
                             disabled={isProcessing}
                             onClick={() => handleRejectTransfer(n.transferRequestId, n._id)}
-                            className="btn btn-ghost btn-sm"
+                            className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
                             style={{
                               color: '#ef4444',
                               borderColor: 'rgba(239,68,68,0.3)',
@@ -330,7 +332,7 @@ export default function NotificationsPage() {
                       {n.leadId && (
                         <Link
                           href={`/leads/${typeof n.leadId === 'object' ? n.leadId._id : n.leadId}`}
-                          className="btn btn-ghost btn-sm"
+                          className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
                           style={{ gap: 6, fontSize: 12.5, color: 'var(--text-muted)' }}
                         >
                           View Lead <ArrowRight size={14} />

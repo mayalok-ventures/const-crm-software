@@ -146,20 +146,13 @@ export default function DashboardPage() {
       <BottomNav active="dashboard" />
 
       <main className="main-content">
-        <div style={{ width: '100%', paddingBottom: 60 }}>
+        <div style={{ width: '100%' }} className="pb-mobile-nav">
           
           {/* Header Greeting & Actions */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 16,
-            marginBottom: 20
-          }}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>
+              <div className="flex items-center flex-wrap gap-2">
+                <h1 className="text-xl sm:text-2xl font-extrabold m-0 text-slate-900">
                   {getGreeting()}, {user?.name ? user.name.split(' ')[0] : 'Manager'} 👋
                 </h1>
                 {isRealEstateManager && (
@@ -179,7 +172,7 @@ export default function DashboardPage() {
                   </span>
                 )}
               </div>
-              <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
+              <p className="m-0 mt-1 text-xs sm:text-sm text-slate-500">
                 {isRealEstateManager
                   ? 'Real-time team analytics, lead temperatures, site visits, opportunities and bookings'
                   : isTenantOwner || isManager(user)
@@ -188,10 +181,10 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div className="flex items-center flex-wrap gap-2 pt-1 sm:pt-0">
               <button
                 onClick={fetchDashboardData}
-                className="btn btn-ghost btn-sm"
+                className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
                 style={{ gap: 6, fontSize: 13 }}
               >
                 <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
@@ -199,15 +192,15 @@ export default function DashboardPage() {
               {isRealEstateManager && (
                 <Link
                   href="/leads?tab=distribution"
-                  className="btn btn-ghost btn-sm"
+                  className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
                   style={{ gap: 6, fontSize: 13, border: '1px solid var(--border)' }}
                 >
-                  <Users size={14} /> Distribute Leads
+                  <Users size={14} /> Distribute
                 </Link>
               )}
               <button
                 onClick={() => setShowAddModal(true)}
-                className="btn btn-primary btn-sm"
+                className="btn btn-primary btn-sm flex-1 sm:flex-none justify-center"
                 style={{ gap: 6, fontSize: 13 }}
               >
                 <Plus size={16} /> Add Lead
@@ -221,12 +214,7 @@ export default function DashboardPage() {
           {isRealEstateManager ? (
             <>
               {/* 8 Specialized Real Estate KPI Cards */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                gap: 14,
-                marginBottom: 24
-              }}>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3.5 mb-6">
                 {/* 1. Total Team Leads */}
                 <Link
                   href="/leads?tab=team_leads"
@@ -534,11 +522,7 @@ export default function DashboardPage() {
               </div>
 
               {/* 2-Column Operational Real Estate Grid */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
-                gap: 20
-              }}>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5">
                 {/* LEFT COLUMN: High Priority Queues */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                   
@@ -822,12 +806,7 @@ export default function DashboardPage() {
             /* ========================================================================= */
             <>
               {/* 4 High-Level KPI Summary Cards */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                gap: 14,
-                marginBottom: 24
-              }}>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3.5 mb-6">
                 <Link
                   href="/leads"
                   style={{
@@ -936,11 +915,7 @@ export default function DashboardPage() {
               </div>
 
               {/* Operational Grid */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
-                gap: 20
-              }}>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5">
                 {/* LEFT COLUMN */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                   

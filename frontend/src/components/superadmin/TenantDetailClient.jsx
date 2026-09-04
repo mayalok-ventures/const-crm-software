@@ -131,7 +131,7 @@ export default function TenantDetailClient() {
   const sub = data.subscription;
 
   return (
-    <div className="min-h-screen bg-[#070b14] text-slate-100 p-4 md:p-8 space-y-6 max-w-6xl mx-auto">
+    <div className="min-h-screen bg-[#070b14] text-slate-100 p-3 sm:p-4 md:p-8 space-y-6 max-w-6xl mx-auto pb-mobile-nav">
       {/* Back link */}
       <Link
         href="/superadmin-dashboard?tab=organisations"

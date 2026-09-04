@@ -287,10 +287,10 @@ export default function IntegrationsPage() {
   const isGooglePending = googleIntegrations.length > 0 && !isGoogleFullyConnected;
 
   return (
-    <div className="app-shell">
-      <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+    <div className="app-shell pb-mobile-nav">
+      <div className="page-container max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8">
         {/* Top Header */}
-        <div className="page-header" style={{ marginBottom: 16 }}>
+        <div className="page-header" style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button
               onClick={() => router.back()}

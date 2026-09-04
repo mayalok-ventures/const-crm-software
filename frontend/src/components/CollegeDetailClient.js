@@ -579,8 +579,8 @@ export default function CollegeDetailClient() {
   const accreditations = college.accreditation || [];
 
   return (
-    <div className="app-shell pb-24">
-      <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+    <div className="app-shell pb-mobile-nav">
+      <div className="page-container max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8">
         
         {/* ─────────────────────────────────────────────────────────────
             TOP BREADCRUMB & HEADER ACTIONS

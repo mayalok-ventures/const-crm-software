@@ -320,13 +320,13 @@ export default function WhatsAppConnectPage() {
   const BASE = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000';
 
   return (
-    <div className="app-shell">
-      <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+    <div className="app-shell pb-mobile-nav">
+      <div className="page-container max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="page-header">
-          <h1 className="page-title">WhatsApp Integration</h1>
+        <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <h1 className="page-title text-xl sm:text-2xl font-extrabold m-0 text-slate-900">WhatsApp Integration</h1>
           {status.status === 'connected' && (
-            <span className="badge badge-closed" style={{ gap: 6, display: 'flex', alignItems: 'center', fontSize: 11, padding: '4px 10px' }}>
+            <span className="badge badge-closed self-start sm:self-auto" style={{ gap: 6, display: 'flex', alignItems: 'center', fontSize: 11, padding: '4px 10px' }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />
               Connected (+{status.phone})
             </span>

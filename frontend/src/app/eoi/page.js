@@ -103,20 +103,20 @@ function EOIContent() {
       <BottomNav active="eoi" />
 
       <main className="main-content">
-        <div style={{ width: '100%', paddingBottom: 60 }}>
+        <div style={{ width: '100%' }} className="pb-mobile-nav">
           
           {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
             <div>
-              <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <FileText size={26} color="var(--accent)" /> Expression of Interest (EOI) Management
+              <h1 className="text-xl sm:text-2xl font-extrabold m-0 text-slate-900 flex items-center gap-2.5">
+                <FileText size={24} className="text-indigo-600 shrink-0" /> Expression of Interest (EOI) Management
               </h1>
-              <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
+              <p className="m-0 mt-1 text-xs sm:text-sm text-slate-500">
                 Track token payments, verify advance bookings, and monitor inventory hold expirations.
               </p>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="flex items-center gap-2">
               <button
                 onClick={fetchEOIs}
                 className="btn btn-ghost btn-sm"
@@ -128,14 +128,15 @@ function EOIContent() {
           </div>
 
           {/* Sub-Tabs */}
-          <div style={{
+          <div className="no-scrollbar" style={{
             display: 'flex',
             alignItems: 'center',
             gap: 8,
             borderBottom: '1px solid var(--border)',
             paddingBottom: 12,
             marginBottom: 20,
-            overflowX: 'auto'
+            overflowX: 'auto',
+            WebkitOverflowScrolling: 'touch'
           }}>
             <button
               onClick={() => router.push('/eoi?tab=all')}

@@ -524,8 +524,8 @@ function AgencyPageContent() {
   });
 
   return (
-    <div className="app-shell">
-      <main className="main-content" style={{ flex: 1, padding: '24px 20px', paddingBottom: 80, overflowY: 'auto' }}>
+    <div className="app-shell pb-mobile-nav">
+      <main className="main-content" style={{ flex: 1, padding: '16px 12px', paddingBottom: 80, overflowY: 'auto' }}>
         
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
@@ -538,14 +538,14 @@ function AgencyPageContent() {
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button onClick={fetchData} className="btn btn-ghost btn-sm" style={{ gap: 6 }}>
+          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+            <button onClick={fetchData} className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center" style={{ gap: 6 }}>
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
             </button>
             {(isUserOwner || isUserManager) && (
               <button
                 onClick={() => setShowForceTransferModal(true)}
-                className="btn btn-ghost btn-sm"
+                className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
                 style={{ gap: 6, border: '1px solid var(--border)' }}
               >
                 <ArrowRightLeft size={14} /> Force Transfer
@@ -554,7 +554,7 @@ function AgencyPageContent() {
             {isUserOwner && (
               <button
                 onClick={() => setShowAddMemberModal(true)}
-                className="btn btn-primary btn-sm"
+                className="btn btn-primary btn-sm flex-1 sm:flex-none justify-center"
                 style={{ gap: 6 }}
               >
                 <UserPlus size={14} /> Add Member
@@ -564,7 +564,7 @@ function AgencyPageContent() {
         </div>
 
         {/* Tab Navigation */}
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20, gap: 16, overflowX: 'auto' }}>
+        <div className="no-scrollbar" style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20, gap: 16, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           {[
             { id: 'performance', label: '🏆 Agent Performance', show: true },
             { id: 'workload', label: '⚡ Workload & Capacity', show: true },
@@ -606,7 +606,7 @@ function AgencyPageContent() {
         {activeTab === 'performance' && (
           <div>
             {/* Top Stat Overview Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 20 }}>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
               <div className="card" style={{ padding: '16px 18px' }}>
                 <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Total Team Leads</span>
                 <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: 'var(--accent)' }}>

@@ -159,18 +159,19 @@ export default function SignupPage() {
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '32px 16px',
+      padding: '24px 12px',
       position: 'relative',
-      overflow: 'hidden',
+      overflowX: 'hidden',
       color: '#0f172a',
       fontFamily: 'Inter, sans-serif'
     }}>
       {/* Back to Home Link */}
       <div style={{
-        position: 'absolute',
-        top: 24,
-        left: 24,
-        zIndex: 10
+        width: '100%',
+        maxWidth: '470px',
+        marginBottom: 16,
+        display: 'flex',
+        justifyContent: 'flex-start'
       }}>
         <Link
           href="/"
@@ -202,7 +203,7 @@ export default function SignupPage() {
         background: '#ffffff',
         border: '1px solid #e2e8f0',
         borderRadius: '20px',
-        padding: '36px 30px',
+        padding: '28px 20px',
         boxShadow: '0 20px 40px -15px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(0, 0, 0, 0.02)',
         position: 'relative',
         zIndex: 1

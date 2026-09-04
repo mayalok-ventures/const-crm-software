@@ -287,16 +287,16 @@ export default function GroupsPage() {
   };
 
   return (
-    <div className="app-shell">
-      <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
-        <div className="page-header">
-          <h1 className="page-title">Audience Groups</h1>
-          <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)}>
+    <div className="app-shell pb-mobile-nav">
+      <div className="page-container max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8">
+        <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <h1 className="page-title text-xl sm:text-2xl font-extrabold m-0 text-slate-900">Audience Groups</h1>
+          <button className="btn btn-primary btn-sm self-start sm:self-auto" onClick={() => setShowCreate(true)}>
             <Plus size={16} /> New Group
           </button>
         </div>
 
-        <div className="page-content">
+        <div className="page-content" style={{ padding: 0 }}>
           <div style={{ padding:'12px 14px', background:'rgba(37,211,102,0.08)', border:'1px solid rgba(37,211,102,0.15)', borderRadius:12, marginBottom:20, fontSize:13, color:'var(--text-muted)', display:'flex', gap:10, alignItems:'flex-start' }}>
             <MessageCircle size={16} color="#25D366" style={{ flexShrink:0, marginTop:1 }} />
             <span>Target custom client segments and audience lists for automated bulk broadcast outreach.</span>

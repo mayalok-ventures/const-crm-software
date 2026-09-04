@@ -154,30 +154,30 @@ function RequirementsContent() {
       <BottomNav active="requirements" />
 
       <main className="main-content">
-        <div style={{ width: '100%', paddingBottom: 60 }}>
+        <div style={{ width: '100%' }} className="pb-mobile-nav">
           
           {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
             <div>
-              <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <CheckSquare size={26} color="var(--accent)" /> Client Requirements & Property Matcher
+              <h1 className="text-xl sm:text-2xl font-extrabold m-0 text-slate-900 flex items-center gap-2.5">
+                <CheckSquare size={24} className="text-indigo-600 shrink-0" /> Client Requirements & Property Matcher
               </h1>
-              <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
+              <p className="m-0 mt-1 text-xs sm:text-sm text-slate-500">
                 Capture buyer preferences, configurations, budgets and match with available live project inventory.
               </p>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="flex items-center gap-2 flex-wrap pt-1 sm:pt-0">
               <button
                 onClick={fetchRequirements}
-                className="btn btn-ghost btn-sm"
+                className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
                 style={{ gap: 6, fontSize: 13 }}
               >
                 <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
               </button>
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="btn btn-primary btn-sm"
+                className="btn btn-primary btn-sm flex-1 sm:flex-none justify-center"
                 style={{ gap: 6, fontSize: 13 }}
               >
                 <Plus size={16} /> New Requirement
@@ -186,14 +186,15 @@ function RequirementsContent() {
           </div>
 
           {/* Sub-Tabs */}
-          <div style={{
+          <div className="no-scrollbar" style={{
             display: 'flex',
             alignItems: 'center',
             gap: 8,
             borderBottom: '1px solid var(--border)',
             paddingBottom: 12,
             marginBottom: 20,
-            overflowX: 'auto'
+            overflowX: 'auto',
+            WebkitOverflowScrolling: 'touch'
           }}>
             <button
               onClick={() => router.push('/requirements?tab=active')}

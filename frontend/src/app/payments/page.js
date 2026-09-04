@@ -113,7 +113,7 @@ function PaymentsContent() {
       <BottomNav active="payments" />
 
       <main className="main-content">
-        <div style={{ width: '100%', paddingBottom: 60 }}>
+        <div style={{ width: '100%' }} className="pb-mobile-nav">
           
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
@@ -138,12 +138,7 @@ function PaymentsContent() {
           </div>
 
           {/* 4 Summary Stat Boxes */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: 14,
-            marginBottom: 24
-          }}>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
             <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
               <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Total Collected</span>
               <h2 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: '#10b981' }}>
@@ -174,14 +169,15 @@ function PaymentsContent() {
           </div>
 
           {/* Sub-Tabs */}
-          <div style={{
+          <div className="no-scrollbar" style={{
             display: 'flex',
             alignItems: 'center',
             gap: 8,
             borderBottom: '1px solid var(--border)',
             paddingBottom: 12,
             marginBottom: 20,
-            overflowX: 'auto'
+            overflowX: 'auto',
+            WebkitOverflowScrolling: 'touch'
           }}>
             <button
               onClick={() => router.push('/payments?tab=due')}
@@ -297,11 +293,11 @@ function PaymentsContent() {
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-start sm:justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                       {outstanding > 0 && (
                         <button
                           onClick={() => openRecordModal(bk)}
-                          className="btn btn-primary btn-sm"
+                          className="btn btn-primary btn-sm flex-1 sm:flex-none justify-center"
                           style={{ fontSize: 12, fontWeight: 700, gap: 6, background: '#10b981', borderColor: '#10b981' }}
                         >
                           <Receipt size={14} /> Record Receipt
@@ -310,7 +306,7 @@ function PaymentsContent() {
 
                       <Link
                         href={`/bookings`}
-                        className="btn btn-ghost btn-sm"
+                        className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
                         style={{ fontSize: 12 }}
                       >
                         View Schedule →

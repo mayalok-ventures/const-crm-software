@@ -453,8 +453,8 @@ export default function PlansPage() {
   }
 
   return (
-    <div className="app-shell" style={{ paddingBottom: 90 }}>
-      <div className="page-container max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+    <div className="app-shell pb-mobile-nav">
+      <div className="page-container max-w-6xl mx-auto w-full px-3 sm:px-6 lg:px-8">
         
         {/* Page Header */}
         <div style={{ textAlign: 'center', margin: '32px 0 28px' }}>

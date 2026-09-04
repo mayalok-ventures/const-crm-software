@@ -338,39 +338,39 @@ function LeadsContent() {
       <BottomNav active="leads" />
 
       <main className="main-content">
-        <div style={{ width: '100%', paddingBottom: 60 }}>
+        <div style={{ width: '100%' }} className="pb-mobile-nav">
           
           {/* Header Section */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
             <div>
-              <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Users size={26} color="var(--accent)" /> {isRE ? 'Real Estate Leads Control' : 'Leads Workspace'}
+              <h1 className="text-xl sm:text-2xl font-extrabold m-0 text-slate-900 flex items-center gap-2.5">
+                <Users size={24} className="text-indigo-600 shrink-0" /> {isRE ? 'Real Estate Leads Control' : 'Leads Workspace'}
               </h1>
-              <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
+              <p className="m-0 mt-1 text-xs sm:text-sm text-slate-500">
                 {isOwnerOrManager
                   ? 'Monitor team leads, hot prospects, site visits, and manage smart lead distributions'
                   : 'Manage your assigned prospects and claim fresh inbound inquiries'}
               </p>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div className="flex items-center gap-2 flex-wrap pt-1 sm:pt-0">
               <button
                 onClick={() => setShowImportModal(true)}
-                className="btn btn-ghost btn-sm"
+                className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
                 style={{ gap: 6, fontSize: 13 }}
               >
                 <Upload size={15} /> Import
               </button>
               <button
                 onClick={() => setShowExportModal(true)}
-                className="btn btn-ghost btn-sm"
+                className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
                 style={{ gap: 6, fontSize: 13 }}
               >
                 <Download size={15} /> Export
               </button>
               <button
                 onClick={() => setShowAddModal(true)}
-                className="btn btn-primary btn-sm"
+                className="btn btn-primary btn-sm flex-1 sm:flex-none justify-center"
                 style={{ gap: 6, fontSize: 13 }}
               >
                 <Plus size={16} /> Add Prospect

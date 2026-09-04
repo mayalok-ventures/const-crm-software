@@ -1073,8 +1073,8 @@ export default function LeadDetailPage() {
   if (!lead) return null;
 
   return (
-    <div className="app-shell">
-      <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+    <div className="app-shell pb-mobile-nav">
+      <div className="page-container max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="page-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>

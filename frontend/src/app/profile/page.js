@@ -36,8 +36,8 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="app-shell">
-      <div className="page-container max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 pb-20 md:pb-8">
+    <div className="app-shell pb-mobile-nav">
+      <div className="page-container max-w-5xl mx-auto w-full px-3 sm:px-6 lg:px-8 pb-8">
         <div className="page-header" style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Link href="/dashboard" className="p-2 text-slate-500 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors border border-slate-200 bg-white shadow-sm">

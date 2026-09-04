@@ -144,8 +144,8 @@ export default function CampaignDetailsPage() {
   const progress = campaign.totalLeads > 0 ? Math.round((campaign.lastSentIndex + 1) / campaign.totalLeads * 100) : 0;
 
   return (
-    <div className="app-shell">
-      <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+    <div className="app-shell pb-mobile-nav">
+      <div className="page-container max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8">
         <div className="page-header" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Link href="/campaigns" style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>

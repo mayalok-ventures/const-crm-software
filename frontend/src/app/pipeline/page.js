@@ -136,25 +136,25 @@ function PipelineContent() {
       <BottomNav active="pipeline" />
 
       <main className="main-content">
-        <div style={{ width: '100%', paddingBottom: 60 }}>
+        <div style={{ width: '100%' }} className="pb-mobile-nav">
           
           {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14, marginBottom: 20 }}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
             <div>
-              <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <TrendingUp size={26} color="var(--accent)" /> Real Estate Pipeline Workspace
+              <h1 className="text-xl sm:text-2xl font-extrabold m-0 text-slate-900 flex items-center gap-2.5">
+                <TrendingUp size={24} className="text-indigo-600 shrink-0" /> Real Estate Pipeline Workspace
               </h1>
-              <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
+              <p className="m-0 mt-1 text-xs sm:text-sm text-slate-500">
                 Track opportunity progression across sales lifecycle stages, Kanban boards and weighted deal forecasts.
               </p>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <div style={{ position: 'relative', width: 240 }}>
-                <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: 10, top: 11 }} />
+            <div className="flex items-center gap-2 flex-wrap pt-1 sm:pt-0">
+              <div className="relative flex-1 sm:w-60">
+                <Search size={15} color="var(--text-muted)" className="absolute left-2.5 top-2.5" />
                 <input
                   type="text"
-                  className="input"
+                  className="input w-full"
                   placeholder="Filter pipeline leads..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
@@ -163,7 +163,7 @@ function PipelineContent() {
               </div>
 
               {/* View Switcher */}
-              <div style={{ display: 'flex', background: 'var(--surface)', padding: 3, borderRadius: 10, border: '1px solid var(--border)' }}>
+              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
                 <button
                   onClick={() => {
                     setViewMode('board');
@@ -216,7 +216,7 @@ function PipelineContent() {
                     cursor: 'pointer'
                   }}
                 >
-                  Deal Forecast
+                  Forecast
                 </button>
               </div>
 
@@ -239,12 +239,7 @@ function PipelineContent() {
           </div>
 
           {/* TOP STAGE KPI CARDS */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: 12,
-            marginBottom: 24
-          }}>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3.5 mb-6">
             {stages.map(stage => {
               const stageLeads = getStageLeads(stage.id);
               const totalValue = stageLeads.reduce((acc, curr) => acc + (Number(curr.budget) || 0), 0);

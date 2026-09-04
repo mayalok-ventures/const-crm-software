@@ -70,22 +70,22 @@ export default function DealsPage() {
       <BottomNav active="deals" />
 
       <main className="main-content">
-        <div style={{ width: '100%', paddingBottom: 60 }}>
+        <div style={{ width: '100%' }} className="pb-mobile-nav">
           
           {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14, marginBottom: 20 }}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
             <div>
-              <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Award size={26} color="#10b981" /> Deals & Opportunities Workspace
+              <h1 className="text-xl sm:text-2xl font-extrabold m-0 text-slate-900 flex items-center gap-2.5">
+                <Award size={24} className="text-emerald-600 shrink-0" /> Deals & Opportunities Workspace
               </h1>
-              <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
+              <p className="m-0 mt-1 text-xs sm:text-sm text-slate-500">
                 Track closed contracts, active revenue opportunities, and deal values
               </p>
             </div>
 
             <button
               onClick={fetchDeals}
-              className="btn btn-ghost btn-sm"
+              className="btn btn-ghost btn-sm self-start sm:self-auto"
               style={{ gap: 6, fontSize: 13 }}
             >
               <RefreshCw size={14} /> Refresh Deals
@@ -93,7 +93,7 @@ export default function DealsPage() {
           </div>
 
           {/* KPI Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 20 }}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3.5 mb-5">
             <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
               <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Total Closed Revenue</span>
               <h2 style={{ fontSize: 22, fontWeight: 800, margin: '6px 0 0', color: '#10b981' }}>
@@ -117,13 +117,15 @@ export default function DealsPage() {
           </div>
 
           {/* Sub-Tabs */}
-          <div style={{
+          <div className="no-scrollbar" style={{
             display: 'flex',
             alignItems: 'center',
             gap: 8,
             borderBottom: '1px solid var(--border)',
             paddingBottom: 12,
-            marginBottom: 20
+            marginBottom: 20,
+            overflowX: 'auto',
+            WebkitOverflowScrolling: 'touch'
           }}>
             <button
               onClick={() => setSubTab('won')}
@@ -256,10 +258,10 @@ export default function DealsPage() {
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-start sm:justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                     <a
                       href={`tel:${deal.phone}`}
-                      className="btn btn-ghost btn-sm"
+                      className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
                       style={{ padding: '6px 10px', height: 34, color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}
                     >
                       <Phone size={14} /> Call
@@ -269,7 +271,7 @@ export default function DealsPage() {
                       href={waLink(deal.phone, `Hi ${deal.name || ''}, connecting regarding our proposal.`)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="btn btn-ghost btn-sm"
+                      className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
                       style={{ padding: '6px 10px', height: 34, color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}
                     >
                       <MessageSquare size={14} /> WhatsApp
@@ -277,10 +279,10 @@ export default function DealsPage() {
 
                     <Link
                       href={`/leads/${deal._id}`}
-                      className="btn btn-ghost btn-sm"
-                      style={{ padding: '6px 8px', height: 34, color: 'var(--text-muted)' }}
+                      className="btn btn-primary btn-sm flex-1 sm:flex-none justify-center"
+                      style={{ padding: '6px 12px', height: 34, gap: 5 }}
                     >
-                      <ChevronRight size={16} />
+                      Details <ChevronRight size={14} />
                     </Link>
                   </div>
                 </div>

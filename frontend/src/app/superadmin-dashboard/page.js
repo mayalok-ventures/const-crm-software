@@ -325,7 +325,7 @@ function SuperAdminDashboardContent() {
           refreshing={refreshing}
         />
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 custom-scrollbar pb-mobile-nav md:pb-6">
           {activeTab === 'overview' && (
             <SuperAdminOverviewModule
               overview={overviewData}

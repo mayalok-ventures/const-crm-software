@@ -260,16 +260,16 @@ export default function TemplatesPage() {
   };
 
   return (
-    <div className="app-shell">
-      <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
-        <div className="page-header">
-          <h1 className="page-title">Message Templates</h1>
-          <button className="btn btn-primary btn-sm" onClick={() => { setEditTemplate(null); setShowModal(true); }}>
+    <div className="app-shell pb-mobile-nav">
+      <div className="page-container max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8">
+        <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <h1 className="page-title text-xl sm:text-2xl font-extrabold m-0 text-slate-900">Message Templates</h1>
+          <button className="btn btn-primary btn-sm self-start sm:self-auto" onClick={() => { setEditTemplate(null); setShowModal(true); }}>
             <Plus size={16} /> New Template
           </button>
         </div>
 
-        <div className="page-content">
+        <div className="page-content" style={{ padding: 0 }}>
           {templates.length === 0 && !loading && !addedPresets && (
             <div style={{ marginBottom: 20, padding: 16, background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>

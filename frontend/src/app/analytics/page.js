@@ -222,8 +222,8 @@ function AnalyticsContent() {
   ];
 
   return (
-    <div className="app-shell">
-      <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+    <div className="app-shell pb-mobile-nav">
+      <div className="page-container max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8">
         {/* Page Header */}
         <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
           <div>
@@ -236,7 +236,7 @@ function AnalyticsContent() {
           </div>
           <button
             onClick={() => setShowExportModal(true)}
-            className="btn btn-secondary btn-sm"
+            className="btn btn-secondary btn-sm w-full sm:w-auto justify-center"
             style={{ gap: 6, borderRadius: 10, fontSize: 12, color: 'var(--accent)', borderColor: 'var(--accent)' }}
           >
             <Download size={14} /> Export Report
@@ -245,7 +245,7 @@ function AnalyticsContent() {
 
         {/* Tab Navigation for Real Estate Analytics */}
         {isRE && (
-          <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20, gap: 14, overflowX: 'auto' }}>
+          <div className="no-scrollbar" style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20, gap: 14, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             {[
               { id: 'performance', label: '🏆 Team Leaderboard' },
               { id: 'leads', label: '🎯 Conversion Funnel' },
@@ -280,12 +280,7 @@ function AnalyticsContent() {
 
         <div className="page-content">
           {/* Top 4 KPI Metrics Banner */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: 14,
-            marginBottom: 20
-          }}>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
             <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
               <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Total Pipeline Value</span>
               <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: 'var(--accent)' }}>

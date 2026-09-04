@@ -61,8 +61,8 @@ export default function ShareDashboardPage() {
   const { owner, leads, stats } = data;
 
   return (
-    <div className="app-shell">
-      <div className="page-container max-w-4xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+    <div className="app-shell pb-8">
+      <div className="page-container max-w-4xl mx-auto w-full px-3 sm:px-6 lg:px-8">
         <div className="page-header">
           <div>
             <h1 className="page-title">{owner.name}'s Leads</h1>

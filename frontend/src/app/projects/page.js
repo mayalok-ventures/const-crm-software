@@ -303,25 +303,25 @@ function ProjectsContent() {
   };
 
   return (
-    <div className="app-shell">
-      <div className="page-container max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+    <div className="app-shell pb-mobile-nav">
+      <div className="page-container max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="page-header">
+        <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
-            <h1 className="page-title">Products & Packages Catalog</h1>
-            <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+            <h1 className="page-title text-xl sm:text-2xl font-extrabold m-0 text-slate-900">Products & Packages Catalog</h1>
+            <p className="m-0 mt-1 text-xs sm:text-sm text-slate-500">
               Standard offerings, inventories & pricing packages ({projects.length})
             </p>
           </div>
-          <button onClick={() => { setSelectedProject(null); setActiveModal(true); }} className="btn btn-primary btn-sm" style={{ gap: 6, borderRadius: 10 }}>
+          <button onClick={() => { setSelectedProject(null); setActiveModal(true); }} className="btn btn-primary btn-sm self-start sm:self-auto" style={{ gap: 6, borderRadius: 10 }}>
             <Plus size={16} /> Add Package
           </button>
         </div>
 
-        <div className="page-content">
+        <div className="page-content" style={{ padding: 0 }}>
           {/* Search & Filter Bar */}
-          <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-            <div style={{ position: 'relative', flex: 1 }}>
+          <div className="flex flex-wrap items-center gap-2.5 mb-5">
+            <div className="relative flex-1 min-w-[200px]">
               <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: 12, top: 13 }} />
               <input
                 type="text"
@@ -329,15 +329,15 @@ function ProjectsContent() {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && fetchProjects()}
-                className="input"
+                className="input w-full"
                 style={{ paddingLeft: 36, height: 42, fontSize: 13, borderRadius: 10 }}
               />
             </div>
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              className="input"
-              style={{ width: 160, height: 42, fontSize: 12, borderRadius: 10 }}
+              className="input w-full sm:w-44"
+              style={{ height: 42, fontSize: 12, borderRadius: 10 }}
             >
               <option value="">All Statuses</option>
               <option value="available">Active / Available</option>
