@@ -245,7 +245,7 @@ export default function IntegrationsPage() {
     
     try {
       setLoading(true);
-      const response = await api.post('/api/integrations/google/configure', {
+      const response = await api.post('/integrations/google/configure', {
         integrationId: configuringIntegrationId,
         accountId: selectedAccountId,
         accountName: `Google Ads (${selectedAccountId})`,

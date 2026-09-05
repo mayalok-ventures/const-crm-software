@@ -271,7 +271,7 @@ function SuperAdminDashboardContent() {
   }
 
   return (
-    <div className="flex h-screen w-screen bg-[#070b14] text-slate-100 overflow-hidden font-sans select-none antialiased">
+    <div className="flex flex-col h-screen w-screen bg-[#070b14] text-slate-100 overflow-hidden font-sans select-none antialiased">
       {/* 1. SUPPORT MODE BANNER */}
       <SupportModeBanner
         session={impersonationSession}
@@ -281,156 +281,158 @@ function SuperAdminDashboardContent() {
         }}
       />
 
-      {/* 2. SUPER ADMIN SIDEBAR */}
-      <div className="hidden md:flex w-64 shrink-0 flex-col h-full z-20">
-        <SuperAdminSidebar
-          activeTab={activeTab}
-          onSelectTab={(tab) => {
-            setActiveTab(tab);
-            router.push(`/superadmin-dashboard?tab=${tab}`);
-          }}
-          onRefresh={() => fetchTabData(activeTab)}
-          refreshing={refreshing}
-          currentUser={currentUser}
-        />
-      </div>
-
-      {/* Mobile Drawer */}
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 flex md:hidden bg-slate-950/80 backdrop-blur-sm">
-          <div className="w-72 h-full">
-            <SuperAdminSidebar
-              activeTab={activeTab}
-              onSelectTab={(tab) => {
-                setActiveTab(tab);
-                setMobileMenuOpen(false);
-                router.push(`/superadmin-dashboard?tab=${tab}`);
-              }}
-              onCloseMobile={() => setMobileMenuOpen(false)}
-              onRefresh={() => fetchTabData(activeTab)}
-              refreshing={refreshing}
-              currentUser={currentUser}
-            />
-          </div>
+      <div className="flex flex-1 min-h-0 w-full overflow-hidden">
+        {/* 2. SUPER ADMIN SIDEBAR */}
+        <div className="hidden md:flex w-64 shrink-0 flex-col h-full z-20">
+          <SuperAdminSidebar
+            activeTab={activeTab}
+            onSelectTab={(tab) => {
+              setActiveTab(tab);
+              router.push(`/superadmin-dashboard?tab=${tab}`);
+            }}
+            onRefresh={() => fetchTabData(activeTab)}
+            refreshing={refreshing}
+            currentUser={currentUser}
+          />
         </div>
-      )}
 
-      {/* 3. MAIN WORKSPACE */}
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-[#0a0f1d]">
-        <SuperAdminHeader
-          activeTab={activeTab}
-          onOpenMobileMenu={() => setMobileMenuOpen(true)}
-          onOpenSearch={() => setSearchOpen(true)}
-          onRefresh={() => fetchTabData(activeTab)}
-          refreshing={refreshing}
-        />
+        {/* Mobile Drawer */}
+        {mobileMenuOpen && (
+          <div className="fixed inset-0 z-50 flex md:hidden bg-slate-950/80 backdrop-blur-sm">
+            <div className="w-72 h-full">
+              <SuperAdminSidebar
+                activeTab={activeTab}
+                onSelectTab={(tab) => {
+                  setActiveTab(tab);
+                  setMobileMenuOpen(false);
+                  router.push(`/superadmin-dashboard?tab=${tab}`);
+                }}
+                onCloseMobile={() => setMobileMenuOpen(false)}
+                onRefresh={() => fetchTabData(activeTab)}
+                refreshing={refreshing}
+                currentUser={currentUser}
+              />
+            </div>
+          </div>
+        )}
 
-        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 custom-scrollbar pb-mobile-nav md:pb-6">
-          {activeTab === 'overview' && (
-            <SuperAdminOverviewModule
-              overview={overviewData}
-              loading={refreshing && !overviewData}
-              onSelectTab={(tab) => {
-                setActiveTab(tab);
-                router.push(`/superadmin-dashboard?tab=${tab}`);
-              }}
-            />
-          )}
+        {/* 3. MAIN WORKSPACE */}
+        <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-[#0a0f1d]">
+          <SuperAdminHeader
+            activeTab={activeTab}
+            onOpenMobileMenu={() => setMobileMenuOpen(true)}
+            onOpenSearch={() => setSearchOpen(true)}
+            onRefresh={() => fetchTabData(activeTab)}
+            refreshing={refreshing}
+          />
 
-          {activeTab === 'organisations' && (
-            <SuperAdminOrganisationsModule
-              organisations={organisations}
-              pagination={orgPagination}
-              loading={refreshing && organisations.length === 0}
-              search={orgSearch}
-              onSearchChange={setOrgSearch}
-              statusFilter={orgStatusFilter}
-              onStatusFilterChange={setOrgStatusFilter}
-              onInspectTenant={handleInspectTenant}
-              onImpersonate={handleStartImpersonation}
-              onStatusUpdate={handleTenantStatusUpdate}
-              onPlanUpdate={handleTenantPlanUpdate}
-              onPageChange={(page) => setOrgPagination((p) => ({ ...p, page }))}
-            />
-          )}
+          <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 custom-scrollbar pb-mobile-nav md:pb-6">
+            {activeTab === 'overview' && (
+              <SuperAdminOverviewModule
+                overview={overviewData}
+                loading={refreshing && !overviewData}
+                onSelectTab={(tab) => {
+                  setActiveTab(tab);
+                  router.push(`/superadmin-dashboard?tab=${tab}`);
+                }}
+              />
+            )}
 
-          {activeTab === 'users' && (
-            <SuperAdminUsersModule
-              users={users}
-              pagination={usersPagination}
-              loading={refreshing && users.length === 0}
-              search={userSearch}
-              onSearchChange={setUserSearch}
-              roleFilter={userRoleFilter}
-              onRoleFilterChange={setUserRoleFilter}
-              onPageChange={(page) => setUsersPagination((p) => ({ ...p, page }))}
-            />
-          )}
+            {activeTab === 'organisations' && (
+              <SuperAdminOrganisationsModule
+                organisations={organisations}
+                pagination={orgPagination}
+                loading={refreshing && organisations.length === 0}
+                search={orgSearch}
+                onSearchChange={setOrgSearch}
+                statusFilter={orgStatusFilter}
+                onStatusFilterChange={setOrgStatusFilter}
+                onInspectTenant={handleInspectTenant}
+                onImpersonate={handleStartImpersonation}
+                onStatusUpdate={handleTenantStatusUpdate}
+                onPlanUpdate={handleTenantPlanUpdate}
+                onPageChange={(page) => setOrgPagination((p) => ({ ...p, page }))}
+              />
+            )}
 
-          {activeTab === 'revenue' && (
-            <SuperAdminRevenueModule
-              revenueData={revenueData}
-              loading={refreshing && !revenueData}
-            />
-          )}
+            {activeTab === 'users' && (
+              <SuperAdminUsersModule
+                users={users}
+                pagination={usersPagination}
+                loading={refreshing && users.length === 0}
+                search={userSearch}
+                onSearchChange={setUserSearch}
+                roleFilter={userRoleFilter}
+                onRoleFilterChange={setUserRoleFilter}
+                onPageChange={(page) => setUsersPagination((p) => ({ ...p, page }))}
+              />
+            )}
 
-          {activeTab === 'leads' && (
-            <SuperAdminGlobalLeadsModule
-              leads={globalLeads}
-              pagination={leadsPagination}
-              loading={refreshing && globalLeads.length === 0}
-              search={leadSearch}
-              onSearchChange={setLeadSearch}
-              stageFilter={leadStageFilter}
-              onStageFilterChange={setLeadStageFilter}
-              sourceFilter={leadSourceFilter}
-              onSourceFilterChange={setLeadSourceFilter}
-              onPageChange={(page) => setLeadsPagination((p) => ({ ...p, page }))}
-            />
-          )}
+            {activeTab === 'revenue' && (
+              <SuperAdminRevenueModule
+                revenueData={revenueData}
+                loading={refreshing && !revenueData}
+              />
+            )}
 
-          {activeTab === 'integrations' && (
-            <SuperAdminIntegrationsModule
-              telemetry={integrationsTelemetry}
-              loading={refreshing && !integrationsTelemetry}
-            />
-          )}
+            {activeTab === 'leads' && (
+              <SuperAdminGlobalLeadsModule
+                leads={globalLeads}
+                pagination={leadsPagination}
+                loading={refreshing && globalLeads.length === 0}
+                search={leadSearch}
+                onSearchChange={setLeadSearch}
+                stageFilter={leadStageFilter}
+                onStageFilterChange={setLeadStageFilter}
+                sourceFilter={leadSourceFilter}
+                onSourceFilterChange={setLeadSourceFilter}
+                onPageChange={(page) => setLeadsPagination((p) => ({ ...p, page }))}
+              />
+            )}
 
-          {activeTab === 'health' && (
-            <SuperAdminSystemHealthModule
-              health={systemHealth}
-              loading={refreshing && !systemHealth}
-            />
-          )}
+            {activeTab === 'integrations' && (
+              <SuperAdminIntegrationsModule
+                telemetry={integrationsTelemetry}
+                loading={refreshing && !integrationsTelemetry}
+              />
+            )}
 
-          {activeTab === 'errors' && (
-            <SuperAdminErrorLogsModule
-              logs={errorLogs}
-              loading={refreshing && errorLogs.length === 0}
-            />
-          )}
+            {activeTab === 'health' && (
+              <SuperAdminSystemHealthModule
+                health={systemHealth}
+                loading={refreshing && !systemHealth}
+              />
+            )}
 
-          {activeTab === 'audit' && (
-            <SuperAdminAuditModule
-              logs={auditLogs}
-              loading={refreshing && auditLogs.length === 0}
-              search={auditSearch}
-              onSearchChange={setAuditSearch}
-            />
-          )}
+            {activeTab === 'errors' && (
+              <SuperAdminErrorLogsModule
+                logs={errorLogs}
+                loading={refreshing && errorLogs.length === 0}
+              />
+            )}
 
-          {activeTab === 'feature_flags' && (
-            <SuperAdminFeatureFlagsModule
-              flags={featureFlags}
-              loading={refreshing && featureFlags.length === 0}
-              onToggleFlag={handleToggleFeatureFlag}
-            />
-          )}
+            {activeTab === 'audit' && (
+              <SuperAdminAuditModule
+                logs={auditLogs}
+                loading={refreshing && auditLogs.length === 0}
+                search={auditSearch}
+                onSearchChange={setAuditSearch}
+              />
+            )}
 
-          {activeTab === 'broadcast' && (
-            <SuperAdminBroadcastModule />
-          )}
-        </main>
+            {activeTab === 'feature_flags' && (
+              <SuperAdminFeatureFlagsModule
+                flags={featureFlags}
+                loading={refreshing && featureFlags.length === 0}
+                onToggleFlag={handleToggleFeatureFlag}
+              />
+            )}
+
+            {activeTab === 'broadcast' && (
+              <SuperAdminBroadcastModule />
+            )}
+          </main>
+        </div>
       </div>
 
       {/* 4. GLOBAL SEARCH MODAL */}

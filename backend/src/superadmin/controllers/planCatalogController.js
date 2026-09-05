@@ -358,6 +358,42 @@ exports.archivePlan = async (req, res) => {
   }
 };
 
+// @desc  Permanently delete plan from database
+// @route DELETE /api/super-admin/plans/:id
+// @access Private (SuperAdmin only)
+exports.deletePlan = async (req, res) => {
+  try {
+    const plan = await Plan.findById(req.params.id);
+    if (!plan) return res.status(404).json({ success: false, message: 'Plan not found' });
+
+    // Check for active subscribers before permanent removal
+    const activeSubscribers = await Subscription.countDocuments({
+      planId: plan._id,
+      status: { $in: ['ACTIVE', 'GRACE_PERIOD', 'TRIAL', 'AUTHENTICATED'] },
+    });
+
+    const force = req.query.force === 'true' || req.body?.force === true;
+
+    if (activeSubscribers > 0 && !force) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot permanently delete plan "${plan.name}" because it currently has ${activeSubscribers} active subscriber(s). Please archive the plan instead or confirm force deletion.`,
+        activeSubscribers,
+      });
+    }
+
+    await Plan.findByIdAndDelete(plan._id);
+
+    res.json({
+      success: true,
+      message: `Plan "${plan.name}" has been permanently deleted from database.`,
+    });
+  } catch (error) {
+    console.error('[PlanCatalogController] deletePlan error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error deleting plan' });
+  }
+};
+
 // @desc  Duplicate plan as a new Draft
 // @route POST /api/superadmin/plans/:id/duplicate
 // @access Private (SuperAdmin only)

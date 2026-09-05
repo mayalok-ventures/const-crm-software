@@ -266,9 +266,9 @@ export default function SuperAdminPlanCatalogModal({
 
       let res;
       if (isEditing) {
-        res = await api.put(`/api/super-admin/plans/${planToEdit._id}`, payload);
+        res = await api.put(`/super-admin/plans/${planToEdit._id}`, payload);
       } else {
-        res = await api.post('/api/super-admin/plans', payload);
+        res = await api.post('/super-admin/plans', payload);
       }
 
       if (res?.data?.success) {
@@ -291,7 +291,8 @@ export default function SuperAdminPlanCatalogModal({
     if (!planToEdit?._id) return;
     try {
       setLoading(true);
-      const res = await api.post(`/api/super-admin/plans/${planToEdit._id}/duplicate`);
+      setError(null);
+      const res = await api.post(`/super-admin/plans/${planToEdit._id}/duplicate`);
       if (res?.data?.success) {
         setSuccessMsg('Plan duplicated successfully as a new Draft.');
         setTimeout(() => {
@@ -311,9 +312,10 @@ export default function SuperAdminPlanCatalogModal({
     if (!confirm(`Are you sure you want to archive "${planToEdit.name}"? Active subscriptions will not be broken.`)) return;
     try {
       setLoading(true);
-      const res = await api.post(`/api/super-admin/plans/${planToEdit._id}/archive`);
+      setError(null);
+      const res = await api.post(`/super-admin/plans/${planToEdit._id}/archive`);
       if (res?.data?.success) {
-        setSuccessMsg('Plan archived.');
+        setSuccessMsg('Plan archived successfully.');
         setTimeout(() => {
           onSuccess();
           onClose();
@@ -321,6 +323,60 @@ export default function SuperAdminPlanCatalogModal({
       }
     } catch (err) {
       setError(err?.response?.data?.message || 'Failed to archive plan.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!planToEdit?._id) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await api.post(`/super-admin/plans/${planToEdit._id}/publish`);
+      if (res?.data?.success) {
+        setSuccessMsg('Plan unarchived & published active.');
+        setTimeout(() => {
+          onSuccess();
+          onClose();
+        }, 1200);
+      }
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Failed to publish plan.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePermanentDelete = async (force = false) => {
+    if (!planToEdit?._id) return;
+    const confirmPrompt = force
+      ? `⚠️ FORCE DELETE WARNING: "${planToEdit.name}" has active subscribers.\nDeleting it will permanently purge it from the database.\n\nAre you ABSOLUTELY sure?`
+      : `Are you sure you want to PERMANENTLY DELETE "${planToEdit.name}" from the database?\n\nThis action CANNOT be undone.`;
+
+    if (!confirm(confirmPrompt)) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await api.delete(`/super-admin/plans/${planToEdit._id}${force ? '?force=true' : ''}`);
+      if (res?.data?.success) {
+        setSuccessMsg(res.data.message || 'Plan permanently deleted.');
+        setTimeout(() => {
+          onSuccess();
+          onClose();
+        }, 1200);
+      } else {
+        setError(res?.data?.message || 'Failed to delete plan.');
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.message || err.message || 'Failed to delete plan.';
+      if (err?.response?.data?.activeSubscribers && !force) {
+        if (confirm(`${msg}\n\nDo you want to FORCE PERMANENT DELETE anyway?`)) {
+          return handlePermanentDelete(true);
+        }
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -792,41 +848,65 @@ export default function SuperAdminPlanCatalogModal({
         </div>
 
         {/* MODAL FOOTER */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-800 bg-[#0a0f1d]">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-t border-slate-800 bg-[#0a0f1d]">
+          <div className="flex flex-wrap items-center gap-2">
             {isEditing && (
               <>
                 <button
                   type="button"
                   onClick={handleDuplicate}
                   disabled={loading}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-all"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-all"
+                  title="Duplicate as new Draft"
                 >
                   <Copy className="w-3.5 h-3.5" />
                   <span>Duplicate</span>
                 </button>
 
-                {status !== 'ARCHIVED' && (
+                {status !== 'ARCHIVED' ? (
                   <button
                     type="button"
                     onClick={handleArchive}
                     disabled={loading}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 font-bold transition-all"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 font-bold text-xs transition-all"
+                    title="Archive this plan (preserves existing subscriptions)"
                   >
                     <Archive className="w-3.5 h-3.5" />
                     <span>Archive</span>
                   </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handlePublish}
+                    disabled={loading}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 font-bold text-xs transition-all"
+                    title="Restore / Publish this plan active"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Unarchive / Activate</span>
+                  </button>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => handlePermanentDelete(false)}
+                  disabled={loading}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 font-bold text-xs transition-all"
+                  title="Permanently Delete Plan from Database"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Permanently</span>
+                </button>
               </>
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 ml-auto">
             <button
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-4 py-2 rounded-xl text-slate-400 hover:text-white font-bold transition-colors"
+              className="px-4 py-2 rounded-xl text-slate-400 hover:text-white font-bold text-xs transition-colors"
             >
               Cancel
             </button>
@@ -835,7 +915,7 @@ export default function SuperAdminPlanCatalogModal({
               type="button"
               onClick={handleSave}
               disabled={loading}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50"
             >
               {loading ? (
                 <span>Saving...</span>

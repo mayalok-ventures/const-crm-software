@@ -69,9 +69,12 @@ router.get('/plans', planCatalogController.listPlans);
 router.post('/plans', planCatalogController.createPlan);
 router.get('/plans/:id', planCatalogController.getPlan);
 router.put('/plans/:id', planCatalogController.updatePlan);
+router.patch('/plans/:id', planCatalogController.updatePlan);
 router.post('/plans/:id/publish', planCatalogController.publishPlan);
 router.post('/plans/:id/archive', planCatalogController.archivePlan);
 router.post('/plans/:id/duplicate', planCatalogController.duplicatePlan);
+router.delete('/plans/:id', planCatalogController.deletePlan);
+router.post('/plans/:id/delete', planCatalogController.deletePlan);
 
 // 12. Promotional Coupons & Redemption Tracking
 const couponController = require('../controllers/couponController');

@@ -32,7 +32,7 @@ export default function SuperAdminRevenueModule({
   const fetchCoupons = async () => {
     try {
       setLoadingCoupons(true);
-      const res = await api.get('/api/super-admin/coupons');
+      const res = await api.get('/super-admin/coupons');
       if (res.data?.success) {
         setCoupons(res.data.coupons || []);
       }
@@ -50,8 +50,8 @@ export default function SuperAdminRevenueModule({
   const handleToggleCouponStatus = async (coupon) => {
     try {
       const endpoint = coupon.status === 'ACTIVE'
-        ? `/api/super-admin/coupons/${coupon._id}/deactivate`
-        : `/api/super-admin/coupons/${coupon._id}/activate`;
+        ? `/super-admin/coupons/${coupon._id}/deactivate`
+        : `/super-admin/coupons/${coupon._id}/activate`;
       await api.post(endpoint);
       fetchCoupons();
       if (onRefresh) onRefresh();
@@ -69,7 +69,7 @@ export default function SuperAdminRevenueModule({
     try {
       setIsReconciling(true);
       setReconcileMessage(null);
-      const res = await api.post('/api/superadmin/revenue/reconcile', { batchSize: 50 });
+      const res = await api.post('/super-admin/revenue/reconcile', { batchSize: 50 });
       if (res?.data?.success) {
         setReconcileMessage({
           type: 'success',

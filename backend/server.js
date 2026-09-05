@@ -168,6 +168,9 @@ app.use('/api/integrations', integrationRoutes);
 app.use('/api/catalogue', catalogueRoutes); // Colleges, Degrees, Specializations & WhatsApp Prospectus
 const superAdminRoutes = require('./src/superadmin/routes/superAdminRoutes');
 app.use('/api/super-admin', superAdminRoutes);
+app.use('/api/superadmin', superAdminRoutes);
+app.use('/super-admin', superAdminRoutes);
+app.use('/superadmin', superAdminRoutes);
 app.use('/api/agency', agencyRoutes);
 app.use('/api/real-estate', realEstateRoutes);
 

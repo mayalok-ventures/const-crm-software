@@ -44,6 +44,12 @@ const seedSystemRolesForTenant = async (tenantId) => {
   const roles = {};
   const defaults = [
     {
+      name: 'owner',
+      roleType: 'OWNER',
+      permissions: OWNER_PERMISSIONS,
+      description: 'Full administrative access and organization management',
+    },
+    {
       name: 'manager',
       roleType: 'MANAGER',
       permissions: MANAGER_PERMISSIONS,

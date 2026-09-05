@@ -171,9 +171,9 @@ export default function SuperAdminCouponModal({
       setIsSubmitting(true);
       let res;
       if (couponToEdit?._id) {
-        res = await api.put(`/api/super-admin/coupons/${couponToEdit._id}`, payload);
+        res = await api.put(`/super-admin/coupons/${couponToEdit._id}`, payload);
       } else {
-        res = await api.post('/api/super-admin/coupons', payload);
+        res = await api.post('/super-admin/coupons', payload);
       }
 
       if (res.data?.success) {

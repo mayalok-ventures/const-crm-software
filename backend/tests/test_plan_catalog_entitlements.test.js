@@ -191,6 +191,44 @@ async function runTests() {
     assert(archiveResData?.plan?.status === 'ARCHIVED', 'Archived plan status is ARCHIVED');
     assert(archiveResData?.plan?.visibility === 'HIDDEN', 'Archived plan visibility is HIDDEN');
 
+    // Test Publish/Unarchive Plan
+    let publishResData;
+    await planCatalogController.publishPlan(
+      {
+        user: mockSuperAdmin,
+        params: { id: createdPlanId },
+      },
+      {
+        status: () => ({ json: (d) => { publishResData = d; } }),
+        json: (d) => { publishResData = d; },
+      }
+    );
+    assert(publishResData?.success === true, 'SuperAdmin publishPlan reactivated plan');
+    assert(publishResData?.plan?.status === 'ACTIVE', 'Plan status restored to ACTIVE');
+
+    // Test Permanent Delete Plan (Draft/Cloned Plan)
+    let deleteResData;
+    await planCatalogController.deletePlan(
+      {
+        user: mockSuperAdmin,
+        params: { id: duplicateResData.plan._id },
+        query: {},
+      },
+      {
+        status: () => ({ json: (d) => { deleteResData = d; } }),
+        json: (d) => { deleteResData = d; },
+      }
+    );
+    assert(deleteResData?.success === true, 'SuperAdmin deletePlan permanently deleted plan from DB');
+    const deletedCheck = await Plan.findById(duplicateResData.plan._id);
+    assert(deletedCheck === null, 'Deleted plan no longer exists in database');
+
+    // Re-archive custom plan for public test
+    await planCatalogController.archivePlan(
+      { user: mockSuperAdmin, params: { id: createdPlanId } },
+      { status: () => ({ json: () => {} }), json: () => {} }
+    );
+
     // Test Public Plans Endpoint
     let publicResData;
     await planCatalogController.getPublicPlans(

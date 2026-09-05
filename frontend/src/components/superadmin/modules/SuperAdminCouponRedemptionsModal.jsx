@@ -34,7 +34,7 @@ export default function SuperAdminCouponRedemptionsModal({
     if (!coupon?._id) return;
     try {
       setLoading(true);
-      const res = await api.get(`/api/super-admin/coupons/${coupon._id}/redemptions?page=${targetPage}&limit=15`);
+      const res = await api.get(`/super-admin/coupons/${coupon._id}/redemptions?page=${targetPage}&limit=15`);
       if (res.data?.success) {
         setRedemptions(res.data.redemptions || []);
         setAnalytics(res.data.analytics || null);
