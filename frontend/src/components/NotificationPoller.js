@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef } from 'react';
-import api from '@/lib/api';
+import api, { cachedGet } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -91,19 +91,22 @@ export default function NotificationPoller() {
   };
 
   useEffect(() => {
-    const isPublicPage = pathname === '/login' || pathname === '/signup' || pathname === '/privacy' || pathname === '/terms' || pathname === '/data-deletion';
-    if (isPublicPage) return;
-
     let backoffMs = 0;
 
     const checkNotifications = async () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (typeof window !== 'undefined') {
+        const p = window.location.pathname;
+        const isPublicPage = p === '/login' || p === '/signup' || p === '/privacy' || p === '/terms' || p === '/data-deletion';
+        if (isPublicPage) return;
+      }
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       if (!token || isFetchingRef.current) return;
 
       isFetchingRef.current = true;
       try {
-        const { data } = await api.get('/notifications');
+        const res = await cachedGet('/notifications', { ttl: 20000, silentAuth: true, _isBackground: true });
+        const data = res?.data || {};
         backoffMs = 0;
         const notifications = data.notifications || [];
         
@@ -152,7 +155,7 @@ export default function NotificationPoller() {
         eventSourceRef.current.close();
       }
     };
-  }, [pathname]);
+  }, []);
 
   return null;
 }

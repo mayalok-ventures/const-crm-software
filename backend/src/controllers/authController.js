@@ -11,6 +11,7 @@ const { generateToken, generateTemp2FAToken } = require('../middleware/auth');
 const { generateUniqueUsername } = require('../utils/generateUsername');
 const { generateUniqueUsercode } = require('../utils/generateUsercode');
 const { getIndustryDefaults } = require('../utils/industryTemplates');
+const { normalizePhone, getPhoneQueryCandidates } = require('../utils/phoneUtils');
 const { securityTracker } = require('../monitoring/security/securityTracker');
 const { auditService } = require('../monitoring/audit/auditService');
 
@@ -28,78 +29,115 @@ exports.register = async (req, res) => {
     const { name, email, phone, password, workStatus, companyName, industryType, educationSubProfile } = req.body;
 
     if (!name || !password) {
-      return res.status(400).json({ message: 'Name and password are required' });
+      return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Name and password are required' });
     }
     if (!email && !phone) {
-      return res.status(400).json({ message: 'At least one of email or phone is required' });
+      return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'At least one of email or phone is required' });
     }
 
-    const cleanPhone = phone ? phone.replace(/\D/g, '') : undefined;
+    const cleanPhone = phone ? normalizePhone(phone) : undefined;
 
-    // Duplicate checks
+    // Duplicate checks upfront
     if (email) {
-      const emailExists = await User.findOne({ email: email.toLowerCase() }).lean();
+      const emailExists = await User.findOne({ email: email.toLowerCase().trim() }).lean();
       if (emailExists) {
-        return res.status(400).json({ message: 'This email is already registered.' });
+        return res.status(400).json({
+          code: 'DUPLICATE_ENTRY',
+          field: 'email',
+          message: 'This email is already registered. Please log in or use a different email.'
+        });
       }
     }
     if (cleanPhone) {
-      const phoneExists = await User.findOne({ phone: cleanPhone }).lean();
+      const phoneCandidates = getPhoneQueryCandidates(cleanPhone);
+      const phoneExists = await User.findOne({ phone: { $in: phoneCandidates } }).lean();
       if (phoneExists) {
-        return res.status(400).json({ message: 'This phone number is already registered.' });
+        return res.status(400).json({
+          code: 'DUPLICATE_ENTRY',
+          field: 'phone',
+          message: 'This phone number is already registered. Please log in or use a different number.'
+        });
       }
     }
 
-    // Role determined strictly at registration
-    const selectedWorkStatus = workStatus === 'company_owner' ? 'company_owner' : 'independent_agent';
-    const selectedCompanyRole = selectedWorkStatus === 'company_owner' ? 'owner' : 'solo';
-    const selectedIndustry = industryType || 'Agency';
-    const selectedEducationSubProfile = (selectedIndustry.toUpperCase().includes('EDU') || selectedIndustry.toUpperCase().includes('ACADEMIC'))
-      ? (educationSubProfile || null)
-      : null;
+    // Single-User Architecture: Exclusively for individual admission consultants / practitioners
+    const selectedWorkStatus = 'single_user';
+    const selectedCompanyRole = 'owner';
+    const selectedIndustry = 'Education';
+    const selectedEducationSubProfile = 'admission_consultants';
 
     // Industry defaults (Form Schema + Pipeline Stages)
     const { leadFormSchema: defaultSchema, pipelineStages: defaultStages } = getIndustryDefaults(selectedIndustry, selectedEducationSubProfile);
 
-    // Generate unique username & usercode
-    const username = await generateUniqueUsername(User);
-    const prefix = selectedWorkStatus === 'company_owner' ? 'CMP' : 'REA';
-    const usercode = await generateUniqueUsercode(User, prefix);
+    // Bounded retry loop for auto-generated username & usercode collisions (A3)
+    let user = null;
+    let maxRetries = 5;
+    let lastCreateError = null;
 
-    const user = await User.create({
-      name: name.trim(),
-      email: email ? email.toLowerCase().trim() : undefined,
-      phone: cleanPhone || undefined,
-      password,
-      username,
-      usercode,
-      industryType: selectedIndustry,
-      educationSubProfile: selectedEducationSubProfile,
-      workStatus: selectedWorkStatus,
-      companyRole: selectedCompanyRole,
-      companyInfo: {
-        companyName: companyName ? companyName.trim() : (selectedWorkStatus === 'company_owner' ? `${name.trim()}'s Organization` : ''),
-      },
-      pipelineStages: defaultStages,
-      customPipelineStages: defaultStages,
-      leadFormSchema: defaultSchema,
-      plan: 'free',
-      isCustomPlan: false,
-      billingCycle: 'monthly',
-      planStartDate: new Date(),
-      planEndDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-      lifecycleStatus: 'TRIAL',
-      lifecycleTimestamps: {
-        provisionedAt: new Date(),
-        trialStartedAt: new Date(),
-        trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-      },
-      billing: {
-        originalPrice: 0,
-        discountedPrice: 0,
-        couponCodeUsed: null,
-      },
-    });
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const username = await generateUniqueUsername(User);
+        const prefix = 'CNS';
+        const usercode = await generateUniqueUsercode(User, prefix);
+
+        user = await User.create({
+          name: name.trim(),
+          email: email ? email.toLowerCase().trim() : undefined,
+          phone: cleanPhone || undefined,
+          password,
+          username,
+          usercode,
+          industryType: selectedIndustry,
+          educationSubProfile: selectedEducationSubProfile,
+          workStatus: selectedWorkStatus,
+          companyRole: selectedCompanyRole,
+          companyInfo: {
+            companyName: companyName ? companyName.trim() : `${name.trim()}'s Admission Consultancy`,
+          },
+          pipelineStages: defaultStages,
+          customPipelineStages: defaultStages,
+          leadFormSchema: defaultSchema,
+          plan: 'free',
+          isCustomPlan: false,
+          billingCycle: 'monthly',
+          planStartDate: new Date(),
+          planEndDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          lifecycleStatus: 'TRIAL',
+          lifecycleTimestamps: {
+            provisionedAt: new Date(),
+            trialStartedAt: new Date(),
+            trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          },
+          billing: {
+            originalPrice: 0,
+            discountedPrice: 0,
+            couponCodeUsed: null,
+          },
+        });
+        break; // Successfully created
+      } catch (createErr) {
+        lastCreateError = createErr;
+        if (createErr.code === 11000) {
+          const dupField = Object.keys(createErr.keyPattern || {})[0];
+          // If auto-generated collision, retry silently without alerting user
+          if (dupField === 'username' || dupField === 'usercode') {
+            console.warn(`[Registration] Collision on auto-generated ${dupField}, retrying (${attempt + 1}/${maxRetries})...`);
+            continue;
+          }
+          const fieldLabel = dupField === 'email' ? 'email address' : dupField === 'phone' ? 'phone number' : dupField;
+          return res.status(400).json({
+            code: 'DUPLICATE_ENTRY',
+            field: dupField,
+            message: `This ${fieldLabel} is already registered. Please log in or use a different one.`,
+          });
+        }
+        throw createErr;
+      }
+    }
+
+    if (!user) {
+      throw lastCreateError || new Error('Account registration failed after retry attempts.');
+    }
 
     // ─────────────────────────────────────────────────────────────
     // TENANT WORKSPACE SEEDING (Pipelines, Custom Fields & Automations)
@@ -111,70 +149,72 @@ exports.register = async (req, res) => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // SUPER ADMIN LEAD CAPTURE ENGINE (Automatic Lead Tracking)
+    // SUPER ADMIN LEAD CAPTURE ENGINE (Non-blocking async execution) (A7)
     // ─────────────────────────────────────────────────────────────
-    try {
-      const superAdmin = await User.findOne({
-        $or: [{ role: 'superadmin' }, { isAdmin: true }, { email: 'admin@crm.com' }]
-      });
+    setImmediate(async () => {
+      try {
+        const superAdmin = await User.findOne({
+          $or: [{ role: 'superadmin' }, { isAdmin: true }, { email: 'admin@crm.com' }]
+        }).lean();
 
-      if (superAdmin && String(superAdmin._id) !== String(user._id)) {
-        const leadOrg = user.companyInfo?.companyName || (user.workStatus === 'company_owner' ? `${user.name}'s Organization` : 'Individual Solo');
-        
-        const isTestSignup = Boolean(
-          (user.email && (user.email.includes('@crmtest.com') || user.email.includes('@edcrm.com') || user.email.includes('@test.com') || user.email.startsWith('test_') || user.email.startsWith('edu_') || user.email.startsWith('counsellor_'))) ||
-          (user.phone && (user.phone.startsWith('9200') || user.phone.startsWith('9300') || user.phone.startsWith('000')))
-        );
+        if (superAdmin && String(superAdmin._id) !== String(user._id)) {
+          const leadOrg = user.companyInfo?.companyName || (user.workStatus === 'company_owner' ? `${user.name}'s Organization` : 'Individual Solo');
+          
+          const isTestSignup = Boolean(
+            (user.email && (user.email.includes('@crmtest.com') || user.email.includes('@edcrm.com') || user.email.includes('@test.com') || user.email.startsWith('test_') || user.email.startsWith('edu_') || user.email.startsWith('counsellor_'))) ||
+            (user.phone && (user.phone.startsWith('9200') || user.phone.startsWith('9300') || user.phone.startsWith('000')))
+          );
 
-        const searchCriteria = user.email
-          ? { userId: superAdmin._id, email: user.email }
-          : { userId: superAdmin._id, phone: user.phone || user.usercode };
+          const searchCriteria = user.email
+            ? { userId: superAdmin._id, email: user.email }
+            : { userId: superAdmin._id, phone: user.phone || user.usercode };
 
-        await Lead.findOneAndUpdate(
-          searchCriteria,
-          {
-            $set: {
-              userId: superAdmin._id,
-              name: user.name,
-              email: user.email || '',
-              phone: user.phone || user.usercode || '',
-              company: leadOrg,
-              tags: ['platform_signup', user.workStatus, user.industryType, isTestSignup ? 'test_data' : 'real_production_user'],
-              status: 'new_lead',
-              propertyType: `${user.industryType} • ${user.workStatus === 'company_owner' ? 'Organization Account' : 'Individual Sales Rep'}`,
-              budget: 'Not Decided',
-              followUpDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24-hr follow-up
-              source: 'signup',
-              isTestData: isTestSignup,
-              'customData.interestedPlan': 'Not Decided',
-              'customData.leadSource': 'signup',
-              'customData.industryType': user.industryType,
-              'customData.workStatus': user.workStatus,
-              'customData.usercode': user.usercode,
-            },
-            $push: {
-              leadActivities: {
-                action: 'lead_created',
-                performedBy: superAdmin._id,
-                performerName: 'SuperAdmin Capture Engine',
-                details: `New platform signup: ${user.name} (${user.usercode}) • Industry: ${user.industryType} • Mode: ${user.workStatus} • ${isTestSignup ? '[Test Account]' : '[Real Production User]'}`,
-                timestamp: new Date(),
+          await Lead.findOneAndUpdate(
+            searchCriteria,
+            {
+              $set: {
+                userId: superAdmin._id,
+                name: user.name,
+                email: user.email || '',
+                phone: user.phone || user.usercode || '',
+                company: leadOrg,
+                tags: ['platform_signup', user.workStatus, user.industryType, isTestSignup ? 'test_data' : 'real_production_user'],
+                status: 'new_lead',
+                propertyType: `${user.industryType} • ${user.workStatus === 'company_owner' ? 'Organization Account' : 'Individual Sales Rep'}`,
+                budget: 'Not Decided',
+                followUpDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24-hr follow-up
+                source: 'signup',
+                isTestData: isTestSignup,
+                'customData.interestedPlan': 'Not Decided',
+                'customData.leadSource': 'signup',
+                'customData.industryType': user.industryType,
+                'customData.workStatus': user.workStatus,
+                'customData.usercode': user.usercode,
+              },
+              $push: {
+                leadActivities: {
+                  action: 'lead_created',
+                  performedBy: superAdmin._id,
+                  performerName: 'SuperAdmin Capture Engine',
+                  details: `New platform signup: ${user.name} (${user.usercode}) • Industry: ${user.industryType} • Mode: ${user.workStatus} • ${isTestSignup ? '[Test Account]' : '[Real Production User]'}`,
+                  timestamp: new Date(),
+                }
               }
-            }
-          },
-          { upsert: true, new: true, setDefaultsOnInsert: true }
-        );
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+          );
 
-        await Notification.create({
-          userId: superAdmin._id,
-          title: isTestSignup ? '🧪 New Test Signup' : '🎉 New Real Platform Signup',
-          message: `${user.name} (${user.usercode}) signed up in ${user.industryType} industry as a ${user.workStatus === 'company_owner' ? 'Company Owner' : 'Solo Agent'}.`,
-          type: 'platform_signup',
-        });
+          await Notification.create({
+            userId: superAdmin._id,
+            title: isTestSignup ? '🧪 New Test Signup' : '🎉 New Real Platform Signup',
+            message: `${user.name} (${user.usercode}) signed up in ${user.industryType} industry as a ${user.workStatus === 'company_owner' ? 'Company Owner' : 'Solo Agent'}.`,
+            type: 'platform_signup',
+          });
+        }
+      } catch (captureErr) {
+        console.warn('[SuperAdmin Engine] Async lead capture hook notice:', captureErr.message);
       }
-    } catch (captureErr) {
-      console.warn('[SuperAdmin Engine] Lead capture hook notice:', captureErr.message);
-    }
+    });
 
     const token = generateToken(user._id);
 
@@ -217,14 +257,23 @@ exports.register = async (req, res) => {
       token,
     });
   } catch (error) {
+    if (error.name === 'MongoServerSelectionError' || error.name === 'MongooseServerSelectionError' || error.message?.includes('buffering timed out')) {
+      return res.status(503).json({
+        code: 'DB_UNAVAILABLE',
+        message: 'Server is temporarily busy connecting to the database. Please retry in a few moments.',
+      });
+    }
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern || {})[0] || 'account';
+      const fieldLabel = field === 'email' ? 'email address' : field === 'phone' ? 'phone number' : field;
       return res.status(400).json({
-        message: `This ${field === 'phone' ? 'phone number' : field} is already registered.`,
+        code: 'DUPLICATE_ENTRY',
+        field,
+        message: `This ${fieldLabel} is already registered.`,
       });
     }
     console.error('Register error:', error);
-    res.status(500).json({ message: error.message || 'Server error' });
+    res.status(500).json({ code: 'SERVER_ERROR', message: error.message || 'Server error' });
   }
 };
 
@@ -236,7 +285,7 @@ exports.login = async (req, res) => {
     const rawIdentifier = req.body.identifier || req.body.email || req.body.phone || req.body.username;
     const { password } = req.body;
     if (!rawIdentifier || !password) {
-      return res.status(400).json({ message: 'Identifier (email/phone/username) and password are required' });
+      return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Identifier (email/phone/username) and password are required' });
     }
 
     const cleanInput = String(rawIdentifier).trim();
@@ -247,13 +296,16 @@ exports.login = async (req, res) => {
     if (isEmail) {
       query = { email: cleanInput.toLowerCase() };
     } else if (isDigitsOnly) {
-      query = { phone: cleanInput.replace(/\D/g, '') };
+      const candidates = getPhoneQueryCandidates(cleanInput);
+      query = { phone: { $in: candidates } };
     } else {
+      const phoneCandidates = getPhoneQueryCandidates(cleanInput);
       query = {
         $or: [
           { username: cleanInput.toUpperCase() },
           { usercode: cleanInput.toUpperCase() },
-          { email: cleanInput.toLowerCase() }
+          { email: cleanInput.toLowerCase() },
+          ...(phoneCandidates.length > 0 ? [{ phone: { $in: phoneCandidates } }] : [])
         ]
       };
     }
@@ -265,7 +317,7 @@ exports.login = async (req, res) => {
         req,
         metadata: { reason: 'User not found', identifier: cleanInput },
       });
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' });
     }
 
     const match = await user.comparePassword(password);
@@ -283,7 +335,30 @@ exports.login = async (req, res) => {
         metadata: { reason: 'Password mismatch' },
         isAdminUser: user.isAdmin,
       });
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' });
+    }
+
+    // Suspension check with auto-expiry (A2)
+    if (user.suspension?.isSuspended && !user.isAdmin) {
+      const until = user.suspension.suspendedUntil;
+      if (until && new Date() > new Date(until)) {
+        await User.findByIdAndUpdate(user._id, {
+          $set: {
+            'suspension.isSuspended': false,
+            'suspension.level': 0,
+            'suspension.reason': null,
+            'suspension.suspendedUntil': null,
+          }
+        });
+        user.suspension.isSuspended = false;
+      } else {
+        const timeStr = until ? ` until ${new Date(until).toLocaleString('en-IN')}` : ' permanently';
+        return res.status(403).json({
+          code: 'ACCOUNT_SUSPENDED',
+          message: `Your account has been suspended${timeStr}. Reason: ${user.suspension.reason || 'Security policy violation'}. Please contact support.`,
+          suspendedUntil: until
+        });
+      }
     }
 
     // Reset login attempts
@@ -372,8 +447,14 @@ exports.login = async (req, res) => {
       token,
     });
   } catch (error) {
+    if (error.name === 'MongoServerSelectionError' || error.name === 'MongooseServerSelectionError' || error.message?.includes('buffering timed out')) {
+      return res.status(503).json({
+        code: 'DB_UNAVAILABLE',
+        message: 'Server is temporarily busy connecting to the database. Please retry in a few moments.',
+      });
+    }
     console.error('Login error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ code: 'SERVER_ERROR', message: 'Server error' });
   }
 };
 
@@ -425,13 +506,13 @@ exports.verify2FA = async (req, res) => {
 
     let isVerified = false;
 
-    // 1. Standard Multi-Step Window Check (window: 1 = ±30 seconds standard TOTP time step)
+    // 1. Standard Multi-Step Window Check (window: 2 = ±60 seconds standard TOTP time step)
     if (cleanOtp.length === 6) {
       isVerified = speakeasy.totp.verify({
         secret: cleanSecret,
         encoding: 'base32',
         token: cleanOtp,
-        window: 1,
+        window: 2,
       });
 
       // 2. Delta Step Window Check fallback
@@ -440,7 +521,7 @@ exports.verify2FA = async (req, res) => {
           secret: cleanSecret,
           encoding: 'base32',
           token: cleanOtp,
-          window: 1,
+          window: 2,
         });
         if (delta !== null && delta !== undefined) {
           isVerified = true;
@@ -453,8 +534,10 @@ exports.verify2FA = async (req, res) => {
       const cleanRecovery = String(recoveryCode).replace(/[\s-]+/g, '').toUpperCase();
       if (user.twoFactorRecoveryCodes && user.twoFactorRecoveryCodes.includes(cleanRecovery)) {
         isVerified = true;
-        user.twoFactorRecoveryCodes = user.twoFactorRecoveryCodes.filter(c => c !== cleanRecovery);
-        await user.save();
+        const remainingCodes = user.twoFactorRecoveryCodes.filter(c => c !== cleanRecovery);
+        await User.findByIdAndUpdate(user._id, {
+          $set: { twoFactorRecoveryCodes: remainingCodes }
+        });
       }
     }
 
@@ -519,23 +602,11 @@ exports.verify2FA = async (req, res) => {
 
 // @desc  Setup 2FA - Generates TOTP secret, QR code & Emergency Recovery Codes
 // @route POST /api/auth/2fa/setup
-// @access Private (Owner only)
+// @access Private
 exports.setup2FA = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: 'User not found' });
-
-    // Authorization: Owner-only 2FA Setup
-    const isOwnerUser = (
-      user.workStatus === 'company_owner' ||
-      user.companyRole === 'owner' ||
-      user.role === 'admin' ||
-      user.isAdmin ||
-      user.roleId?.roleType === 'OWNER'
-    );
-    if (!isOwnerUser && user.role !== 'superadmin') {
-      return res.status(403).json({ message: 'Two-Factor Authentication setup is available for Organization Owners.' });
-    }
 
     if (user.twoFactorEnabled) {
       return res.status(400).json({
@@ -546,7 +617,7 @@ exports.setup2FA = async (req, res) => {
     const crypto = require('crypto');
 
     // Generate speakeasy secret with clean labels
-    const accountLabel = user.email || user.username || user.phone || 'Owner';
+    const accountLabel = user.email || user.username || user.phone || 'User';
     const secret = speakeasy.generateSecret({
       name: `SalesCRM (${accountLabel})`,
       issuer: 'SalesCRM',
@@ -559,12 +630,18 @@ exports.setup2FA = async (req, res) => {
       return `${hex.slice(0, 4)}-${hex.slice(4, 8)}`;
     });
 
+    const cleanRecoveryCodes = recoveryCodes.map(c => c.replace(/-/g, ''));
+    const tempExpires = new Date(Date.now() + 10 * 60 * 1000);
+
     // Store as temporary enrollment secret (valid for 10 minutes, 2FA remains disabled until verified)
-    user.twoFactorTempSecret = secret.base32;
-    user.twoFactorTempExpires = new Date(Date.now() + 10 * 60 * 1000);
-    user.twoFactorRecoveryCodes = recoveryCodes.map(c => c.replace(/-/g, ''));
-    user.twoFactorEnabled = false;
-    await user.save();
+    await User.findByIdAndUpdate(user._id, {
+      $set: {
+        twoFactorTempSecret: secret.base32,
+        twoFactorTempExpires: tempExpires,
+        twoFactorRecoveryCodes: cleanRecoveryCodes,
+        twoFactorEnabled: false,
+      }
+    });
 
     // Generate QR Code data URL
     const qrCodeUrl = await qrcode.toDataURL(secret.otpauth_url, {
@@ -588,7 +665,7 @@ exports.setup2FA = async (req, res) => {
 
 // @desc  Enable 2FA - Verify initial code and lock 2FA to account
 // @route POST /api/auth/2fa/enable
-// @access Private (Owner only)
+// @access Private
 exports.enable2FA = async (req, res) => {
   try {
     const rawToken = req.body.token || req.body.otp || req.body.code;
@@ -617,7 +694,7 @@ exports.enable2FA = async (req, res) => {
       secret: cleanSecret,
       encoding: 'base32',
       token: cleanToken,
-      window: 1, // Standard ±30s TOTP time step
+      window: 2, // Standard ±60s TOTP time window for clock drift tolerance
     });
 
     if (!verified) {
@@ -625,7 +702,7 @@ exports.enable2FA = async (req, res) => {
         secret: cleanSecret,
         encoding: 'base32',
         token: cleanToken,
-        window: 1,
+        window: 2,
       });
       if (delta !== null && delta !== undefined) verified = true;
     }
@@ -637,11 +714,26 @@ exports.enable2FA = async (req, res) => {
       });
     }
 
-    user.twoFactorSecret = cleanSecret;
-    user.twoFactorEnabled = true;
-    user.twoFactorTempSecret = null;
-    user.twoFactorTempExpires = null;
-    await user.save();
+    await User.findByIdAndUpdate(user._id, {
+      $set: {
+        twoFactorSecret: cleanSecret,
+        twoFactorEnabled: true,
+        twoFactorTempSecret: null,
+        twoFactorTempExpires: null,
+      }
+    });
+
+    // Record Immutable Audit Log
+    auditService.record({
+      actor: user,
+      organizationId: user.companyId,
+      action: 'UPDATE',
+      resourceType: 'User',
+      resourceId: user._id,
+      resourceName: user.name,
+      req,
+      metadata: { updateType: 'enable_2fa' },
+    });
 
     res.json({
       success: true,
@@ -668,14 +760,29 @@ exports.disable2FA = async (req, res) => {
     const isMatch = await user.comparePassword(password);
     if (!isMatch) return res.status(401).json({ message: 'Incorrect password' });
 
-    user.twoFactorEnabled = false;
-    user.twoFactorSecret = null;
-    user.twoFactorTempSecret = null;
-    user.twoFactorTempExpires = null;
-    user.twoFactorRecoveryCodes = [];
-    user.twoFactorOtp = null;
-    user.twoFactorOtpExpires = null;
-    await user.save();
+    await User.findByIdAndUpdate(user._id, {
+      $set: {
+        twoFactorEnabled: false,
+        twoFactorSecret: null,
+        twoFactorTempSecret: null,
+        twoFactorTempExpires: null,
+        twoFactorRecoveryCodes: [],
+        twoFactorOtp: null,
+        twoFactorOtpExpires: null,
+      }
+    });
+
+    // Record Immutable Audit Log
+    auditService.record({
+      actor: user,
+      organizationId: user.companyId,
+      action: 'UPDATE',
+      resourceType: 'User',
+      resourceId: user._id,
+      resourceName: user.name,
+      req,
+      metadata: { updateType: 'disable_2fa' },
+    });
 
     res.json({
       success: true,
@@ -730,12 +837,17 @@ exports.reset2FAEmergency = async (req, res) => {
       return res.status(401).json({ message: 'Invalid password' });
     }
 
-    user.twoFactorEnabled = false;
-    user.twoFactorSecret = null;
-    user.twoFactorRecoveryCodes = [];
-    user.twoFactorOtp = null;
-    user.twoFactorOtpExpires = null;
-    await user.save();
+    await User.findByIdAndUpdate(user._id, {
+      $set: {
+        twoFactorEnabled: false,
+        twoFactorSecret: null,
+        twoFactorTempSecret: null,
+        twoFactorTempExpires: null,
+        twoFactorRecoveryCodes: [],
+        twoFactorOtp: null,
+        twoFactorOtpExpires: null,
+      }
+    });
 
     const token = generateToken(user._id);
     const resolvedRole = user.role || 'agent';

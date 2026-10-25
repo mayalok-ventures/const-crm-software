@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -27,6 +27,9 @@ export default function LoginPage() {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const isSubmittingRef = useRef(false);
+  const isVerifying2FARef = useRef(false);
+
   // 2FA state
   const [step2FA, setStep2FA] = useState(false);
   const [tempToken, setTempToken] = useState('');
@@ -42,9 +45,23 @@ export default function LoginPage() {
       if (params.get('error') === 'suspended') {
         return params.get('reason') || 'Your account has been suspended for violating platform policies.';
       }
+      if (params.get('error') === 'session_expired') {
+        return 'Your session has expired. Please sign in again to continue.';
+      }
     }
     return '';
   });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('error') === 'session_expired') {
+        toast.error('Session expired. Please log in again.');
+      } else if (params.get('error') === 'suspended') {
+        toast.error(params.get('reason') || 'Account suspended.');
+      }
+    }
+  }, []);
 
   const handleWipeLocalBrowserStorage = async () => {
     if (!confirm('This will wipe all local CRM cookies, localStorage, and cached data from this browser. Proceed?')) return;
@@ -74,7 +91,9 @@ export default function LoginPage() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (isSubmittingRef.current) return;
     if (!identifier || !password) return toast.error('Please fill all fields');
+    isSubmittingRef.current = true;
     setLoading(true);
     try {
       const { data } = await api.post('/auth/login', { identifier, password });
@@ -100,17 +119,26 @@ export default function LoginPage() {
         router.replace('/dashboard');
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Login failed');
+      const message =
+        err.response?.data?.message ||
+        (err.code === 'ERR_NETWORK' || err.message === 'Network Error'
+          ? 'Cannot connect to backend server (http://localhost:5000). Please verify backend is running.'
+          : err.message) ||
+        'Login failed';
+      toast.error(message);
     } finally {
       setLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 
   const handleVerify2FA = async (e) => {
     e.preventDefault();
+    if (isVerifying2FARef.current) return;
     if (!useRecovery && !otp.trim()) return toast.error('Please enter the 6-digit verification code');
     if (useRecovery && !recoveryCode.trim()) return toast.error('Please enter your emergency backup code');
 
+    isVerifying2FARef.current = true;
     setLoading(true);
     try {
       const payload = { tempToken };
@@ -132,6 +160,7 @@ export default function LoginPage() {
       toast.error(err.response?.data?.message || 'Invalid verification code');
     } finally {
       setLoading(false);
+      isVerifying2FARef.current = false;
     }
   };
 
@@ -218,31 +247,29 @@ export default function LoginPage() {
       }}>
         {/* Brand Logo Header */}
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <Link href="/" style={{ textDecoration: 'none', display: 'inline-block' }}>
-            <div style={{
-              width: 52,
-              height: 52,
-              borderRadius: 14,
-              background: 'linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 14px rgba(79, 70, 229, 0.3)',
-              marginBottom: 12
-            }}>
-              {step2FA ? (
+          <Link href="/" style={{ textDecoration: 'none', display: 'inline-block', marginBottom: 10 }}>
+            {step2FA ? (
+              <div style={{
+                width: 48,
+                height: 48,
+                borderRadius: 14,
+                background: '#4f46e5',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
                 <ShieldCheck size={28} color="#ffffff" />
-              ) : (
-                <Image
-                  src="/logo.png"
-                  alt="SalesCRM Logo"
-                  width={42}
-                  height={42}
-                  style={{ objectFit: 'contain' }}
-                  priority
-                />
-              )}
-            </div>
+              </div>
+            ) : (
+              <Image
+                src="/logo.png"
+                alt="SalesCRM Logo"
+                width={48}
+                height={48}
+                style={{ objectFit: 'contain' }}
+                priority
+              />
+            )}
           </Link>
 
           <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#0f172a', letterSpacing: '-0.3px' }}>

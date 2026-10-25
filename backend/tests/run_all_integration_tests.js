@@ -7,21 +7,18 @@ const path = require('path');
 const axios = require('axios');
 
 const testFiles = [
-  'tests/event_management_vertical.test.js',
-  'tests/education_automations.test.js',
+  'tests/security_hardening_and_lifecycle.test.js',
+  'tests/workspace_rbac_and_isolation.test.js',
+  'tests/custom_roles_and_resend.test.js',
   'tests/hybrid_catalogue.test.js',
-  'tests/education_subprofile.test.js',
-  'tests/multi_tenant_isolation.test.js',
-  'tests/agency_team_management.test.js',
-  'tests/integration_architecture_audit.test.js',
-  'tests/tenant_workflow_phases.test.js',
-  'tests/crm_admin.test.js',
-  'tests/e2e_lead_lifecycle.test.js',
   'tests/followup_workflow.test.js',
+  'tests/tenant_workflow_phases.test.js',
   'tests/monitoring.test.js',
   'tests/system_observability_suite.test.js',
   'tests/security_abuse_detection.test.js',
   'tests/platform_health_score_engine.test.js',
+  'tests/integrations_phase3.test.js',
+  'tests/auth_reliability_phase1.test.js',
 ];
 
 async function isServerRunning() {

@@ -1,6 +1,6 @@
 'use client';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useRef, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import toast from 'react-hot-toast';
@@ -9,120 +9,53 @@ import { setAuth } from '@/lib/auth';
 import {
   Eye,
   EyeOff,
-  Zap,
   User,
   Mail,
   Phone,
   Lock,
   Building2,
   Briefcase,
-  Layers,
-  GraduationCap,
-  Laptop,
-  Globe,
-  BookOpen,
-  School,
-  Compass,
-  CheckCircle2,
   Sparkles,
   ArrowRight,
   ArrowLeft
 } from 'lucide-react';
 
-const INDUSTRY_OPTIONS = [
-  'Agency',
-  'SaaS',
-  'Real Estate',
-  'E-commerce',
-  'Consulting',
-  'Healthcare',
-  'Education',
-  'Event Management & Exhibitions',
-  'Other'
-];
-
-const EDUCATION_SUB_PROFILES_UI = [
-  {
-    id: 'higher_education',
-    title: 'Higher Education',
-    subtitle: 'Colleges & Universities',
-    desc: 'Campus admissions, degrees, merit lists & token fees',
-    icon: GraduationCap,
-    badge: 'Colleges',
-  },
-  {
-    id: 'edtech',
-    title: 'EdTech Companies',
-    subtitle: 'Online Courses & Bootcamps',
-    desc: 'Webinars, masterclasses, cohorts & upskilling',
-    icon: Laptop,
-    badge: 'Bootcamps',
-  },
-  {
-    id: 'study_abroad',
-    title: 'Study Abroad',
-    subtitle: 'Overseas Education',
-    desc: 'Global universities, IELTS/GRE, SOPs, I-20 & Visa filing',
-    icon: Globe,
-    badge: 'International',
-  },
-  {
-    id: 'test_prep',
-    title: 'Test Prep & Coaching',
-    subtitle: 'Competitive Exam Institutes',
-    desc: 'IIT-JEE, NEET, CAT, UPSC, SAT demos & tests',
-    icon: BookOpen,
-    badge: 'Entrance Prep',
-  },
-  {
-    id: 'k12',
-    title: 'K-12 Schools',
-    subtitle: 'Schools & Pre-Schools',
-    desc: 'School tours, readiness tests & parent interviews',
-    icon: School,
-    badge: 'School Boards',
-  },
-  {
-    id: 'admission_consultants',
-    title: 'Admission Consultants',
-    subtitle: 'Counsellors & Advisors',
-    desc: 'Multi-college advisory, quota filing & catalogue',
-    icon: Compass,
-    badge: 'Hybrid Advisory',
-  },
-];
-
-export default function SignupPage() {
+function SignupForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const inviteToken = searchParams.get('invite');
+
+  useEffect(() => {
+    if (inviteToken) {
+      router.replace(`/invite/${inviteToken}`);
+    }
+  }, [inviteToken, router]);
+
   const [form, setForm] = useState({
     name: '',
     email: '',
     phone: '',
     password: '',
     confirmPassword: '',
-    workStatus: 'company_owner', // 'company_owner' | 'independent_agent'
     companyName: '',
-    industryType: 'Agency',
-    educationSubProfile: 'higher_education',
+    industryType: 'Education',
+    educationSubProfile: 'admission_consultants',
   });
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
   const handleSignup = async (e) => {
     e.preventDefault();
+    if (isSubmittingRef.current) return;
     if (!form.name || !form.password) return toast.error('Name and password required');
     if (!form.email && !form.phone) return toast.error('Provide email or phone number');
     if (form.password !== form.confirmPassword) return toast.error('Passwords do not match');
     if (form.password.length < 6) return toast.error('Password must be at least 6 characters');
-    if (form.workStatus === 'company_owner' && !form.companyName.trim()) {
-      return toast.error('Please enter your Organization / Agency Name');
-    }
-    if (form.industryType === 'Education' && !form.educationSubProfile) {
-      return toast.error('Please select your specific Education Sub-Profile');
-    }
 
+    isSubmittingRef.current = true;
     setLoading(true);
     try {
       const { data } = await api.post('/auth/register', {
@@ -130,10 +63,10 @@ export default function SignupPage() {
         email: form.email || undefined,
         phone: form.phone || undefined,
         password: form.password,
-        workStatus: form.workStatus,
+        workStatus: 'single_user',
         companyName: form.companyName || undefined,
-        industryType: form.industryType === 'Event Management & Exhibitions' ? 'Event Management' : (form.industryType || 'Agency'),
-        educationSubProfile: form.industryType === 'Education' ? form.educationSubProfile : undefined,
+        industryType: 'Education',
+        educationSubProfile: 'admission_consultants',
       });
       setAuth(data, data.token);
       toast.success(`Account registered! Welcome, ${data.name} 🎉`);
@@ -143,9 +76,16 @@ export default function SignupPage() {
         router.replace('/dashboard');
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Signup failed');
+      const message =
+        err.response?.data?.message ||
+        (err.code === 'ERR_NETWORK' || err.message === 'Network Error'
+          ? 'Cannot connect to backend server (http://localhost:5000). Please verify backend is running.'
+          : err.message) ||
+        'Signup failed';
+      toast.error(message);
     } finally {
       setLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 
@@ -210,27 +150,15 @@ export default function SignupPage() {
       }}>
         {/* Brand Logo Header */}
         <div style={{ textAlign: 'center', marginBottom: 20 }}>
-          <Link href="/" style={{ textDecoration: 'none', display: 'inline-block' }}>
-            <div style={{
-              width: 50,
-              height: 50,
-              borderRadius: 14,
-              background: 'linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 14px rgba(79, 70, 229, 0.3)',
-              marginBottom: 10
-            }}>
-              <Image
-                src="/logo.png"
-                alt="SalesCRM Logo"
-                width={40}
-                height={40}
-                style={{ objectFit: 'contain' }}
-                priority
-              />
-            </div>
+          <Link href="/" style={{ textDecoration: 'none', display: 'inline-block', marginBottom: 8 }}>
+            <Image
+              src="/logo.png"
+              alt="SalesCRM Logo"
+              width={48}
+              height={48}
+              style={{ objectFit: 'contain' }}
+              priority
+            />
           </Link>
 
           <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#0f172a', letterSpacing: '-0.3px' }}>
@@ -294,68 +222,16 @@ export default function SignupPage() {
         </div>
 
         <form onSubmit={handleSignup} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Strict Role Selection */}
-          <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 8 }}>
-              Select Account Role *
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <button
-                type="button"
-                onClick={() => setForm(f => ({ ...f, workStatus: 'company_owner' }))}
-                style={{
-                  padding: '12px 10px',
-                  borderRadius: 10,
-                  border: form.workStatus === 'company_owner' ? '1.5px solid #4f46e5' : '1px solid #e2e8f0',
-                  background: form.workStatus === 'company_owner' ? '#eef2ff' : '#f8fafc',
-                  cursor: 'pointer',
-                  textAlign: 'center',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 4,
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <Building2 size={20} color={form.workStatus === 'company_owner' ? '#4f46e5' : '#64748b'} />
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a' }}>Agency Owner</span>
-                <span style={{ fontSize: 10.5, color: '#64748b', lineHeight: 1.2 }}>Manage reps & pool</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setForm(f => ({ ...f, workStatus: 'independent_agent' }))}
-                style={{
-                  padding: '12px 10px',
-                  borderRadius: 10,
-                  border: form.workStatus === 'independent_agent' ? '1.5px solid #4f46e5' : '1px solid #e2e8f0',
-                  background: form.workStatus === 'independent_agent' ? '#eef2ff' : '#f8fafc',
-                  cursor: 'pointer',
-                  textAlign: 'center',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 4,
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <Briefcase size={20} color={form.workStatus === 'independent_agent' ? '#4f46e5' : '#64748b'} />
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a' }}>Solo Agent</span>
-                <span style={{ fontSize: 10.5, color: '#64748b', lineHeight: 1.2 }}>Individual sales pipeline</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Industry Selector */}
           <div>
             <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
-              <Layers size={13} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle', color: '#4f46e5' }} />
-              Industry Vertical *
+              <Building2 size={13} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle', color: '#4f46e5' }} />
+              Consultancy / Practice Name (Optional)
             </label>
-            <select
-              value={form.industryType}
-              onChange={set('industryType')}
-              required
+            <input
+              type="text"
+              placeholder="e.g. Apex Admission Consultants"
+              value={form.companyName}
+              onChange={set('companyName')}
               style={{
                 width: '100%',
                 background: '#ffffff',
@@ -367,122 +243,8 @@ export default function SignupPage() {
                 outline: 'none',
                 boxSizing: 'border-box'
               }}
-            >
-              {INDUSTRY_OPTIONS.map(ind => (
-                <option key={ind} value={ind}>
-                  {ind}
-                </option>
-              ))}
-            </select>
+            />
           </div>
-
-          {/* Dynamic Education Sector Sub-Profiles */}
-          {form.industryType === 'Education' && (
-            <div style={{
-              background: '#f8fafc',
-              border: '1px solid #e2e8f0',
-              borderRadius: 12,
-              padding: '14px 12px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 10,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <GraduationCap size={16} color="#4f46e5" />
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
-                    Select Education Sub-Profile *
-                  </span>
-                </div>
-                <span style={{
-                  fontSize: 10,
-                  fontWeight: 600,
-                  color: '#0369a1',
-                  background: '#e0f2fe',
-                  padding: '2px 8px',
-                  borderRadius: 10
-                }}>
-                  Auto-Configured
-                </span>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
-                {EDUCATION_SUB_PROFILES_UI.map((sub) => {
-                  const IconComponent = sub.icon;
-                  const isSelected = form.educationSubProfile === sub.id;
-                  return (
-                    <button
-                      key={sub.id}
-                      type="button"
-                      onClick={() => setForm(f => ({ ...f, educationSubProfile: sub.id }))}
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: 8,
-                        border: isSelected ? '1.5px solid #4f46e5' : '1px solid #e2e8f0',
-                        background: isSelected ? '#eef2ff' : '#ffffff',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: 10,
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <div style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 6,
-                        background: isSelected ? '#4f46e5' : '#f1f5f9',
-                        color: isSelected ? '#ffffff' : '#475569',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0
-                      }}>
-                        <IconComponent size={14} />
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: 12.5, fontWeight: 700, color: isSelected ? '#4338ca' : '#0f172a' }}>
-                            {sub.title}
-                          </span>
-                          {isSelected && <CheckCircle2 size={13} color="#4f46e5" />}
-                        </div>
-                        <div style={{ fontSize: 10.5, color: '#64748b', marginTop: 2 }}>{sub.desc}</div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {form.workStatus === 'company_owner' && (
-            <div>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
-                <Building2 size={13} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle', color: '#4f46e5' }} />
-                Organization / Agency Name *
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Apex Growth Solutions"
-                value={form.companyName}
-                onChange={set('companyName')}
-                required
-                style={{
-                  width: '100%',
-                  background: '#ffffff',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: 10,
-                  padding: '9px 12px',
-                  fontSize: 13.5,
-                  color: '#0f172a',
-                  outline: 'none',
-                  boxSizing: 'border-box'
-                }}
-              />
-            </div>
-          )}
 
           <div>
             <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
@@ -682,5 +444,17 @@ export default function SignupPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' }}>
+        <div className="spinner" style={{ width: 28, height: 28 }} />
+      </div>
+    }>
+      <SignupForm />
+    </Suspense>
   );
 }

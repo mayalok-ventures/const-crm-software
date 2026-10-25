@@ -49,41 +49,21 @@ const userSchema = new mongoose.Schema({
   // ─────────────────────────────────────────────────────────────
   role: {
     type: String,
-    enum: ['admin', 'manager', 'agent', 'superadmin', 'user'],
-    default: 'agent',
+    enum: ['admin', 'superadmin', 'user', 'owner', 'manager', 'counsellor', 'member'],
+    default: 'user',
     required: true,
+    set: (v) => {
+      if (!v) return v;
+      const lower = String(v).toLowerCase().trim();
+      if (lower === 'counselor' || lower === 'agent' || lower === 'telecaller') return 'counsellor';
+      return lower;
+    },
   },
   isAdmin: { type: Boolean, default: false },
 
-  // Organizational Hierarchy (Admin -> Manager -> Agent)
-  managerId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    default: null,
-  },
-  managerName: {
-    type: String,
-    default: '',
-    trim: true,
-  },
-
-  // Operational & Lead Routing Controls
-  leadCap: {
-    type: Number,
-    default: 50,
-    min: [0, 'Lead cap cannot be negative'],
-  },
-  isAvailableForRouting: {
-    type: Boolean,
-    default: true,
-  },
-  isAvailable: { // Alias for backward compatibility
-    type: Boolean,
-    default: true,
-  },
   userStatus: {
     type: String,
-    enum: ['active', 'inactive', 'disabled'],
+    enum: ['active', 'inactive', 'disabled', 'suspended', 'terminated'],
     default: 'active',
   },
   isActive: {
@@ -91,36 +71,33 @@ const userSchema = new mongoose.Schema({
     default: true,
   },
 
-  // Work Status & RBAC Legacy
+  // Single-User Tenancy Architecture
   workStatus: {
     type: String,
-    enum: ['company_owner', 'independent_agent', 'agent', 'employee'],
-    default: 'agent',
+    enum: ['single_user', 'company_owner', 'manager', 'counsellor', 'solo'],
+    default: 'single_user',
+    set: (v) => {
+      if (!v) return v;
+      const lower = String(v).toLowerCase().trim();
+      if (lower === 'counselor' || lower === 'agent' || lower === 'independent_agent') return 'counsellor';
+      return lower;
+    },
   },
   companyRole: {
     type: String,
-    enum: ['owner', 'agent', 'solo', 'sales_rep', 'manager', 'telecaller'],
-    default: 'agent',
+    enum: ['owner', 'solo', 'manager', 'counsellor', 'member'],
+    default: 'owner',
+    set: (v) => {
+      if (!v) return v;
+      const lower = String(v).toLowerCase().trim();
+      if (lower === 'counselor' || lower === 'agent' || lower === 'sales_rep' || lower === 'telecaller') return 'counsellor';
+      return lower;
+    },
   },
   companyId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null,
-  },
-  connectedCompanyId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    default: null,
-  },
-  companyJoinMethod: {
-    type: String,
-    enum: ['usercode', 'qr_invite', 'admin_created', 'created_by_company', 'none'],
-    default: 'none',
-  },
-  companyLeaveRequest: {
-    type: String,
-    enum: ['none', 'pending', 'approved', 'rejected'],
-    default: 'none',
   },
   showFollowUpOnCreate: {
     type: Boolean,
@@ -141,7 +118,6 @@ const userSchema = new mongoose.Schema({
     companyEmail: { type: String, default: '' },
     companyAddress: { type: String, default: '' },
     companyGst: { type: String, default: '' },
-    companyRera: { type: String, default: '' },
     companyWebsite: { type: String, default: '' },
     paymentQrCode: { type: String, default: null },
     paymentUpiId: { type: String, default: '' },
@@ -154,15 +130,15 @@ const userSchema = new mongoose.Schema({
     termsAndConditions: { type: String, default: '' },
   },
 
-  // Vertical & Customization
+  // Vertical & Customization: Exclusively Admission Consultants
   industryType: {
     type: String,
-    default: 'Agency',
+    default: 'Education',
     trim: true,
   },
   educationSubProfile: {
     type: String,
-    default: null,
+    default: 'admission_consultants',
     trim: true,
   },
 
@@ -234,6 +210,13 @@ const userSchema = new mongoose.Schema({
   loginAttempts: { type: Number, default: 0 },
   lastFailedLogin: { type: Date, default: null },
   abuseScore: { type: Number, default: 0 },
+  suspension: {
+    isSuspended: { type: Boolean, default: false },
+    level: { type: Number, default: 0 },
+    reason: { type: String, default: null },
+    suspendedAt: { type: Date, default: null },
+    suspendedUntil: { type: Date, default: null },
+  },
 
   shareToken: { type: String, default: null },
   shareTokenEnabled: { type: Boolean, default: false },
