@@ -98,11 +98,12 @@ workspaceMembershipSchema.methods.hasPermission = async function(permissionKey, 
   return memberScopeLevel >= reqScopeLevel;
 };
 
-workspaceMembershipSchema.post(['save', 'findOneAndUpdate', 'findByIdAndUpdate', 'updateOne', 'deleteOne', 'findOneAndDelete'], function (doc) {
+workspaceMembershipSchema.post(['save', 'findOneAndUpdate', 'findByIdAndUpdate', 'updateOne', 'deleteOne', 'findOneAndDelete', 'deleteMany'], function (doc) {
   try {
     const { invalidateWorkspaceCache, invalidateUserAuthCache } = require('../utils/authCache');
-    const userId = doc?.userId;
-    const wsId = doc?.workspaceId;
+    const query = this.getQuery ? this.getQuery() : null;
+    const userId = doc?.userId || query?.userId;
+    const wsId = doc?.workspaceId || query?.workspaceId;
     if (userId) invalidateUserAuthCache(userId);
     if (wsId) invalidateWorkspaceCache(wsId);
   } catch (_) {}

@@ -328,7 +328,7 @@ userSchema.index({ companyId: 1, managerId: 1 });
 userSchema.index({ role: 1, managerId: 1 });
 userSchema.index({ isAvailableForRouting: 1, isActive: 1 });
 
-userSchema.post(['save', 'findOneAndUpdate', 'findByIdAndUpdate', 'updateOne'], function (doc) {
+userSchema.post(['save', 'findOneAndUpdate', 'findByIdAndUpdate', 'updateOne', 'deleteOne', 'findOneAndDelete', 'findByIdAndDelete', 'deleteMany'], function (doc) {
   try {
     const { invalidateUserAuthCache } = require('../utils/authCache');
     const id = doc?._id || (this.getQuery ? this.getQuery()?._id : null);

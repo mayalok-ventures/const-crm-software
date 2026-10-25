@@ -653,6 +653,15 @@ leadSchema.pre('save', async function() {
   }
 });
 
+leadSchema.post(['save', 'findOneAndUpdate', 'findByIdAndUpdate', 'updateOne', 'deleteOne', 'findOneAndDelete', 'findByIdAndDelete', 'deleteMany'], function(doc) {
+  try {
+    const { invalidateLeadCountCache } = require('../controllers/leadsController');
+    const query = this.getQuery ? this.getQuery() : null;
+    const wsId = doc?.workspaceId || query?.workspaceId || doc?.userId || query?.userId;
+    invalidateLeadCountCache(wsId);
+  } catch (_) {}
+});
+
 module.exports = mongoose.model('Lead', leadSchema);
 module.exports.normalizeLeadSource = normalizeLeadSource;
 

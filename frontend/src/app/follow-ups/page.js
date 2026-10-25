@@ -9,22 +9,63 @@ import BottomNav from '@/components/BottomNav';
 import {
   Calendar, Clock, CheckCircle2, AlertTriangle, Phone,
   MessageSquare, ChevronRight, Search, RefreshCw, UserCheck,
-  ArrowRight, ShieldAlert, Sparkles, Filter
+  ArrowRight, ShieldAlert, Sparkles, Filter, Ban
 } from 'lucide-react';
 import { formatDisplayDateTime } from '@/lib/dateUtils';
-import { ScheduleFollowUpModal, CompleteFollowUpModal, STAGE_LABELS } from '@/components/LeadModals';
+import { ScheduleFollowUpModal, CompleteFollowUpModal, CancelFollowUpModal, STAGE_LABELS } from '@/components/LeadModals';
+
+import { useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { todayFollowUpsOptions, leadsListOptions } from '@/lib/queries';
+
+function computeStructuredFollowUps(leadsList) {
+  if (!Array.isArray(leadsList) || leadsList.length === 0) return [];
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const endOfToday = startOfToday + 24 * 60 * 60 * 1000 - 1;
+
+  return leadsList
+    .filter(l => l.followUpDate || l.activeFollowUp?.scheduledAt || l.followUpStatus === 'completed' || l.followUpStatus === 'cancelled')
+    .map(l => {
+      const rawDate = l.followUpDate || l.activeFollowUp?.scheduledAt || l.updatedAt;
+      const time = new Date(rawDate).getTime();
+      let bucket = 'upcoming';
+      const isDoneOrCancelled = ['completed', 'cancelled', 'none'].includes(l.followUpStatus) ||
+                                ['completed', 'cancelled'].includes(l.activeFollowUp?.status);
+      if (isDoneOrCancelled) {
+        bucket = 'completed';
+      } else if (time < startOfToday) {
+        bucket = 'overdue';
+      } else if (time >= startOfToday && time <= endOfToday) {
+        bucket = 'today';
+      } else {
+        bucket = 'upcoming';
+      }
+      return { ...l, bucket, time };
+    });
+}
 
 export default function FollowUpsPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [subTab, setSubTab] = useState('today'); // 'today' | 'upcoming' | 'overdue' | 'completed'
-  const [followUps, setFollowUps] = useState([]);
-  const [loading, setLoading] = useState(true);
+
+  const queryClient = useQueryClient();
+  const { data: leadsRes, isLoading: isLeadsLoading, refetch: refetchLeads } = useQuery(leadsListOptions({ limit: 100 }));
+  const { refetch: refetchToday } = useQuery(todayFollowUpsOptions());
+
+  const followUps = useMemo(() => {
+    const list = leadsRes?.leads || (Array.isArray(leadsRes) ? leadsRes : []);
+    return computeStructuredFollowUps(list);
+  }, [leadsRes]);
+
+  const loading = isLeadsLoading && followUps.length === 0;
   const [search, setSearch] = useState('');
 
   // Modals
   const [schedulingLead, setSchedulingLead] = useState(null);
   const [completingLead, setCompletingLead] = useState(null);
+  const [cancellingLead, setCancellingLead] = useState(null);
 
   useEffect(() => {
     const u = getUser();
@@ -35,48 +76,32 @@ export default function FollowUpsPage() {
     setUser(u);
   }, [router]);
 
-  const fetchFollowUps = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Fetch both today's follow-ups and leads with scheduled dates
-      const [todayRes, allLeadsRes] = await Promise.all([
-        api.get('/leads/follow-ups/today').catch(() => ({ data: [] })),
-        api.get('/leads?limit=100').catch(() => ({ data: { leads: [] } }))
-      ]);
-
-      const leadsList = allLeadsRes.data?.leads || [];
-      const now = new Date();
-      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-      const endOfToday = startOfToday + 24 * 60 * 60 * 1000 - 1;
-
-      const structured = leadsList
-        .filter(l => l.followUpDate)
-        .map(l => {
-          const time = new Date(l.followUpDate).getTime();
-          let bucket = 'upcoming';
-          if (l.followUpNotified) {
-            bucket = 'completed';
-          } else if (time < startOfToday) {
-            bucket = 'overdue';
-          } else if (time >= startOfToday && time <= endOfToday) {
-            bucket = 'today';
-          } else {
-            bucket = 'upcoming';
-          }
-          return { ...l, bucket, time };
-        });
-
-      setFollowUps(structured);
-    } catch {
-      toast.error('Failed to load follow-ups schedule');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const handleRefresh = useCallback(() => {
+    refetchLeads();
+    refetchToday();
+  }, [refetchLeads, refetchToday]);
 
   useEffect(() => {
-    fetchFollowUps();
-  }, [fetchFollowUps]);
+    const handleContextAction = (e) => {
+      const { action, payload } = e.detail || {};
+      if (!payload?.id) return;
+      const targetItem = followUps.find((f) => String(f._id) === String(payload.id));
+      if (!targetItem) return;
+
+      if (action === 'OPEN_LEAD') {
+        router.push(`/leads/${targetItem._id}`);
+      } else if (action === 'COMPLETE_FOLLOWUP') {
+        setCompletingLead(targetItem);
+      } else if (action === 'SCHEDULE_FOLLOWUP') {
+        setSchedulingLead(targetItem);
+      } else if (action === 'VIEW_LEAD_HISTORY') {
+        router.push(`/leads/${targetItem._id}`);
+      }
+    };
+
+    window.addEventListener('crm-context-action', handleContextAction);
+    return () => window.removeEventListener('crm-context-action', handleContextAction);
+  }, [followUps, router]);
 
   const filteredItems = followUps
     .filter(item => {
@@ -108,7 +133,7 @@ export default function FollowUpsPage() {
     <div className="app-container">
       <BottomNav active="follow_ups" />
 
-      <main className="main-content">
+      <main className="main-content" data-crm-canvas="true">
         <div style={{ width: '100%' }} className="pb-mobile-nav">
           
           {/* Page Header */}
@@ -123,7 +148,7 @@ export default function FollowUpsPage() {
             </div>
 
             <button
-              onClick={fetchFollowUps}
+              onClick={handleRefresh}
               className="btn btn-ghost btn-sm self-start sm:self-auto"
               style={{ gap: 6, fontSize: 13 }}
             >
@@ -132,52 +157,28 @@ export default function FollowUpsPage() {
           </div>
 
           {/* Sub-Tabs Selector */}
-          <div className="no-scrollbar" style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            borderBottom: '1px solid var(--border)',
-            paddingBottom: 12,
-            marginBottom: 20,
-            overflowX: 'auto',
-            WebkitOverflowScrolling: 'touch'
-          }}>
+          <div className="flex items-center gap-2 border-b border-slate-200 pb-3 mb-4 overflow-x-auto no-scrollbar">
             {[
-              { id: 'today', label: "Today's Calls", count: counts.today, color: 'var(--accent)' },
-              { id: 'overdue', label: 'Overdue Pending', count: counts.overdue, color: '#ef4444' },
-              { id: 'upcoming', label: 'Upcoming', count: counts.upcoming, color: '#3b82f6' },
-              { id: 'completed', label: 'Completed Log', count: counts.completed, color: '#10b981' },
+              { id: 'today', label: "Today's Calls", count: counts.today, activeClass: 'bg-indigo-600 text-white border-indigo-600' },
+              { id: 'overdue', label: 'Overdue Pending', count: counts.overdue, activeClass: 'bg-red-500 text-white border-red-500' },
+              { id: 'upcoming', label: 'Upcoming', count: counts.upcoming, activeClass: 'bg-blue-600 text-white border-blue-600' },
+              { id: 'completed', label: 'Completed Log', count: counts.completed, activeClass: 'bg-emerald-600 text-white border-emerald-600' },
             ].map(tab => {
               const isActive = subTab === tab.id;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setSubTab(tab.id)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '8px 16px',
-                    borderRadius: 10,
-                    border: 'none',
-                    background: isActive ? tab.color : 'var(--surface)',
-                    color: isActive ? '#fff' : 'var(--text)',
-                    fontWeight: isActive ? 700 : 500,
-                    fontSize: 13,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.15s ease'
-                  }}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold border transition whitespace-nowrap shrink-0 ${
+                    isActive
+                      ? `${tab.activeClass} shadow-sm`
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                  }`}
                 >
-                  {tab.label}
-                  <span style={{
-                    fontSize: 11,
-                    padding: '2px 7px',
-                    borderRadius: 20,
-                    background: isActive ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.06)',
-                    color: isActive ? '#fff' : 'var(--text)',
-                    fontWeight: 700
-                  }}>
+                  <span>{tab.label}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                    isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                  }`}>
                     {tab.count}
                   </span>
                 </button>
@@ -186,20 +187,28 @@ export default function FollowUpsPage() {
           </div>
 
           {/* Search bar */}
-          <div style={{ marginBottom: 16, position: 'relative', maxWidth: 400 }}>
-            <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: 12, top: 12 }} />
+          <div className="relative max-w-sm mb-4">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="text"
-              className="input"
+              className="input input-search w-full text-xs sm:text-sm pl-10 pr-9 h-10 bg-white border border-slate-200 rounded-xl focus:border-indigo-500 transition"
               placeholder="Search follow-ups by name, phone..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              style={{ paddingLeft: 36, height: 38, fontSize: 13 }}
             />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                title="Clear search"
+              >
+                ✕
+              </button>
+            )}
           </div>
 
           {/* Listing */}
-          {loading ? (
+          {loading && followUps.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '60px 20px' }}>
               <div className="spinner" style={{ width: 32, height: 32, margin: '0 auto 12px' }} />
               <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading follow-up queue...</p>
@@ -221,6 +230,15 @@ export default function FollowUpsPage() {
               {filteredItems.map(item => (
                 <div
                   key={item._id}
+                  data-context-type="followup"
+                  data-context-id={item._id}
+                  data-context-record={JSON.stringify({
+                    id: item._id,
+                    name: item.name,
+                    phone: item.phone,
+                    status: item.status,
+                  })}
+                  className="cursor-default"
                   style={{
                     background: 'var(--card)',
                     borderRadius: 14,
@@ -233,8 +251,8 @@ export default function FollowUpsPage() {
                     gap: 14
                   }}
                 >
-                  <div style={{ flex: '1 1 280px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <div style={{ flex: '1 1 200px', minWidth: 0, width: '100%' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
                       <Link
                         href={`/leads/${item._id}`}
                         style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', textDecoration: 'none' }}
@@ -263,39 +281,49 @@ export default function FollowUpsPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-start sm:justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                  <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap w-full sm:w-auto justify-start sm:justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                     <a
                       href={`tel:${item.phone}`}
-                      className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
-                      style={{ padding: '6px 10px', height: 34, color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}
+                      className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition shrink-0"
+                      title="Call"
                     >
-                      <Phone size={14} /> Call
+                      <Phone size={13} /> <span>Call</span>
                     </a>
 
                     <a
                       href={waLink(item.phone, `Hi ${item.name || ''}, connecting for our scheduled follow-up.`)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
-                      style={{ padding: '6px 10px', height: 34, color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}
+                      className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 transition shrink-0"
+                      title="WhatsApp"
                     >
-                      <MessageSquare size={14} /> WhatsApp
+                      <MessageSquare size={13} /> <span>WA</span>
                     </a>
 
                     <button
                       onClick={() => setSchedulingLead(item)}
-                      className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
-                      style={{ padding: '6px 10px', height: 34, color: 'var(--accent)' }}
+                      className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition shrink-0"
+                      title="Reschedule"
                     >
-                      <Calendar size={14} /> Reschedule
+                      <Calendar size={13} /> <span>Reschedule</span>
                     </button>
+
+                    {item.bucket !== 'completed' && (
+                      <button
+                        onClick={() => setCancellingLead(item)}
+                        className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition shrink-0"
+                        title="Stop follow-up"
+                      >
+                        <Ban size={13} /> <span>Stop</span>
+                      </button>
+                    )}
 
                     <button
                       onClick={() => setCompletingLead(item)}
-                      className="btn btn-primary btn-sm flex-1 sm:flex-none justify-center"
-                      style={{ padding: '6px 12px', height: 34, background: '#10b981', borderColor: '#10b981', gap: 5 }}
+                      className="flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm transition shrink-0"
+                      title="Mark as completed"
                     >
-                      <CheckCircle2 size={14} /> Complete
+                      <CheckCircle2 size={13} /> <span>Complete</span>
                     </button>
                   </div>
                 </div>
@@ -311,7 +339,7 @@ export default function FollowUpsPage() {
         <ScheduleFollowUpModal
           lead={schedulingLead}
           onClose={() => setSchedulingLead(null)}
-          onUpdated={() => fetchFollowUps()}
+          onUpdated={() => queryClient.invalidateQueries({ queryKey: ['leads'] })}
         />
       )}
 
@@ -319,8 +347,16 @@ export default function FollowUpsPage() {
         <CompleteFollowUpModal
           lead={completingLead}
           onClose={() => setCompletingLead(null)}
-          onCompleted={() => fetchFollowUps()}
+          onCompleted={() => queryClient.invalidateQueries({ queryKey: ['leads'] })}
           onPromptScheduleNext={l => setSchedulingLead(l)}
+        />
+      )}
+
+      {cancellingLead && (
+        <CancelFollowUpModal
+          lead={cancellingLead}
+          onClose={() => setCancellingLead(null)}
+          onCancelled={() => queryClient.invalidateQueries({ queryKey: ['leads'] })}
         />
       )}
     </div>

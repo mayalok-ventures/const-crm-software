@@ -106,6 +106,19 @@ function setCachedCount(key, count) {
   }
   countCache.set(key, { count, expiresAt: Date.now() + COUNT_CACHE_TTL });
 }
+function invalidateLeadCountCache(workspaceId) {
+  if (!workspaceId) {
+    countCache.clear();
+    return;
+  }
+  const prefix = String(workspaceId);
+  for (const key of countCache.keys()) {
+    if (key.startsWith(prefix)) {
+      countCache.delete(key);
+    }
+  }
+}
+exports.invalidateLeadCountCache = invalidateLeadCountCache;
 
 // @desc  Get all leads (paginated, filtered, team-aware)
 // @route GET /api/leads
@@ -279,7 +292,7 @@ exports.getLeads = async (req, res) => {
     const cachedTotal = getCachedCount(countCacheKey);
 
     const leadsPromise = Lead.find(query)
-      .select('-leadActivities -editHistory -customWebhookPayloads')
+      .select('-leadActivities -editHistory -customWebhookPayloads -notes -details -rawPayload')
       .populate('projectId', 'name location basePrice city')
       .populate('assignedTo', 'name usercode email')
       .sort({ updatedAt: -1 })

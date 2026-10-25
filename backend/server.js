@@ -180,6 +180,13 @@ app.use('/api/catalogue', catalogueRoutes); // Colleges, Degrees, Specialization
 app.use('/api/workspace', workspaceRoutes);
 app.use('/api/pipelines', pipelineRoutes);
 app.use('/api/deals', dealRoutes);
+
+// High-speed Single Bootstrap Route (Consolidates startup queries)
+const { protect: protectAuth } = require('./src/middleware/auth');
+const { resolveWorkspace: resolveWs } = require('./src/middleware/permission');
+const { getBootstrapData } = require('./src/controllers/bootstrapController');
+app.get('/api/bootstrap', protectAuth, resolveWs, getBootstrapData);
+
 const superAdminRoutes = require('./src/superadmin/routes/superAdminRoutes');
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/superadmin', superAdminRoutes);
@@ -263,19 +270,25 @@ connectDB().then(async () => {
     // Start event loop & memory monitor if PERF_DEBUG=1
     startEventLoopMonitor();
 
-    // Auto-restore saved WhatsApp sessions
-    waSession.initSessions().catch(console.error);
+    const runBackgroundWorkers = process.env.RUN_BACKGROUND_WORKERS !== 'false';
 
-    // Start campaign background worker
-    campaignWorker.startWorker();
+    if (runBackgroundWorkers) {
+      // Auto-restore saved WhatsApp sessions
+      waSession.initSessions().catch(console.error);
+
+      // Start campaign background worker
+      campaignWorker.startWorker();
+    } else {
+      console.log('⚡ [crm-api] Process running in isolated HTTP API mode (workers delegated to crm-worker).');
+    }
 
     let agent, heartbeat, statusEvaluator, aggregator;
     let databaseMonitorWorker, backupMonitorWorker, alertMonitorWorker;
     let integrationMonitorWorker, usageMonitorWorker, apiKeySecurityWorker;
     let deploymentMonitorWorker, healthScoreWorker;
 
-    // Start background monitoring agents and workers (except in testing)
-    if (process.env.NODE_ENV !== 'test') {
+    // Start background monitoring agents and workers (except in testing or when delegated to dedicated worker)
+    if (process.env.NODE_ENV !== 'test' && runBackgroundWorkers) {
       const MonitoringAgent = require('./src/monitoring/MonitoringAgent').default;
       const ServerHeartbeat = require('./src/monitoring/ServerHeartbeat').default;
       const StatusEvaluator = require('./src/monitoring/StatusEvaluator').default;

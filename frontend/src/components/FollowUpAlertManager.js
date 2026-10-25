@@ -1,14 +1,14 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import api from '@/lib/api';
+import api, { cachedGet } from '@/lib/api';
 import { waLink } from '@/lib/auth';
 import { useAlarm } from '@/lib/AlarmContext';
 import toast from 'react-hot-toast';
 import {
   BellRing, Clock, AlertTriangle, MessageSquare,
   CheckCircle2, X, ChevronRight, Calendar, ArrowRight, CheckCircle, VolumeX, Volume2,
-  Sparkles, ShieldAlert, Timer
+  Sparkles, ShieldAlert, Timer, Ban
 } from 'lucide-react';
 import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
 
@@ -70,9 +70,10 @@ export default function FollowUpAlertManager() {
   const [nextAgendaNote, setNextAgendaNote] = useState('');
   const [delayMinutesInput, setDelayMinutesInput] = useState(15);
   const [delayReason, setDelayReason] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [modalError, setModalError] = useState('');
-  const [activeTab, setActiveTab] = useState('complete'); // 'complete' | 'delay'
+  const [activeTab, setActiveTab] = useState('complete'); // 'complete' | 'delay' | 'cancel'
 
   // Register setter with global AlarmContext
   const { register } = useAlarm();
@@ -162,12 +163,17 @@ export default function FollowUpAlertManager() {
   const checkDueFollowUps = useCallback(async () => {
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    const isPublicPage = pathname === '/login' || pathname === '/signup' || pathname === '/privacy' || pathname === '/terms' || pathname === '/data-deletion';
-    if (!token || isPublicPage || isCheckingRef.current) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if (typeof window !== 'undefined') {
+      const p = window.location.pathname;
+      const isPublicPage = p === '/login' || p === '/signup' || p === '/privacy' || p === '/terms' || p === '/data-deletion';
+      if (isPublicPage) return;
+    }
+    if (!token || isCheckingRef.current) return;
 
     isCheckingRef.current = true;
     try {
-      const { data } = await api.get('/leads/follow-ups/due');
+      const { data } = await cachedGet('/leads/follow-ups/due', { ttl: 20000 });
       const leads = Array.isArray(data) ? data : [];
       setDueLeads(leads);
 
@@ -186,7 +192,7 @@ export default function FollowUpAlertManager() {
     } catch {} finally {
       isCheckingRef.current = false;
     }
-  }, [pathname, playAlarmSound]);
+  }, [playAlarmSound]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
@@ -223,6 +229,7 @@ export default function FollowUpAlertManager() {
     setNextAgendaNote('');
     setDelayMinutesInput(15);
     setDelayReason('');
+    setCancelReason('');
     setModalError('');
     setActiveTab('complete');
   };
@@ -302,6 +309,36 @@ export default function FollowUpAlertManager() {
       }
     } catch (err) {
       setModalError(err.response?.data?.message || 'Failed to delay follow-up');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Stop / Cancel Follow-Up Handler (Silences Alarm Permanently)
+  const handleCancelFollowUp = async (e) => {
+    e.preventDefault();
+    const cleanReason = cancelReason.trim();
+    if (!cleanReason) {
+      setModalError('A cancellation reason or note is required to stop the follow-up.');
+      return;
+    }
+
+    setActionLoading(true);
+    setModalError('');
+    try {
+      const leadId = resolvingLead._id;
+      const res = await api.post(`/leads/${leadId}/follow-up/cancel`, {
+        reason: cleanReason,
+      });
+
+      toast.success(res.data?.message || 'Follow-up stopped & alarm silenced permanently! ✅');
+      setDueLeads(prev => prev.filter(l => l._id !== leadId));
+      setResolvingLead(null);
+      if (dueLeads.length <= 1) {
+        setIsOpen(false);
+      }
+    } catch (err) {
+      setModalError(err.response?.data?.message || 'Failed to stop follow-up');
     } finally {
       setActionLoading(false);
     }
@@ -407,7 +444,19 @@ export default function FollowUpAlertManager() {
                       }`}
                     >
                       <Timer size={14} className={isDelayBlocked ? 'text-rose-500' : 'text-indigo-600'} />
-                      Apply Delay ({delaysUsed}/2 Used)
+                      Apply Delay ({delaysUsed}/2)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('cancel')}
+                      className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                        activeTab === 'cancel'
+                          ? 'bg-white text-rose-700 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <Ban size={14} className="text-rose-600" />
+                      Stop Follow-Up
                     </button>
                   </div>
                 );
@@ -636,6 +685,78 @@ export default function FollowUpAlertManager() {
                   </form>
                 );
               })()}
+
+              {/* TAB 3: STOP / CANCEL FOLLOW-UP PERMANENTLY */}
+              {activeTab === 'cancel' && (
+                <form onSubmit={handleCancelFollowUp} className="space-y-4">
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-1">
+                    <span className="text-xs font-bold text-rose-700 flex items-center gap-1.5">
+                      <Ban size={14} /> Stop Active Follow-Up Alarms
+                    </span>
+                    <p className="text-[11px] text-slate-600 m-0">
+                      This will cancel future alarms for <strong>{resolvingLead?.name}</strong> and record your explanation in the candidate activity trail.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="label text-[11px] font-semibold text-slate-600 mb-1 block">
+                      Quick Reasons:
+                    </label>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {[
+                        'Candidate not interested',
+                        'Joined another college / institution',
+                        'Requested not to call / Do not disturb',
+                        'Invalid or unreachable contact number',
+                      ].map((p, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setCancelReason(p)}
+                          className={`text-[11px] py-1 px-2.5 rounded-lg border font-medium transition ${
+                            cancelReason === p
+                              ? 'bg-rose-100 border-rose-300 text-rose-800 font-bold'
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+
+                    <label className="label text-xs font-semibold text-slate-800 flex items-center justify-between">
+                      <span>Reason / Explanation Note *</span>
+                      <span className="text-[10px] text-rose-500 font-bold uppercase">Required</span>
+                    </label>
+                    <textarea
+                      required
+                      rows={3}
+                      placeholder="e.g. Candidate confirmed they have already enrolled in another program and do not wish to be contacted..."
+                      value={cancelReason}
+                      onChange={e => setCancelReason(e.target.value)}
+                      className="input text-xs"
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setResolvingLead(null)}
+                      className="btn btn-ghost btn-sm flex-1"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={actionLoading || !cancelReason.trim()}
+                      className="btn btn-primary btn-sm flex-1 bg-rose-600 hover:bg-rose-700 border-rose-600 text-white font-bold"
+                    >
+                      {actionLoading ? <div className="spinner w-4 h-4" /> : <><Ban size={14} /> Stop Follow-Up Permanently 🛑</>}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         </div>

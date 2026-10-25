@@ -92,8 +92,110 @@ export function dueFollowUpsOptions() {
         _silentAuth: true,
         _isBackground: true,
       });
-      return res.data?.followUps || [];
+      return Array.isArray(res.data) ? res.data : (res.data?.followUps || []);
     },
     staleTime: 30000,
+  });
+}
+
+export function todayFollowUpsOptions() {
+  return queryOptions({
+    queryKey: ['leads', 'follow-ups', 'today'],
+    queryFn: async ({ signal }) => {
+      const res = await api.get('/leads/follow-ups/today', { signal });
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    staleTime: 30000,
+  });
+}
+
+export function authMeOptions() {
+  return queryOptions({
+    queryKey: ['auth', 'me'],
+    queryFn: async ({ signal }) => {
+      const res = await api.get('/auth/me', { signal });
+      return res.data;
+    },
+    staleTime: 60000,
+  });
+}
+
+export function workspaceCurrentOptions() {
+  return queryOptions({
+    queryKey: ['workspace', 'current'],
+    queryFn: async ({ signal }) => {
+      const res = await api.get('/workspace/current', { signal });
+      return res.data?.data || res.data;
+    },
+    staleTime: 60000,
+  });
+}
+
+export function workspaceMembersOptions() {
+  return queryOptions({
+    queryKey: ['workspace', 'members'],
+    queryFn: async ({ signal }) => {
+      const res = await api.get('/workspace/members', { signal });
+      return res.data?.data || [];
+    },
+    staleTime: 60000,
+  });
+}
+
+export function dealsOptions(filters = {}) {
+  return queryOptions({
+    queryKey: ['deals', 'list', filters],
+    queryFn: async ({ signal }) => {
+      const res = await api.get('/deals', { params: { limit: 100, ...filters }, signal });
+      return res.data?.data || res.data || [];
+    },
+    staleTime: 30000,
+  });
+}
+
+export function dealsSummaryOptions() {
+  return queryOptions({
+    queryKey: ['deals', 'summary'],
+    queryFn: async ({ signal }) => {
+      const res = await api.get('/deals/summary/commission', { signal });
+      return res.data?.data || null;
+    },
+    staleTime: 30000,
+  });
+}
+
+export function notificationsOptions() {
+  return queryOptions({
+    queryKey: ['notifications', 'list'],
+    queryFn: async ({ signal }) => {
+      const res = await api.get('/notifications', { signal });
+      return {
+        notifications: res.data?.notifications || (Array.isArray(res.data) ? res.data : []),
+        unreadCount: res.data?.unreadCount || 0,
+      };
+    },
+    staleTime: 20000,
+  });
+}
+
+export function bootstrapOptions(queryClient) {
+  return queryOptions({
+    queryKey: ['bootstrap'],
+    queryFn: async ({ signal }) => {
+      const res = await api.get('/bootstrap', { signal });
+      const data = res.data;
+      if (queryClient && data) {
+        if (data.user) queryClient.setQueryData(['auth', 'me'], data.user);
+        if (data.workspace) queryClient.setQueryData(['workspace', 'current'], data.workspace);
+        if (data.members) queryClient.setQueryData(['workspace', 'members'], data.members);
+        if (data.counts) {
+          queryClient.setQueryData(['notifications', 'unread-count'], data.counts.unreadNotifications);
+          queryClient.setQueryData(['leads', 'follow-ups', 'due-count'], data.counts.dueFollowUps);
+        }
+        if (data.integrations) queryClient.setQueryData(['integrations', 'list'], data.integrations);
+      }
+      return data;
+    },
+    staleTime: 60000,
   });
 }

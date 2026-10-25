@@ -8,18 +8,43 @@ import { waLink, getUser } from '@/lib/auth';
 import BottomNav from '@/components/BottomNav';
 import {
   Award, TrendingUp, Search, Phone, MessageSquare, RefreshCw,
-  DollarSign, CheckCircle2, XCircle, Clock, ChevronRight
+  DollarSign, CheckCircle2, XCircle, Clock, ChevronRight, Plus,
+  FileText, Building2, GraduationCap, ShieldCheck
 } from 'lucide-react';
 import { formatDisplayDateTime } from '@/lib/dateUtils';
 import { STAGE_LABELS } from '@/components/LeadModals';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { dealsOptions, dealsSummaryOptions } from '@/lib/queries';
 
 export default function DealsPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
-  const [subTab, setSubTab] = useState('won'); // 'won' | 'negotiation' | 'lost'
-  const [deals, setDeals] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [subTab, setSubTab] = useState('confirmed'); // 'confirmed' | 'seat_locked' | 'pipeline'
+
+  const queryClient = useQueryClient();
+  const { data: dealsData, isLoading: isDealsLoading, refetch: refetchDeals } = useQuery(dealsOptions({ limit: 100 }));
+  const { data: commissionSummaryData, refetch: refetchSummary } = useQuery(dealsSummaryOptions());
+
+  const deals = Array.isArray(dealsData) ? dealsData : [];
+  const commissionSummary = commissionSummaryData || null;
+  const loading = isDealsLoading && deals.length === 0;
   const [search, setSearch] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [submittingDeal, setSubmittingDeal] = useState(false);
+
+  // New Deal Form State
+  const [dealForm, setDealForm] = useState({
+    studentName: '',
+    studentPhone: '',
+    studentEmail: '',
+    collegeName: '',
+    courseName: '',
+    quota: 'Merit',
+    tuitionValue: '',
+    tokenFeePaid: '',
+    commissionRate: '10',
+    invoiceNumber: '',
+  });
 
   useEffect(() => {
     const u = getUser();
@@ -30,263 +55,459 @@ export default function DealsPage() {
     setUser(u);
   }, [router]);
 
-  const fetchDeals = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/leads?limit=200');
-      const allLeads = res.data?.leads || [];
-      setDeals(allLeads);
-    } catch {
-      toast.error('Failed to load deals data');
-    } finally {
-      setLoading(false);
+  const handleRefresh = useCallback(() => {
+    refetchDeals();
+    refetchSummary();
+  }, [refetchDeals, refetchSummary]);
+
+  const handleCreateDeal = async (e) => {
+    e.preventDefault();
+    if (!dealForm.studentName || !dealForm.collegeName || !dealForm.courseName) {
+      toast.error('Please enter student name, college, and course');
+      return;
     }
-  }, []);
 
-  useEffect(() => {
-    fetchDeals();
-  }, [fetchDeals]);
+    setSubmittingDeal(true);
+    try {
+      const tuition = Number(dealForm.tuitionValue) || 0;
+      const rate = Number(dealForm.commissionRate) || 0;
+      const expectedAmount = tuition * rate / 100;
 
-  const wonDeals = deals.filter(l => l.status === 'converted' || l.status === 'closed' || l.status === 'payment_done');
-  const negotiationDeals = deals.filter(l => l.status === 'negotiation' || l.status === 'site_visit_scheduled');
-  const lostDeals = deals.filter(l => l.status === 'not_interested' || l.status === 'lost');
+      await api.post('/deals', {
+        studentName: dealForm.studentName.trim(),
+        studentPhone: dealForm.studentPhone.trim(),
+        studentEmail: dealForm.studentEmail.trim(),
+        collegeName: dealForm.collegeName.trim(),
+        courseName: dealForm.courseName.trim(),
+        quota: dealForm.quota,
+        tuitionValue: tuition,
+        tokenFeePaid: Number(dealForm.tokenFeePaid) || 0,
+        admissionStatus: 'confirmed',
+        commission: {
+          ratePercent: rate,
+          expectedAmount,
+          invoiceNumber: dealForm.invoiceNumber.trim(),
+          invoiceStatus: dealForm.invoiceNumber ? 'invoiced' : 'unbilled',
+        },
+      });
 
-  const totalWonRevenue = wonDeals.reduce((sum, d) => sum + (Number(d.budget) || 0), 0);
-  const totalNegotiationPipeline = negotiationDeals.reduce((sum, d) => sum + (Number(d.budget) || 0), 0);
+      toast.success('Admission deal recorded successfully! 🎉');
+      setShowCreateModal(false);
+      setDealForm({
+        studentName: '', studentPhone: '', studentEmail: '',
+        collegeName: '', courseName: '', quota: 'Merit',
+        tuitionValue: '', tokenFeePaid: '', commissionRate: '10', invoiceNumber: ''
+      });
+      queryClient.invalidateQueries({ queryKey: ['deals'] });
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to record deal');
+    } finally {
+      setSubmittingDeal(false);
+    }
+  };
 
-  const activeList = (subTab === 'won' ? wonDeals : subTab === 'negotiation' ? negotiationDeals : lostDeals)
+  const confirmedDeals = deals.filter(d => d.admissionStatus === 'confirmed');
+  const lockedDeals = deals.filter(d => d.admissionStatus === 'seat_locked');
+  const allDeals = deals;
+
+  const activeList = (subTab === 'confirmed' ? confirmedDeals : subTab === 'seat_locked' ? lockedDeals : allDeals)
     .filter(d => {
       if (!search.trim()) return true;
       const q = search.toLowerCase();
       return (
-        (d.name && d.name.toLowerCase().includes(q)) ||
-        (d.phone && d.phone.includes(q)) ||
-        (d.project && d.project.toLowerCase().includes(q))
+        (d.studentName && d.studentName.toLowerCase().includes(q)) ||
+        (d.studentPhone && d.studentPhone.includes(q)) ||
+        (d.collegeName && d.collegeName.toLowerCase().includes(q)) ||
+        (d.courseName && d.courseName.toLowerCase().includes(q))
       );
     });
+
+  const totalTuitionRevenue = commissionSummary?.totalTuition || deals.reduce((sum, d) => sum + (Number(d.tuitionValue) || 0), 0);
+  const totalExpectedCommission = commissionSummary?.totalExpectedCommission || deals.reduce((sum, d) => sum + (Number(d.commission?.expectedAmount) || 0), 0);
+  const totalReceivedCommission = commissionSummary?.totalReceivedCommission || deals.reduce((sum, d) => sum + (Number(d.commission?.receivedAmount) || 0), 0);
+  const outstandingCommission = Math.max(0, totalExpectedCommission - totalReceivedCommission);
 
   return (
     <div className="app-container">
       <BottomNav active="deals" />
 
-      <main className="main-content">
+      <main className="main-content" data-crm-canvas="true">
         <div style={{ width: '100%' }} className="pb-mobile-nav">
           
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
             <div>
               <h1 className="text-xl sm:text-2xl font-extrabold m-0 text-slate-900 flex items-center gap-2.5">
-                <Award size={24} className="text-emerald-600 shrink-0" /> Deals & Opportunities Workspace
+                <Award size={24} className="text-emerald-600 shrink-0" /> Admissions & Deals Ledger
               </h1>
               <p className="m-0 mt-1 text-xs sm:text-sm text-slate-500">
-                Track closed contracts, active revenue opportunities, and deal values
+                Track confirmed admissions, university quota bookings, tuition contracts, and commission invoices.
               </p>
             </div>
 
-            <button
-              onClick={fetchDeals}
-              className="btn btn-ghost btn-sm self-start sm:self-auto"
-              style={{ gap: 6, fontSize: 13 }}
-            >
-              <RefreshCw size={14} /> Refresh Deals
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(true)}
+                className="btn btn-primary text-xs sm:text-sm flex items-center gap-1.5 shadow-md shadow-emerald-100 bg-emerald-600 hover:bg-emerald-700"
+              >
+                <Plus size={16} />
+                <span>Record Admission</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleRefresh}
+                className="btn btn-secondary text-xs sm:text-sm flex items-center gap-1.5"
+                title="Refresh Deals"
+              >
+                <RefreshCw size={14} />
+              </button>
+            </div>
           </div>
 
-          {/* KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3.5 mb-5">
-            <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Total Closed Revenue</span>
-              <h2 style={{ fontSize: 22, fontWeight: 800, margin: '6px 0 0', color: '#10b981' }}>
-                ₹{totalWonRevenue.toLocaleString('en-IN')}
+          {/* Financial KPI Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3.5 mb-5 deals-kpi-grid">
+            <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm min-w-0">
+              <span className="text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase block truncate">Tuition Volume</span>
+              <h2 className="text-base sm:text-xl font-extrabold m-0 mt-1 text-slate-900 truncate">
+                ₹{totalTuitionRevenue.toLocaleString('en-IN')}
               </h2>
+              <span className="text-[10px] text-slate-400 mt-0.5 block truncate">{confirmedDeals.length} Confirmed Seats</span>
             </div>
 
-            <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Deals Won Count</span>
-              <h2 style={{ fontSize: 22, fontWeight: 800, margin: '6px 0 0', color: 'var(--text)' }}>
-                {wonDeals.length} Won Deals
+            <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm min-w-0">
+              <span className="text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase block truncate">Expected Commission</span>
+              <h2 className="text-base sm:text-xl font-extrabold m-0 mt-1 text-indigo-600 truncate">
+                ₹{totalExpectedCommission.toLocaleString('en-IN')}
               </h2>
+              <span className="text-[10px] text-indigo-500 mt-0.5 block truncate">University Payouts</span>
             </div>
 
-            <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>In Negotiation Pipeline</span>
-              <h2 style={{ fontSize: 22, fontWeight: 800, margin: '6px 0 0', color: 'var(--accent)' }}>
-                ₹{totalNegotiationPipeline.toLocaleString('en-IN')}
+            <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm min-w-0">
+              <span className="text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase block truncate">Received Commission</span>
+              <h2 className="text-base sm:text-xl font-extrabold m-0 mt-1 text-emerald-600 truncate">
+                ₹{totalReceivedCommission.toLocaleString('en-IN')}
               </h2>
+              <span className="text-[10px] text-emerald-600 mt-0.5 block truncate">Settled to Bank</span>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm min-w-0">
+              <span className="text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase block truncate">Outstanding</span>
+              <h2 className="text-base sm:text-xl font-extrabold m-0 mt-1 text-amber-600 truncate">
+                ₹{outstandingCommission.toLocaleString('en-IN')}
+              </h2>
+              <span className="text-[10px] text-amber-600 mt-0.5 block truncate">Pending Invoices</span>
             </div>
           </div>
 
           {/* Sub-Tabs */}
-          <div className="no-scrollbar" style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            borderBottom: '1px solid var(--border)',
-            paddingBottom: 12,
-            marginBottom: 20,
-            overflowX: 'auto',
-            WebkitOverflowScrolling: 'touch'
-          }}>
+          <div className="flex items-center gap-2 border-b border-slate-200 pb-3 mb-4 overflow-x-auto no-scrollbar">
             <button
-              onClick={() => setSubTab('won')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '8px 16px',
-                borderRadius: 10,
-                border: 'none',
-                background: subTab === 'won' ? '#10b981' : 'var(--surface)',
-                color: subTab === 'won' ? '#fff' : 'var(--text)',
-                fontWeight: subTab === 'won' ? 700 : 500,
-                fontSize: 13,
-                cursor: 'pointer'
-              }}
+              type="button"
+              onClick={() => setSubTab('confirmed')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition whitespace-nowrap shrink-0 ${
+                subTab === 'confirmed'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
             >
-              <CheckCircle2 size={16} /> Won Deals ({wonDeals.length})
+              <CheckCircle2 size={14} /> Confirmed ({confirmedDeals.length})
             </button>
 
             <button
-              onClick={() => setSubTab('negotiation')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '8px 16px',
-                borderRadius: 10,
-                border: 'none',
-                background: subTab === 'negotiation' ? 'var(--accent)' : 'var(--surface)',
-                color: subTab === 'negotiation' ? '#fff' : 'var(--text)',
-                fontWeight: subTab === 'negotiation' ? 700 : 500,
-                fontSize: 13,
-                cursor: 'pointer'
-              }}
+              type="button"
+              onClick={() => setSubTab('seat_locked')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition whitespace-nowrap shrink-0 ${
+                subTab === 'seat_locked'
+                  ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
             >
-              <Clock size={16} /> In Negotiation ({negotiationDeals.length})
+              <Clock size={14} /> Seat Locked ({lockedDeals.length})
             </button>
 
             <button
-              onClick={() => setSubTab('lost')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '8px 16px',
-                borderRadius: 10,
-                border: 'none',
-                background: subTab === 'lost' ? '#ef4444' : 'var(--surface)',
-                color: subTab === 'lost' ? '#fff' : 'var(--text)',
-                fontWeight: subTab === 'lost' ? 700 : 500,
-                fontSize: 13,
-                cursor: 'pointer'
-              }}
+              type="button"
+              onClick={() => setSubTab('all')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition whitespace-nowrap shrink-0 ${
+                subTab === 'all'
+                  ? 'bg-slate-100 text-slate-800 border-slate-300'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
             >
-              <XCircle size={16} /> Lost Opportunities ({lostDeals.length})
+              <span>All Deals ({deals.length})</span>
             </button>
           </div>
 
           {/* Search */}
-          <div style={{ marginBottom: 16, position: 'relative', maxWidth: 400 }}>
-            <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: 12, top: 12 }} />
+          <div className="relative max-w-sm mb-4">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="text"
-              className="input"
-              placeholder="Search deals by client, phone, package..."
+              className="input input-search w-full text-xs sm:text-sm pl-10 pr-9 h-10 bg-white border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
+              placeholder="Search candidate, college, course..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              style={{ paddingLeft: 36, height: 38, fontSize: 13 }}
             />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                title="Clear search"
+              >
+                ✕
+              </button>
+            )}
           </div>
 
-          {/* Listing */}
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-              <div className="spinner" style={{ width: 32, height: 32, margin: '0 auto 12px' }} />
-              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading deals...</p>
+          {/* Deals Listing */}
+          {loading && deals.length === 0 ? (
+            <div className="p-12 text-center text-slate-400">
+              <RefreshCw className="animate-spin mx-auto mb-2 text-indigo-500" size={24} />
+              <p className="text-xs">Loading admission deals...</p>
             </div>
           ) : activeList.length === 0 ? (
-            <div className="empty-state" style={{ padding: '60px 20px', textAlign: 'center', background: 'var(--card)', borderRadius: 16, border: '1px solid var(--border)' }}>
-              <div style={{ width: 56, height: 56, borderRadius: 16, background: 'rgba(16,185,129,0.1)', color: '#10b981', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-                <Award size={28} />
-              </div>
-              <h3 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 6px' }}>No Deals Found in this Category</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>
-                Advance prospects through your sales pipeline to populate this view.
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-sm">
+              <Award size={36} className="mx-auto mb-2 text-emerald-500 opacity-60" />
+              <h3 className="text-sm font-bold text-slate-800 m-0">No Admission Deals in this View</h3>
+              <p className="text-xs text-slate-400 m-0 mt-1">
+                Record a confirmed candidate admission or advance leads in your pipeline.
               </p>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(true)}
+                className="btn btn-primary text-xs mt-3 inline-flex items-center gap-1.5"
+              >
+                <Plus size={14} /> Record First Deal
+              </button>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="space-y-3">
               {activeList.map(deal => (
                 <div
                   key={deal._id}
-                  style={{
-                    background: 'var(--card)',
-                    borderRadius: 14,
-                    border: '1px solid var(--border)',
-                    padding: '16px 18px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: 14
-                  }}
+                  className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm hover:border-indigo-200 transition flex flex-col md:flex-row md:items-center justify-between gap-3"
                 >
-                  <div style={{ flex: '1 1 280px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <Link
-                        href={`/leads/${deal._id}`}
-                        style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', textDecoration: 'none' }}
-                      >
-                        {deal.name || 'Unnamed Prospect'}
-                      </Link>
-                      <span className="badge badge-tag" style={{ fontSize: 11 }}>
-                        {STAGE_LABELS[deal.status] || deal.status}
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 font-bold shrink-0 mt-0.5">
+                      <GraduationCap size={20} />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-extrabold text-slate-900 text-sm">{deal.studentName}</span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800">
+                          {deal.admissionStatus}
+                        </span>
+                        {deal.quota && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">
+                            {deal.quota} Quota
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="text-xs text-slate-600 mt-1 flex items-center gap-1.5 font-medium">
+                        <Building2 size={13} className="text-slate-400" />
+                        <span>{deal.collegeName}</span> • <span className="text-indigo-600">{deal.courseName}</span>
+                      </div>
+
+                      {deal.studentPhone && (
+                        <div className="text-[11px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+                          <Phone size={11} /> {deal.studentPhone}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Financial & Commission Status */}
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-4 border-t md:border-t-0 pt-3 md:pt-0 border-slate-100 justify-between md:justify-end">
+                    <div className="text-left md:text-right min-w-[120px]">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Tuition / Commission</span>
+                      <span className="text-xs font-bold text-slate-900">₹{(deal.tuitionValue || 0).toLocaleString('en-IN')}</span>
+                      <span className="text-[11px] text-indigo-600 block font-semibold">
+                        Est. ₹{(deal.commission?.expectedAmount || 0).toLocaleString('en-IN')} ({deal.commission?.ratePercent || 10}%)
                       </span>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-muted)' }}>
-                      <span>📞 {deal.phone}</span>
-                      {deal.project && <span>📦 {deal.project}</span>}
-                      {deal.budget && (
-                        <span style={{ fontWeight: 700, color: subTab === 'won' ? '#10b981' : 'var(--accent)' }}>
-                          💰 Deal Value: ₹{Number(deal.budget).toLocaleString('en-IN')}
-                        </span>
-                      )}
-                      {deal.updatedAt && (
-                        <span>🕒 Last Activity: {new Date(deal.updatedAt).toLocaleDateString()}</span>
+                    <div className="text-left md:text-right pl-2 border-l border-slate-100 min-w-[90px]">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Payout Status</span>
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase mt-0.5 ${
+                        deal.commission?.payoutStatus === 'paid'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : deal.commission?.invoiceStatus === 'invoiced'
+                          ? 'bg-indigo-100 text-indigo-800'
+                          : 'bg-amber-50 text-amber-800 border border-amber-200'
+                      }`}>
+                        {deal.commission?.payoutStatus === 'paid' ? 'Paid' : deal.commission?.invoiceStatus === 'invoiced' ? 'Invoiced' : 'Unbilled'}
+                      </span>
+                      {deal.commission?.invoiceNumber && (
+                        <span className="text-[10px] text-slate-400 block font-mono">Inv #{deal.commission.invoiceNumber}</span>
                       )}
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-start sm:justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
-                    <a
-                      href={`tel:${deal.phone}`}
-                      className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
-                      style={{ padding: '6px 10px', height: 34, color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}
-                    >
-                      <Phone size={14} /> Call
-                    </a>
-
-                    <a
-                      href={waLink(deal.phone, `Hi ${deal.name || ''}, connecting regarding our proposal.`)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center"
-                      style={{ padding: '6px 10px', height: 34, color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}
-                    >
-                      <MessageSquare size={14} /> WhatsApp
-                    </a>
-
-                    <Link
-                      href={`/leads/${deal._id}`}
-                      className="btn btn-primary btn-sm flex-1 sm:flex-none justify-center"
-                      style={{ padding: '6px 12px', height: 34, gap: 5 }}
-                    >
-                      Details <ChevronRight size={14} />
-                    </Link>
-                  </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Record Admission Deal Modal */}
+          {showCreateModal && (
+            <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4">
+              <div className="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-6 shadow-2xl animate-fade-in border border-slate-100 max-h-[92vh] overflow-y-auto">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                  <h3 className="text-base font-bold text-slate-900 m-0 flex items-center gap-2">
+                    <Award size={18} className="text-emerald-600" />
+                    Record Confirmed Admission Deal
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateModal(false)}
+                    className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <form onSubmit={handleCreateDeal} className="space-y-3.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">Student Name *</label>
+                      <input
+                        type="text"
+                        value={dealForm.studentName}
+                        onChange={e => setDealForm({ ...dealForm, studentName: e.target.value })}
+                        placeholder="e.g. Rahul Sharma"
+                        className="input w-full text-xs"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">Phone Number</label>
+                      <input
+                        type="tel"
+                        value={dealForm.studentPhone}
+                        onChange={e => setDealForm({ ...dealForm, studentPhone: e.target.value })}
+                        placeholder="e.g. 9876543210"
+                        className="input w-full text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">College / University *</label>
+                      <input
+                        type="text"
+                        value={dealForm.collegeName}
+                        onChange={e => setDealForm({ ...dealForm, collegeName: e.target.value })}
+                        placeholder="e.g. Manipal Institute of Technology"
+                        className="input w-full text-xs"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">Course / Branch *</label>
+                      <input
+                        type="text"
+                        value={dealForm.courseName}
+                        onChange={e => setDealForm({ ...dealForm, courseName: e.target.value })}
+                        placeholder="e.g. B.Tech Computer Science"
+                        className="input w-full text-xs"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">Seat Quota</label>
+                      <select
+                        value={dealForm.quota}
+                        onChange={e => setDealForm({ ...dealForm, quota: e.target.value })}
+                        className="input w-full text-xs"
+                      >
+                        <option value="Merit">Merit Quota</option>
+                        <option value="Management">Management Quota</option>
+                        <option value="NRI">NRI Quota</option>
+                        <option value="State">State Quota</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">Total Tuition (₹)</label>
+                      <input
+                        type="number"
+                        value={dealForm.tuitionValue}
+                        onChange={e => setDealForm({ ...dealForm, tuitionValue: e.target.value })}
+                        placeholder="e.g. 450000"
+                        className="input w-full text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">Commission %</label>
+                      <input
+                        type="number"
+                        value={dealForm.commissionRate}
+                        onChange={e => setDealForm({ ...dealForm, commissionRate: e.target.value })}
+                        placeholder="10"
+                        className="input w-full text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">Token Fee Paid (₹)</label>
+                      <input
+                        type="number"
+                        value={dealForm.tokenFeePaid}
+                        onChange={e => setDealForm({ ...dealForm, tokenFeePaid: e.target.value })}
+                        placeholder="e.g. 50000"
+                        className="input w-full text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">Invoice Number (Optional)</label>
+                      <input
+                        type="text"
+                        value={dealForm.invoiceNumber}
+                        onChange={e => setDealForm({ ...dealForm, invoiceNumber: e.target.value })}
+                        placeholder="e.g. INV-2026-081"
+                        className="input w-full text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-500">
+                    <p className="m-0">
+                      Admission deals separate student confirmation from university commission billing and payout reconciliation.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateModal(false)}
+                      className="btn btn-secondary text-xs"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submittingDeal}
+                      className="btn btn-primary text-xs px-4 bg-emerald-600 hover:bg-emerald-700"
+                    >
+                      {submittingDeal ? 'Recording...' : 'Record Deal'}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           )}
 

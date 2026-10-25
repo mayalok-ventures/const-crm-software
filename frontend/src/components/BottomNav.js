@@ -103,6 +103,7 @@ function BottomNavContent({ active }) {
   useEffect(() => {
     let mounted = true;
     const fetchOverdueBadge = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       try {
         const token = localStorage.getItem('token');
         if (!token) return;
@@ -113,16 +114,24 @@ function BottomNavContent({ active }) {
       } catch (e) { }
     };
     fetchOverdueBadge();
-    const iv = setInterval(fetchOverdueBadge, 30000);
+    const iv = setInterval(fetchOverdueBadge, 60000);
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchOverdueBadge();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
     return () => {
       mounted = false;
       clearInterval(iv);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
 
   useEffect(() => {
     let mounted = true;
     const fetchUnread = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       try {
         const res = await cachedGet('/notifications', { ttl: 20000 });
         if (mounted) {
@@ -131,10 +140,17 @@ function BottomNavContent({ active }) {
       } catch { }
     };
     fetchUnread();
-    const interval = setInterval(fetchUnread, 30000);
+    const interval = setInterval(fetchUnread, 60000);
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchUnread();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
     return () => {
       mounted = false;
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
 
