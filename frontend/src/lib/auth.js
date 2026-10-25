@@ -35,66 +35,64 @@ export const clearAuth = () => {
     localStorage.removeItem('user');
     localStorage.removeItem('token');
     window.dispatchEvent(new CustomEvent('user-updated', { detail: null }));
+    try {
+      const { clearAllQueryCache } = require('@/components/Providers');
+      if (clearAllQueryCache) clearAllQueryCache();
+    } catch (_) {}
+    try {
+      const { clearCache } = require('@/lib/api');
+      if (clearCache) clearCache();
+    } catch (_) {}
   }
 };
 
 export const isLoggedIn = () => !!getToken();
+export const isAuthenticated = () => !!getToken();
 
 // ─────────────────────────────────────────────────────────────
-// ROLE & PERMISSION HIERARCHY HELPERS (RBAC)
+// ROLE & PERMISSION HELPERS
 // ─────────────────────────────────────────────────────────────
 export const isSuperAdmin = (user) => {
   if (!user) return false;
-  return Boolean(user.role === 'superadmin');
+  return Boolean(user.role === 'superadmin' || user.isAdmin);
 };
 
 export const isOwner = (user) => {
   if (!user) return false;
-  if (isSuperAdmin(user)) return false;
-  return Boolean(
-    user.workStatus === 'company_owner' ||
-    user.companyRole === 'owner' ||
-    user.role === 'admin' ||
-    user.roleId?.roleType === 'OWNER'
-  );
+  if (isSuperAdmin(user)) return true;
+  const role = (user.workspaceRole || user.companyRole || '').toLowerCase();
+  if (role === 'owner') return true;
+  if (user.workStatus === 'company_owner' || user.workStatus === 'solo_consultant') return true;
+  // If no explicit sub-role exists and user has no parent company, user operates as solo owner
+  if (!user.companyRole && !user.workspaceRole && !user.companyId) return true;
+  return false;
 };
 
 export const isManager = (user) => {
   if (!user) return false;
-  if (isSuperAdmin(user) || isOwner(user)) return false;
-  return Boolean(
-    user.companyRole === 'manager' ||
-    user.role === 'manager' ||
-    user.roleId?.roleType === 'MANAGER'
-  );
+  if (isSuperAdmin(user)) return true;
+  const role = (user.workspaceRole || user.companyRole || '').toLowerCase();
+  return role === 'manager';
 };
 
-export const isAgent = (user) => {
+export const isCounselor = (user) => {
   if (!user) return false;
-  if (isSuperAdmin(user) || isOwner(user) || isManager(user)) return false;
-  return Boolean(
-    user.companyRole === 'agent' ||
-    user.companyRole === 'sales_rep' ||
-    user.companyRole === 'telecaller' ||
-    user.role === 'agent' ||
-    user.workStatus === 'agent' ||
-    user.workStatus === 'employee' ||
-    user.roleId?.roleType === 'AGENT'
-  );
+  const role = (user.workspaceRole || user.companyRole || user.workStatus || user.role || '').toLowerCase();
+  return role === 'counsellor' || role === 'counselor' || role === 'agent' || role === 'telecaller';
 };
 
-export const isRealEstateTenant = (user) => {
-  if (!user) return false;
-  const ind = String(user.industryType || user.companyId?.industryType || '').toLowerCase();
-  return ind.includes('real') || ind.includes('estate') || ind.includes('property') || ind.includes('realty') || ind.includes('builder');
-};
+export const isCounsellor = isCounselor;
+export const isAgent = (user) => isCounselor(user);
+
+export const isRealEstateTenant = () => false;
 
 export const getUserRole = (user) => {
+  if (!user) return 'ANONYMOUS';
   if (isSuperAdmin(user)) return 'SUPERADMIN';
   if (isOwner(user)) return 'OWNER';
   if (isManager(user)) return 'MANAGER';
-  if (isAgent(user)) return 'AGENT';
-  return 'AGENT';
+  if (isCounselor(user)) return 'COUNSELLOR';
+  return 'USER';
 };
 
 /**
@@ -107,8 +105,9 @@ export const syncUser = async () => {
   if (!token) return null;
 
   try {
-    const { default: api } = await import('@/lib/api');
-    const { data } = await api.get('/auth/me');
+    const { cachedGet } = await import('@/lib/api');
+    const res = await cachedGet('/auth/me', { ttl: 30000 });
+    const data = res?.data;
     if (data) {
       setUser(data);
       return data;

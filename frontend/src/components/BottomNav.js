@@ -23,9 +23,18 @@ import {
   Percent, CheckSquare, Layers, LogOut, Settings, ShieldCheck
 } from 'lucide-react';
 import PlanStatusWidget from '@/components/PlanStatusWidget';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  leadsListOptions,
+  pipelineOptions,
+  dashboardStatsOptions,
+  membersOptions,
+  integrationsOptions,
+} from '@/lib/queries';
 
 function BottomNavContent({ active }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentTab = searchParams?.get('tab') || null;
@@ -39,6 +48,52 @@ function BottomNavContent({ active }) {
   const [profileHref, setProfileHref] = useState('/profile');
   const [generalControlsExpanded, setGeneralControlsExpanded] = useState(false);
   const [leadsExpanded, setLeadsExpanded] = useState(false);
+
+  const handlePrefetch = (key, href) => {
+    if (router?.prefetch && href) {
+      router.prefetch(href);
+    }
+    if (!queryClient) return;
+    try {
+      if (key === 'leads') {
+        queryClient.prefetchQuery(leadsListOptions({ page: 1, limit: 25 }));
+        queryClient.prefetchQuery(membersOptions());
+      } else if (key === 'pipeline') {
+        queryClient.prefetchQuery(pipelineOptions());
+      } else if (key === 'dashboard') {
+        queryClient.prefetchQuery(dashboardStatsOptions());
+      } else if (key === 'integrations') {
+        queryClient.prefetchQuery(integrationsOptions());
+      }
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    if (navigator.connection) {
+      if (navigator.connection.saveData) return;
+      if (navigator.connection.effectiveType === '2g' || navigator.connection.effectiveType === 'slow-2g') return;
+    }
+
+    const prefetchMainTabs = async () => {
+      try {
+        await queryClient.prefetchQuery(leadsListOptions({ page: 1, limit: 25 }));
+        await queryClient.prefetchQuery(pipelineOptions());
+        await queryClient.prefetchQuery(dashboardStatsOptions());
+      } catch (_) {}
+    };
+
+    if ('requestIdleCallback' in window) {
+      const handle = window.requestIdleCallback(() => prefetchMainTabs(), { timeout: 3000 });
+      return () => window.cancelIdleCallback(handle);
+    } else {
+      const timeout = setTimeout(prefetchMainTabs, 1500);
+      return () => clearTimeout(timeout);
+    }
+  }, [queryClient]);
 
   const handleLogout = () => {
     clearAuth();
@@ -202,6 +257,9 @@ function BottomNavContent({ active }) {
         <Link
           href="/dashboard"
           prefetch={true}
+          onMouseEnter={() => handlePrefetch('dashboard', '/dashboard')}
+          onTouchStart={() => handlePrefetch('dashboard', '/dashboard')}
+          onFocus={() => handlePrefetch('dashboard', '/dashboard')}
           className={`bottom-nav-link btn-touch ${isLinkActive('dashboard', '/dashboard') ? 'active' : ''}`}
           onClick={() => setIsMoreDrawerOpen(false)}
           style={{ minHeight: 48, minWidth: 0, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, textDecoration: 'none', position: 'relative', color: isLinkActive('dashboard', '/dashboard') ? '#4f46e5' : '#64748b' }}
@@ -217,6 +275,9 @@ function BottomNavContent({ active }) {
         <Link
           href="/leads"
           prefetch={true}
+          onMouseEnter={() => handlePrefetch('leads', '/leads')}
+          onTouchStart={() => handlePrefetch('leads', '/leads')}
+          onFocus={() => handlePrefetch('leads', '/leads')}
           className={`bottom-nav-link btn-touch ${isLinkActive('leads', '/leads') ? 'active' : ''}`}
           onClick={() => setIsMoreDrawerOpen(false)}
           style={{ minHeight: 48, minWidth: 0, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, textDecoration: 'none', position: 'relative', color: isLinkActive('leads', '/leads') ? '#4f46e5' : '#64748b' }}
@@ -232,6 +293,9 @@ function BottomNavContent({ active }) {
         <Link
           href="/pipeline"
           prefetch={true}
+          onMouseEnter={() => handlePrefetch('pipeline', '/pipeline')}
+          onTouchStart={() => handlePrefetch('pipeline', '/pipeline')}
+          onFocus={() => handlePrefetch('pipeline', '/pipeline')}
           className={`bottom-nav-link btn-touch ${isLinkActive('pipeline', '/pipeline') ? 'active' : ''}`}
           onClick={() => setIsMoreDrawerOpen(false)}
           style={{ minHeight: 48, minWidth: 0, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, textDecoration: 'none', position: 'relative', color: isLinkActive('pipeline', '/pipeline') ? '#4f46e5' : '#64748b' }}
@@ -702,6 +766,9 @@ function BottomNavContent({ active }) {
                 key={key}
                 href={href}
                 prefetch={true}
+                onMouseEnter={() => handlePrefetch(key, href)}
+                onTouchStart={() => handlePrefetch(key, href)}
+                onFocus={() => handlePrefetch(key, href)}
                 className={`sidebar-nav-link ${activeState ? 'active' : ''}`}
                 style={{
                   justifyContent: isCollapsed ? 'center' : 'space-between',

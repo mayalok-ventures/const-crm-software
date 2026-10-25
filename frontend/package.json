@@ -4,11 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
+    "dev:turbo": "next dev --turbopack",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.104.5",
     "axios": "^1.18.1",
     "date-fns": "^4.4.0",
     "lucide-react": "^1.24.0",

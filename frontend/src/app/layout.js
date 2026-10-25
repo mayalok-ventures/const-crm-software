@@ -9,6 +9,10 @@ import SubscriptionLifecycleBanner from '@/components/SubscriptionLifecycleBanne
 import FollowUpAlertManager from '@/components/FollowUpAlertManager';
 import UserSyncManager from '@/components/UserSyncManager';
 import { AlarmProvider } from '@/lib/AlarmContext';
+import { ContextMenuProvider } from '@/components/contextmenu/ContextMenuContext';
+import ContextMenu from '@/components/contextmenu/ContextMenu';
+import AppShell from '@/components/AppShell';
+import Providers from '@/components/Providers';
 
 const inter = Inter({ subsets: ['latin'], display: 'swap' });
 
@@ -44,7 +48,7 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
       <head>
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta name="mobile-web-app-capable" content="yes" />
@@ -54,7 +58,6 @@ export default function RootLayout({ children }) {
         <link rel="manifest" href="/manifest.json" />
       </head>
       <body className={inter.className}>
-        <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
         <Script
           id="pwa-service-worker"
           strategy="afterInteractive"
@@ -82,30 +85,37 @@ export default function RootLayout({ children }) {
             `
           }}
         />
-        <AlarmProvider>
-          <SecurityWarningBanner />
-          <Owner2FAModal />
-          <SubscriptionLifecycleBanner />
-          <UserSyncManager />
-          {children}
-          <NotificationPoller />
-          <FollowUpAlertManager />
-          <Toaster
-            position="top-center"
-            containerStyle={{ zIndex: 999999 }}
-            toastOptions={{
-              duration: 4000,
-              style: {
-                background: '#ffffff',
-                color: '#0f172a',
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                fontSize: '14px',
-                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
-              },
-            }}
-          />
-        </AlarmProvider>
+        <Providers>
+          <AlarmProvider>
+            <ContextMenuProvider>
+              <SecurityWarningBanner />
+              <Owner2FAModal />
+              <SubscriptionLifecycleBanner />
+              <UserSyncManager />
+              <AppShell>
+                {children}
+              </AppShell>
+              <ContextMenu />
+              <NotificationPoller />
+              <FollowUpAlertManager />
+            </ContextMenuProvider>
+            <Toaster
+              position="top-center"
+              containerStyle={{ zIndex: 999999 }}
+              toastOptions={{
+                duration: 4000,
+                style: {
+                  background: '#ffffff',
+                  color: '#0f172a',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  fontSize: '14px',
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
+                },
+              }}
+            />
+          </AlarmProvider>
+        </Providers>
       </body>
     </html>
   );

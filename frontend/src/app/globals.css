@@ -29,7 +29,8 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  html, body {
+  html,
+  body {
     margin: 0;
     padding: 0;
     background-color: var(--background);
@@ -43,9 +44,19 @@
   }
 
   /* Safe touch target accessibility minimum */
-  button, a, input, select, textarea {
+  button,
+  a,
+  input,
+  select,
+  textarea {
     touch-action: manipulation;
   }
+}
+
+/* High-performance content visibility for long lists (skips off-screen layout/paint) */
+.virtual-card-item {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 100px;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -55,13 +66,16 @@
   width: 5px;
   height: 5px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 9999px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
@@ -71,6 +85,7 @@
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
 .no-scrollbar,
 .hide-scrollbar {
   -ms-overflow-style: none;
@@ -91,6 +106,7 @@
 }
 
 @media (min-width: 768px) {
+
   .app-shell,
   .app-container {
     display: flex !important;
@@ -98,6 +114,7 @@
     padding-left: 240px !important;
     transition: padding-left 0.2s ease-in-out !important;
   }
+
   body.sidebar-collapsed .app-shell,
   body.sidebar-collapsed .app-container {
     padding-left: 70px !important;
@@ -105,10 +122,23 @@
 }
 
 @media (max-width: 767px) {
+
   .app-shell,
   .app-container {
     padding-left: 0 !important;
   }
+}
+
+/* All nested shells/containers inside persistent AppShell dissolve cleanly */
+.app-shell .app-shell,
+.app-shell .app-container,
+.app-container .app-shell,
+.app-container .app-container {
+  padding-left: 0 !important;
+  min-height: auto !important;
+  background: transparent !important;
+  width: 100% !important;
+  flex: 1 1 0% !important;
 }
 
 .app-container-tight {
@@ -132,6 +162,7 @@
   .system-top-banner {
     padding-left: 240px;
   }
+
   body.sidebar-collapsed .system-top-banner {
     padding-left: 70px;
   }
@@ -153,6 +184,7 @@
 }
 
 @media (max-width: 767px) {
+
   .page-container,
   .main-content {
     padding: 14px 14px 24px 14px !important;
@@ -164,6 +196,7 @@
   .pb-mobile-nav {
     padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px)) !important;
   }
+
   .pb-mobile-sheet {
     padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px)) !important;
   }
@@ -173,6 +206,7 @@
   .pb-mobile-nav {
     padding-bottom: 0 !important;
   }
+
   .pb-mobile-sheet {
     padding-bottom: 0 !important;
   }
@@ -248,31 +282,51 @@
 /* ─────────────────────────────────────────────────────────────
    MOBILE BOTTOM NAVIGATION (< 768px)
    ───────────────────────────────────────────────────────────── */
-.bottom-nav {
-  position: fixed !important;
-  bottom: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  width: 100% !important;
-  height: 60px !important;
-  background: rgba(255, 255, 255, 0.98) !important;
-  backdrop-filter: blur(16px) !important;
-  -webkit-backdrop-filter: blur(16px) !important;
-  border-top: 1px solid var(--border, #e2e8f0) !important;
-  display: flex !important;
-  align-items: stretch !important;
-  justify-content: space-around !important;
-  z-index: 8000 !important;
-  pointer-events: auto !important;
-  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05) !important;
-  touch-action: manipulation !important;
-  box-sizing: border-box !important;
+@media (max-width: 767.98px) {
+  .bottom-nav {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    height: calc(3.65rem + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border-top: 1px solid var(--border, #e2e8f0) !important;
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    align-items: stretch !important;
+    z-index: 8000 !important;
+    pointer-events: auto !important;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06) !important;
+    touch-action: manipulation !important;
+    box-sizing: border-box !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .bottom-nav-label {
+    display: none !important;
+  }
+  .bottom-nav-link {
+    padding: 8px 0 !important;
+    gap: 0 !important;
+  }
 }
 
 @media (min-width: 768px) {
-  .bottom-nav {
+
+  .bottom-nav,
+  nav.bottom-nav,
+  .bottom-nav-link {
     display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
   }
 }
 
@@ -419,6 +473,7 @@
     border-radius: 8px;
     gap: 5px;
   }
+
   .btn-sm {
     padding: 4px 8px;
     font-size: 11px;
@@ -444,14 +499,14 @@
   overflow: visible !important;
 }
 
-.modal-actions > .btn,
-.modal-btn-row > .btn,
-.form-actions > .btn,
-.form-actions-row > .btn,
-.modal-actions > button,
-.modal-btn-row > button,
-.form-actions > button,
-.form-actions-row > button {
+.modal-actions>.btn,
+.modal-btn-row>.btn,
+.form-actions>.btn,
+.form-actions-row>.btn,
+.modal-actions>button,
+.modal-btn-row>button,
+.form-actions>button,
+.form-actions-row>button {
   flex: 1 1 0% !important;
   min-width: 0 !important;
   width: auto !important;
@@ -490,10 +545,58 @@
 
 @media (max-width: 640px) {
   .input {
-    font-size: 16px !important; /* Prevents auto zoom in iOS Safari */
+    font-size: 16px !important;
+    /* Prevents auto zoom in iOS Safari */
     padding: 7px 10px;
     min-height: 36px;
     border-radius: 8px;
+  }
+}
+
+/* Universal Search & Icon Input Classes - Prevents text colliding with icons */
+.input-search,
+.input.input-search,
+input.input.input-search,
+.relative > .input.input-search,
+.relative > input.input.input-search {
+  padding-left: 42px !important;
+}
+
+.input-search-right {
+  padding-right: 40px !important;
+}
+
+/* Defensive fallback for any .input with pl-10, pl-9, pl-8 */
+.relative > .input.pl-10,
+.relative > input.input.pl-10,
+input.pl-10,
+.input.pl-10 {
+  padding-left: 42px !important;
+}
+
+.relative > .input.pl-9,
+.relative > input.input.pl-9,
+input.pl-9,
+.input.pl-9 {
+  padding-left: 38px !important;
+}
+
+.relative > .input.pl-8,
+.relative > input.input.pl-8,
+input.pl-8,
+.input.pl-8 {
+  padding-left: 36px !important;
+}
+
+@media (max-width: 640px) {
+  .input-search,
+  .input.input-search,
+  input.input.input-search,
+  .relative > .input.pl-10,
+  .relative > input.input.pl-10,
+  input.pl-10,
+  .input.pl-10 {
+    padding-left: 40px !important;
   }
 }
 
@@ -565,10 +668,13 @@ textarea.input {
   box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.08);
 }
 
-.btn-touch, .card-touch {
+.btn-touch,
+.card-touch {
   transition: transform 0.1s ease, opacity 0.1s ease;
 }
-.btn-touch:active, .card-touch:active {
+
+.btn-touch:active,
+.card-touch:active {
   transform: scale(0.975);
 }
 
@@ -589,11 +695,37 @@ textarea.input {
   box-sizing: border-box;
 }
 
-.badge-new { background: rgba(79, 70, 229, 0.08); color: #6366f1; border: 1px solid rgba(79, 70, 229, 0.2); }
-.badge-contacted { background: rgba(245, 158, 11, 0.08); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.2); }
-.badge-follow_up { background: rgba(249, 115, 22, 0.08); color: #ea580c; border: 1px solid rgba(249, 115, 22, 0.2); }
-.badge-closed { background: rgba(16, 185, 129, 0.08); color: #059669; border: 1px solid rgba(16, 185, 129, 0.2); }
-.badge-tag { background: rgba(148, 163, 184, 0.08); color: var(--text-muted); border: 1px solid var(--border); font-size: 10px; padding: 2px 6px; }
+.badge-new {
+  background: rgba(79, 70, 229, 0.08);
+  color: #6366f1;
+  border: 1px solid rgba(79, 70, 229, 0.2);
+}
+
+.badge-contacted {
+  background: rgba(245, 158, 11, 0.08);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.badge-follow_up {
+  background: rgba(249, 115, 22, 0.08);
+  color: #ea580c;
+  border: 1px solid rgba(249, 115, 22, 0.2);
+}
+
+.badge-closed {
+  background: rgba(16, 185, 129, 0.08);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.badge-tag {
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  font-size: 10px;
+  padding: 2px 6px;
+}
 
 .badge-hot {
   background: rgba(225, 29, 72, 0.12);
@@ -619,7 +751,8 @@ textarea.input {
 /* ─────────────────────────────────────────────────────────────
    FLOATING ACTION BUTTON (FAB)
    ───────────────────────────────────────────────────────────── */
-.fab, .fab-button {
+.fab,
+.fab-button {
   position: fixed;
   z-index: 7500;
   width: 54px;
@@ -636,7 +769,8 @@ textarea.input {
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.fab:active, .fab-button:active {
+.fab:active,
+.fab-button:active {
   transform: scale(0.92);
 }
 
@@ -645,16 +779,23 @@ textarea.input {
 }
 
 @media (max-width: 767px) {
-  .fab, .fab-button {
+
+  .fab,
+  .fab-button {
     bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px)) !important;
     right: 1.25rem !important;
   }
 }
 
 @media (min-width: 768px) {
-  .fab, .fab-button {
-    bottom: 28px !important;
-    right: 28px !important;
+
+  .fab,
+  .fab-button,
+  .btn-floating {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
   }
 }
 
@@ -700,13 +841,25 @@ textarea.input {
 }
 
 @keyframes slideUp {
-  from { transform: translateY(100%); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .animate-slide-up {
@@ -726,9 +879,38 @@ textarea.input {
     max-height: 85vh !important;
     padding-bottom: 24px !important;
   }
+
   @keyframes fadeInScale {
-    from { opacity: 0; transform: scale(0.95); }
-    to { opacity: 1; transform: scale(1); }
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}
+
+/* Full-height flexbox modal sheet with pinned header & footer (e.g. WhatsApp Fee Structure) */
+.modal-sheet-dialog {
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0 !important;
+  padding-bottom: 0 !important;
+  overflow: hidden !important;
+  max-height: min(92vh, 92dvh) !important;
+  height: min(92vh, 92dvh) !important;
+  max-width: 640px !important;
+}
+
+@media (min-width: 768px) {
+  .modal-sheet-dialog {
+    max-height: min(88vh, 880px) !important;
+    height: auto !important;
+    border-radius: 20px !important;
+    margin: 20px auto !important;
   }
 }
 
@@ -817,6 +999,7 @@ textarea.input {
     align-items: center;
     padding: 16px 12px;
   }
+
   .auth-card {
     border-radius: 20px;
     padding: 24px 18px;
@@ -869,6 +1052,7 @@ textarea.input {
   font-weight: 600;
   transition: all 0.2s ease;
 }
+
 .landing-hero-badge:hover {
   background: #e0e7ff;
   border-color: #c7d2fe;
@@ -908,6 +1092,7 @@ textarea.input {
   text-decoration: none;
   white-space: nowrap;
 }
+
 .landing-btn-primary:hover {
   background: #4338ca;
   box-shadow: 0 4px 18px rgba(79, 70, 229, 0.38);
@@ -932,6 +1117,7 @@ textarea.input {
   text-decoration: none;
   white-space: nowrap;
 }
+
 .landing-btn-ghost:hover {
   background: #f8fafc;
   border-color: #cbd5e1;
@@ -949,6 +1135,7 @@ textarea.input {
   position: relative;
   overflow: hidden;
 }
+
 .landing-bento-card:hover {
   border-color: #cbd5e1;
   transform: translateY(-3px);
@@ -964,8 +1151,17 @@ textarea.input {
 }
 
 @keyframes pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(0.85); }
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
 }
 
 .pulse-animation {
@@ -973,54 +1169,19 @@ textarea.input {
 }
 
 @keyframes float-slow {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-6px); }
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-6px);
+  }
 }
 
 .float-slow-animation {
   animation: float-slow 4s ease-in-out infinite;
-}
-
-/* ─────────────────────────────────────────────────────────────
-   DEFENSIVE MOBILE & DESKTOP UTILITIES
-   ───────────────────────────────────────────────────────────── */
-.min-w-0 {
-  min-width: 0 !important;
-}
-
-.flex-shrink-0 {
-  flex-shrink: 0 !important;
-}
-
-.flex-1 {
-  flex: 1 1 0% !important;
-}
-
-.truncate {
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
-}
-
-.break-words {
-  overflow-wrap: break-word !important;
-  word-break: break-word !important;
-}
-
-.whitespace-normal {
-  white-space: normal !important;
-}
-
-.max-w-full {
-  max-width: 100% !important;
-}
-
-.w-full {
-  width: 100% !important;
-}
-
-.overflow-hidden {
-  overflow: hidden !important;
 }
 
 /* Button & icon flex-shrink protection */
@@ -1080,5 +1241,249 @@ svg.lucide {
 @media (min-width: 768px) {
   .mobile-only {
     display: none !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   MULTI-DEVICE RESPONSIVE ADAPTATION
+   Supports:
+   - Ultra-narrow: JioPhone 2 (240px), Galaxy Z Fold 5 cover (344px)
+   - Standard Mobile: Moto G4, iPhone SE, 12, 14, 15, 16, Pixels, Galaxies (360px - 448px)
+   - Foldables: Surface Duo (540px), Foldables unfolded (412px - 853px)
+   - Tablets: Galaxy Tab S4 (712px), iPad Mini (768px), Surface Pro (912px - 960px), iPad Pro (1032px)
+   - Smart Displays: Nest Hub Max (1280px)
+   ───────────────────────────────────────────────────────────── */
+
+/* 1. Global Viewport & Text Overflow Safety */
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  position: relative;
+}
+
+
+
+.bottom-nav-label {
+  font-size: 10px !important;
+  line-height: 1.1 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  padding: 0 1px !important;
+  pointer-events: none !important;
+}
+
+/* 3. Ultra-Narrow Viewports (<= 350px: JioPhone 2 240px, Galaxy Z Fold 5 cover 344px) */
+@media (max-width: 350px) {
+
+  .page-container,
+  .main-content {
+    padding: 10px 8px 24px 8px !important;
+  }
+
+  .card {
+    padding: 10px 8px !important;
+    border-radius: 10px !important;
+  }
+
+  .modal-sheet {
+    padding: 14px 10px !important;
+    border-radius: 16px 16px 0 0 !important;
+    max-height: 94dvh !important;
+  }
+
+  /* Break multi-column KPI grids to 1 column on ultra-narrow so numbers never clip */
+  .grid-cols-2,
+  .grid-cols-3,
+  .grid-cols-4,
+  .stage-kpi-grid,
+  .deals-kpi-grid,
+  .dashboard-kpi-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Bottom nav ultra-narrow */
+  .bottom-nav {
+    height: calc(3.1rem + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
+
+  .bottom-nav-label {
+    font-size: 8.5px !important;
+    letter-spacing: -0.03em !important;
+  }
+
+  /* Action buttons stack neatly */
+  .header-actions {
+    width: 100% !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .header-actions>* {
+    width: 100% !important;
+  }
+
+  /* Modal actions stack vertically on ultra-narrow */
+  .modal-actions {
+    flex-direction: column !important;
+  }
+
+  .modal-actions>button,
+  .modal-actions>a {
+    width: 100% !important;
+  }
+}
+
+/* 4. Micro Viewports (<= 280px: JioPhone 2 240px) */
+@media (max-width: 280px) {
+
+  .page-container,
+  .main-content {
+    padding: 8px 4px 18px 4px !important;
+  }
+
+  /* Hide bottom nav text on 240px JioPhone to prevent text collision, showing icon only */
+  .bottom-nav-label {
+    display: none !important;
+  }
+
+  .bottom-nav-link svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  h1 {
+    font-size: 1.15rem !important;
+  }
+
+  h2 {
+    font-size: 1.05rem !important;
+  }
+}
+
+/* 5. Wide Mobile & Foldables (540px to 767px: Surface Duo 540px, Galaxy Tab S4 712px) */
+@media (min-width: 540px) and (max-width: 767px) {
+  .bottom-nav {
+    max-width: 540px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    border-left: 1px solid var(--border, #e2e8f0) !important;
+    border-right: 1px solid var(--border, #e2e8f0) !important;
+    border-radius: 16px 16px 0 0 !important;
+  }
+
+  .page-container,
+  .main-content {
+    padding: 16px 20px 28px 20px !important;
+  }
+}
+
+/* 6. Tablet Auto-Rail Mode (768px to 1023px: iPad Mini 768px, Asus Zenbook Fold 853px, Surface Pro 7 912px, Surface Pro 10 960px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .sidebar-nav {
+    width: 70px !important;
+    padding: 16px 6px !important;
+  }
+
+  .sidebar-item-label,
+  .sidebar-org-text,
+  .sidebar-plan-widget,
+  .sidebar-badge {
+    display: none !important;
+  }
+
+  .sidebar-nav-link {
+    justify-content: center !important;
+    padding: 10px 0 !important;
+    gap: 0 !important;
+    border-radius: 10px !important;
+  }
+
+  .app-shell,
+  .app-container,
+  .system-top-banner {
+    padding-left: 70px !important;
+  }
+
+  .page-container,
+  .main-content {
+    padding: 20px 20px 36px 20px !important;
+  }
+}
+
+/* 7. Touch-Friendly Kanban Snap & Responsive Columns */
+.kanban-board-container {
+  display: flex !important;
+  gap: 1rem !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  scroll-snap-type: x mandatory !important;
+  padding-bottom: 1rem !important;
+}
+
+.kanban-column {
+  flex: 0 0 min(280px, 84vw) !important;
+  scroll-snap-align: start !important;
+  box-sizing: border-box !important;
+}
+
+@media (min-width: 768px) {
+  .kanban-column {
+    flex: 0 0 300px !important;
+  }
+}
+
+/* 8. Defensive Flex Basis Bounds for Mobile */
+@media (max-width: 640px) {
+
+  [style*="flex: 1 1 300px"],
+  [style*="flex: 1 1 280px"],
+  [style*="flex: 1 1 320px"] {
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+}
+
+/* 9. Smart Displays (1280px Nest Hub Max) & Wide Desktops */
+@media (min-width: 1280px) {
+  .app-container-tight {
+    max-width: 1360px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   10. STRICT DESKTOP ISOLATION (>= 768px)
+   Completely eliminate all mobile navigation chrome and floating actions
+   ───────────────────────────────────────────────────────────── */
+@media (min-width: 768px) {
+
+  .bottom-nav,
+  nav.bottom-nav,
+  nav[aria-label="Mobile Navigation"],
+  .bottom-nav-link,
+  .fab,
+  .fab-button,
+  .btn-floating,
+  .mobile-bottom-nav {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    max-width: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    top: -9999px !important;
+    left: -9999px !important;
   }
 }
