@@ -1,7 +1,6 @@
 const mongoose = require('mongoose');
 const Lead = require('../models/Lead');
 const User = require('../models/User');
-const Project = require('../models/Project');
 const Notification = require('../models/Notification');
 const { emitCRMEvent, CRM_EVENTS } = require('../services/automationEvents');
 const { auditService } = require('../monitoring/audit/auditService');
@@ -11,104 +10,126 @@ const csv = require('csv-parser');
 const { Readable } = require('stream');
 
 // Helper to construct query mathematically enforcing Strict Visibility & Privacy Rules:
-// RULE 1: Independent/Single Users: Can ONLY see their own leads.
-// RULE 2 (Owner & Manager): Owner and Managers see ALL leads generated within that organization (+ shared single user leads).
-// RULE 2 (Agent Scope): Sub-agents see ONLY leads assigned to/claimed by them, or Unassigned Pool when explicitly requested.
-// RULE 3: SuperAdmin & Admin: Internal team isolation.
-// RULE 4: Single User to Organization Collaboration: Leads explicitly shared with that specific Organization.
-const buildLeadPermissionQuery = async (user, isUnclaimedQuery = false) => {
+// RULE 1: SuperAdmin sees all leads across the platform.
+// RULE 2: Workspace Isolation - queries are strictly scoped to user's verified active workspace.
+// RULE 3: Counsellor Scope - counsellors see leads assigned to/claimed by them within their workspace (or unclaimed pool).
+// RULE 4: Owner/Manager/Solo - see all leads within their workspace.
+// RULE 5: Legacy/Solo fallback - exclusively own their own leads.
+const buildLeadPermissionQuery = async (user, isUnclaimed = false) => {
   if (!user) {
-    return { _id: null }; // Deny all if unauthenticated
+    return { _id: null };
   }
 
-  const isSuperAdmin = user.role === 'superadmin' || user.isAdmin;
-  const isOwner = user.workStatus === 'company_owner' || user.companyRole === 'owner' || user.role === 'admin';
-  const isManager = user.role === 'manager' || user.companyRole === 'manager';
-  const companyId = user.companyId || (isOwner ? user._id : null);
+  // SuperAdmin bypass
+  if (user.role === 'superadmin' || user.isAdmin) {
+    return {};
+  }
 
-  // RULE 3: SuperAdmin / Platform Admin
-  if (isSuperAdmin) {
-    if (companyId) {
+  const workspaceId = user.workspaceId;
+  const role = user.workspaceRole || user.companyRole;
+
+  if (workspaceId) {
+    if (role === 'counsellor' || role === 'counselor') {
+      if (isUnclaimed) {
+        return {
+          workspaceId,
+          assignedTo: null,
+          currentOwnerId: null,
+        };
+      }
       return {
+        workspaceId,
         $or: [
-          { companyId: companyId },
-          { userId: user._id }
-        ]
+          { assignedTo: user._id },
+          { userId: user._id },
+          { currentOwnerId: user._id },
+        ],
       };
     }
-    return {
-      userId: user._id
-    };
-  }
 
-  // RULE 2: Organizations - Manager / Owner
-  // Manager and Owner see all leads within their company (+ shared leads)
-  if (companyId && (isOwner || isManager)) {
+    // Owner, Manager, Auditor, or solo consultant
+    const ownerCompanyId = user.companyId || user._id;
     return {
       $or: [
-        { companyId: companyId },
-        { userId: companyId },
-        { sharedWithCompanyId: companyId }
-      ]
+        { workspaceId },
+        { companyId: ownerCompanyId },
+        { workspaceId: { $in: [null, undefined] }, userId: user._id },
+      ],
     };
   }
 
-  // RULE 2 (Agent Scope): Sub-agents in an organization
-  if (companyId) {
-    if (isUnclaimedQuery) {
-      // For Unassigned Pool: strictly leads with NO assigned agent and NO owner
+  // Legacy fallback for tests or requests before workspace resolution
+  const effectiveCompanyId = user.companyId || (user.companyRole === 'owner' ? user._id : null);
+  if (effectiveCompanyId) {
+    if (user.companyRole === 'owner' || user.companyRole === 'manager') {
       return {
-        $and: [
-          {
-            $or: [
-              { companyId: companyId },
-              { userId: companyId },
-              { sharedWithCompanyId: companyId }
-            ]
-          },
-          {
-            assignedTo: null,
-            currentOwnerId: null,
-            ownershipStatus: { $nin: ['claimed', 'assigned', 'transferred'] }
-          }
-        ]
+        $or: [
+          { companyId: effectiveCompanyId },
+          { userId: effectiveCompanyId },
+          { userId: user._id },
+        ],
       };
     }
-
-    // For "My Leads" (Agent view): ONLY see leads assigned to or claimed by this specific agent
     return {
-      $and: [
-        {
-          $or: [
-            { companyId: companyId },
-            { userId: companyId },
-            { sharedWithCompanyId: companyId }
-          ]
-        },
-        {
-          $or: [
-            { assignedTo: user._id },
-            { currentOwnerId: user._id },
-            { userId: user._id, assignedTo: user._id }
-          ]
-        }
-      ]
+      companyId: effectiveCompanyId,
+      $or: [
+        { assignedTo: user._id },
+        { userId: user._id },
+      ],
     };
   }
 
-  // RULE 1: Independent / Single Users (Solo)
-  // Single users see ONLY their own leads.
   return {
-    userId: user._id
+    $or: [
+      { userId: user._id },
+      { assignedTo: user._id },
+    ],
   };
 };
+
+// Bounded in-memory count cache for pagination (TTL 30s)
+const countCache = new Map();
+const COUNT_CACHE_TTL = 30000;
+function getCachedCount(key) {
+  const item = countCache.get(key);
+  if (!item) return null;
+  if (Date.now() > item.expiresAt) {
+    countCache.delete(key);
+    return null;
+  }
+  return item.count;
+}
+function setCachedCount(key, count) {
+  if (countCache.size > 1000) {
+    const firstKey = countCache.keys().next().value;
+    countCache.delete(firstKey);
+  }
+  countCache.set(key, { count, expiresAt: Date.now() + COUNT_CACHE_TTL });
+}
 
 // @desc  Get all leads (paginated, filtered, team-aware)
 // @route GET /api/leads
 // @access Private
 exports.getLeads = async (req, res) => {
   try {
-    const { page = 1, limit = 50, status, tag, search, projectId, assignedTo, source, primarySource, unclaimed } = req.query;
+    const {
+      page = 1,
+      limit = 50,
+      status,
+      tag,
+      search,
+      projectId,
+      assignedTo,
+      source,
+      primarySource,
+      unclaimed,
+      platform,
+      connectionId,
+      campaignId,
+      startDate,
+      endDate,
+      isTest,
+    } = req.query;
 
     const isUnclaimed = unclaimed === 'true' || unclaimed === true;
     const basePermissionQuery = await buildLeadPermissionQuery(req.user, isUnclaimed);
@@ -135,6 +156,50 @@ exports.getLeads = async (req, res) => {
         });
       }
     }
+
+    // Server-side Source Hierarchy Filters
+    if (platform && platform !== 'all' && platform !== 'undefined') {
+      const cleanPlatform = String(platform).toLowerCase().trim();
+      query.$and.push({
+        $or: [
+          { 'leadSource.platform': cleanPlatform },
+          { 'leadSource.provider': cleanPlatform },
+          { source: cleanPlatform },
+        ]
+      });
+    }
+
+    if (connectionId && connectionId !== 'all' && connectionId !== 'undefined') {
+      query.$and.push({
+        $or: [
+          { 'leadSource.connectionId': String(connectionId) },
+          { 'leadSource.integrationId': mongoose.Types.ObjectId.isValid(connectionId) ? connectionId : null },
+        ]
+      });
+    }
+
+    if (campaignId && campaignId !== 'all' && campaignId !== 'undefined') {
+      query.$and.push({
+        $or: [
+          { 'leadSource.campaignId': String(campaignId) },
+          { 'leadSource.campaignName': new RegExp(String(campaignId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+          { utmCampaign: new RegExp(String(campaignId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+        ]
+      });
+    }
+
+    if (isTest !== undefined && isTest !== null && isTest !== '' && isTest !== 'all') {
+      const boolTest = isTest === 'true' || isTest === true;
+      query.isTestLead = boolTest;
+    }
+
+    if (startDate || endDate) {
+      const dateCond = {};
+      if (startDate) dateCond.$gte = new Date(startDate);
+      if (endDate) dateCond.$lte = new Date(new Date(endDate).setHours(23, 59, 59, 999));
+      query.createdAt = dateCond;
+    }
+
     if (source && source !== 'all' && source !== 'undefined') {
       const cleanSrc = String(source).toLowerCase().trim();
       if (cleanSrc === 'ads') {
@@ -173,36 +238,67 @@ exports.getLeads = async (req, res) => {
       });
     }
     if (search && search.trim()) {
-      const safeSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      query.$and.push({
-        $or: [
-          { name: new RegExp(safeSearch, 'i') },
-          { phone: new RegExp(safeSearch, 'i') },
-          { company: new RegExp(safeSearch, 'i') },
-          { project: new RegExp(safeSearch, 'i') },
-          { location: new RegExp(safeSearch, 'i') },
-        ]
-      });
+      const trimmed = search.trim();
+      if (trimmed.length >= 2) {
+        const safeSearch = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const digitsOnly = trimmed.replace(/\D/g, '');
+        const safeLower = safeSearch.toLowerCase();
+
+        if (digitsOnly.length >= 3 && /^\d+$/.test(trimmed)) {
+          // Dedicated phone search against indexed phoneDigits
+          query.$and.push({
+            $or: [
+              { phoneDigits: new RegExp('^' + digitsOnly) },
+              { phoneDigits: new RegExp(digitsOnly + '$') },
+              { phone: new RegExp(safeSearch, 'i') },
+            ]
+          });
+        } else {
+          // Anchored prefix queries on indexed nameLower & companyLower with full fallback for comprehensive recall
+          query.$and.push({
+            $or: [
+              { nameLower: new RegExp('^' + safeLower) },
+              { companyLower: new RegExp('^' + safeLower) },
+              { name: new RegExp(safeSearch, 'i') },
+              { company: new RegExp(safeSearch, 'i') },
+              { phone: new RegExp(safeSearch, 'i') },
+              { project: new RegExp(safeSearch, 'i') },
+              { location: new RegExp(safeSearch, 'i') },
+            ]
+          });
+        }
+      }
     }
 
     const parsedLimit = Math.max(1, parseInt(limit, 10) || 50);
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
     const skip = (parsedPage - 1) * parsedLimit;
-    const cap = Math.min(parsedLimit, 100);
+    const cap = Math.min(parsedLimit, 250);
 
-    const [leads, total] = await Promise.all([
-      Lead.find(query)
-        .populate('projectId', 'name location basePrice city')
-        .populate('assignedTo', 'name usercode email')
-        .sort({ updatedAt: -1 })
-        .skip(skip)
-        .limit(cap)
-        .lean(),
-      Lead.countDocuments(query),
-    ]);
+    const countCacheKey = `${req.workspaceId || req.tenantId || req.user?._id}_${JSON.stringify(query)}`;
+    const cachedTotal = getCachedCount(countCacheKey);
+
+    const leadsPromise = Lead.find(query)
+      .select('-leadActivities -editHistory -customWebhookPayloads')
+      .populate('projectId', 'name location basePrice city')
+      .populate('assignedTo', 'name usercode email')
+      .sort({ updatedAt: -1 })
+      .skip(skip)
+      .limit(cap)
+      .lean();
+
+    const countPromise = (cachedTotal !== null)
+      ? Promise.resolve(cachedTotal)
+      : Lead.countDocuments(query).then((cnt) => {
+          setCachedCount(countCacheKey, cnt);
+          return cnt;
+        });
+
+    const [leads, total] = await Promise.all([leadsPromise, countPromise]);
 
     res.json({
       leads,
+      total,
       pagination: {
         total,
         page: parsedPage,
@@ -235,7 +331,9 @@ exports.getLead = async (req, res) => {
     const companyId = req.user.companyId || (isOwner ? req.user._id : null);
 
     let permissionQuery;
-    if (isSuperAdmin || isOwner || isManager) {
+    if (req.user.workspaceId) {
+      permissionQuery = await buildLeadPermissionQuery(req.user, false);
+    } else if (isSuperAdmin || isOwner || isManager) {
       permissionQuery = await buildLeadPermissionQuery(req.user, false);
     } else if (companyId) {
       // Sub-agents can access their assigned leads OR unassigned leads from the common pool to view & claim
@@ -266,7 +364,7 @@ exports.getLead = async (req, res) => {
     const lead = await Lead.findOne({ _id: id, ...permissionQuery })
       .populate('projectId')
       .populate('assignedTo', 'name usercode email phone')
-      .populate('releasedBy', 'name usercode email')
+      .populate({ path: 'releasedBy', select: 'name usercode email', strictPopulate: false })
       .lean();
 
     if (!lead) return res.status(404).json({ message: 'Lead not found or unauthorized' });
@@ -316,9 +414,19 @@ exports.getDueFollowUps = async (req, res) => {
         basePermissionQuery,
         {
           $or: [
-            { followUpDate: { $lte: now, $ne: null } },
-            { 'activeFollowUp.scheduledAt': { $lte: now, $ne: null } },
+            {
+              followUpDate: { $lte: now, $ne: null },
+              followUpStatus: { $nin: ['completed', 'cancelled', 'none'] },
+            },
+            {
+              'activeFollowUp.scheduledAt': { $lte: now, $ne: null },
+              'activeFollowUp.status': { $nin: ['completed', 'cancelled', 'none'] },
+            },
           ],
+        },
+        {
+          followUpStatus: { $nin: ['completed', 'cancelled', 'none'] },
+          'activeFollowUp.status': { $nin: ['completed', 'cancelled', 'none'] },
         },
         {
           status: {
@@ -448,12 +556,6 @@ exports.scheduleFollowUp = async (req, res) => {
       console.warn('[FollowUp Audit] Non-blocking audit record notice:', fuErr.message);
     }
 
-    // Recalculate lead score if Real Estate
-    try {
-      const { calculateLeadScoreInternal } = require('./realEstateController');
-      const tenantId = lead.companyId || req.user.companyId || req.user._id;
-      await calculateLeadScoreInternal(lead._id, tenantId);
-    } catch (scoreErr) {}
 
     // Dispatched CRM event
     emitCRMEvent(CRM_EVENTS.FOLLOWUP_SCHEDULED, {
@@ -495,13 +597,25 @@ exports.delayFollowUp = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Lead not found or unauthorized' });
     }
 
+    // Safely normalize maxSnoozeCount handling boundary values: 0, missing, negative, invalid
+    let maxDelays = 2; // Default fallback if workspace settings are missing
+    if (req.workspace?.settings?.maxSnoozeCount !== undefined && req.workspace?.settings?.maxSnoozeCount !== null) {
+      const parsed = Number(req.workspace.settings.maxSnoozeCount);
+      if (!isNaN(parsed) && parsed >= 0) {
+        maxDelays = Math.floor(parsed);
+      }
+    }
+
     const currentDelays = lead.activeFollowUp?.delayCount ?? lead.followUpDelayCount ?? 0;
-    if (currentDelays >= 2) {
+    if (currentDelays >= maxDelays) {
       return res.status(400).json({
         success: false,
         code: 'MAX_DELAYS_REACHED',
-        message: 'Maximum 2 delays reached. You must add an outcome note to complete this follow-up and silence the alarm.',
+        message: maxDelays === 0
+          ? 'Follow-up snoozing is disabled for this workspace. An outcome note is required to complete it.'
+          : `Maximum ${maxDelays} snoozes reached for this follow-up. You must add an outcome note to complete it.`,
         currentDelays,
+        maxDelays,
       });
     }
 
@@ -539,7 +653,7 @@ exports.delayFollowUp = async (req, res) => {
       action: 'followup_postponed',
       performedBy: req.user._id,
       performerName: req.user.name,
-      details: `Follow-up delayed by ${delayMins} mins (Delay ${newDelayCount}/2). Rescheduled to ${newScheduledAt.toLocaleString()}${reason ? ': "' + reason.trim() + '"' : ''}`,
+      details: `Follow-up delayed by ${delayMins} mins (Delay ${newDelayCount}/${maxDelays}). Rescheduled to ${newScheduledAt.toLocaleString()}${reason ? ': "' + reason.trim() + '"' : ''}`,
       timestamp: new Date(),
     });
 
@@ -554,7 +668,7 @@ exports.delayFollowUp = async (req, res) => {
         latestFu.scheduledAt = newScheduledAt;
         latestFu.delay_count = newDelayCount;
         latestFu.delayCount = newDelayCount;
-        latestFu.postpone_remark = reason ? reason.trim() : `Delayed by ${delayMins}m (${newDelayCount}/2)`;
+        latestFu.postpone_remark = reason ? reason.trim() : `Delayed by ${delayMins}m (${newDelayCount}/${maxDelays})`;
         latestFu.status = 'postponed';
         await latestFu.save();
       }
@@ -562,15 +676,118 @@ exports.delayFollowUp = async (req, res) => {
 
     res.json({
       success: true,
-      message: `Follow-up delayed by ${delayMins} minutes (${newDelayCount}/2 used) ⏰`,
+      message: `Follow-up delayed by ${delayMins} minutes (${newDelayCount}/${maxDelays} used) ⏰`,
       lead,
       delayCount: newDelayCount,
-      remainingDelays: 2 - newDelayCount,
+      remainingDelays: Math.max(0, maxDelays - newDelayCount),
       newScheduledAt,
     });
   } catch (error) {
     console.error('delayFollowUp error:', error);
     res.status(500).json({ success: false, message: error.message || 'Server error delaying follow-up' });
+  }
+};
+
+// @desc  Reschedule a follow-up appointment with mandatory reason (new scheduled date/time and resets snooze limit)
+// @route POST /api/leads/:id/follow-up/reschedule or POST /api/leads/:id/followups/reschedule
+// @access Private
+exports.rescheduleFollowUp = async (req, res) => {
+  try {
+    const { scheduledAt, scheduled_at, newDate, reason, note } = req.body;
+    const rawDate = scheduledAt || scheduled_at || newDate;
+    const rawReason = reason || note;
+
+    if (!rawDate) {
+      return res.status(400).json({ success: false, message: 'New scheduled date and time are required.' });
+    }
+    const parsedDate = new Date(rawDate);
+    if (isNaN(parsedDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid date/time format.' });
+    }
+    const cleanReason = (rawReason || '').trim();
+    if (!cleanReason) {
+      return res.status(400).json({ success: false, message: 'A reason for rescheduling is mandatory.' });
+    }
+
+    const basePermissionQuery = await buildLeadPermissionQuery(req.user, false);
+    const lead = await Lead.findOne({ _id: req.params.id, ...basePermissionQuery });
+    if (!lead) {
+      return res.status(404).json({ success: false, message: 'Lead not found or unauthorized' });
+    }
+
+    const previousDate = lead.activeFollowUp?.scheduledAt || lead.followUpDate;
+
+    // Rescheduling resets the delay count because it is a new planned appointment
+    lead.activeFollowUp = {
+      scheduledAt: parsedDate,
+      note: cleanReason,
+      status: 'scheduled',
+      delayCount: 0,
+      delayHistory: [],
+      lastRungAt: null,
+      completedAt: null,
+      completionNote: '',
+      completedBy: null,
+    };
+
+    lead.followUpDate = parsedDate;
+    lead.followUpNote = cleanReason;
+    lead.followUpStatus = 'scheduled';
+    lead.followUpDelayCount = 0;
+    lead.followUpNotified = false;
+
+    lead.leadActivities.push({
+      action: 'followup_rescheduled',
+      performedBy: req.user._id,
+      performerName: req.user.name,
+      details: `Follow-up rescheduled from ${previousDate ? new Date(previousDate).toLocaleString() : 'N/A'} to ${parsedDate.toLocaleString()}. Reason: "${cleanReason}"`,
+      timestamp: new Date(),
+    });
+
+    await lead.save();
+
+    // Mark previous open FollowUp model as rescheduled and insert new one
+    try {
+      const FollowUp = require('../models/FollowUp');
+      await FollowUp.updateMany(
+        { lead_id: lead._id, status: { $in: ['open', 'postponed'] } },
+        { $set: { status: 'rescheduled', completed_at: new Date(), completed_note: `Rescheduled: ${cleanReason}` } }
+      );
+      await FollowUp.create({
+        lead_id: lead._id,
+        leadId: lead._id,
+        workspaceId: lead.workspaceId || req.workspaceId,
+        agent_id: lead.assignedTo || req.user._id,
+        agentId: lead.assignedTo || req.user._id,
+        scheduled_at: parsedDate,
+        scheduledAt: parsedDate,
+        note: cleanReason,
+        delay_count: 0,
+        type: 'call',
+        status: 'open',
+        companyId: lead.companyId || req.user.companyId || req.user._id,
+        createdBy: req.user._id,
+        creatorName: req.user.name,
+      });
+    } catch (fuErr) {
+      console.warn('[FollowUp Reschedule Audit] Non-blocking notice:', fuErr.message);
+    }
+
+    emitCRMEvent(CRM_EVENTS.FOLLOWUP_SCHEDULED, {
+      lead,
+      scheduledAt: parsedDate,
+      note: cleanReason,
+      user: req.user,
+    });
+
+    res.json({
+      success: true,
+      message: `Follow-up rescheduled successfully to ${parsedDate.toLocaleString()} 📅`,
+      lead,
+    });
+  } catch (error) {
+    console.error('rescheduleFollowUp error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error rescheduling follow-up' });
   }
 };
 
@@ -633,21 +850,21 @@ exports.completeFollowUp = async (req, res) => {
     // 3. Update FollowUp collection record
     try {
       const FollowUp = require('../models/FollowUp');
-      const latestFu = await FollowUp.findOne({ lead_id: lead._id, status: { $in: ['open', 'postponed'] } }).sort({ createdAt: -1 });
-      if (latestFu) {
-        latestFu.status = 'done';
-        latestFu.completed_at = new Date();
-        latestFu.completedAt = new Date();
-        latestFu.completion_note = cleanNote;
-        latestFu.completionNote = cleanNote;
-        if (resolvedOutcome || clientFeedback || nextAction) {
-          latestFu.siteVisitDetails = latestFu.siteVisitDetails || {};
-          if (resolvedOutcome) latestFu.siteVisitDetails.outcome = resolvedOutcome;
-          if (clientFeedback) latestFu.siteVisitDetails.clientFeedback = String(clientFeedback).trim();
-          if (nextAction) latestFu.siteVisitDetails.nextAction = String(nextAction).trim();
+      await FollowUp.updateMany(
+        { lead_id: lead._id, status: { $in: ['open', 'postponed'] } },
+        {
+          $set: {
+            status: 'completed',
+            completed_at: new Date(),
+            completedAt: new Date(),
+            completion_note: cleanNote,
+            completionNote: cleanNote,
+            ...(resolvedOutcome ? { 'siteVisitDetails.outcome': resolvedOutcome } : {}),
+            ...(clientFeedback ? { 'siteVisitDetails.clientFeedback': String(clientFeedback).trim() } : {}),
+            ...(nextAction ? { 'siteVisitDetails.nextAction': String(nextAction).trim() } : {}),
+          },
         }
-        await latestFu.save();
-      }
+      );
     } catch (e) {}
 
     // 4. Handle Next-Day / Future Follow-Up (if provided)
@@ -707,7 +924,11 @@ exports.completeFollowUp = async (req, res) => {
         nextScheduledMessage = ` and next follow-up scheduled for ${nextDate.toLocaleDateString()}`;
       }
     } else {
-      // Clear follow-up date so alarm stops permanently
+      // Clear follow-up date and scheduledAt so alarm stops permanently
+      if (lead.activeFollowUp) {
+        lead.activeFollowUp.scheduledAt = null;
+        lead.activeFollowUp.status = 'completed';
+      }
       lead.followUpDate = null;
       lead.followUpNote = '';
       lead.followUpStatus = 'completed';
@@ -717,13 +938,6 @@ exports.completeFollowUp = async (req, res) => {
 
     await lead.save();
 
-    // Recalculate lead score if Real Estate
-    try {
-      const { calculateLeadScoreInternal } = require('./realEstateController');
-      const tenantId = lead.companyId || req.user.companyId || req.user._id;
-      await calculateLeadScoreInternal(lead._id, tenantId);
-    } catch (scoreErr) {}
-
     res.json({
       success: true,
       message: `Follow-up completed & alarm silenced permanently${nextScheduledMessage} ✅`,
@@ -732,6 +946,106 @@ exports.completeFollowUp = async (req, res) => {
   } catch (error) {
     console.error('completeFollowUp error:', error);
     res.status(500).json({ success: false, message: error.message || 'Server error completing follow-up' });
+  }
+};
+
+// @desc  Cancel / Stop a follow-up and permanently silence alarm
+// @route POST /api/leads/:id/follow-up/cancel or POST /api/leads/:id/followups/cancel
+// @access Private
+exports.cancelFollowUp = async (req, res) => {
+  try {
+    const { reason, note } = req.body;
+    const cleanReason = (reason || note || 'Follow-up cancelled by user').trim();
+
+    const basePermissionQuery = await buildLeadPermissionQuery(req.user);
+    const lead = await Lead.findOne({ _id: req.params.id, ...basePermissionQuery });
+    if (!lead) {
+      return res.status(404).json({ success: false, message: 'Lead not found or unauthorized' });
+    }
+
+    if (!lead.activeFollowUp) {
+      lead.activeFollowUp = {
+        scheduledAt: null,
+        note: '',
+        status: 'cancelled',
+        delayCount: 0,
+        completedAt: new Date(),
+        completionNote: `[Cancelled]: ${cleanReason}`,
+        completedBy: req.user._id,
+      };
+    } else {
+      lead.activeFollowUp.scheduledAt = null;
+      lead.activeFollowUp.status = 'cancelled';
+      lead.activeFollowUp.completedAt = new Date();
+      lead.activeFollowUp.completionNote = `[Cancelled]: ${cleanReason}`;
+      lead.activeFollowUp.completedBy = req.user._id;
+    }
+
+    lead.followUpDate = null;
+    lead.followUpNote = '';
+    lead.followUpStatus = 'cancelled';
+    lead.followUpDelayCount = 0;
+    lead.followUpNotified = true;
+
+    lead.notes.push({
+      text: `[Follow-Up Stopped]: ${cleanReason}`,
+      createdBy: req.user._id,
+      authorName: req.user.name || 'Agent',
+      createdAt: new Date(),
+    });
+
+    lead.leadActivities.push({
+      action: 'followup_cancelled',
+      performedBy: req.user._id,
+      performerName: req.user.name,
+      details: `Follow-up stopped and alarm permanently silenced. Reason: "${cleanReason}"`,
+      timestamp: new Date(),
+    });
+
+    // Also cancel any open or postponed records in FollowUp collection
+    try {
+      const FollowUp = require('../models/FollowUp');
+      await FollowUp.updateMany(
+        { lead_id: lead._id, status: { $in: ['open', 'postponed'] } },
+        {
+          $set: {
+            status: 'cancelled',
+            completed_at: new Date(),
+            completedAt: new Date(),
+            completion_note: cleanReason,
+            completionNote: cleanReason,
+          },
+        }
+      );
+    } catch (e) {}
+
+    await lead.save();
+
+    // Log global activity
+    try {
+      const ActivityLog = require('../models/ActivityLog');
+      await ActivityLog.create({
+        user_id: req.user._id,
+        userId: req.user._id,
+        userName: req.user.name,
+        role: req.user.role || 'agent',
+        action: 'FOLLOWUP_CANCELLED',
+        target_type: 'lead',
+        targetType: 'lead',
+        target_id: String(lead._id),
+        targetId: String(lead._id),
+        details: `Follow-up stopped for ${lead.name} (${lead.phone}). Reason: ${cleanReason}`,
+      });
+    } catch (e) {}
+
+    res.json({
+      success: true,
+      message: 'Follow-up stopped & alarm silenced permanently ✅',
+      lead,
+    });
+  } catch (error) {
+    console.error('cancelFollowUp error:', error);
+    res.status(500).json({ success: false, message: 'Server error cancelling follow-up' });
   }
 };
 
@@ -750,7 +1064,7 @@ exports.getTags = async (req, res) => {
   }
 };
 
-// @desc  Create real estate lead with activity logging
+// @desc  Create candidate admission lead with activity logging
 // @route POST /api/leads
 // @access Private
 exports.createLead = async (req, res) => {
@@ -879,14 +1193,34 @@ exports.createLead = async (req, res) => {
       delayHistory: [],
     } : { status: 'none', delayCount: 0, delayHistory: [] };
 
+    const resolvedCompanyId = companyId || (req.workspace && req.workspace.ownerId) || req.user.companyId || (req.user.companyRole === 'owner' ? req.user._id : req.user._id);
+    const resolvedWorkspaceId = req.workspaceId || req.user.workspaceId || (req.workspace && req.workspace._id) || null;
+
+    let targetAssignedTo = req.user._id;
+    let targetAssignedToName = req.user.name;
+
+    if (req.body.assignedTo && mongoose.Types.ObjectId.isValid(req.body.assignedTo)) {
+      const isPrivileged = req.user.role === 'superadmin' || 
+                           req.user.role === 'admin' || 
+                           req.user.companyRole === 'owner' || 
+                           req.user.companyRole === 'manager' ||
+                           req.membership?.role === 'owner' ||
+                           req.membership?.role === 'manager';
+      if (isPrivileged || String(req.body.assignedTo) === String(req.user._id)) {
+        const assignee = await User.findById(req.body.assignedTo).select('name');
+        if (assignee) {
+          targetAssignedTo = assignee._id;
+          targetAssignedToName = assignee.name;
+        }
+      }
+    }
+
     const lead = await Lead.create({
       userId: req.user._id,
-      companyId,
-      sharedWithCompanyId,
-      isSharedFromSingleUser,
-      sharedByUserName,
-      assignedTo: assignedTo || (req.user.companyRole === 'agent' ? req.user._id : null),
-      assignedToName: assignedAgentName || (req.user.companyRole === 'agent' ? req.user.name : ''),
+      companyId: resolvedCompanyId,
+      workspaceId: resolvedWorkspaceId,
+      assignedTo: targetAssignedTo,
+      assignedToName: targetAssignedToName,
       name: resolvedName,
       phone: cleanPhone,
       email: email ? email.toLowerCase().trim() : undefined,
@@ -952,12 +1286,6 @@ exports.createLead = async (req, res) => {
       metadata: { source: lead.source, status: lead.status },
     });
 
-    // Recalculate lead score for Real Estate leads
-    try {
-      const { calculateLeadScoreInternal } = require('./realEstateController');
-      const tenantId = lead.companyId || req.user.companyId || req.user._id;
-      await calculateLeadScoreInternal(lead._id, tenantId);
-    } catch (scoreErr) {}
 
     res.status(201).json(lead);
   } catch (error) {
@@ -1069,6 +1397,16 @@ exports.updateLead = async (req, res) => {
       // Clean up stale lost info if moving to an active/won stage
       lead.lostReason = '';
       lead.lostReasonDetail = '';
+    }
+
+    if (req.body.pipeline_stage !== undefined && req.body.pipelineStage === undefined) {
+      req.body.pipelineStage = req.body.pipeline_stage;
+    }
+    if (req.body.pipelineStage !== undefined && req.body.status === undefined) {
+      req.body.status = req.body.pipelineStage;
+    }
+    if (req.body.status !== undefined && req.body.pipelineStage === undefined) {
+      req.body.pipelineStage = req.body.status;
     }
 
     const allowedFields = [
@@ -1203,20 +1541,6 @@ exports.updateLead = async (req, res) => {
       });
     }
 
-    // Recalculate lead score if any relevant field changed
-    const scoreRelevantFields = [
-      'budget', 'budgetMin', 'budgetMax', 'location', 'propertyType',
-      'status', 'siteVisitDate', 'preferredConfigurations',
-      'possessionTimeline', 'purchasePurpose', 'lostReason'
-    ];
-    const hasScoringFieldChanged = Object.keys(changes).some(k => scoreRelevantFields.includes(k));
-    if (hasScoringFieldChanged) {
-      try {
-        const { calculateLeadScoreInternal } = require('./realEstateController');
-        const tenantId = lead.companyId || req.user.companyId || req.user._id;
-        await calculateLeadScoreInternal(lead._id, tenantId);
-      } catch (scoreErr) {}
-    }
 
     // Record Immutable Audit Log if changes occurred
     if (Object.keys(changes).length > 0) {
@@ -1304,15 +1628,30 @@ exports.addNote = async (req, res) => {
       });
     }
 
-    const beforeStatus = lead.status;
-    const userStages = req.user.pipelineStages || req.user.customPipelineStages || [];
-    const firstStage = userStages[0];
-    const secondStage = userStages[1] || 'contacted';
+    // Explicit automation invariant (Spec Section 5 & Security Hardening):
+    // Client-supplied req.body.autoAdvance must NOT bypass workspace policy or server authorization.
+    // Stage auto-advance on note is strictly governed by verified server-side workspace policy.
+    const isAdmissionPipeline = ['Lead Received', 'Campus Visit Scheduled', 'Application Submitted', 'Admission Confirmed'].includes(lead.status);
+    const hasLegacyCustomStages = Boolean(req.user?.pipelineStages?.length > 1 && req.user.pipelineStages[0] === lead.status);
+    
+    // Server-enforced authorization: Workspace policy is authoritative.
+    const workspacePolicyAllows = req.workspace?.settings?.autoAdvanceStageOnNote === true;
+    const legacyAllows = !isAdmissionPipeline && hasLegacyCustomStages && /discovery call completed|call completed|connected with client/i.test(text);
 
-    if (lead.status === 'new_lead') {
-      lead.status = 'contacted';
-    } else if (['new', 'New Lead', firstStage].includes(lead.status)) {
-      lead.status = secondStage;
+    // Client can never force auto-advance if workspace policy does not allow it
+    const shouldAutoAdvance = Boolean(workspacePolicyAllows || legacyAllows);
+
+    const beforeStatus = lead.status;
+    if (shouldAutoAdvance) {
+      const userStages = req.user.pipelineStages || req.user.customPipelineStages || [];
+      const firstStage = userStages[0];
+      const secondStage = userStages[1] || 'contacted';
+
+      if (lead.status === 'new_lead') {
+        lead.status = 'contacted';
+      } else if (['new', 'New Lead', firstStage].includes(lead.status)) {
+        lead.status = secondStage;
+      }
     }
 
     lead.notes.push({
@@ -1331,6 +1670,46 @@ exports.addNote = async (req, res) => {
         : `Added note: "${text.trim().slice(0, 50)}${text.length > 50 ? '...' : ''}"`,
       timestamp: new Date(),
     });
+
+    // Optional explicit follow-up cancellation combined with note
+    if (req.body.stopFollowUp || req.body.cancelFollowUp) {
+      if (lead.activeFollowUp) {
+        lead.activeFollowUp.scheduledAt = null;
+        lead.activeFollowUp.status = 'cancelled';
+        lead.activeFollowUp.completedAt = new Date();
+        lead.activeFollowUp.completionNote = `[Stopped with Note]: ${text.trim()}`;
+        lead.activeFollowUp.completedBy = req.user._id;
+      }
+      lead.followUpDate = null;
+      lead.followUpNote = '';
+      lead.followUpStatus = 'cancelled';
+      lead.followUpDelayCount = 0;
+      lead.followUpNotified = true;
+
+      lead.leadActivities.push({
+        action: 'followup_cancelled',
+        performedBy: req.user._id,
+        performerName: req.user.name,
+        details: `Active follow-up stopped upon adding note: "${text.trim().slice(0, 50)}${text.length > 50 ? '...' : ''}"`,
+        timestamp: new Date(),
+      });
+
+      try {
+        const FollowUp = require('../models/FollowUp');
+        await FollowUp.updateMany(
+          { lead_id: lead._id, status: { $in: ['open', 'postponed'] } },
+          {
+            $set: {
+              status: 'cancelled',
+              completed_at: new Date(),
+              completedAt: new Date(),
+              completion_note: text.trim(),
+              completionNote: text.trim(),
+            },
+          }
+        );
+      } catch (e) {}
+    }
 
     await lead.save();
 
@@ -1512,237 +1891,34 @@ exports.trackCall = async (req, res) => {
 // @access Private
 exports.reassignLead = async (req, res) => {
   try {
-    const { toAgentId, reason } = req.body;
-    if (!toAgentId) return res.status(400).json({ success: false, message: 'Target agent ID (toAgentId) is required' });
-
-    const isSuperAdmin = req.user.role === 'superadmin' || req.user.isAdmin;
-    const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner' || req.user.role === 'admin';
-    const isManager = req.user.role === 'manager' || req.user.companyRole === 'manager';
-    const companyId = req.user.companyId || (isOwner ? req.user._id : null);
-
-    let permissionQuery;
-    if (isSuperAdmin || isOwner || isManager) {
-      permissionQuery = await buildLeadPermissionQuery(req.user, false);
-    } else if (companyId) {
-      // Sub-agents can claim unassigned leads from their company pool OR transfer their own assigned leads
-      permissionQuery = {
-        $and: [
-          {
-            $or: [
-              { companyId: companyId },
-              { userId: companyId },
-              { sharedWithCompanyId: companyId }
-            ]
-          },
-          {
-            $or: [
-              { assignedTo: req.user._id },
-              { currentOwnerId: req.user._id },
-              { userId: req.user._id },
-              { assignedTo: null },
-              { currentOwnerId: null }
-            ]
-          }
-        ]
-      };
-    } else {
-      permissionQuery = { userId: req.user._id };
-    }
-
-    const lead = await Lead.findOne({ _id: req.params.id, ...permissionQuery });
+    const lead = await Lead.findOne({ _id: req.params.id, userId: req.user._id });
     if (!lead) return res.status(404).json({ success: false, message: 'Lead not found or unauthorized' });
 
-    const targetAgent = await User.findById(toAgentId).select('name email usercode');
-    if (!targetAgent) return res.status(404).json({ success: false, message: 'Target agent not found' });
-
-    const prevAgentName = lead.assignedToName || 'Unassigned (Common Pool)';
-    lead.assignedTo = targetAgent._id;
-    lead.assignedToName = targetAgent.name;
-    lead.currentOwnerId = targetAgent._id;
-    lead.ownershipStatus = String(toAgentId) === String(req.user._id) ? 'claimed' : 'assigned';
-    if (String(toAgentId) === String(req.user._id)) lead.claimedAt = new Date();
-    lead.releaseReason = '';
-
-    const reasonText = reason && String(reason).trim() ? ` Reason: "${String(reason).trim()}"` : '';
-    lead.leadActivities.push({
-      action: 'assigned_agent',
-      performedBy: req.user._id,
-      performerName: req.user.name,
-      details: `Reassigned from ${prevAgentName} to ${targetAgent.name} by ${req.user.name}.${reasonText}`,
-      timestamp: new Date(),
-    });
-
-    if (reason && String(reason).trim()) {
-      lead.notes.push({
-        text: `[Lead Reassigned to ${targetAgent.name}]: ${String(reason).trim()}`,
-        createdBy: req.user._id,
-        authorName: req.user.name,
-        createdAt: new Date(),
-      });
-    }
-
+    lead.assignedTo = req.user._id;
+    lead.assignedToName = req.user.name;
     await lead.save();
-
-    // If assigned to another agent, create LeadTransferRequest and notify target agent
-    if (String(toAgentId) !== String(req.user._id)) {
-      try {
-        const LeadTransferRequest = require('../models/LeadTransferRequest');
-        const Notification = require('../models/Notification');
-        const tenantId = lead.companyId || req.user.companyId || req.user._id;
-        const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
-
-        const isManagerOrAdmin = req.user.isAdmin || req.user.role === 'superadmin' || req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner';
-
-        const transferRequest = await LeadTransferRequest.create({
-          tenantId,
-          leadId: lead._id,
-          requestedBy: req.user._id,
-          currentOwnerId: req.user._id,
-          requestedTo: targetAgent._id,
-          requestType: isManagerOrAdmin ? 'MANAGER_REQUEST' : 'NORMAL',
-          status: 'PENDING',
-          reason: reason && String(reason).trim() ? String(reason).trim() : `Lead assigned by ${req.user.name}`,
-          expiresAt,
-        });
-
-        const notif = await Notification.create({
-          userId: targetAgent._id,
-          leadId: lead._id,
-          leadName: lead.name || 'Prospect Lead',
-          title: '🎯 New Lead Assigned / Transfer Request',
-          message: `${req.user.name} assigned lead "${lead.name || 'Prospect'}" (${lead.phone}) to you.${reasonText}`,
-          type: 'transfer_request',
-          transferRequestId: transferRequest._id,
-          isRead: false,
-        });
-
-        try {
-          const { broadcastNotification } = require('./notificationsController');
-          broadcastNotification(targetAgent._id, notif);
-        } catch {}
-      } catch (notifErr) {
-        console.warn('Failed to create transfer request / notification:', notifErr.message);
-      }
-    }
-
-    try {
-      const ActivityLog = require('../models/ActivityLog');
-      await ActivityLog.create({
-        user_id: req.user._id,
-        userId: req.user._id,
-        userName: req.user.name,
-        role: req.user.role || 'agent',
-        action: 'LEAD_REASSIGNED',
-        target_type: 'lead',
-        targetType: 'lead',
-        target_id: String(lead._id),
-        targetId: String(lead._id),
-        details: `Reassigned lead ${lead.name} to ${targetAgent.name}.${reasonText}`,
-      });
-    } catch (e) {}
 
     res.json({
       success: true,
-      message: `Lead successfully reassigned to ${targetAgent.name}`,
+      message: 'Lead verified in your candidate pipeline.',
       lead,
     });
   } catch (error) {
     console.error('reassignLead error:', error);
-    res.status(500).json({ success: false, message: 'Server error reassigning lead' });
+    res.status(500).json({ success: false, message: 'Server error updating lead' });
   }
 };
 
-// @desc  Release / drop lead back to Unassigned Pool with a reason
+// @desc  Release / drop lead no-op for single-user system
 // @route PUT /api/leads/:id/release or POST /api/leads/:id/release
-// @access Private (Assigned Agent, Manager, or Owner)
+// @access Private
 exports.releaseLead = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { reason } = req.body;
-
-    if (!reason || !String(reason).trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'A reason for releasing the lead is required.',
-      });
-    }
-
-    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ success: false, message: 'Invalid lead ID format' });
-    }
-
-    const lead = await Lead.findById(id);
-    if (!lead) {
-      return res.status(404).json({ success: false, message: 'Lead not found' });
-    }
-
-    const isSuperAdmin = req.user.role === 'superadmin' || req.user.isAdmin;
-    const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner' || req.user.role === 'admin';
-    const isManager = req.user.role === 'manager' || req.user.companyRole === 'manager';
-    const isAssignedAgent =
-      (lead.assignedTo && String(lead.assignedTo) === String(req.user._id)) ||
-      (lead.currentOwnerId && String(lead.currentOwnerId) === String(req.user._id));
-
-    if (!isAssignedAgent && !isOwner && !isManager && !isSuperAdmin) {
-      return res.status(403).json({
-        success: false,
-        message: 'You are not authorized to release this lead.',
-      });
-    }
-
-    const cleanReason = String(reason).trim();
-    const prevAgentName = lead.assignedToName || req.user.name || 'Agent';
-
-    lead.assignedTo = null;
-    lead.assignedToName = '';
-    lead.currentOwnerId = null;
-    lead.ownershipStatus = 'released';
-    lead.releaseReason = cleanReason;
-    lead.releasedBy = req.user._id;
-    lead.releasedByName = req.user.name;
-    lead.releasedAt = new Date();
-
-    if (!lead.customData) lead.customData = {};
-    lead.customData.releaseReason = cleanReason;
-    lead.customData.releasedByName = req.user.name;
-    lead.customData.releasedAt = new Date();
-
-    lead.leadActivities.push({
-      action: 'lead_updated',
-      performedBy: req.user._id,
-      performerName: req.user.name,
-      details: `Released to Unassigned Pool by ${req.user.name} (previously ${prevAgentName}). Reason: "${cleanReason}"`,
-      timestamp: new Date(),
-    });
-
-    lead.notes.push({
-      text: `[Released to Unassigned Pool]: "${cleanReason}" (by ${req.user.name})`,
-      createdBy: req.user._id,
-      authorName: req.user.name,
-      createdAt: new Date(),
-    });
-
-    await lead.save();
-
-    try {
-      const ActivityLog = require('../models/ActivityLog');
-      await ActivityLog.create({
-        user_id: req.user._id,
-        userId: req.user._id,
-        userName: req.user.name,
-        role: req.user.role || 'agent',
-        action: 'LEAD_RELEASED',
-        target_type: 'lead',
-        targetType: 'lead',
-        target_id: String(lead._id),
-        targetId: String(lead._id),
-        details: `Released lead ${lead.name || 'Prospect'} to Unassigned Pool. Reason: "${cleanReason}"`,
-      });
-    } catch (e) {}
-
+    const lead = await Lead.findOne({ _id: req.params.id, userId: req.user._id });
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
     res.json({
       success: true,
-      message: 'Lead has been returned to the Unassigned Pool with reason.',
+      message: 'Lead confirmed in your candidate pipeline.',
       lead,
     });
   } catch (error) {
@@ -2167,6 +2343,7 @@ exports.importLeads = async (req, res) => {
       }
 
       chunk.push({
+        workspaceId: req.user.workspaceId || req.workspaceId,
         userId: req.user._id,
         companyId,
         assignedTo: req.user.companyRole === 'agent' ? req.user._id : null,
@@ -2305,44 +2482,7 @@ exports.importLeads = async (req, res) => {
 // @route PUT /api/leads/:id/share-organization
 // @access Private (Single User / Creator)
 exports.toggleLeadOrgSharing = async (req, res) => {
-  try {
-    const { targetCompanyId, share = true } = req.body;
-    const lead = await Lead.findOne({ _id: req.params.id, userId: req.user._id });
-    if (!lead) return res.status(404).json({ message: 'Lead not found or unauthorized' });
-
-    if (share && targetCompanyId) {
-      const companyUser = await User.findById(targetCompanyId).select('name usercode');
-      if (!companyUser) return res.status(404).json({ message: 'Target organization not found' });
-      lead.sharedWithCompanyId = targetCompanyId;
-      lead.isSharedFromSingleUser = true;
-      lead.sharedByUserName = req.user.name;
-      const tagLabel = `Shared by ${req.user.name}`;
-      if (!lead.tags.includes(tagLabel)) lead.tags.push(tagLabel);
-      lead.leadActivities.push({
-        action: 'lead_updated',
-        performedBy: req.user._id,
-        performerName: req.user.name,
-        details: `Lead shared with organization ${companyUser.name} (${companyUser.usercode || 'ORG'})`,
-        timestamp: new Date(),
-      });
-    } else {
-      lead.sharedWithCompanyId = null;
-      lead.isSharedFromSingleUser = false;
-      lead.tags = (lead.tags || []).filter(t => !t.startsWith('Shared by'));
-      lead.leadActivities.push({
-        action: 'lead_updated',
-        performedBy: req.user._id,
-        performerName: req.user.name,
-        details: `Organization sharing removed by ${req.user.name}`,
-        timestamp: new Date(),
-      });
-    }
-
-    await lead.save();
-    res.json({ success: true, message: share ? 'Lead shared with organization successfully ✅' : 'Organization sharing removed ✅', lead });
-  } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to update sharing preference' });
-  }
+  return res.json({ success: true, message: 'CRM is operating in exclusive single-user mode.' });
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -2464,4 +2604,6 @@ exports.deleteChildInquiry = async (req, res) => {
     res.status(500).json({ message: error.message || 'Failed to delete child inquiry' });
   }
 };
+
+exports.buildLeadPermissionQuery = buildLeadPermissionQuery;
 

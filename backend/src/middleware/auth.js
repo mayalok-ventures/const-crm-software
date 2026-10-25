@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { securityTracker } = require('../monitoring/security/securityTracker');
+const { userCache, subscriptionLifecycleCache, invalidateUserAuthCache } = require('../utils/authCache');
 
 /**
  * Calculates the multi-tenant subscription lifecycle:
@@ -25,11 +26,22 @@ const calculateSubscriptionLifecycle = async (user) => {
     };
   }
 
+  const userIdStr = String(user._id || user.id);
+  const cachedLifecycle = subscriptionLifecycleCache.get(userIdStr);
+  if (cachedLifecycle) {
+    return cachedLifecycle;
+  }
+
   const isSubAgent = user.companyRole === 'agent' && Boolean(user.companyId);
   let companyOwner = null;
 
   if (isSubAgent) {
-    companyOwner = await User.findById(user.companyId).select('name companyInfo plan planEndDate billingCycle').lean();
+    const ownerIdStr = String(user.companyId);
+    companyOwner = userCache.get(ownerIdStr);
+    if (!companyOwner) {
+      companyOwner = await User.findById(user.companyId).select('name companyInfo plan planEndDate billingCycle').lean();
+      if (companyOwner) userCache.set(ownerIdStr, companyOwner, 30000);
+    }
   }
 
   const effectivePlan = isSubAgent ? (companyOwner?.plan || 'free') : (user.plan || 'free');
@@ -59,7 +71,7 @@ const calculateSubscriptionLifecycle = async (user) => {
     state = 'ACTIVE';
   }
 
-  return {
+  const result = {
     state,
     daysLeft,
     graceDaysLeft,
@@ -72,6 +84,9 @@ const calculateSubscriptionLifecycle = async (user) => {
     companyName,
     companyOwnerId: isSubAgent ? user.companyId : null,
   };
+
+  subscriptionLifecycleCache.set(userIdStr, result, 30000);
+  return result;
 };
 
 const protect = async (req, res, next) => {
@@ -89,9 +104,18 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ message: 'Two-Factor Authentication required to access this endpoint.' });
     }
 
-    const user = await User.findById(decoded.id)
-      .select('-password -twoFactorSecret -twoFactorTempSecret -twoFactorTempExpires -twoFactorRecoveryCodes -twoFactorOtp -twoFactorOtpExpires')
-      .lean();
+    const userIdStr = String(decoded.id);
+    let user = userCache.get(userIdStr);
+
+    if (!user) {
+      user = await User.findById(decoded.id)
+        .select('-password -twoFactorSecret -twoFactorTempSecret -twoFactorTempExpires -twoFactorRecoveryCodes -twoFactorOtp -twoFactorOtpExpires')
+        .lean();
+
+      if (user) {
+        userCache.set(userIdStr, user, 30000);
+      }
+    }
 
     if (!user || !user.isActive) {
       return res.status(401).json({ message: 'Not authorized, account inactive' });
@@ -109,6 +133,7 @@ const protect = async (req, res, next) => {
             'suspension.suspendedUntil': null,
           }
         });
+        invalidateUserAuthCache(user._id);
       } else {
         const msg = until
           ? `Account suspended until ${new Date(until).toLocaleDateString()}. Reason: ${user.suspension.reason || 'Violation'}.`
@@ -128,7 +153,12 @@ const protect = async (req, res, next) => {
     if (user.role !== 'superadmin' && !user.isAdmin) {
       let tenantOwner = user;
       if (user.companyId) {
-        tenantOwner = (await User.findById(user.companyId).select('lifecycleStatus userStatus isActive companyInfo name').lean()) || user;
+        const ownerIdStr = String(user.companyId);
+        tenantOwner = userCache.get(ownerIdStr);
+        if (!tenantOwner) {
+          tenantOwner = (await User.findById(user.companyId).select('lifecycleStatus userStatus isActive companyInfo name').lean()) || user;
+          if (tenantOwner) userCache.set(ownerIdStr, tenantOwner, 30000);
+        }
       }
 
       const tenantLifecycleState = tenantOwner.lifecycleStatus || (
@@ -316,7 +346,7 @@ const optionalAuth = async (req, res, next) => {
 };
 
 const superAdminOnly = (req, res, next) => {
-  if (!req.user || req.user.role !== 'superadmin') {
+  if (!req.user || (req.user.role !== 'superadmin' && !req.user.isAdmin)) {
     securityTracker.recordEvent({
       type: 'PERMISSION_DENIED',
       req,

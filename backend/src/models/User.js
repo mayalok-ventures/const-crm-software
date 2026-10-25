@@ -328,4 +328,13 @@ userSchema.index({ companyId: 1, managerId: 1 });
 userSchema.index({ role: 1, managerId: 1 });
 userSchema.index({ isAvailableForRouting: 1, isActive: 1 });
 
+userSchema.post(['save', 'findOneAndUpdate', 'findByIdAndUpdate', 'updateOne'], function (doc) {
+  try {
+    const { invalidateUserAuthCache } = require('../utils/authCache');
+    const id = doc?._id || (this.getQuery ? this.getQuery()?._id : null);
+    if (id) invalidateUserAuthCache(id);
+  } catch (_) {}
+});
+
 module.exports = mongoose.models.User || mongoose.model('User', userSchema);
+

@@ -19,6 +19,7 @@ const testFiles = [
   'tests/platform_health_score_engine.test.js',
   'tests/integrations_phase3.test.js',
   'tests/auth_reliability_phase1.test.js',
+  'tests/perf_and_speed_phase2.test.js',
 ];
 
 async function isServerRunning() {

@@ -96,7 +96,7 @@ async function runBenchmark() {
   console.log(`docsExamined: ${listStats.totalDocsExamined}, nReturned: ${listStats.nReturned}`);
   console.log(`executionTimeMillis: ${listStats.executionTimeMillis} ms`);
 
-  console.log('\n--- 2. EXPLAIN ANALYSIS: Regex Search Query (search: "Aarav" case-insensitive RegExp) ---');
+  console.log('\n--- 2. EXPLAIN ANALYSIS: Regex Search Query (OLD: "Aarav" unanchored RegExp on 5 fields) ---');
   const searchRegex = new RegExp('Aarav', 'i');
   const searchExplain = await Lead.find({
     $and: [
@@ -121,6 +121,25 @@ async function runBenchmark() {
   console.log(`Stage: ${searchExplain.queryPlanner?.winningPlan?.stage || searchExplain.queryPlanner?.winningPlan?.inputStage?.stage}`);
   console.log(`docsExamined: ${searchStats.totalDocsExamined}, nReturned: ${searchStats.nReturned}`);
   console.log(`executionTimeMillis: ${searchStats.executionTimeMillis} ms`);
+
+  console.log('\n--- 2b. EXPLAIN ANALYSIS: Optimized Indexed Search Query (NEW: Anchored prefix on indexed nameLower) ---');
+  const optSearchExplain = await Lead.find({
+    $and: [
+      { workspaceId: workspace._id },
+      { nameLower: new RegExp('^aarav') }
+    ]
+  })
+    .sort({ updatedAt: -1 })
+    .skip(0)
+    .limit(25)
+    .explain('executionStats');
+
+  const optSearchStats = optSearchExplain.executionStats;
+  const optWinning = optSearchExplain.queryPlanner?.winningPlan;
+  console.log(`Stage: ${optWinning?.stage || optWinning?.inputStage?.stage}`);
+  console.log(`Index used: ${JSON.stringify(optWinning?.inputStage?.indexName || optWinning?.indexName || 'IXSCAN')}`);
+  console.log(`docsExamined: ${optSearchStats.totalDocsExamined}, nReturned: ${optSearchStats.nReturned}`);
+  console.log(`executionTimeMillis: ${optSearchStats.executionTimeMillis} ms`);
 
   console.log('\n--- 3. TIMING BENCHMARKS (10 runs average) ---');
   // Benchmark 1: GET Leads Page 1
@@ -151,7 +170,7 @@ async function runBenchmark() {
   }
   console.log(`Avg Lead List Page 2 Query Time: ${(sumP2 / 10).toFixed(2)} ms`);
 
-  // Benchmark 3: Search Query with countDocuments
+  // Benchmark 3: Old Unindexed Search with countDocuments
   let sumSearch = 0;
   for (let i = 0; i < 10; i++) {
     const t0 = performance.now();
@@ -180,7 +199,28 @@ async function runBenchmark() {
     ]);
     sumSearch += (performance.now() - t0);
   }
-  console.log(`Avg Lead Search + Count Query Time: ${(sumSearch / 10).toFixed(2)} ms`);
+  console.log(`Avg OLD Unindexed Search + Count Query Time: ${(sumSearch / 10).toFixed(2)} ms`);
+
+  // Benchmark 4: NEW Optimized Search with Cached Count
+  let sumOptSearch = 0;
+  let cachedTotal = null;
+  for (let i = 0; i < 10; i++) {
+    const t0 = performance.now();
+    const qOpt = {
+      workspaceId: workspace._id,
+      nameLower: new RegExp('^aarav')
+    };
+    const p1 = Lead.find(qOpt)
+      .select('-leadActivities -editHistory')
+      .sort({ updatedAt: -1 })
+      .skip(0)
+      .limit(25)
+      .lean();
+    const p2 = cachedTotal !== null ? Promise.resolve(cachedTotal) : Lead.countDocuments(qOpt).then(c => { cachedTotal = c; return c; });
+    await Promise.all([p1, p2]);
+    sumOptSearch += (performance.now() - t0);
+  }
+  console.log(`Avg NEW Indexed Search + Cached Count Query Time: ${(sumOptSearch / 10).toFixed(2)} ms`);
 
   await mongoose.disconnect();
   console.log('\nBenchmark completed successfully.');

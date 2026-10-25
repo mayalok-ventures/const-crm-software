@@ -43,22 +43,23 @@ const leadActivitySchema = new mongoose.Schema({
       'lead_created',
       'status_changed',
       'assigned_agent',
-      'site_visit_scheduled',
-      'site_visit_completed',
+      'campus_visit_scheduled',
+      'campus_visit_completed',
+      'college_shortlisted',
+      'token_advance_recorded',
+      'admission_confirmed',
       'note_added',
       'message_sent',
       'message_received',
       'recording_added',
-      'project_linked',
       'lead_updated',
       'call_initiated',
       'followup_scheduled',
       'followup_completed',
       'followup_postponed',
+      'followup_rescheduled',
       'followup_cancelled',
       'followup_updated',
-      'stall_locked',
-      'event_pass',
       'plan_assigned',
       'free_plan_assigned',
       'deal_closed',
@@ -104,54 +105,82 @@ const childSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 }, { _id: true });
 
+const inquirySchema = new mongoose.Schema({
+  inquiryId: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
+  source: { type: String, required: true },
+  externalLeadId: { type: String, default: '' },
+  integrationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Integration', default: null },
+  formId: { type: String, default: '' },
+  formName: { type: String, default: '' },
+  campaignId: { type: String, default: '' },
+  campaignName: { type: String, default: '' },
+  course: { type: String, default: '' },
+  city: { type: String, default: '' },
+  customQuestions: { type: mongoose.Schema.Types.Mixed, default: {} },
+  assignmentReason: { type: String, default: '' },
+  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  status: { type: String, default: 'new_inquiry' },
+  createdAt: { type: Date, default: Date.now }
+}, { _id: true });
+
 const leadSchema = new mongoose.Schema({
+  // Multi-Tenant Workspace Boundary (Spec Section 5)
+  workspaceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Workspace', index: true },
+
   // Creator / Lead Owner
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   
   // Organization / Company Association
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 
-  // Single User to Organization Collaboration (Rule 4)
-  sharedWithCompanyId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
-  isSharedFromSingleUser: { type: Boolean, default: false },
-  sharedByUserName: { type: String, default: '' },
-
-  // Assigned Agent & Manager Hierarchy
+  // Single User Ownership
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   assignedToName: { type: String, default: '' },
-  assignedManager: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
-  assignedManagerName: { type: String, default: '' },
-
-  // Distribution Engine Metadata
-  distributionRuleId: { type: mongoose.Schema.Types.ObjectId, ref: 'LeadDistributionRule', default: null },
-  distributionStrategy: { type: String, default: 'manual' },
-  visibilityMode: { type: String, enum: ['shared', 'isolated'], default: 'shared' },
 
   // Primary Source Classification (Canonical: MANUAL, USER_SIGNUP, ADS, WEBHOOK)
   primarySource: {
     type: String,
-    enum: [
-      'MANUAL', 'USER_SIGNUP', 'ADS', 'WEBHOOK',
-      'SOURCE_A_MANUAL', 'SOURCE_B_SIGNUP', 'SOURCE_C_ADS',
-      'manual', 'signup', 'ads', 'webhook',
-      'auto-signup', 'Auto-Signup', 'Direct Call', 'Meta Ads', 'Google Ads'
-    ],
+    enum: ['MANUAL', 'USER_SIGNUP', 'ADS', 'WEBHOOK'],
     default: 'MANUAL',
     set: normalizeLeadSource,
     index: true,
   },
 
-  // Linked Project / Package Offering Pre-set
-  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
-  project: { type: String, default: '' },
-
   name: { type: String, default: '', trim: true },
+  nameLower: { type: String, lowercase: true, trim: true, default: '' },
   phone: { type: String, default: '', trim: true },
+  phoneDigits: { type: String, trim: true, default: '' },
   email: { type: String, lowercase: true, trim: true },
   company: { type: String, trim: true },
+  companyLower: { type: String, lowercase: true, trim: true, default: '' },
   tags: [{ type: String, trim: true }],
 
-  // CoreSetu Subscription Plans / Commercial Packages
+  // Student Candidate Academic & Admission Profile
+  targetStream: { type: String, default: '', trim: true }, // e.g. Engineering, Medical, MBA, Law, Pharmacy
+  targetCourse: { type: String, default: '', trim: true }, // e.g. B.Tech Computer Science, MBBS, MBA Finance
+  targetState: { type: String, default: '', trim: true },
+  targetCity: { type: String, default: '', trim: true },
+  academicScore10th: { type: Number, default: null },
+  academicScore12th: { type: Number, default: null },
+  academicScoreGrad: { type: Number, default: null },
+  entranceExam: { type: String, default: '', trim: true }, // e.g. NEET, JEE Main, CAT, CLAT, MAT
+  entranceRank: { type: String, default: '', trim: true },
+  quotaPreference: {
+    type: String,
+    enum: ['Merit Quota', 'Management Quota', 'NRI Quota', 'State Quota', 'Any', null, ''],
+    default: 'Merit Quota'
+  },
+  shortlistedColleges: [{
+    collegeName: { type: String, trim: true },
+    courseName: { type: String, trim: true },
+    feeQuote: { type: Number, default: 0 },
+    quota: { type: String, default: 'Merit' },
+  }],
+  campusVisitDate: { type: Date, default: null },
+  tokenAdvancePaid: { type: Number, default: 0, min: 0 },
+  admissionFinalFee: { type: Number, default: 0, min: 0 },
+
+  // Commercial / Subscription Packages
   service_required: {
     type: String,
     default: 'smart_solo',
@@ -170,10 +199,10 @@ const leadSchema = new mongoose.Schema({
     trim: true,
   },
 
-  // Sales Pipeline Stage (Supports Dynamic Tenant Pipeline Stages & Standard Stages)
+  // Sales Pipeline Stage (Default: Lead Received)
   status: {
     type: String,
-    default: 'new_lead',
+    default: 'Lead Received',
     trim: true,
   },
 
@@ -189,21 +218,23 @@ const leadSchema = new mongoose.Schema({
   // Soft Deletion
   deletedAt: { type: Date, default: null },
 
-  // Deal Dimensions & Revenue Tracking
-  propertyType: { type: String, default: '' },
+  // Candidate Budget & Package Range
   budget: { type: String, default: '' },
+  budgetMin: { type: Number, default: 0, min: 0 },
+  budgetMax: { type: Number, default: 0, min: 0 },
   closedDealAmount: { type: Number, default: null },
   location: { type: String, default: '' },
   profession: { type: String, default: '' },
   areasOfInterest: [{ type: String, trim: true }],
-  siteVisitDate: { type: Date, default: null },
+  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Catalogue', default: null },
+  project: { type: String, default: '' },
 
-  // Real Estate Domain Enhancements & Lead Scoring Engine
+  // Admission Consulting Domain Enhancements & Candidate Intent Scoring Engine
   temperature: {
     type: String,
-    enum: ['HOT', 'WARM', 'COLD', 'hot', 'warm', 'cold', null],
+    enum: ['HOT', 'WARM', 'COLD', null],
     default: 'WARM',
-    set: (v) => (v ? String(v).toUpperCase() : 'WARM'),
+    set: (v) => (v ? String(v).toUpperCase().trim() : 'WARM'),
     index: true,
   },
   score: {
@@ -220,17 +251,34 @@ const leadSchema = new mongoose.Schema({
   }],
   lostReason: {
     type: String,
-    enum: ['Budget', 'Location', 'Property Unavailable', 'Competitor', 'No Response', 'Not Interested', 'Financing Issue', 'Family Decision', 'Fake Lead', 'Duplicate', 'Other', null, ''],
-    default: null,
+    enum: [
+      'Budget Exceeded',
+      'Location / Distance',
+      'Preferred Course Unavailable',
+      'Opted for Government / Merit Seat',
+      'Lost to Direct College',
+      'Joined Other Institute',
+      'Fake Lead / Not Interested',
+      'Dropped Year',
+      'Family Decision',
+      'Invalid Contact / Unreachable',
+      'No Response',
+      'Other',
+      null,
+      '',
+    ],
+    default: '',
+    trim: true,
+  },
+  admissionDetails: {
+    college: { type: String, trim: true, default: '' },
+    course: { type: String, trim: true, default: '' },
+    feeAmount: { type: Number, default: 0 },
+    admissionDate: { type: Date, default: null },
   },
   lostRemarks: { type: String, default: '', trim: true },
-  possessionTimeline: { type: String, default: '', trim: true },
-  purchasePurpose: { type: String, enum: ['End Use', 'Investment', 'Rental Income', null, ''], default: null },
-  preferredConfigurations: [{ type: String, trim: true }],
-  budgetMin: { type: Number, default: 0, min: 0 },
-  budgetMax: { type: Number, default: 0, min: 0 },
   pipelineId: { type: mongoose.Schema.Types.ObjectId, ref: 'Pipeline', default: null },
-  pipelineStage: { type: String, default: 'New Lead', trim: true },
+  pipelineStage: { type: String, default: 'Lead Received', trim: true },
 
   // Dynamic Custom Form Fields & Metadata (agent_custom_price, admin_flag, etc.)
   customData: {
@@ -295,7 +343,8 @@ const leadSchema = new mongoose.Schema({
     enum: [
       'MANUAL', 'USER_SIGNUP', 'ADS', 'WEBHOOK',
       'meta', 'google', 'facebook', 'instagram', 'google_ads', 'meta_ads',
-      'website', 'organic', 'referral', 'partner', 'import', 'spreadsheet',
+      'website', 'organic', 'referral', 'partner', 'import', 'spreadsheet', 'sheets',
+      'custom', 'custom_webhook',
       'signup', 'agent_manual', 'manual', 'other', 'platform_registration',
       'auto-signup', 'meta_webhook', 'google_webhook', 'api', 'webhook',
       'Auto-Signup', 'Direct Call', 'Meta Ads', 'Google Ads', 'Organic Search', 'Referral'
@@ -305,13 +354,16 @@ const leadSchema = new mongoose.Schema({
   },
   leadSource: {
     provider: { type: String, default: '' },
-    externalLeadId: { type: String, default: '' },
-    integrationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Integration', default: null },
+    platform: { type: String, default: '', index: true }, // meta, google, sheets, website, custom, manual, signup
+    connectionId: { type: String, default: null, index: true }, // pageId, customerId/accountId, sheetId, formKey
+    connectionName: { type: String, default: '' },
+    externalLeadId: { type: String, default: '', index: true },
+    integrationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Integration', default: null, index: true },
     accountId: { type: String, default: null },
     pageId: { type: String, default: null },
     formId: { type: String, default: null },
     formName: { type: String, default: '' },
-    campaignId: { type: String, default: null },
+    campaignId: { type: String, default: null, index: true },
     campaignName: { type: String, default: '' },
     adSetId: { type: String, default: null },
     adSetName: { type: String, default: '' },
@@ -319,6 +371,7 @@ const leadSchema = new mongoose.Schema({
     adGroupName: { type: String, default: '' },
     adId: { type: String, default: null },
     adName: { type: String, default: '' },
+    assignmentReason: { type: String, default: '' },
     importedAt: { type: Date, default: null },
   },
   utmCampaign: {
@@ -337,35 +390,13 @@ const leadSchema = new mongoose.Schema({
     trim: true,
   },
 
-  // Lost Deal Categorization & Context
-  lostReason: {
-    type: String,
-    default: '',
-    trim: true,
-  },
+  // Multi-inquiry support for re-inquiries without phone collision (capped at 50)
+  inquiries: [inquirySchema],
+  assignmentReason: { type: String, default: '' },
+  isTestLead: { type: Boolean, default: false, index: true },
+
+  // Lost Deal Context
   lostReasonDetail: {
-    type: String,
-    default: '',
-    trim: true,
-  },
-  currentOwnerId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    default: null,
-    index: true,
-  },
-  claimedAt: {
-    type: Date,
-    default: null,
-  },
-  ownershipStatus: {
-    type: String,
-    enum: ['unclaimed', 'claimed', 'assigned', 'transferred', 'released'],
-    default: 'unclaimed',
-    index: true,
-  },
-  // Lead Release Tracking (Returned to Unassigned Pool with Reason)
-  releaseReason: {
     type: String,
     default: '',
     trim: true,
@@ -375,15 +406,7 @@ const leadSchema = new mongoose.Schema({
     ref: 'User',
     default: null,
   },
-  releasedByName: {
-    type: String,
-    default: '',
-    trim: true,
-  },
-  releasedAt: {
-    type: Date,
-    default: null,
-  },
+
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -450,13 +473,26 @@ leadSchema.index({ userId: 1, followUpDate: 1 });
 leadSchema.index({ followUpDate: 1, status: 1 });
 leadSchema.index({ 'activeFollowUp.status': 1, 'activeFollowUp.scheduledAt': 1 });
 // Multi-tenant phone uniqueness: unique within the company when linked, or unique per solo user when unlinked
+// Partial filter guarantees that email-only leads (phone: empty or null) never collide
 leadSchema.index(
   { companyId: 1, phone: 1 },
-  { unique: true, partialFilterExpression: { companyId: { $exists: true, $type: 'objectId' } } }
+  {
+    unique: true,
+    partialFilterExpression: {
+      companyId: { $exists: true, $type: 'objectId' },
+      phone: { $exists: true, $type: 'string', $gt: '' },
+    },
+  }
 );
 leadSchema.index(
   { userId: 1, phone: 1 },
-  { unique: true, partialFilterExpression: { companyId: { $eq: null } } }
+  {
+    unique: true,
+    partialFilterExpression: {
+      companyId: { $eq: null },
+      phone: { $exists: true, $type: 'string', $gt: '' },
+    },
+  }
 );
 // Multi-tenant external lead ID idempotency: prevents duplicate webhook creations under high concurrency
 leadSchema.index(
@@ -522,15 +558,101 @@ leadSchema.pre('validate', function() {
   } else if (this.primarySource) {
     this.primarySource = normalizeLeadSource(this.primarySource);
   }
+
+  if (this.name) {
+    this.nameLower = this.name.toLowerCase().trim();
+  } else {
+    this.nameLower = '';
+  }
+  if (this.company) {
+    this.companyLower = this.company.toLowerCase().trim();
+  } else {
+    this.companyLower = '';
+  }
+  if (this.phone) {
+    this.phoneDigits = String(this.phone).replace(/\D/g, '');
+  } else {
+    this.phoneDigits = '';
+  }
 });
 
-leadSchema.pre('save', function() {
+leadSchema.index({ workspaceId: 1, status: 1 });
+leadSchema.index({ workspaceId: 1, createdAt: -1 });
+leadSchema.index({ workspaceId: 1, assignedTo: 1 });
+leadSchema.index({ workspaceId: 1, updatedAt: -1 });
+leadSchema.index({ workspaceId: 1, status: 1, updatedAt: -1 });
+leadSchema.index({ workspaceId: 1, assignedTo: 1, updatedAt: -1 });
+leadSchema.index({ workspaceId: 1, nameLower: 1 });
+leadSchema.index({ workspaceId: 1, phoneDigits: 1 });
+leadSchema.index({ workspaceId: 1, companyLower: 1 });
+leadSchema.index({ workspaceId: 1, followUpDate: 1 });
+leadSchema.index({ workspaceId: 1, 'activeFollowUp.status': 1, 'activeFollowUp.scheduledAt': 1 });
+
+// Normalized Inbound Source Hierarchy & Filter Indexes
+leadSchema.index({ companyId: 1, 'leadSource.platform': 1, createdAt: -1 });
+leadSchema.index({ companyId: 1, 'leadSource.connectionId': 1, createdAt: -1 });
+leadSchema.index({ companyId: 1, 'leadSource.campaignId': 1, createdAt: -1 });
+leadSchema.index({ companyId: 1, assignedTo: 1, createdAt: -1 });
+leadSchema.index({ companyId: 1, isTestLead: 1, createdAt: -1 });
+leadSchema.index({ userId: 1, 'leadSource.platform': 1, createdAt: -1 });
+leadSchema.index({ userId: 1, 'leadSource.campaignId': 1, createdAt: -1 });
+leadSchema.index({ 'leadSource.platform': 1, 'leadSource.campaignId': 1, createdAt: -1 });
+
+leadSchema.pre('save', async function() {
   if (!this.primarySource && this.source) {
     this.primarySource = normalizeLeadSource(this.source);
   } else if (this.primarySource) {
     this.primarySource = normalizeLeadSource(this.primarySource);
   }
+
+  if (this.name) this.nameLower = this.name.toLowerCase().trim();
+  if (this.company) this.companyLower = this.company.toLowerCase().trim();
+  if (this.phone) this.phoneDigits = String(this.phone).replace(/\D/g, '');
+
+  // Optimize hot-path: skip 4 sequential queries if workspaceId & companyId are already established
+  const needsResolution = (this.isNew || this.isModified('userId') || this.isModified('workspaceId') || this.isModified('companyId'))
+    && (!this.workspaceId || !this.companyId || String(this.companyId) === String(this.userId))
+    && (this.userId || this.companyId);
+
+  if (needsResolution) {
+    try {
+      const Workspace = mongoose.models.Workspace || require('./Workspace');
+      const User = mongoose.models.User || require('./User');
+      let ws = null;
+      let creator = null;
+
+      if (this.userId) {
+        creator = await User.findById(this.userId).select('companyId companyRole').lean();
+        if (creator && creator.companyId && String(creator.companyId) !== String(this.userId)) {
+          this.companyId = creator.companyId;
+        }
+      }
+
+      if (!this.workspaceId && this.userId) {
+        ws = await Workspace.findOne({ ownerId: this.userId, deletedAt: null }).select('_id ownerId').lean();
+      }
+      if (!ws && this.companyId) {
+        ws = await Workspace.findOne({ ownerId: this.companyId, deletedAt: null }).select('_id ownerId').lean();
+      }
+      if (!ws && this.userId) {
+        const WorkspaceMembership = mongoose.models.WorkspaceMembership || require('./WorkspaceMembership');
+        const mem = await WorkspaceMembership.findOne({ userId: this.userId, status: 'active' }).select('workspaceId').lean();
+        if (mem) {
+          ws = await Workspace.findById(mem.workspaceId).select('_id ownerId').lean();
+        }
+      }
+      if (ws) {
+        if (!this.workspaceId) this.workspaceId = ws._id;
+        if ((!this.companyId || String(this.companyId) === String(this.userId)) && ws.ownerId) {
+          this.companyId = ws.ownerId;
+        }
+      }
+    } catch (e) {
+      // Non-blocking
+    }
+  }
 });
 
 module.exports = mongoose.model('Lead', leadSchema);
 module.exports.normalizeLeadSource = normalizeLeadSource;
+
