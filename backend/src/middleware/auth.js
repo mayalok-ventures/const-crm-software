@@ -90,6 +90,7 @@ const calculateSubscriptionLifecycle = async (user) => {
 };
 
 const protect = async (req, res, next) => {
+  const authStart = req._perf ? process.hrtime.bigint() : null;
   try {
     let token;
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
@@ -222,6 +223,9 @@ const protect = async (req, res, next) => {
       }
     }
 
+    if (req._perf && authStart) {
+      req._perf.authMs = Number(process.hrtime.bigint() - authStart) / 1e6;
+    }
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {

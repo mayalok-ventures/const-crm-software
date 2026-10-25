@@ -9,6 +9,12 @@ const { workspaceContextCache } = require('../utils/authCache');
  * Guarantees frictionless solo-user default: if no workspace exists, creates one automatically.
  */
 const resolveWorkspace = async (req, res, next) => {
+  const wsStart = req._perf ? process.hrtime.bigint() : null;
+  const finishWs = () => {
+    if (req._perf && wsStart) {
+      req._perf.wsMs = Number(process.hrtime.bigint() - wsStart) / 1e6;
+    }
+  };
   try {
     if (!req.user) {
       return res.status(401).json({ message: 'Authentication required' });
@@ -24,6 +30,7 @@ const resolveWorkspace = async (req, res, next) => {
           req.workspaceId = ws._id;
           req.tenantId = ws._id;
           req.membership = { role: 'owner', status: 'active', hasPermission: async () => true };
+          finishWs();
           return next();
         }
       }
@@ -43,6 +50,7 @@ const resolveWorkspace = async (req, res, next) => {
       req.user.workspaceId = cachedContext.workspace._id;
       req.user.workspaceRole = cachedContext.membership?.role || 'owner';
       req.user.membership = cachedContext.membership;
+      finishWs();
       return next();
     }
 
@@ -92,6 +100,7 @@ const resolveWorkspace = async (req, res, next) => {
       req.user.membership = membership;
     }
 
+    finishWs();
     next();
   } catch (error) {
     console.error('[resolveWorkspace Error]', error);

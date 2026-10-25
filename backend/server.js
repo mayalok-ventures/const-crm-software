@@ -33,20 +33,23 @@ const shareRoutes = require('./src/routes/share');
 const whatsappRoutes = require('./src/routes/whatsapp');
 const campaignRoutes = require('./src/routes/campaigns');
 const paymentRoutes = require('./src/routes/payments');
-const companyRoutes = require('./src/routes/company');
-const projectsRoutes = require('./src/routes/projects');
 const notificationsRoutes = require('./src/routes/notifications');
 const subscriptionRoutes = require('./src/routes/subscriptionRoutes');
 const waSession = require('./src/services/waSession');
 const campaignWorker = require('./src/services/campaignWorker');
 const integrationRoutes = require('./src/routes/integrationRoutes');
 const catalogueRoutes = require('./src/routes/catalogue');
-const agencyRoutes = require('./src/routes/agency');
-const realEstateRoutes = require('./src/routes/realEstate');
+const workspaceRoutes = require('./src/routes/workspaceRoutes');
+const pipelineRoutes = require('./src/routes/pipelineRoutes');
+const dealRoutes = require('./src/routes/dealRoutes');
 const monitoringRoutes = require('./src/routes/monitoring').default;
 const { apiPerformance } = require('./src/monitoring/apiPerformance');
+const { perfTimingMiddleware, startEventLoopMonitor, stopEventLoopMonitor } = require('./src/middleware/perfTiming');
 
 const app = express();
+
+// Performance Timing Instrumentation (active if PERF_DEBUG=1)
+app.use(perfTimingMiddleware);
 
 // Trust reverse proxy (Nginx & Cloudflare) for accurate client IP identification and rate-limiting
 app.set('trust proxy', 1);
@@ -67,7 +70,8 @@ app.use((req, res, next) => {
   }
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Workspace-Id, X-Request-Id');
+  res.setHeader('Access-Control-Max-Age', '7200'); // 2 hours browser preflight cache
   
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
@@ -78,8 +82,9 @@ app.use((req, res, next) => {
 app.use(cors({
   origin: true,
   credentials: true,
+  maxAge: 7200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'X-Workspace-Id', 'X-Request-Id'],
 }));
 
 // Pre-flight handling
@@ -100,6 +105,14 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Dedicated Webhook Route
 const { handleSubscriptionWebhook } = require('./src/controllers/subscriptionController');
 app.post('/api/webhooks/razorpay', handleSubscriptionWebhook);
+
+// Strict Private Cache-Control for authenticated workspace APIs (prevents CDN/shared proxy leaks)
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
 
 // Rate limiting (Exempting admin and all external webhook endpoints)
 app.use('/api', (req, res, next) => {
@@ -161,18 +174,17 @@ app.use('/api/campaigns', campaignRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/payments', paymentRoutes);
-app.use('/api/company', companyRoutes);
-app.use('/api/projects', projectsRoutes);
 app.use('/api', shareRoutes);
 app.use('/api/integrations', integrationRoutes);
 app.use('/api/catalogue', catalogueRoutes); // Colleges, Degrees, Specializations & WhatsApp Prospectus
+app.use('/api/workspace', workspaceRoutes);
+app.use('/api/pipelines', pipelineRoutes);
+app.use('/api/deals', dealRoutes);
 const superAdminRoutes = require('./src/superadmin/routes/superAdminRoutes');
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/superadmin', superAdminRoutes);
 app.use('/super-admin', superAdminRoutes);
 app.use('/superadmin', superAdminRoutes);
-app.use('/api/agency', agencyRoutes);
-app.use('/api/real-estate', realEstateRoutes);
 
 // Public Dynamic Plan Catalog
 const planCatalogController = require('./src/superadmin/controllers/planCatalogController');
@@ -220,7 +232,6 @@ app.use((err, req, res, next) => {
 
 const { seedSuperAdmin } = require('./src/utils/seedSuperAdmin');
 const { seedPlans } = require('./src/utils/seedPlans');
-const { runAgencyRolesMigration } = require('./src/utils/seedAgencyRoles');
 
 // Start server after DB is ready
 connectDB().then(async () => {
@@ -232,14 +243,10 @@ connectDB().then(async () => {
     console.warn('[SlowQueryInterceptor] Hook initialization notice:', sqErr.message);
   }
 
-  // Seed superadmin if not exists
-  await seedSuperAdmin();
 
-  // Seed standard subscription plans if not exists
-  await seedPlans();
-
-  // Run agency roles & permissions migration
-  await runAgencyRolesMigration().catch(err => console.error('[Migration Error]:', err.message));
+  // Run self-serve integrations migration (ensures per-integration keys and form keys)
+  const { migrateIntegrations } = require('./src/migrations/migrateIntegrations');
+  await migrateIntegrations().catch(err => console.error('[Integrations Migration Error]:', err.message));
 
   // Initialize security rules & IP blacklist cache
   await securityTracker.initDefaultRules().catch(err => console.error('[Security Rules Init Error]:', err.message));
@@ -250,9 +257,12 @@ connectDB().then(async () => {
 
   const PORT = process.env.PORT || 5000;
   const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🚀 Real Estate CRM Backend running on http://localhost:${PORT}`);
+    console.log(`\n🚀 Admission Consultants CRM Backend running on http://localhost:${PORT}`);
     console.log(`📦 Environment: ${process.env.NODE_ENV || 'development'}\n`);
     
+    // Start event loop & memory monitor if PERF_DEBUG=1
+    startEventLoopMonitor();
+
     // Auto-restore saved WhatsApp sessions
     waSession.initSessions().catch(console.error);
 
@@ -311,6 +321,15 @@ connectDB().then(async () => {
       if (apiKeySecurityWorker && typeof apiKeySecurityWorker.start === 'function') apiKeySecurityWorker.start(60000);
       if (deploymentMonitorWorker && typeof deploymentMonitorWorker.start === 'function') deploymentMonitorWorker.start(60000);
       if (healthScoreWorker && typeof healthScoreWorker.start === 'function') healthScoreWorker.start(60000);
+
+      // Start Mode B Google Sheets background poller (every 5 minutes)
+      const googleSheetsPollingService = require('./src/services/integrations/googleSheetsPollingService');
+      const sheetsPollInterval = setInterval(() => {
+        googleSheetsPollingService.sweepAll().catch((err) => {
+          console.error('[Sheets Poller Interval Error]:', err.message);
+        });
+      }, 5 * 60 * 1000);
+      if (sheetsPollInterval.unref) sheetsPollInterval.unref();
     }
 
     let isShuttingDown = false;
@@ -326,6 +345,7 @@ connectDB().then(async () => {
       forceTimer.unref();
 
       try {
+        stopEventLoopMonitor();
         if (agent) agent.stop();
         if (heartbeat) heartbeat.stop();
         if (statusEvaluator) statusEvaluator.stop();
@@ -353,6 +373,13 @@ connectDB().then(async () => {
           console.log('✅ [Shutdown] MongoDB connection closed.');
         }
 
+        if (global.__mongodInstance && typeof global.__mongodInstance.stop === 'function') {
+          try {
+            await global.__mongodInstance.stop();
+            console.log('✅ [Shutdown] Embedded MongoDB instance stopped.');
+          } catch {}
+        }
+
         console.log('✅ [Shutdown] Cleanup completed cleanly.');
         process.exit(0);
       } catch (err) {
@@ -363,6 +390,10 @@ connectDB().then(async () => {
 
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    process.once('SIGUSR2', async () => {
+      await gracefulShutdown('SIGUSR2');
+      process.kill(process.pid, 'SIGUSR2');
+    });
   });
 }).catch(err => {
   console.error('Failed to initialize database:', err);
