@@ -604,7 +604,7 @@ function LeadsContent() {
                   <Users size={40} color="var(--text-muted)" style={{ margin: '0 auto 12px', opacity: 0.6 }} />
                   <h3 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 6px' }}>No Candidates Found</h3>
                   <p style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 400, margin: '0 auto 18px' }}>
-                    {search || statusFilter || tempFilter
+                    {(debouncedSearch || searchInput) || statusFilter || tempFilter
                       ? 'No candidates match your current search criteria. Try clearing filters.'
                       : 'You do not have any candidate leads here yet. Add a new prospect or import records.'}
                   </p>

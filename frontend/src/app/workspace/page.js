@@ -22,10 +22,10 @@ function WorkspaceTeamContent() {
   const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState(initialTab); // 'team' | 'roles' | 'settings'
-  const [currentUser, setCurrentUser] = useState(() => getUser());
-  const [workspace, setWorkspace] = useState(() => queryClient.getQueryData(['workspace', 'current']) || null);
-  const [members, setMembers] = useState(() => queryClient.getQueryData(['workspace', 'members']) || []);
-  const [loading, setLoading] = useState(() => !queryClient.getQueryData(['workspace', 'current']));
+  const [currentUser, setCurrentUser] = useState(null);
+  const [workspace, setWorkspace] = useState(null);
+  const [members, setMembers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [invitations, setInvitations] = useState([]);
   const [systemRoles, setSystemRoles] = useState([]);
   const [customRoles, setCustomRoles] = useState([]);
@@ -128,8 +128,27 @@ function WorkspaceTeamContent() {
       router.replace('/login');
       return;
     }
+    setCurrentUser(u);
+
+    // Seed from TanStack Query cache if available
+    const cachedWs = queryClient.getQueryData(['workspace', 'current']);
+    const cachedMembers = queryClient.getQueryData(['workspace', 'members']);
+    if (cachedWs) {
+      setWorkspace(cachedWs);
+      setSettingsForm({
+        name: cachedWs.name || '',
+        autoAdvanceStageOnNote: cachedWs.settings?.autoAdvanceStageOnNote || false,
+        showFollowUpOnCreate: cachedWs.settings?.showFollowUpOnCreate ?? true,
+        maxSnoozeCount: cachedWs.settings?.maxSnoozeCount || 3,
+      });
+      setLoading(false);
+    }
+    if (cachedMembers && cachedMembers.length > 0) {
+      setMembers(cachedMembers);
+    }
+
     loadWorkspaceData();
-  }, [router, loadWorkspaceData]);
+  }, [router, loadWorkspaceData, queryClient]);
 
   // Handle Send Invite
   const handleSendInvite = async (e) => {
@@ -362,11 +381,11 @@ function WorkspaceTeamContent() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl sm:text-2xl font-extrabold m-0 text-slate-900 flex items-center gap-2.5">
+                <h1 className="text-xl sm:text-2xl font-extrabold m-0 text-slate-900 flex items-center gap-2.5" suppressHydrationWarning>
                   <Building2 size={24} className="text-indigo-600 shrink-0" />
                   {workspace?.name || 'Workspace & Team Management'}
                 </h1>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-50 border border-indigo-200 text-indigo-700">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-50 border border-indigo-200 text-indigo-700" suppressHydrationWarning>
                   {members.length <= 1 ? 'Solo Mode' : 'Team Workspace'}
                 </span>
               </div>
@@ -506,10 +525,11 @@ function WorkspaceTeamContent() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-slate-700">
-                          {members.map(member => {
+                          {members.map((member, idx) => {
                             const isThisUser = String(member.userId?._id || member.userId) === String(currentUser?._id);
+                            const memberKey = member._id || member.id || member.userId?._id || member.userId || `member-${idx}`;
                             return (
-                              <tr key={member._id} className="hover:bg-slate-50/50 transition">
+                              <tr key={memberKey} className="hover:bg-slate-50/50 transition">
                                 <td className="py-3 px-4">
                                   <div className="font-bold text-slate-900 flex items-center gap-1.5">
                                     {member.name || member.userId?.name || 'Unnamed Member'}
@@ -593,13 +613,14 @@ function WorkspaceTeamContent() {
                       </div>
                     ) : (
                       <div className="divide-y divide-slate-100">
-                        {invitations.map(inv => {
+                        {invitations.map((inv, idx) => {
                           const origin = typeof window !== 'undefined' ? window.location.origin : '';
                           const directLink = `${origin}/invite?token=${inv.token}`;
                           const isExpired = new Date(inv.expiresAt) < new Date();
+                          const invKey = inv._id || inv.id || inv.token || `invitation-${idx}`;
 
                           return (
-                            <div key={inv._id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/50 transition">
+                            <div key={invKey} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/50 transition">
                               <div>
                                 <div className="font-bold text-slate-900 flex items-center gap-2">
                                   <span>{inv.email}</span>
@@ -756,11 +777,12 @@ function WorkspaceTeamContent() {
                           </div>
                         ) : (
                           <div className="space-y-2">
-                            {customRoles.map(role => {
+                            {customRoles.map((role, idx) => {
                               const isSelected = selectedRole?._id === role._id || (isEditingCustomRole && customRoleForm._id === role._id);
+                              const roleKey = role._id || role.name || `custom-role-${idx}`;
                               return (
                                 <div
-                                  key={role._id}
+                                  key={roleKey}
                                   className={`p-3 rounded-xl border transition flex items-center justify-between ${
                                     isSelected
                                       ? 'bg-indigo-50 border-indigo-400 shadow-sm'
