@@ -1,17 +1,25 @@
 {
-  "name": "Sahyak CRM",
-  "short_name": "Sahyak",
-  "description": "Fast, mobile-first Real Estate CRM with WhatsApp follow-ups, lead tracking, and sales pipeline management.",
+  "name": "Sahyak CRM — Sales & Admission OS",
+  "short_name": "Sahyak CRM",
+  "description": "Ultra-fast, local-first Sales and Admission Counseling CRM with 0ms offline latency, Kanban pipeline, and WhatsApp communication hub.",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone",
+    "minimal-ui"
+  ],
   "background_color": "#0f172a",
-  "theme_color": "#6366f1",
-  "orientation": "portrait-primary",
+  "theme_color": "#4f46e5",
+  "orientation": "any",
   "lang": "en",
+  "dir": "ltr",
+  "prefer_related_applications": false,
   "categories": [
     "business",
-    "productivity"
+    "productivity",
+    "education"
   ],
   "icons": [
     {
@@ -56,10 +64,10 @@
   ],
   "shortcuts": [
     {
-      "name": "Dashboard",
-      "short_name": "Home",
+      "name": "Cockpit Dashboard",
+      "short_name": "Dashboard",
       "url": "/dashboard",
-      "description": "View your sales dashboard",
+      "description": "Open counselor command cockpit",
       "icons": [
         {
           "src": "/favicon-32x32.png",
@@ -68,10 +76,10 @@
       ]
     },
     {
-      "name": "Leads",
+      "name": "Candidate Leads",
       "short_name": "Leads",
       "url": "/leads",
-      "description": "Browse and manage your leads",
+      "description": "View master candidate leads directory",
       "icons": [
         {
           "src": "/favicon-32x32.png",
@@ -80,10 +88,22 @@
       ]
     },
     {
-      "name": "Follow-ups",
+      "name": "Admissions Pipeline",
+      "short_name": "Pipeline",
+      "url": "/pipeline",
+      "description": "Admissions Kanban pipeline board",
+      "icons": [
+        {
+          "src": "/favicon-32x32.png",
+          "sizes": "32x32"
+        }
+      ]
+    },
+    {
+      "name": "2-Delay Alarm Engine",
       "short_name": "Follow-ups",
       "url": "/follow-ups",
-      "description": "Open urgent follow-up queue",
+      "description": "Open urgent counseling callbacks",
       "icons": [
         {
           "src": "/favicon-32x32.png",
@@ -92,10 +112,10 @@
       ]
     },
     {
-      "name": "WhatsApp",
-      "short_name": "WA",
+      "name": "WhatsApp Inbox",
+      "short_name": "WhatsApp",
       "url": "/whatsapp",
-      "description": "Open WhatsApp chat inbox",
+      "description": "Open WhatsApp candidate chats",
       "icons": [
         {
           "src": "/favicon-32x32.png",
@@ -103,8 +123,5 @@
         }
       ]
     }
-  ],
-  "screenshots": [],
-  "related_applications": [],
-  "prefer_related_applications": false
+  ]
 }

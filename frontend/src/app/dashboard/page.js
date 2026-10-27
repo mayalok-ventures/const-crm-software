@@ -12,7 +12,7 @@ import {
   Phone, MessageSquare, Plus, Clock, CheckCircle2, TrendingUp,
   ChevronRight, RefreshCw, BarChart2, ShieldAlert, DollarSign,
   Percent, Building2, Layers, CheckSquare, FileText, AlertTriangle,
-  UserCheck, Flame, Zap, GraduationCap
+  UserCheck, Flame, Zap, GraduationCap, Target
 } from 'lucide-react';
 import { SourcePill } from '@/lib/sourceHelper';
 import { formatDisplayDateTime } from '@/lib/dateUtils';
@@ -117,6 +117,13 @@ export default function DashboardPage() {
               >
                 <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
               </button>
+              <Link
+                href="/campaigns"
+                className="btn btn-ghost btn-sm flex-1 sm:flex-none justify-center border border-slate-200 hover:bg-indigo-50/60 hover:text-indigo-600 transition"
+                style={{ gap: 6, fontSize: 13, textDecoration: 'none' }}
+              >
+                <Target size={14} className="text-indigo-600" /> Campaigns
+              </Link>
               <button
                 onClick={() => setShowAddModal(true)}
                 className="btn btn-primary btn-sm flex-1 sm:flex-none justify-center"

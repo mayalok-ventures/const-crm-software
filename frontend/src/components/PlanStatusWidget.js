@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Zap, ArrowRight, Sparkles, Crown } from 'lucide-react';
 import { getUser, isOwner } from '@/lib/auth';
-import api from '@/lib/api';
+import api, { cachedGet } from '@/lib/api';
 
 export function getPlanTierInfo(user) {
   if (!user) return { plan: 'free', tierRank: 0, isFree: true, isMidTier: false, isHighest: false, daysLeft: 0, formattedName: 'Free' };
@@ -69,8 +69,8 @@ export default function PlanStatusWidget({ className = '', style = {} }) {
     const local = getUser();
     if (local) setUser(local);
 
-    // Sync live from server
-    api.get('/auth/me')
+    // Sync live from server with 60s cache TTL
+    cachedGet('/auth/me', { ttl: 60000, silentAuth: true, _isBackground: true })
       .then(res => {
         if (res.data) setUser(res.data);
       })

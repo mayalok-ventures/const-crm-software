@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Lead = require('../models/Lead');
 const User = require('../models/User');
+const Campaign = require('../models/Campaign');
 const Notification = require('../models/Notification');
 const { emitCRMEvent, CRM_EVENTS } = require('../services/automationEvents');
 const { auditService } = require('../monitoring/audit/auditService');
@@ -20,8 +21,11 @@ const buildLeadPermissionQuery = async (user, isUnclaimed = false) => {
     return { _id: null };
   }
 
-  // SuperAdmin bypass
+  // SuperAdmin bypass - if operating within an explicit workspace context, isolate to that workspace
   if (user.role === 'superadmin' || user.isAdmin) {
+    if (user.workspaceId) {
+      return { workspaceId: user.workspaceId };
+    }
     return {};
   }
 
@@ -1166,7 +1170,11 @@ exports.createLead = async (req, res) => {
       'name', 'phone', 'email', 'company', 'tags', 'status', 'source', 'followUpDate',
       'location', 'profession', 'budget', 'areasOfInterest', 'project', 'projectId',
       'propertyType', 'siteVisitDate', 'assignedTo', 'customData', 'closedDealAmount',
-      'utmCampaign', 'utmMedium', 'utmSource', 'lostReason', 'lostReasonDetail'
+      'utmCampaign', 'utmMedium', 'utmSource', 'lostReason', 'lostReasonDetail',
+      'targetStream', 'targetDomain', 'targetCourse', 'targetState', 'targetCity',
+      'academicScore', 'academicScore10th', 'academicScore12th', 'academicScoreGrad',
+      'entranceExam', 'entranceRank', 'quotaPreference', 'packageBudget',
+      'temperature', 'score', 'tokenAdvancePaid', 'admissionFinalFee'
     ]);
 
     const extraCustomData = {};
@@ -1241,13 +1249,59 @@ exports.createLead = async (req, res) => {
       tags: leadTags,
       status: status || firstStage,
       propertyType: propertyType || '',
-      budget: budget || '',
+      budget: budget || req.body.packageBudget || '',
       location: location || '',
       profession: profession || '',
       project: project || '',
       projectId: projectId || null,
       siteVisitDate: siteVisitDate ? new Date(siteVisitDate) : null,
       areasOfInterest: Array.isArray(areasOfInterest) ? areasOfInterest : (areasOfInterest ? areasOfInterest.split(',').map(a => a.trim()).filter(Boolean) : []),
+      targetStream: req.body.targetStream || req.body.targetDomain || '',
+      targetCourse: req.body.targetCourse || '',
+      targetState: req.body.targetState || '',
+      targetCity: req.body.targetCity || '',
+      quotaPreference: req.body.quotaPreference || '',
+      academicScore10th: req.body.academicScore10th ? Number(req.body.academicScore10th) : (req.body.tenthPercentage ? Number(req.body.tenthPercentage) : null),
+      academicScore12th: req.body.academicScore12th ? Number(req.body.academicScore12th) : (req.body.twelfthPercentage ? Number(req.body.twelfthPercentage) : null),
+      academicScoreGrad: req.body.academicScoreGrad ? Number(req.body.academicScoreGrad) : (req.body.gradPercentage ? Number(req.body.gradPercentage) : null),
+      entranceExam: req.body.entranceExam || '',
+      entranceRank: req.body.entranceRank || '',
+      temperature: req.body.temperature || 'WARM',
+      tokenAdvancePaid: Number(req.body.tokenAdvancePaid || 0),
+      admissionFinalFee: Number(req.body.admissionFinalFee || 0),
+      alternatePhone: req.body.alternatePhone || '',
+      dob: req.body.dob ? new Date(req.body.dob) : null,
+      gender: req.body.gender || '',
+      category: req.body.category || '',
+      city: req.body.city || req.body.targetCity || '',
+      state: req.body.state || req.body.targetState || '',
+      address: req.body.address || '',
+      pincode: req.body.pincode || '',
+      fatherName: req.body.fatherName || '',
+      fatherPhone: req.body.fatherPhone || '',
+      fatherOccupation: req.body.fatherOccupation || '',
+      motherName: req.body.motherName || '',
+      tenthBoard: req.body.tenthBoard || '',
+      tenthPercentage: req.body.tenthPercentage ? Number(req.body.tenthPercentage) : (req.body.academicScore10th ? Number(req.body.academicScore10th) : null),
+      tenthYear: req.body.tenthYear || '',
+      twelfthBoard: req.body.twelfthBoard || '',
+      twelfthStream: req.body.twelfthStream || req.body.stream || '',
+      twelfthPercentage: req.body.twelfthPercentage ? Number(req.body.twelfthPercentage) : (req.body.academicScore12th ? Number(req.body.academicScore12th) : null),
+      twelfthGroupPercentage: req.body.twelfthGroupPercentage ? Number(req.body.twelfthGroupPercentage) : null,
+      twelfthYear: req.body.twelfthYear || '',
+      gradDegree: req.body.gradDegree || '',
+      gradCollege: req.body.gradCollege || '',
+      gradPercentage: req.body.gradPercentage ? Number(req.body.gradPercentage) : (req.body.academicScoreGrad ? Number(req.body.academicScoreGrad) : null),
+      gradYear: req.body.gradYear || '',
+      entranceExamRollNo: req.body.entranceExamRollNo || '',
+      entranceScore: req.body.entranceScore || '',
+      entrancePercentile: req.body.entrancePercentile || '',
+      degreeLevel: req.body.degreeLevel || '',
+      preferredSpecialization: req.body.preferredSpecialization || '',
+      preferredColleges: req.body.preferredColleges || '',
+      campusVisitDate: req.body.campusVisitDate ? new Date(req.body.campusVisitDate) : null,
+      tokenAdvancePaid: Number(req.body.tokenAdvancePaid || 0),
+      admissionFinalFee: Number(req.body.admissionFinalFee || 0),
       activeFollowUp: initialActiveFollowUp,
       followUpDate: parsedFollowUpDate,
       followUpNote: initialFollowUpNote.trim(),
@@ -1421,23 +1475,64 @@ exports.updateLead = async (req, res) => {
     if (req.body.status !== undefined && req.body.pipelineStage === undefined) {
       req.body.pipelineStage = req.body.status;
     }
+    if (req.body.targetDomain !== undefined && req.body.targetStream === undefined) {
+      req.body.targetStream = req.body.targetDomain;
+    }
+    if (req.body.packageBudget !== undefined && req.body.budget === undefined) {
+      req.body.budget = req.body.packageBudget;
+    }
+    if (req.body.academicScore !== undefined && req.body.academicScore12th === undefined) {
+      const numScore = parseFloat(String(req.body.academicScore).replace(/[^0-9.]/g, ''));
+      if (!isNaN(numScore)) req.body.academicScore12th = numScore;
+    }
+
+    const isOwnerOrManager =
+      req.membership?.role === 'owner' ||
+      req.membership?.role === 'manager' ||
+      req.user.role === 'admin' ||
+      req.user.role === 'superadmin' ||
+      (req.user.companyRole === 'owner' && !req.user.companyId);
+
+    const canAssignLeads = req.membership && req.membership.hasPermission
+      ? await req.membership.hasPermission('leads.assign')
+      : isOwnerOrManager;
+
+    if (req.body.assignedTo !== undefined && !canAssignLeads) {
+      delete req.body.assignedTo;
+    }
 
     const allowedFields = [
-      'name', 'phone', 'email', 'company', 'tags', 'status', 'followUpDate',
+      'name', 'phone', 'email', 'company', 'tags', 'status', 'followUpDate', 'followUpNote',
       'location', 'profession', 'budget', 'closedDealAmount', 'areasOfInterest', 'project',
       'projectId', 'propertyType', 'siteVisitDate', 'assignedTo', 'customData',
       'utmCampaign', 'utmMedium', 'utmSource', 'lostReason', 'lostReasonDetail',
       'service_required', 'monthly_spend', 'goal_timeline', 'paid_amount', 'payable_amount', 'payment_method',
       'budgetMin', 'budgetMax', 'possessionTimeline', 'purchasePurpose', 'preferredConfigurations',
-      'pipelineId', 'pipelineStage', 'temperature', 'score'
+      'pipelineId', 'pipelineStage', 'temperature', 'score',
+      'targetStream', 'targetDomain', 'targetCourse', 'targetState', 'targetCity',
+      'academicScore', 'academicScore10th', 'academicScore12th', 'academicScoreGrad',
+      'entranceExam', 'entranceRank', 'quotaPreference', 'packageBudget',
+      'tokenAdvancePaid', 'admissionFinalFee',
+      'alternatePhone', 'dob', 'gender', 'category', 'city', 'state', 'address', 'pincode',
+      'fatherName', 'fatherPhone', 'fatherOccupation', 'motherName',
+      'tenthBoard', 'tenthPercentage', 'tenthYear',
+      'twelfthBoard', 'twelfthStream', 'twelfthPercentage', 'twelfthGroupPercentage', 'twelfthYear',
+      'gradDegree', 'gradCollege', 'gradPercentage', 'gradYear',
+      'entranceExamRollNo', 'entranceScore', 'entrancePercentile',
+      'degreeLevel', 'preferredSpecialization', 'preferredColleges', 'campusVisitDate'
     ];
 
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
         let val = req.body[field];
 
-        if (field === 'phone') val = val.replace(/\D/g, '');
-        if (field === 'followUpDate' || field === 'siteVisitDate') val = val ? new Date(val) : null;
+        if (field === 'phone' || field === 'alternatePhone' || field === 'fatherPhone') val = String(val).replace(/\D/g, '');
+        if (field === 'followUpDate' || field === 'siteVisitDate' || field === 'dob' || field === 'campusVisitDate') {
+          val = val ? new Date(val) : null;
+        }
+        if (['tokenAdvancePaid', 'admissionFinalFee', 'closedDealAmount', 'academicScore10th', 'academicScore12th', 'academicScoreGrad', 'tenthPercentage', 'twelfthPercentage', 'twelfthGroupPercentage', 'gradPercentage'].includes(field)) {
+          val = val !== null && val !== '' && !isNaN(Number(val)) ? Number(val) : null;
+        }
 
         const oldVal = lead[field];
         const hasChanged = String(oldVal) !== String(val);
@@ -1455,12 +1550,12 @@ exports.updateLead = async (req, res) => {
               details: `Pipeline stage moved from "${oldVal}" to "${val}"${isLost ? lostInfo : ''}`,
               timestamp: new Date(),
             });
-          } else if (field === 'siteVisitDate') {
+          } else if (field === 'siteVisitDate' || field === 'campusVisitDate') {
             activitiesToAdd.push({
               action: 'site_visit_scheduled',
               performedBy: req.user._id,
               performerName: req.user.name,
-              details: val ? `Site visit scheduled for ${new Date(val).toLocaleString()}` : 'Site visit cancelled',
+              details: val ? `Campus / site visit scheduled for ${new Date(val).toLocaleString()}` : 'Campus visit cancelled',
               timestamp: new Date(),
             });
           } else if (field === 'assignedTo') {
@@ -1486,12 +1581,27 @@ exports.updateLead = async (req, res) => {
               action: 'project_linked',
               performedBy: req.user._id,
               performerName: req.user.name,
-              details: `Real Estate project updated`,
+              details: `Project updated`,
               timestamp: new Date(),
             });
           }
 
           lead[field] = val;
+
+          // Keep percentage and score numbers in sync
+          if (field === 'tenthPercentage' && val !== null) {
+            lead.academicScore10th = val;
+          } else if (field === 'academicScore10th' && val !== null) {
+            lead.tenthPercentage = val;
+          } else if (field === 'twelfthPercentage' && val !== null) {
+            lead.academicScore12th = val;
+          } else if (field === 'academicScore12th' && val !== null) {
+            lead.twelfthPercentage = val;
+          } else if (field === 'gradPercentage' && val !== null) {
+            lead.academicScoreGrad = val;
+          } else if (field === 'academicScoreGrad' && val !== null) {
+            lead.gradPercentage = val;
+          }
         }
       }
     }
@@ -1509,6 +1619,19 @@ exports.updateLead = async (req, res) => {
         ...(typeof req.body.customData === 'object' ? req.body.customData : {}),
         ...extraCustomData,
       };
+
+      // Deduplicate top-level known fields from customData so they never display conflicting values
+      const coreKeys = [
+        'quotaPreference', 'pipelineStage', 'status', 'name', 'phone', 'email',
+        'location', 'company', 'targetDomain', 'targetStream', 'packageBudget',
+        'budget', 'academicScore', 'entranceRank', 'entranceExam'
+      ];
+      for (const k of coreKeys) {
+        if (mergedCustom[k] !== undefined) {
+          delete mergedCustom[k];
+        }
+      }
+
       lead.customData = mergedCustom;
       lead.markModified('customData');
     }
@@ -1726,6 +1849,15 @@ exports.addNote = async (req, res) => {
 
     await lead.save();
 
+    if (beforeStatus !== lead.status) {
+      emitCRMEvent(CRM_EVENTS.LEAD_STAGE_CHANGED, {
+        lead,
+        oldStage: beforeStatus,
+        newStage: lead.status,
+        user: req.user,
+      });
+    }
+
     // Log global activity
     try {
       const ActivityLog = require('../models/ActivityLog');
@@ -1761,8 +1893,9 @@ exports.trackMessage = async (req, res) => {
 
     if (!lead) return res.status(404).json({ message: 'Lead not found' });
 
-    // First-Touch Assignment: Automatically claim unassigned lead for the interacting agent
-    if (!lead.assignedTo && req.user.role !== 'superadmin') {
+    // First-Touch Assignment: Automatically claim unassigned lead for the interacting agent (non-auditors only)
+    const isAuditor = req.membership?.role === 'auditor' || req.user.role === 'auditor';
+    if (!lead.assignedTo && req.user.role !== 'superadmin' && !isAuditor) {
       lead.assignedTo = req.user._id;
       lead.assignedToName = req.user.name || 'Agent';
       lead.leadActivities.push({
@@ -1798,6 +1931,15 @@ exports.trackMessage = async (req, res) => {
     });
 
     await lead.save();
+
+    if (beforeStatus !== lead.status) {
+      emitCRMEvent(CRM_EVENTS.LEAD_STAGE_CHANGED, {
+        lead,
+        oldStage: beforeStatus,
+        newStage: lead.status,
+        user: req.user,
+      });
+    }
 
     // Log global activity
     try {
@@ -1836,8 +1978,9 @@ exports.trackCall = async (req, res) => {
 
     if (!lead) return res.status(404).json({ message: 'Lead not found' });
 
-    // First-Touch Assignment: Automatically claim unassigned lead for the interacting agent
-    if (!lead.assignedTo && req.user.role !== 'superadmin') {
+    // First-Touch Assignment: Automatically claim unassigned lead for the interacting agent (non-auditors only)
+    const isAuditor = req.membership?.role === 'auditor' || req.user.role === 'auditor';
+    if (!lead.assignedTo && req.user.role !== 'superadmin' && !isAuditor) {
       lead.assignedTo = req.user._id;
       lead.assignedToName = req.user.name || 'Agent';
       lead.leadActivities.push({
@@ -1872,6 +2015,15 @@ exports.trackCall = async (req, res) => {
 
     await lead.save();
 
+    if (beforeStatus !== lead.status) {
+      emitCRMEvent(CRM_EVENTS.LEAD_STAGE_CHANGED, {
+        lead,
+        oldStage: beforeStatus,
+        newStage: lead.status,
+        user: req.user,
+      });
+    }
+
     // Log global activity
     try {
       const ActivityLog = require('../models/ActivityLog');
@@ -1899,26 +2051,332 @@ exports.trackCall = async (req, res) => {
   }
 };
 
-// @desc  Reassign a lead to another agent
-// @route PUT /api/leads/:id/reassign
-// @access Private
+// @desc  Reassign a single lead to a counselor, manager, or campaign
+// @route PUT /api/leads/:id/reassign or POST /api/leads/:id/reassign
+// @access Private (Owner, Manager, leads.assign, leads.transfer)
 exports.reassignLead = async (req, res) => {
   try {
-    const lead = await Lead.findOne({ _id: req.params.id, userId: req.user._id });
+    const { assignedToUserId, targetCampaignId, transferNote, newStage } = req.body;
+    const tenantFilter = await buildLeadPermissionQuery(req.user);
+    const lead = await Lead.findOne({ _id: req.params.id, ...tenantFilter });
     if (!lead) return res.status(404).json({ success: false, message: 'Lead not found or unauthorized' });
 
-    lead.assignedTo = req.user._id;
-    lead.assignedToName = req.user.name;
+    let assignee = null;
+    if (assignedToUserId) {
+      assignee = await User.findOne({
+        _id: assignedToUserId,
+        isActive: { $ne: false },
+      }).select('_id name email role');
+      if (!assignee) {
+        return res.status(404).json({ success: false, message: 'Assignee team member not found or inactive' });
+      }
+    } else {
+      assignee = req.user;
+    }
+
+    let campaign = null;
+    if (targetCampaignId) {
+      campaign = await Campaign.findById(targetCampaignId);
+      if (!campaign) {
+        return res.status(404).json({ success: false, message: 'Target campaign not found' });
+      }
+      lead.campaignId = campaign._id;
+      lead.campaignName = campaign.displayName || campaign.name;
+      if (!lead.leadSource) lead.leadSource = {};
+      lead.leadSource.campaignId = String(campaign._id);
+      lead.leadSource.campaignName = campaign.displayName || campaign.name;
+    }
+
+    lead.assignedTo = assignee._id;
+    lead.assignedToName = assignee.name;
+    lead.assignmentReason = `Reassigned by ${req.user.name}: ${transferNote || 'Direct assignment'}`;
+
+    const oldStage = lead.status;
+    if (newStage && String(newStage).trim()) {
+      lead.status = String(newStage).trim();
+    }
+
+    const now = new Date();
+    lead.leadActivities = lead.leadActivities || [];
+    lead.leadActivities.push({
+      action: 'lead_transferred',
+      performerName: req.user.name,
+      details: `Reassigned to ${assignee.name}${campaign ? ` [Campaign: ${campaign.displayName || campaign.name}]` : ''}${transferNote ? ` - Note: "${transferNote}"` : ''}`,
+      timestamp: now,
+    });
+
     await lead.save();
+
+    if (newStage && String(newStage).trim() && oldStage !== lead.status) {
+      emitCRMEvent(CRM_EVENTS.LEAD_STAGE_CHANGED, {
+        lead,
+        oldStage,
+        newStage: lead.status,
+        user: req.user,
+      });
+    }
+
+    if (campaign) {
+      await Campaign.updateOne(
+        { _id: campaign._id },
+        { $inc: { leadCount: 1, leadsGenerated: 1 }, $set: { lastLeadAt: now } }
+      ).catch(() => null);
+    }
+
+    if (String(assignee._id) !== String(req.user._id)) {
+      await Notification.create({
+        userId: assignee._id,
+        workspaceId: req.workspaceId || req.user.workspaceId,
+        title: 'Lead Assigned to You',
+        message: `${req.user.name} assigned candidate lead "${lead.name || 'Student'}" to you.`,
+        type: 'lead_assignment',
+        read: false,
+        createdAt: now,
+      }).catch(() => null);
+    }
+
+    invalidateLeadCountCache(req.workspaceId || req.user.workspaceId);
 
     res.json({
       success: true,
-      message: 'Lead verified in your candidate pipeline.',
+      message: `Lead successfully assigned to ${assignee.name}.`,
       lead,
     });
   } catch (error) {
     console.error('reassignLead error:', error);
     res.status(500).json({ success: false, message: 'Server error updating lead' });
+  }
+};
+
+// @desc  Bulk Transfer or Reassign leads to a Campaign, Counselor, or Manager
+// @route POST /api/leads/transfer or POST /api/leads/bulk-transfer
+// @access Private (Owner, Manager, leads.transfer, leads.assign)
+exports.bulkTransferLeads = async (req, res) => {
+  try {
+    const {
+      leadIds = [],
+      filterQuery = {},
+      transferAllFiltered = false,
+      assignedToUserId,
+      targetCampaignId,
+      applyCampaignAssignmentRule = false,
+      newStage,
+      transferNote,
+    } = req.body;
+
+    if (!assignedToUserId && !targetCampaignId && !newStage) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please specify at least one transfer destination: a Counselor/Manager, Campaign, or new Stage.',
+      });
+    }
+
+    const tenantFilter = await buildLeadPermissionQuery(req.user);
+    let targetLeads = [];
+
+    if (transferAllFiltered && filterQuery && typeof filterQuery === 'object') {
+      const mergedQuery = { ...tenantFilter };
+      if (filterQuery.status) mergedQuery.status = filterQuery.status;
+      if (filterQuery.source) mergedQuery.source = filterQuery.source;
+      if (filterQuery.platform) mergedQuery['leadSource.platform'] = filterQuery.platform;
+      if (filterQuery.campaignId) mergedQuery.campaignId = filterQuery.campaignId;
+      if (filterQuery.assignedTo) {
+        if (filterQuery.assignedTo === 'unassigned') mergedQuery.assignedTo = null;
+        else mergedQuery.assignedTo = filterQuery.assignedTo;
+      }
+      if (filterQuery.search && String(filterQuery.search).trim()) {
+        const safeSearch = String(filterQuery.search).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const sRegex = new RegExp(safeSearch, 'i');
+        mergedQuery.$or = [
+          { name: sRegex },
+          { phone: sRegex },
+          { email: sRegex },
+        ];
+      }
+      targetLeads = await Lead.find(mergedQuery);
+    } else {
+      if (!Array.isArray(leadIds) || leadIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'No leads selected for transfer.',
+        });
+      }
+      targetLeads = await Lead.find({
+        _id: { $in: leadIds },
+        ...tenantFilter,
+      });
+    }
+
+    if (!targetLeads || targetLeads.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No matching leads found within your workspace to transfer.',
+      });
+    }
+
+    // 1. Resolve Assignee (Counselor or Manager)
+    let assignee = null;
+    if (assignedToUserId) {
+      assignee = await User.findOne({
+        _id: assignedToUserId,
+        isActive: { $ne: false },
+      }).select('_id name email role companyId workspaceId');
+
+      if (!assignee) {
+        return res.status(404).json({
+          success: false,
+          message: 'Selected team member (counselor or manager) was not found or is inactive.',
+        });
+      }
+    }
+
+    // 2. Resolve Target Campaign
+    let campaign = null;
+    if (targetCampaignId) {
+      campaign = await Campaign.findById(targetCampaignId).populate('assignmentRule.counselorPool.userId assignmentRule.specificCounselorId');
+      if (!campaign) {
+        return res.status(404).json({
+          success: false,
+          message: 'Selected campaign was not found.',
+        });
+      }
+    }
+
+    // If campaign's authoritative rule is requested and no explicit assignee chosen
+    let campaignPool = [];
+    if (!assignee && campaign && applyCampaignAssignmentRule && campaign.assignmentRule) {
+      if (campaign.assignmentRule.type === 'specific_counselor' && campaign.assignmentRule.specificCounselorId) {
+        assignee = await User.findById(campaign.assignmentRule.specificCounselorId).select('_id name email role');
+      } else if (campaign.assignmentRule.counselorPool?.length > 0) {
+        const poolUserIds = campaign.assignmentRule.counselorPool
+          .map((p) => (p?.userId || p?._id || p))
+          .filter(Boolean);
+        if (poolUserIds.length > 0) {
+          campaignPool = await User.find({
+            _id: { $in: poolUserIds },
+            isActive: { $ne: false },
+          }).select('_id name email role');
+        }
+      }
+    }
+
+    const performerName = req.user.name || 'Workspace Administrator';
+    const now = new Date();
+    let updatedCount = 0;
+    let poolIndex = 0;
+
+    // High-load performance optimization: chunk updates into parallel batches of 25
+    const BATCH_SIZE = 25;
+    for (let i = 0; i < targetLeads.length; i += BATCH_SIZE) {
+      const batch = targetLeads.slice(i, i + BATCH_SIZE);
+      for (const lead of batch) {
+        let finalAssignee = assignee;
+
+        // Rotate through campaign pool if requested
+        if (!finalAssignee && campaignPool.length > 0) {
+          finalAssignee = campaignPool[poolIndex % campaignPool.length];
+          poolIndex++;
+        }
+
+        if (finalAssignee) {
+          lead.assignedTo = finalAssignee._id;
+          lead.assignedToName = finalAssignee.name;
+          lead.assignmentReason = `Transferred by ${performerName}: ${transferNote || 'Manual Reassignment'}`;
+        }
+
+        if (campaign) {
+          lead.campaignId = campaign._id;
+          lead.campaignName = campaign.displayName || campaign.name;
+          if (!lead.leadSource) lead.leadSource = {};
+          lead.leadSource.campaignId = String(campaign._id);
+          lead.leadSource.campaignName = campaign.displayName || campaign.name;
+        }
+
+        if (newStage && String(newStage).trim()) {
+          const oldStage = lead.status;
+          lead.status = String(newStage).trim();
+          if (oldStage !== lead.status) {
+            lead.stageHistory = lead.stageHistory || [];
+            lead.stageHistory.push({
+              fromStage: oldStage,
+              toStage: lead.status,
+              changedBy: req.user._id,
+              changedAt: now,
+            });
+          }
+        }
+
+        // Add to leadActivities
+        const activityDetails = [
+          finalAssignee ? `Reassigned to ${finalAssignee.name} (${finalAssignee.role || 'Team Member'})` : null,
+          campaign ? `Moved to Campaign: "${campaign.displayName || campaign.name}"` : null,
+          newStage ? `Stage set to "${newStage}"` : null,
+          transferNote ? `Note: "${transferNote}"` : null,
+        ].filter(Boolean).join(' • ');
+
+        lead.leadActivities = lead.leadActivities || [];
+        lead.leadActivities.push({
+          action: 'lead_transferred',
+          performerName,
+          details: `Bulk Transfer: ${activityDetails}`,
+          timestamp: now,
+        });
+      }
+
+      await Promise.all(batch.map((l) => l.save()));
+      if (newStage && String(newStage).trim()) {
+        batch.forEach((l) => {
+          const prevStage = l.stageHistory?.[l.stageHistory.length - 1]?.fromStage || '';
+          if (prevStage !== l.status) {
+            emitCRMEvent(CRM_EVENTS.LEAD_STAGE_CHANGED, {
+              lead: l,
+              oldStage: prevStage,
+              newStage: l.status,
+              user: req.user,
+            });
+          }
+        });
+      }
+      updatedCount += batch.length;
+    }
+
+    // Increment Campaign lead metrics if campaign changed
+    if (campaign && updatedCount > 0) {
+      await Campaign.updateOne(
+        { _id: campaign._id },
+        {
+          $inc: { leadCount: updatedCount, leadsGenerated: updatedCount },
+          $set: { lastLeadAt: now },
+        }
+      ).catch(() => null);
+    }
+
+    // In-app Notification for Assignee
+    if (assignee && String(assignee._id) !== String(req.user._id) && updatedCount > 0) {
+      await Notification.create({
+        userId: assignee._id,
+        workspaceId: req.workspaceId || req.user.workspaceId,
+        companyId: req.user.companyId || req.user._id,
+        title: 'Leads Transferred to You',
+        message: `${performerName} transferred ${updatedCount} candidate lead(s) to your pipeline.${transferNote ? ` Note: "${transferNote}"` : ''}`,
+        type: 'lead_assigned',
+        read: false,
+        createdAt: now,
+      }).catch((err) => {
+        console.error('[leadsController] bulkTransferLeads notification error:', err.message);
+      });
+    }
+
+    invalidateLeadCountCache(req.workspaceId || req.user.workspaceId);
+
+    return res.status(200).json({
+      success: true,
+      count: updatedCount,
+      message: `Successfully transferred ${updatedCount} lead(s).`,
+    });
+  } catch (error) {
+    console.error('[leadsController] bulkTransferLeads error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Server error transferring leads' });
   }
 };
 
@@ -1947,9 +2405,8 @@ exports.exportLeads = async (req, res) => {
   try {
     const { format = 'xlsx', status, statuses, tag, search, projectId, assignedTo } = req.query;
 
-    // ── Export Permission & Admin Notification Guard ──
-    const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner';
-    const companyId = isOwner ? req.user._id : req.user.companyId;
+    const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner' || req.membership?.role === 'owner';
+    const companyId = req.workspace?.ownerId || (isOwner ? req.user._id : req.user.companyId);
 
     if (req.user.role !== 'superadmin' && !req.user.isAdmin) {
       try {
@@ -1989,12 +2446,16 @@ exports.exportLeads = async (req, res) => {
         });
       }
 
-      await Notification.create({
-        userId: companyId,
-        title: '📥 Lead Data Exported by Team Member',
-        message: `${req.user.name} (${req.user.usercode}) exported pipeline leads (${format.toUpperCase()} format).`,
-        type: 'system_alert',
-      });
+      try {
+        await Notification.create({
+          userId: companyId,
+          title: '📥 Lead Data Exported by Team Member',
+          message: `${req.user.name} (${req.user.usercode}) exported pipeline leads (${format.toUpperCase()} format).`,
+          type: 'system_alert',
+        });
+      } catch (notifErr) {
+        console.warn('Failed to send export alert notification:', notifErr.message);
+      }
     }
 
     const basePermissionQuery = await buildLeadPermissionQuery(req.user);
@@ -2291,7 +2752,7 @@ exports.importLeads = async (req, res) => {
     const CHUNK_SIZE = 1000;
 
     const processRow = async (row) => {
-      if (maxLeads !== Infinity && (totalImported + chunk.length) >= maxAllowedNew) {
+      if (maxAllowedNew !== Infinity && (totalImported + chunk.length) >= maxAllowedNew) {
         quotaReached = true;
         return;
       }
@@ -2404,7 +2865,7 @@ exports.importLeads = async (req, res) => {
       let currentBatch = [...chunk];
       chunk = [];
 
-      if (maxLeads !== Infinity) {
+      if (maxAllowedNew !== Infinity) {
         const remainingSpace = maxAllowedNew - totalImported;
         if (remainingSpace <= 0) {
           quotaReached = true;
@@ -2472,11 +2933,11 @@ exports.importLeads = async (req, res) => {
 
     if (quotaReached) {
       return res.status(200).json({
-        message: `⚠️ Imported ${totalImported} leads. Import capped because your ${limits?.name || effectivePlan} plan limit (${maxLeads} leads) was reached. Upgrade to import more.`,
+        message: `⚠️ Imported ${totalImported} leads. Import capped because your plan limit (${maxLeadsLimit} leads) was reached. Upgrade to import more.`,
         importedCount: totalImported,
         skippedCount,
         quotaReached: true,
-        maxLeads,
+        maxLeads: maxLeadsLimit,
       });
     }
 

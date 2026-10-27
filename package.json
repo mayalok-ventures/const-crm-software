@@ -3,6 +3,10 @@
   "version": "2.2.0",
   "description": "SalesCRM Mobile-first Monorepo Workspace",
   "scripts": {
+    "dev": "node run-dev.js",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "mongo": "node backend/start-local-mongo.js",
     "build": "cd frontend && npm install && npm run build",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

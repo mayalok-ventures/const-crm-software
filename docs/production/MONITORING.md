@@ -1,4 +1,4 @@
-# CoreSetu CRM — Production Monitoring & Observability Runbook
+# Sahyak CRM — Production Monitoring & Observability Runbook
 
 ## 1. Built-in Observability Endpoints
 - `GET /health/live`: Process liveness probe. Fast 200 OK without dependencies.

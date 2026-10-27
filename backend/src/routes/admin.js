@@ -2,18 +2,26 @@ const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/adminController');
 const monitoringController = require('../monitoring/controllers/monitoringController');
+const planCatalogController = require('../superadmin/controllers/planCatalogController');
+const couponController = require('../superadmin/controllers/couponController');
+const healthController = require('../monitoring/controllers/healthController').default || require('../monitoring/controllers/healthController');
 const { protect, adminOnly, managerOrAdminOnly, superAdminOnly } = require('../middleware/auth');
+const { resolveWorkspace } = require('../middleware/permission');
 
 router.use(protect);
+router.use(resolveWorkspace);
 
-// 1. Overview / Dashboard (Tenant Scoped)
+// 1. Overview / Dashboard
 router.get('/metrics', adminOnly, adminController.getOverviewMetrics);
 router.get('/overview', adminOnly, adminController.getOverviewMetrics);
-router.get('/plans', superAdminOnly, adminController.getAdminPlans);
+router.get('/plans', superAdminOnly, planCatalogController.listPlans);
 router.get('/plans/hierarchy', superAdminOnly, adminController.getPlanHierarchy);
-router.post('/plans', superAdminOnly, adminController.createAdminPlan);
-router.put('/plans/:id', superAdminOnly, adminController.updateAdminPlan);
-router.delete('/plans/:id', superAdminOnly, adminController.deleteAdminPlan);
+router.get('/plans/:id', superAdminOnly, planCatalogController.getPlan);
+router.post('/plans', superAdminOnly, planCatalogController.createPlan);
+router.put('/plans/:id', superAdminOnly, planCatalogController.updatePlan);
+router.delete('/plans/:id', superAdminOnly, planCatalogController.deletePlan);
+router.post('/plans/:id/archive', superAdminOnly, planCatalogController.archivePlan);
+router.post('/plans/:id/publish', superAdminOnly, planCatalogController.publishPlan);
 router.get('/alerts-queue', adminOnly, adminController.getAdminAlerts);
 
 // 2. Leads & Lead Sources (Tenant Scoped)
@@ -102,11 +110,12 @@ router.delete('/commission-rules/:id', adminOnly, adminController.deleteCommissi
 router.get('/commission-payouts', managerOrAdminOnly, adminController.getCommissionPayouts);
 
 // 12. Coupon Engine (Platform SuperAdmin Only)
-router.route('/coupons')
-  .get(superAdminOnly, adminController.getCoupons)
-  .post(superAdminOnly, adminController.createCoupon);
-
-router.delete('/coupons/:id', superAdminOnly, adminController.deleteCoupon);
+router.get('/coupons', superAdminOnly, couponController.listCoupons);
+router.get('/coupons/:id', superAdminOnly, couponController.getCoupon);
+router.post('/coupons', superAdminOnly, couponController.createCoupon);
+router.put('/coupons/:id', superAdminOnly, couponController.updateCoupon);
+router.patch('/coupons/:id/toggle', superAdminOnly, couponController.toggleCouponStatus);
+router.delete('/coupons/:id', superAdminOnly, couponController.deleteCoupon);
 
 // 13. Notification & Broadcast Centre (Tenant Scoped)
 router.get('/broadcasts', adminOnly, adminController.getBroadcasts);
@@ -117,7 +126,8 @@ router.post('/alerts', adminOnly, adminController.sendBroadcast);
 // 14. Universal & Individual Analytics (Tenant Scoped)
 router.get('/analytics/universal', adminOnly, adminController.getUniversalAnalytics);
 
-// 15. Activity Centre & Audit Logs (Tenant Scoped)
+// 15. Activity Centre & Audit Logs
+router.get('/logs', superAdminOnly, adminController.getUnifiedLogs);
 router.get('/activity-logs', adminOnly, adminController.getActivityLogs);
 router.get('/manager-activities', adminOnly, adminController.getManagerActivities);
 router.get('/subscriptions/audit-logs', adminOnly, adminController.getActivityLogs);
@@ -128,7 +138,7 @@ router.route('/security-settings')
   .post(adminOnly, adminController.updateSecuritySettings);
 
 // 17. System Health & Infrastructure Monitoring (Platform SuperAdmin Only)
-router.get('/system-health', superAdminOnly, adminController.getSystemHealth);
+router.get('/system-health', superAdminOnly, healthController.getDetailed);
 router.get('/monitoring/servers', superAdminOnly, monitoringController.getServers);
 router.get('/monitoring/servers/:serverId', superAdminOnly, monitoringController.getServerDetails);
 router.get('/monitoring/servers/:serverId/current', superAdminOnly, monitoringController.getCurrentMetric);
@@ -222,7 +232,6 @@ router.get('/alerts/deliveries', superAdminOnly, alertController.getNotification
 router.post('/alerts/simulate', superAdminOnly, alertController.simulateAnomaly);
 
 // 25. Production-Grade Health Check Framework (Platform SuperAdmin Only)
-const healthController = require('../monitoring/controllers/healthController').default || require('../monitoring/controllers/healthController');
 router.get('/health', superAdminOnly, healthController.getHealth);
 router.get('/health/live', superAdminOnly, healthController.getLive);
 router.get('/health/ready', superAdminOnly, healthController.getReady);

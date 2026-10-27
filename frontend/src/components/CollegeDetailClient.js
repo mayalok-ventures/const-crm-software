@@ -4,17 +4,18 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
+import api, { cachedGet } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
 import {
   GraduationCap, ArrowLeft, Building2, MapPin, Globe, Award,
-  DollarSign, CheckCircle2, AlertCircle, Edit3, Trash2, Phone,
+  IndianRupee, CheckCircle2, AlertCircle, Edit3, Trash2, Phone,
   MessageCircle, Download, FileText, ChevronRight, ChevronDown, ExternalLink,
   ShieldCheck, Clock, Share2, Layers, BookOpen, UserCheck, Sparkles,
-  Check, X, Plus, Edit, AlertTriangle
+  Check, X, Plus, Edit, AlertTriangle, Search
 } from 'lucide-react';
 import { COMMON_DEGREES, ACCREDITATION_TAGS, INSTITUTION_TYPES, getAccreditationBadgeStyle } from '@/lib/commonDegrees';
 import SendFeeStructureWhatsAppModal from '@/components/catalogue/SendFeeStructureWhatsAppModal';
+import { getUser, hasPermission, canViewField } from '@/lib/auth';
 
 const ADMISSION_STATUS_LABELS = {
   admissions_open: { label: '🟢 Admissions Open', bg: '#ecfdf5', text: '#059669', border: '#a7f3d0' },
@@ -35,10 +36,13 @@ export default function CollegeDetailClient() {
   const router = useRouter();
   const collegeId = params?.id;
 
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [college, setCollege] = useState(null);
   const [isMyCatalogueItem, setIsMyCatalogueItem] = useState(false);
   const [expandedDegrees, setExpandedDegrees] = useState({});
+  const [programSearch, setProgramSearch] = useState('');
+  const [levelFilter, setLevelFilter] = useState('all');
 
   // Modals state
   const [showEditInfoModal, setShowEditInfoModal] = useState(false);
@@ -47,8 +51,11 @@ export default function CollegeDetailClient() {
   const [degreeEditForm, setDegreeEditForm] = useState({
     currentDegreeName: '',
     newDegreeName: '',
+    selectedTemplateDegree: '',
     level: 'Undergraduate',
     durationYears: 4,
+    standardAnnualFee: 150000,
+    currentStreams: [],
   });
   const [showAddSpecModal, setShowAddSpecModal] = useState(false);
   const [targetDegreeForSpec, setTargetDegreeForSpec] = useState(null);
@@ -99,11 +106,13 @@ export default function CollegeDetailClient() {
     hostelFeePerYear: 80000,
     oneTimeAdmissionFee: 20000,
     currency: 'INR',
+    feeNotes: '',
     commissionRate: 10,
     commissionType: 'percentage',
     mouStatus: 'direct_tie_up',
     contactPersonName: '',
     contactPersonPhone: '',
+    contactPersonEmail: '',
     admissionStatus: 'admissions_open',
     quotaType: 'management_quota',
   });
@@ -128,25 +137,31 @@ export default function CollegeDetailClient() {
   });
 
   useEffect(() => {
+    const updateAuth = () => {
+      setUser(getUser());
+    };
+    updateAuth();
+    window.addEventListener('user-updated', updateAuth);
     if (collegeId && collegeId !== 'placeholder') {
       loadCollegeDetails();
     }
+    return () => window.removeEventListener('user-updated', updateAuth);
   }, [collegeId]);
 
-  const loadCollegeDetails = async () => {
-    setLoading(true);
+  const loadCollegeDetails = async (isManual = false) => {
+    if (!college && !isManual) setLoading(true);
     try {
       // 1. Try finding in user's active catalogue directly first
       let foundInMy = null;
       try {
-        const itemRes = await api.get(`/catalogue/my-catalogue/${collegeId}`);
+        const itemRes = await cachedGet(`/catalogue/my-catalogue/${collegeId}`, { forceRefresh: isManual });
         if (itemRes.data?.catalogueItem) {
           foundInMy = itemRes.data.catalogueItem;
         }
       } catch (err) {
         // Fallback: check my-catalogue array
         try {
-          const myRes = await api.get('/catalogue/my-catalogue');
+          const myRes = await cachedGet('/catalogue/my-catalogue', { forceRefresh: isManual });
           const myItems = myRes.data?.catalogue || [];
           foundInMy = myItems.find(c =>
             String(c._id) === String(collegeId) ||
@@ -166,7 +181,7 @@ export default function CollegeDetailClient() {
         setExpandedDegrees(initExpand);
       } else {
         // 2. Fallback to master colleges catalog (read-only view with import option)
-        const masterRes = await api.get(`/catalogue/master-colleges/${collegeId}`);
+        const masterRes = await cachedGet(`/catalogue/master-colleges/${collegeId}`, { forceRefresh: isManual });
         if (masterRes.data?.college) {
           setCollege(masterRes.data.college);
           setIsMyCatalogueItem(false);
@@ -207,6 +222,75 @@ export default function CollegeDetailClient() {
 
     return Object.values(map);
   }, [college]);
+
+  // Filtered Degrees Hierarchy based on fast search and level filter
+  const filteredDegreesGrouped = useMemo(() => {
+    const rawQuery = programSearch.trim().toLowerCase();
+    const cleanQuery = rawQuery.replace(/[\.\-\/\s]/g, '');
+
+    return degreesGrouped
+      .map(deg => {
+        // Check level filter
+        if (levelFilter !== 'all' && deg.level !== levelFilter) {
+          return null;
+        }
+
+        if (!rawQuery) {
+          return deg;
+        }
+
+        const degName = deg.degreeName?.toLowerCase() || '';
+        const degClean = degName.replace(/[\.\-\/\s]/g, '');
+        const degLevel = deg.level?.toLowerCase() || '';
+
+        const degreeMatches =
+          degName.includes(rawQuery) ||
+          degClean.includes(cleanQuery) ||
+          degLevel.includes(rawQuery);
+
+        // Filter streams matching query
+        const matchingStreams = deg.streams.filter(course => {
+          const spec = (course.specialization || '').toLowerCase();
+          const specClean = spec.replace(/[\.\-\/\s]/g, '');
+          const admStatus = (course.admissionStatus || '').toLowerCase();
+          const quota = (course.quotaType || '').toLowerCase();
+
+          return (
+            spec.includes(rawQuery) ||
+            specClean.includes(cleanQuery) ||
+            admStatus.includes(rawQuery) ||
+            quota.includes(rawQuery)
+          );
+        });
+
+        // If specific stream matched, show degree with those matching streams
+        if (matchingStreams.length > 0) {
+          return {
+            ...deg,
+            streams: matchingStreams,
+            hasStreamMatch: true,
+            totalStreamsInDegree: deg.streams.length,
+          };
+        }
+
+        // If degree name itself matched (e.g. user typed "MBA" or "B.Tech"), keep all streams of that degree
+        if (degreeMatches) {
+          return {
+            ...deg,
+            streams: deg.streams,
+            hasDegreeMatch: true,
+            totalStreamsInDegree: deg.streams.length,
+          };
+        }
+
+        return null;
+      })
+      .filter(Boolean);
+  }, [degreesGrouped, programSearch, levelFilter]);
+
+  const totalMatchingStreams = useMemo(() => {
+    return filteredDegreesGrouped.reduce((acc, d) => acc + (d.streams?.length || 0), 0);
+  }, [filteredDegreesGrouped]);
 
   const toggleDegreeExpand = (degreeName) => {
     setExpandedDegrees(prev => ({
@@ -351,16 +435,21 @@ export default function CollegeDetailClient() {
 
   // Open Edit Degree Modal
   const handleOpenEditDegree = (deg) => {
+    const defaultAnnualFee = deg.streams?.[0]?.customFeeStructure?.annualTuitionFee || 150000;
+    const matchingTemplate = COMMON_DEGREES.find(d => d.degreeName === deg.degreeName);
     setDegreeEditForm({
       currentDegreeName: deg.degreeName,
       newDegreeName: deg.degreeName,
+      selectedTemplateDegree: matchingTemplate ? matchingTemplate.degreeName : 'CUSTOM',
       level: deg.level || 'Undergraduate',
       durationYears: deg.durationYears || 4,
+      standardAnnualFee: defaultAnnualFee,
+      currentStreams: deg.streams || [],
     });
     setShowEditDegreeModal(true);
   };
 
-  // Submit Edit Degree (Rename, change duration/level)
+  // Submit Edit Degree (Rename, change duration/level/fee)
   const handleSaveEditDegree = async (e) => {
     e.preventDefault();
     if (!college || !degreeEditForm.currentDegreeName || !isMyCatalogueItem) return;
@@ -374,6 +463,7 @@ export default function CollegeDetailClient() {
         newDegreeName: degreeEditForm.newDegreeName.trim(),
         level: degreeEditForm.level,
         durationYears: Number(degreeEditForm.durationYears) || 4,
+        standardAnnualFee: Number(degreeEditForm.standardAnnualFee) || undefined,
       });
 
       toast.success(`Degree updated successfully! ✨`);
@@ -411,21 +501,27 @@ export default function CollegeDetailClient() {
   const handleOpenAddSpec = (deg) => {
     setTargetDegreeForSpec(deg);
     const foundDef = COMMON_DEGREES.find(d => d.degreeName === deg.degreeName);
-    const defaultSpec = foundDef?.specializations?.[0] || 'Artificial Intelligence & Machine Learning';
+    const existingSpecs = new Set((deg.streams || []).map(s => (s.specialization || '').toLowerCase().trim()));
+    const availableSpecs = (foundDef?.specializations || []).filter(s => !existingSpecs.has(s.toLowerCase().trim()));
+    const defaultSpec = availableSpecs[0] || (foundDef?.specializations?.[0]) || '';
+    const defaultAnnual = deg.streams?.[0]?.customFeeStructure?.annualTuitionFee || 180000;
+    const duration = deg.durationYears || 4;
 
     setSpecForm({
       degreeName: deg.degreeName,
       specialization: defaultSpec,
-      annualTuitionFee: deg.streams?.[0]?.customFeeStructure?.annualTuitionFee || 180000,
-      packageFee: (deg.streams?.[0]?.customFeeStructure?.annualTuitionFee || 180000) * (deg.durationYears || 4),
-      hostelFeePerYear: 80000,
-      oneTimeAdmissionFee: 20000,
-      currency: 'INR',
-      commissionRate: 10,
-      commissionType: 'percentage',
-      mouStatus: 'direct_tie_up',
-      contactPersonName: '',
-      contactPersonPhone: '',
+      annualTuitionFee: defaultAnnual,
+      packageFee: defaultAnnual * duration,
+      hostelFeePerYear: deg.streams?.[0]?.customFeeStructure?.hostelFeePerYear || 80000,
+      oneTimeAdmissionFee: deg.streams?.[0]?.customFeeStructure?.oneTimeAdmissionFee || 20000,
+      currency: deg.streams?.[0]?.customFeeStructure?.currency || 'INR',
+      feeNotes: '',
+      commissionRate: deg.streams?.[0]?.customTieUpDetails?.commissionRate ?? 10,
+      commissionType: deg.streams?.[0]?.customTieUpDetails?.commissionType || 'percentage',
+      mouStatus: deg.streams?.[0]?.customTieUpDetails?.mouStatus || 'direct_tie_up',
+      contactPersonName: deg.streams?.[0]?.customTieUpDetails?.contactPersonName || '',
+      contactPersonPhone: deg.streams?.[0]?.customTieUpDetails?.contactPersonPhone || '',
+      contactPersonEmail: deg.streams?.[0]?.customTieUpDetails?.contactPersonEmail || '',
       admissionStatus: 'admissions_open',
       quotaType: 'management_quota',
     });
@@ -449,14 +545,16 @@ export default function CollegeDetailClient() {
         packageFee: Number(specForm.packageFee) || 0,
         hostelFeePerYear: Number(specForm.hostelFeePerYear) || 0,
         oneTimeAdmissionFee: Number(specForm.oneTimeAdmissionFee) || 0,
-        currency: specForm.currency,
+        currency: specForm.currency || 'INR',
+        feeNotes: specForm.feeNotes || '',
         commissionRate: Number(specForm.commissionRate) || 10,
-        commissionType: specForm.commissionType,
-        mouStatus: specForm.mouStatus,
-        contactPersonName: specForm.contactPersonName,
-        contactPersonPhone: specForm.contactPersonPhone,
-        admissionStatus: specForm.admissionStatus,
-        quotaType: specForm.quotaType,
+        commissionType: specForm.commissionType || 'percentage',
+        mouStatus: specForm.mouStatus || 'direct_tie_up',
+        contactPersonName: specForm.contactPersonName || '',
+        contactPersonPhone: specForm.contactPersonPhone || '',
+        contactPersonEmail: specForm.contactPersonEmail || '',
+        admissionStatus: specForm.admissionStatus || 'admissions_open',
+        quotaType: specForm.quotaType || 'management_quota',
         level: targetDegreeForSpec.level,
         durationYears: targetDegreeForSpec.durationYears,
       });
@@ -617,22 +715,44 @@ export default function CollegeDetailClient() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 flex-shrink-0">
+          <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap sm:flex-nowrap w-full sm:w-auto">
+            {/* Top Fast Program Search Bar */}
+            <div className="relative w-full sm:w-60 md:w-72">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+              <input
+                type="text"
+                value={programSearch}
+                onChange={e => setProgramSearch(e.target.value)}
+                placeholder="Fast search program (e.g. CSE, MBA)..."
+                className="w-full pl-9 pr-7 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 shadow-2xs"
+              />
+              {programSearch && (
+                <button
+                  type="button"
+                  onClick={() => setProgramSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                  title="Clear search"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
             {isMyCatalogueItem ? (
               <>
                 <button
                   type="button"
                   onClick={handleOpenEditInfo}
-                  className="btn btn-secondary btn-sm flex items-center gap-1.5 text-xs py-1.5 px-3 rounded-xl font-semibold"
+                  className="btn btn-secondary btn-sm flex items-center gap-1.5 text-xs py-1.5 px-3 rounded-xl font-semibold shrink-0"
                 >
-                  <Edit3 size={14} /> Edit Institution
+                  <Edit3 size={14} /> <span className="hidden sm:inline">Edit Institution</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleOpenAddDegree}
-                  className="btn btn-primary btn-sm flex items-center gap-1.5 text-xs py-1.5 px-3.5 rounded-xl font-bold shadow-sm"
+                  className="btn btn-primary btn-sm flex items-center gap-1.5 text-xs py-1.5 px-3.5 rounded-xl font-bold shadow-sm shrink-0"
                 >
-                  <Plus size={15} /> Add Degree Program
+                  <Plus size={15} /> <span>Add Degree</span>
                 </button>
               </>
             ) : (
@@ -729,16 +849,26 @@ export default function CollegeDetailClient() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 flex-shrink-0">
               <div className="bg-slate-50 border border-slate-200/80 p-3 rounded-xl min-w-[110px] text-center">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Degree Programs</span>
-                <span className="text-lg font-bold text-indigo-600">{degreesGrouped.length}</span>
+                <span className="text-lg font-bold text-indigo-600">
+                  {programSearch.trim() || levelFilter !== 'all'
+                    ? `${filteredDegreesGrouped.length} / ${degreesGrouped.length}`
+                    : degreesGrouped.length}
+                </span>
               </div>
               <div className="bg-slate-50 border border-slate-200/80 p-3 rounded-xl min-w-[110px] text-center">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Specializations</span>
-                <span className="text-lg font-bold text-emerald-600">{totalStreamsCount}</span>
+                <span className="text-lg font-bold text-emerald-600">
+                  {programSearch.trim() || levelFilter !== 'all'
+                    ? `${totalMatchingStreams} / ${totalStreamsCount}`
+                    : totalStreamsCount}
+                </span>
               </div>
-              <div className="col-span-2 sm:col-span-1 bg-slate-50 border border-slate-200/80 p-3 rounded-xl min-w-[110px] text-center">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Tie-Up Commission</span>
-                <span className="text-lg font-bold text-amber-600">Avg. 10 - 15%</span>
-              </div>
+              {canViewField(user, 'customTieUpDetails') && (
+                <div className="col-span-2 sm:col-span-1 bg-slate-50 border border-slate-200/80 p-3 rounded-xl min-w-[110px] text-center">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Tie-Up Commission</span>
+                  <span className="text-lg font-bold text-amber-600">Avg. 10 - 15%</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -754,7 +884,7 @@ export default function CollegeDetailClient() {
             SECTION 2 & 3: DRILL-DOWN DEGREES & SPECIALIZATIONS HIERARCHY
            ───────────────────────────────────────────────────────────── */}
         <div className="space-y-4">
-          <div className="flex items-center justify-between gap-3 mb-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-1">
             <div>
               <h3 className="text-base sm:text-lg font-bold text-slate-900 m-0 flex items-center gap-2">
                 <GraduationCap size={20} className="text-indigo-600" />
@@ -765,16 +895,83 @@ export default function CollegeDetailClient() {
               </p>
             </div>
 
-            {isMyCatalogueItem && (
+            {isMyCatalogueItem && hasPermission(user, 'catalogue.manage_workspace') && (
               <button
                 type="button"
                 onClick={handleOpenAddDegree}
-                className="btn btn-secondary btn-sm flex items-center gap-1.5 text-xs py-1.5 px-3 rounded-xl font-semibold"
+                className="btn btn-secondary btn-sm flex items-center gap-1.5 text-xs py-1.5 px-3 rounded-xl font-semibold self-start sm:self-auto shrink-0"
               >
                 <Plus size={14} /> Add Degree
               </button>
             )}
           </div>
+
+          {/* Fast Program & Specialization Search Toolbar */}
+          {degreesGrouped.length > 0 && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-3 sm:p-4 shadow-xs">
+              <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2.5 sm:gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
+                  <input
+                    type="text"
+                    value={programSearch}
+                    onChange={e => setProgramSearch(e.target.value)}
+                    placeholder="Search degree, branch or specialization (e.g. CSE, MBA, B.Pharm, AI, Finance)..."
+                    className="w-full pl-10 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition"
+                  />
+                  {programSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setProgramSearch('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-200 transition"
+                      title="Clear search"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Level Filter Chips */}
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0 pb-1 md:pb-0">
+                  {['all', 'Undergraduate', 'Postgraduate', 'Diploma'].map(lvl => (
+                    <button
+                      key={lvl}
+                      type="button"
+                      onClick={() => setLevelFilter(lvl)}
+                      className={`text-[11px] sm:text-xs font-semibold px-2.5 sm:px-3 py-1.5 rounded-lg border transition whitespace-nowrap ${
+                        levelFilter === lvl
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {lvl === 'all' ? 'All Degrees' : lvl}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Live Search Status Feedback */}
+              {(programSearch.trim() || levelFilter !== 'all') && (
+                <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600 flex-wrap gap-2">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Found <strong className="text-indigo-600 font-bold">{totalMatchingStreams}</strong> matching {totalMatchingStreams === 1 ? 'stream' : 'streams'} across <strong className="text-slate-800 font-bold">{filteredDegreesGrouped.length}</strong> {filteredDegreesGrouped.length === 1 ? 'degree' : 'degrees'}
+                    {programSearch.trim() && <span className="text-slate-400 text-[11px]">(Auto-expanded for fast review)</span>}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProgramSearch('');
+                      setLevelFilter('all');
+                    }}
+                    className="text-xs text-indigo-600 hover:text-indigo-800 font-bold underline"
+                  >
+                    Reset Search Filters
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {degreesGrouped.length === 0 ? (
             <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
@@ -783,15 +980,36 @@ export default function CollegeDetailClient() {
               </div>
               <h4 className="text-base font-bold text-slate-900">No Degree Programs Added Yet</h4>
               <p className="text-xs text-slate-500 mt-1 mb-4">Add your first degree program (e.g. B.Tech, MBA, BCA) to start configuring fees.</p>
-              {isMyCatalogueItem && (
+              {isMyCatalogueItem && hasPermission(user, 'catalogue.manage_workspace') && (
                 <button type="button" onClick={handleOpenAddDegree} className="btn btn-primary btn-sm mx-auto">
                   <Plus size={14} /> Add Degree Program
                 </button>
               )}
             </div>
+          ) : filteredDegreesGrouped.length === 0 ? (
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 sm:p-12 text-center shadow-xs">
+              <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 mx-auto mb-3">
+                <Search size={22} />
+              </div>
+              <h4 className="text-base font-bold text-slate-900">No programs match &ldquo;{programSearch}&rdquo;</h4>
+              <p className="text-xs text-slate-500 mt-1 mb-4">
+                No degrees or specializations found for this search. Try searching for another branch keyword or reset your filter.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setProgramSearch('');
+                  setLevelFilter('all');
+                }}
+                className="btn btn-secondary btn-sm mx-auto"
+              >
+                Clear Search & Show All {totalStreamsCount} Programs
+              </button>
+            </div>
           ) : (
-            degreesGrouped.map((deg, dIdx) => {
-              const isExpanded = Boolean(expandedDegrees[deg.degreeName]);
+            filteredDegreesGrouped.map((deg, dIdx) => {
+              const isSearching = Boolean(programSearch.trim());
+              const isExpanded = isSearching ? true : Boolean(expandedDegrees[deg.degreeName]);
               const streamsCount = deg.streams.length;
 
               return (
@@ -825,13 +1043,19 @@ export default function CollegeDetailClient() {
                           </span>
                         </div>
                         <p className="text-[11px] sm:text-xs text-slate-500 m-0 mt-0.5 font-medium">
-                          {streamsCount} Specialization {streamsCount === 1 ? 'Stream' : 'Streams'} Configured
+                          {isSearching && deg.hasStreamMatch ? (
+                            <span className="text-indigo-600 font-semibold">
+                              🎯 {deg.streams.length} of {deg.totalStreamsInDegree} Matching Specializations
+                            </span>
+                          ) : (
+                            <span>{streamsCount} Specialization {streamsCount === 1 ? 'Stream' : 'Streams'} Configured</span>
+                          )}
                         </p>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end pl-9 md:pl-0" onClick={e => e.stopPropagation()}>
-                      {isMyCatalogueItem && (
+                      {isMyCatalogueItem && hasPermission(user, 'catalogue.manage_workspace') && (
                         <>
                           <button
                             type="button"
@@ -872,18 +1096,35 @@ export default function CollegeDetailClient() {
                           const admStatus = ADMISSION_STATUS_LABELS[course.admissionStatus] || ADMISSION_STATUS_LABELS.admissions_open;
                           const mouStatus = MOU_STATUS_LABELS[tieUp.mouStatus] || MOU_STATUS_LABELS.direct_tie_up;
 
+                          const q = programSearch.trim().toLowerCase();
+                          const isMatch = Boolean(q) && (
+                            (course.specialization || '').toLowerCase().includes(q) ||
+                            (course.specialization || '').toLowerCase().replace(/[\.\-\/\s]/g, '').includes(q.replace(/[\.\-\/\s]/g, '')) ||
+                            (course.admissionStatus || '').toLowerCase().includes(q) ||
+                            (course.quotaType || '').toLowerCase().includes(q)
+                          );
+
                           return (
                             <div
                               key={course._id || cIdx}
-                              className="bg-white border border-slate-200 rounded-xl p-3.5 sm:p-4 flex flex-col justify-between gap-3 shadow-2xs hover:border-indigo-300 hover:shadow-xs transition"
+                              className={`rounded-xl p-3.5 sm:p-4 flex flex-col justify-between gap-3 shadow-2xs transition ${
+                                isMatch
+                                  ? 'bg-indigo-50/20 border-2 border-indigo-400 ring-2 ring-indigo-100 shadow-xs'
+                                  : 'bg-white border border-slate-200 hover:border-indigo-300 hover:shadow-xs'
+                              }`}
                             >
                               <div>
                                 {/* Stream Header Row */}
                                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-2">
                                   <div>
                                     <div className="flex items-center gap-2 flex-wrap">
-                                      <h5 className="text-sm font-bold text-slate-900 m-0 tracking-tight">
-                                        {course.specialization}
+                                      <h5 className="text-sm font-bold text-slate-900 m-0 tracking-tight flex items-center gap-1.5 flex-wrap">
+                                        <span>{course.specialization}</span>
+                                        {isMatch && (
+                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">
+                                            Match
+                                          </span>
+                                        )}
                                       </h5>
                                       {isMyCatalogueItem && (
                                         <button
@@ -946,12 +1187,14 @@ export default function CollegeDetailClient() {
                                   <span className="font-semibold flex items-center gap-1">
                                     {mouStatus.label}
                                   </span>
-                                  <span className="font-bold text-amber-700 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded text-[11px] self-start sm:self-auto">
-                                    💰 Commission: {tieUp.commissionRate || 10}%
-                                  </span>
+                                  {canViewField(user, 'customTieUpDetails') && (
+                                    <span className="font-bold text-amber-700 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded text-[11px] self-start sm:self-auto">
+                                      💰 Commission: {tieUp.commissionRate || 10}%
+                                    </span>
+                                  )}
                                 </div>
 
-                                {(tieUp.contactPersonName || tieUp.contactPersonPhone) && (
+                                {canViewField(user, 'customTieUpDetails') && (tieUp.contactPersonName || tieUp.contactPersonPhone) && (
                                   <p className="text-[11px] text-slate-500 m-0 mt-1 truncate">
                                     👤 SPOC: <strong className="text-slate-700">{tieUp.contactPersonName || 'Campus Desk'}</strong> {tieUp.contactPersonPhone ? `(${tieUp.contactPersonPhone})` : ''}
                                   </p>
@@ -960,7 +1203,7 @@ export default function CollegeDetailClient() {
 
                               {/* Card Action Buttons */}
                               <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-slate-100 mt-1 flex-wrap">
-                                {isMyCatalogueItem && (
+                                {isMyCatalogueItem && hasPermission(user, 'catalogue.manage_workspace') && (
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteCourse(course)}
@@ -972,6 +1215,7 @@ export default function CollegeDetailClient() {
                                 )}
 
                                 <div className="flex items-center gap-2 ml-auto flex-wrap">
+                                  {hasPermission(user, 'whatsapp.send_one_to_one') && (
                                   <button
                                     type="button"
                                     onClick={() => handleOpenWhatsAppFeeModal(course, deg)}
@@ -980,8 +1224,9 @@ export default function CollegeDetailClient() {
                                   >
                                     <MessageCircle size={13} /> Send on WhatsApp
                                   </button>
+                                  )}
 
-                                  {isMyCatalogueItem && (
+                                  {isMyCatalogueItem && hasPermission(user, 'catalogue.manage_workspace') && (
                                     <button
                                       type="button"
                                       onClick={() => handleOpenEditCourse(course)}
@@ -1012,11 +1257,23 @@ export default function CollegeDetailClient() {
         <div className="modal-overlay" onClick={() => setShowEditInfoModal(false)}>
           <div className="modal-sheet max-w-xl bg-white" onClick={e => e.stopPropagation()}>
             <div className="modal-handle" />
-            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2 m-0">
-                <Building2 size={18} className="text-indigo-600" /> Edit Institution Profile
-              </h3>
-              <button onClick={() => setShowEditInfoModal(false)} className="text-slate-400 hover:text-slate-700 text-lg">&times;</button>
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-2xs shrink-0">
+                  <Building2 size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 m-0">Edit Institution Profile</h3>
+                  <p className="text-xs text-slate-500 m-0 mt-0.5">Manage branding, location, types, and official affiliations</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEditInfoModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition text-lg leading-none"
+              >
+                &times;
+              </button>
             </div>
 
             <form onSubmit={handleSaveInfo} className="space-y-3.5 max-h-[75vh] overflow-y-auto pr-1">
@@ -1146,11 +1403,23 @@ export default function CollegeDetailClient() {
         <div className="modal-overlay" onClick={() => setShowAddDegreeModal(false)}>
           <div className="modal-sheet max-w-xl bg-white" onClick={e => e.stopPropagation()}>
             <div className="modal-handle" />
-            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2 m-0">
-                <Plus size={18} className="text-indigo-600" /> Add Degree Program
-              </h3>
-              <button onClick={() => setShowAddDegreeModal(false)} className="text-slate-400 hover:text-slate-700 text-lg">&times;</button>
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-2xs shrink-0">
+                  <Plus size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 m-0">Add Degree Program</h3>
+                  <p className="text-xs text-slate-500 m-0 mt-0.5">Select a standard template or custom title with auto-generated streams</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddDegreeModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition text-lg leading-none"
+              >
+                &times;
+              </button>
             </div>
 
             <form onSubmit={handleSaveDegree} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
@@ -1186,7 +1455,7 @@ export default function CollegeDetailClient() {
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="label">Level</label>
+                  <label className="label">Academic Level</label>
                   <select
                     className="input text-xs"
                     value={degreeForm.level}
@@ -1222,7 +1491,12 @@ export default function CollegeDetailClient() {
 
               {/* Specializations to Pre-Populate */}
               <div>
-                <label className="label">Select Specialization Streams to Auto-Generate</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="label mb-0">Select Specialization Streams to Auto-Generate</label>
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    {degreeForm.selectedSpecializations.length} selected
+                  </span>
+                </div>
                 <div className="max-h-48 overflow-y-auto p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
                   {COMMON_DEGREES.find(d => d.degreeName === degreeForm.selectedTemplateDegree)?.specializations?.map(spec => {
                     const isChecked = degreeForm.selectedSpecializations.includes(spec);
@@ -1265,24 +1539,61 @@ export default function CollegeDetailClient() {
       )}
 
       {/* ─────────────────────────────────────────────────────────────
-          MODAL 2.5: EDIT DEGREE PROGRAM (RENAME, LEVEL, DURATION)
+          MODAL 2.5: EDIT DEGREE PROGRAM (UNIFIED MAX-W-XL LAYOUT)
          ───────────────────────────────────────────────────────────── */}
       {showEditDegreeModal && (
         <div className="modal-overlay" onClick={() => setShowEditDegreeModal(false)}>
-          <div className="modal-sheet max-w-lg bg-white" onClick={e => e.stopPropagation()}>
+          <div className="modal-sheet max-w-xl bg-white" onClick={e => e.stopPropagation()}>
             <div className="modal-handle" />
-            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2 m-0">
-                <Edit3 size={18} className="text-indigo-600" /> Edit Degree Program
-              </h3>
-              <button onClick={() => setShowEditDegreeModal(false)} className="text-slate-400 hover:text-slate-700 text-lg">&times;</button>
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-2xs shrink-0">
+                  <Edit3 size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 m-0">Edit Degree Program</h3>
+                  <p className="text-xs text-slate-500 m-0 mt-0.5">
+                    Updating program specifications across associated streams under <strong className="text-slate-800">{degreeEditForm.currentDegreeName}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEditDegreeModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition text-lg leading-none"
+              >
+                &times;
+              </button>
             </div>
 
-            <p className="text-xs text-slate-500 -mt-2 mb-4">
-              Updating degree details across all its associated specialization streams.
-            </p>
+            <form onSubmit={handleSaveEditDegree} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+              <div>
+                <label className="label">Quick Standard Degree Template Match</label>
+                <select
+                  className="input text-xs"
+                  value={degreeEditForm.selectedTemplateDegree}
+                  onChange={e => {
+                    const sel = e.target.value;
+                    const found = COMMON_DEGREES.find(d => d.degreeName === sel);
+                    setDegreeEditForm(f => ({
+                      ...f,
+                      selectedTemplateDegree: sel,
+                      newDegreeName: sel === 'CUSTOM' ? f.newDegreeName : (found ? found.degreeName : f.newDegreeName),
+                      level: found ? found.level : f.level,
+                      durationYears: found ? found.durationYears : f.durationYears,
+                      standardAnnualFee: found ? found.standardAnnualFee : f.standardAnnualFee,
+                    }));
+                  }}
+                >
+                  {COMMON_DEGREES.map(d => (
+                    <option key={d.degreeName} value={d.degreeName}>
+                      {d.degreeName} ({d.category})
+                    </option>
+                  ))}
+                  <option value="CUSTOM">-- Custom Degree Name --</option>
+                </select>
+              </div>
 
-            <form onSubmit={handleSaveEditDegree} className="space-y-4">
               <div>
                 <label className="label">Degree Program Title *</label>
                 <input
@@ -1295,7 +1606,7 @@ export default function CollegeDetailClient() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="label">Academic Level</label>
                   <select
@@ -1310,7 +1621,7 @@ export default function CollegeDetailClient() {
                   </select>
                 </div>
                 <div>
-                  <label className="label">Program Duration (Years)</label>
+                  <label className="label">Duration (Yrs)</label>
                   <input
                     type="number"
                     className="input text-sm"
@@ -1320,6 +1631,51 @@ export default function CollegeDetailClient() {
                     max={6}
                     required
                   />
+                </div>
+                <div>
+                  <label className="label">Base Annual Fee (₹)</label>
+                  <input
+                    type="number"
+                    className="input text-sm"
+                    placeholder="e.g. 150000"
+                    value={degreeEditForm.standardAnnualFee}
+                    onChange={e => setDegreeEditForm(f => ({ ...f, standardAnnualFee: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              {/* Specializations Overview Section (Mirroring Add Degree Checklist) */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="label mb-0">Configured Specialization Streams in this Degree</label>
+                  <span className="text-[11px] text-indigo-600 font-bold">
+                    {degreeEditForm.currentStreams?.length || 0} active {degreeEditForm.currentStreams?.length === 1 ? 'stream' : 'streams'}
+                  </span>
+                </div>
+                <div className="max-h-48 overflow-y-auto p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                  {degreeEditForm.currentStreams && degreeEditForm.currentStreams.length > 0 ? (
+                    degreeEditForm.currentStreams.map((st, sIdx) => (
+                      <div
+                        key={st._id || sIdx}
+                        className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200/80 text-xs shadow-2xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                          <span className="font-semibold text-slate-800 truncate">{st.specialization}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-500 shrink-0">
+                          <span>₹{Number(st.customFeeStructure?.annualTuitionFee || 0).toLocaleString('en-IN')}/yr</span>
+                          {canViewField(user, 'customTieUpDetails') && (
+                          <span className="badge bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                            {st.customTieUpDetails?.commissionRate || 10}% Payout
+                          </span>
+                        )}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-500 p-2">No specializations currently configured under this degree.</p>
+                  )}
                 </div>
               </div>
 
@@ -1335,24 +1691,34 @@ export default function CollegeDetailClient() {
       )}
 
       {/* ─────────────────────────────────────────────────────────────
-          MODAL 3: ADD SPECIALIZATION UNDER A SPECIFIC DEGREE
+          MODAL 3: ADD SPECIALIZATION UNDER A SPECIFIC DEGREE (UNIFIED)
          ───────────────────────────────────────────────────────────── */}
       {showAddSpecModal && targetDegreeForSpec && (
         <div className="modal-overlay" onClick={() => setShowAddSpecModal(false)}>
-          <div className="modal-sheet max-w-lg bg-white" onClick={e => e.stopPropagation()}>
+          <div className="modal-sheet max-w-xl bg-white" onClick={e => e.stopPropagation()}>
             <div className="modal-handle" />
-            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2 m-0">
-                <Plus size={18} className="text-emerald-600" /> Add Specialization Stream
-              </h3>
-              <button onClick={() => setShowAddSpecModal(false)} className="text-slate-400 hover:text-slate-700 text-lg">&times;</button>
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shadow-2xs shrink-0">
+                  <Plus size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 m-0">Add Specialization Stream</h3>
+                  <p className="text-xs text-slate-500 m-0 mt-0.5">
+                    Adding new stream under <strong className="text-slate-800">{targetDegreeForSpec.degreeName}</strong> ({targetDegreeForSpec.durationYears} Years • {targetDegreeForSpec.level})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddSpecModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition text-lg leading-none"
+              >
+                &times;
+              </button>
             </div>
 
-            <p className="text-xs text-slate-500 -mt-2 mb-4">
-              Adding new stream under <strong className="text-slate-800">{targetDegreeForSpec.degreeName}</strong> ({targetDegreeForSpec.durationYears} Years)
-            </p>
-
-            <form onSubmit={handleSaveSpec} className="space-y-3.5 max-h-[75vh] overflow-y-auto pr-1">
+            <form onSubmit={handleSaveSpec} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
               <div>
                 <label className="label">Specialization Name *</label>
                 <input
@@ -1363,80 +1729,196 @@ export default function CollegeDetailClient() {
                   onChange={e => setSpecForm(f => ({ ...f, specialization: e.target.value }))}
                   required
                 />
+                
+                {/* Quick Specialization Suggestions from COMMON_DEGREES */}
+                {(() => {
+                  const degDef = COMMON_DEGREES.find(d => d.degreeName === targetDegreeForSpec.degreeName);
+                  const existingNames = new Set((targetDegreeForSpec.streams || []).map(s => (s.specialization || '').toLowerCase().trim()));
+                  const suggestions = (degDef?.specializations || []).filter(s => !existingNames.has(s.toLowerCase().trim())).slice(0, 6);
+                  if (suggestions.length === 0) return null;
+
+                  return (
+                    <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Suggestions:</span>
+                      {suggestions.map(s => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setSpecForm(f => ({ ...f, specialization: s }))}
+                          className={`text-[11px] px-2 py-0.5 rounded-md border transition ${
+                            specForm.specialization === s
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-300 font-bold'
+                              : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-white'
+                          }`}
+                        >
+                          + {s}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Annual Tuition Fee (₹) *</label>
-                  <input
-                    type="number"
-                    className="input text-sm"
-                    value={specForm.annualTuitionFee}
-                    onChange={e => {
-                      const annual = Number(e.target.value) || 0;
-                      setSpecForm(f => ({
-                        ...f,
-                        annualTuitionFee: annual,
-                        packageFee: annual * (targetDegreeForSpec.durationYears || 4),
-                      }));
-                    }}
-                    required
-                  />
+              {/* CARD 1: Student Fee Package Breakdown */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                <h5 className="text-xs font-bold uppercase tracking-wider text-emerald-700 m-0 flex items-center gap-1.5">
+                  💳 Student Fee Package Breakdown
+                </h5>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Annual Tuition Fee (₹) *</label>
+                    <input
+                      type="number"
+                      className="input text-sm"
+                      value={specForm.annualTuitionFee}
+                      onChange={e => {
+                        const annual = Number(e.target.value) || 0;
+                        setSpecForm(f => ({
+                          ...f,
+                          annualTuitionFee: annual,
+                          packageFee: annual * (targetDegreeForSpec.durationYears || 4),
+                        }));
+                      }}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Total Package Deal (₹)</label>
+                    <input
+                      type="number"
+                      className="input text-sm"
+                      value={specForm.packageFee}
+                      onChange={e => setSpecForm(f => ({ ...f, packageFee: Number(e.target.value) }))}
+                    />
+                  </div>
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Hostel Fee / Year (₹)</label>
+                    <input
+                      type="number"
+                      className="input text-sm"
+                      value={specForm.hostelFeePerYear}
+                      onChange={e => setSpecForm(f => ({ ...f, hostelFeePerYear: Number(e.target.value) }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="label">One-Time Admission Fee (₹)</label>
+                    <input
+                      type="number"
+                      className="input text-sm"
+                      value={specForm.oneTimeAdmissionFee}
+                      onChange={e => setSpecForm(f => ({ ...f, oneTimeAdmissionFee: Number(e.target.value) }))}
+                    />
+                  </div>
+                </div>
+
                 <div>
-                  <label className="label">Full Package Fee (₹)</label>
+                  <label className="label">Fee Notes / Scholarships</label>
                   <input
-                    type="number"
+                    type="text"
                     className="input text-sm"
-                    value={specForm.packageFee}
-                    onChange={e => setSpecForm(f => ({ ...f, packageFee: Number(e.target.value) }))}
+                    placeholder="e.g. 20% merit scholarship on 85%+ in 12th board"
+                    value={specForm.feeNotes}
+                    onChange={e => setSpecForm(f => ({ ...f, feeNotes: e.target.value }))}
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Hostel Fee / Year (₹)</label>
-                  <input
-                    type="number"
-                    className="input text-sm"
-                    value={specForm.hostelFeePerYear}
-                    onChange={e => setSpecForm(f => ({ ...f, hostelFeePerYear: Number(e.target.value) }))}
-                  />
-                </div>
-                <div>
-                  <label className="label">One-Time Admission Fee (₹)</label>
-                  <input
-                    type="number"
-                    className="input text-sm"
-                    value={specForm.oneTimeAdmissionFee}
-                    onChange={e => setSpecForm(f => ({ ...f, oneTimeAdmissionFee: Number(e.target.value) }))}
-                  />
-                </div>
-              </div>
+              {/* CARD 2: Agency Commercial Tie-Up & Payout */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                <h5 className="text-xs font-bold uppercase tracking-wider text-indigo-700 m-0 flex items-center gap-1.5">
+                  🤝 Agency Commercial Tie-Up & Payout
+                </h5>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Admission Status</label>
-                  <select
-                    className="input text-xs"
-                    value={specForm.admissionStatus}
-                    onChange={e => setSpecForm(f => ({ ...f, admissionStatus: e.target.value }))}
-                  >
-                    <option value="admissions_open">🟢 Admissions Open</option>
-                    <option value="seats_fast_filling">🔥 Seats Fast Filling</option>
-                    <option value="merit_closed_mgmt_open">⚡ Merit Closed (Mgmt Open)</option>
-                    <option value="admissions_closed">🔴 Closed for Intake</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">MOU / Tie-up Status</label>
+                    <select
+                      className="input text-xs"
+                      value={specForm.mouStatus}
+                      onChange={e => setSpecForm(f => ({ ...f, mouStatus: e.target.value }))}
+                    >
+                      <option value="direct_tie_up">🤝 Direct University Tie-up</option>
+                      <option value="sub_agent_mou">📑 Sub-Agent MOU</option>
+                      <option value="informal_tie_up">📞 Direct Campus Contact</option>
+                      <option value="none">⭕ No Formal Tie-up</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Commercial Commission (%)</label>
+                    <input
+                      type="number"
+                      className="input text-sm"
+                      value={specForm.commissionRate}
+                      onChange={e => setSpecForm(f => ({ ...f, commissionRate: Number(e.target.value) }))}
+                    />
+                  </div>
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Campus SPOC Name</label>
+                    <input
+                      type="text"
+                      className="input text-sm"
+                      placeholder="e.g. Dr. Rajesh Sharma"
+                      value={specForm.contactPersonName}
+                      onChange={e => setSpecForm(f => ({ ...f, contactPersonName: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="label">SPOC Contact Number</label>
+                    <input
+                      type="tel"
+                      className="input text-sm"
+                      placeholder="+91 98765 43210"
+                      value={specForm.contactPersonPhone}
+                      onChange={e => setSpecForm(f => ({ ...f, contactPersonPhone: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
                 <div>
-                  <label className="label">Commercial Commission (%)</label>
+                  <label className="label">SPOC Email Address</label>
                   <input
-                    type="number"
+                    type="email"
                     className="input text-sm"
-                    value={specForm.commissionRate}
-                    onChange={e => setSpecForm(f => ({ ...f, commissionRate: Number(e.target.value) }))}
+                    placeholder="spoc.admissions@university.edu.in"
+                    value={specForm.contactPersonEmail}
+                    onChange={e => setSpecForm(f => ({ ...f, contactPersonEmail: e.target.value }))}
                   />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Admission Intake Status</label>
+                    <select
+                      className="input text-xs"
+                      value={specForm.admissionStatus}
+                      onChange={e => setSpecForm(f => ({ ...f, admissionStatus: e.target.value }))}
+                    >
+                      <option value="admissions_open">🟢 Admissions Open</option>
+                      <option value="seats_fast_filling">🔥 Seats Fast Filling</option>
+                      <option value="merit_closed_mgmt_open">⚡ Merit Closed (Mgmt Open)</option>
+                      <option value="admissions_closed">🔴 Closed for Intake</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Target Quota</label>
+                    <select
+                      className="input text-xs"
+                      value={specForm.quotaType}
+                      onChange={e => setSpecForm(f => ({ ...f, quotaType: e.target.value }))}
+                    >
+                      <option value="management_quota">Management Quota</option>
+                      <option value="merit_counselling">Merit Counselling</option>
+                      <option value="nri_quota">NRI / International Quota</option>
+                      <option value="institutional_direct">Institutional Direct</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -1452,26 +1934,49 @@ export default function CollegeDetailClient() {
       )}
 
       {/* ─────────────────────────────────────────────────────────────
-          MODAL 4: EDIT SPECIALIZATION FEE & TIE-UP STRUCTURE
+          MODAL 4: EDIT SPECIALIZATION FEE & TIE-UP STRUCTURE (UNIFIED)
          ───────────────────────────────────────────────────────────── */}
       {showEditCourseModal && editingCourse && (
         <div className="modal-overlay" onClick={() => setShowEditCourseModal(false)}>
           <div className="modal-sheet max-w-xl bg-white" onClick={e => e.stopPropagation()}>
             <div className="modal-handle" />
-            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2 m-0">
-                <Edit size={18} className="text-indigo-600" /> Customize Fee & Tie-Up Payout
-              </h3>
-              <button onClick={() => setShowEditCourseModal(false)} className="text-slate-400 hover:text-slate-700 text-lg">&times;</button>
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-2xs shrink-0">
+                  <Edit size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 m-0">Customize Fee & Tie-Up Payout</h3>
+                  <p className="text-xs text-slate-500 m-0 mt-0.5">
+                    Configuring stream: <strong className="text-slate-800">{courseForm.specialization}</strong> ({courseForm.degreeName})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEditCourseModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition text-lg leading-none"
+              >
+                &times;
+              </button>
             </div>
 
-            <p className="text-xs text-slate-500 -mt-2 mb-4">
-              Configuring stream: <strong className="text-slate-800">{courseForm.specialization}</strong> ({courseForm.degreeName})
-            </p>
-
             <form onSubmit={handleSaveCourse} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+              <div>
+                <label className="label">Specialization Name *</label>
+                <input
+                  type="text"
+                  className="input text-sm"
+                  placeholder="e.g. Artificial Intelligence & Machine Learning"
+                  value={courseForm.specialization}
+                  onChange={e => setCourseForm(f => ({ ...f, specialization: e.target.value }))}
+                  required
+                />
+              </div>
+
+              {/* CARD 1: Student Fee Package Breakdown */}
               <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-                <h5 className="text-xs font-bold uppercase tracking-wider text-emerald-700 m-0">
+                <h5 className="text-xs font-bold uppercase tracking-wider text-emerald-700 m-0 flex items-center gap-1.5">
                   💳 Student Fee Package Breakdown
                 </h5>
 
@@ -1482,7 +1987,14 @@ export default function CollegeDetailClient() {
                       type="number"
                       className="input text-sm"
                       value={courseForm.annualTuitionFee}
-                      onChange={e => setCourseForm(f => ({ ...f, annualTuitionFee: e.target.value }))}
+                      onChange={e => {
+                        const annual = Number(e.target.value) || 0;
+                        setCourseForm(f => ({
+                          ...f,
+                          annualTuitionFee: annual,
+                          packageFee: annual * (editingCourse.durationYears || 4),
+                        }));
+                      }}
                       required
                     />
                   </div>
@@ -1492,7 +2004,7 @@ export default function CollegeDetailClient() {
                       type="number"
                       className="input text-sm"
                       value={courseForm.packageFee}
-                      onChange={e => setCourseForm(f => ({ ...f, packageFee: e.target.value }))}
+                      onChange={e => setCourseForm(f => ({ ...f, packageFee: Number(e.target.value) }))}
                     />
                   </div>
                 </div>
@@ -1504,7 +2016,7 @@ export default function CollegeDetailClient() {
                       type="number"
                       className="input text-sm"
                       value={courseForm.hostelFeePerYear}
-                      onChange={e => setCourseForm(f => ({ ...f, hostelFeePerYear: e.target.value }))}
+                      onChange={e => setCourseForm(f => ({ ...f, hostelFeePerYear: Number(e.target.value) }))}
                     />
                   </div>
                   <div>
@@ -1513,7 +2025,7 @@ export default function CollegeDetailClient() {
                       type="number"
                       className="input text-sm"
                       value={courseForm.oneTimeAdmissionFee}
-                      onChange={e => setCourseForm(f => ({ ...f, oneTimeAdmissionFee: e.target.value }))}
+                      onChange={e => setCourseForm(f => ({ ...f, oneTimeAdmissionFee: Number(e.target.value) }))}
                     />
                   </div>
                 </div>
@@ -1530,8 +2042,9 @@ export default function CollegeDetailClient() {
                 </div>
               </div>
 
+              {/* CARD 2: Agency Commercial Tie-Up & Payout */}
               <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-                <h5 className="text-xs font-bold uppercase tracking-wider text-indigo-700 m-0">
+                <h5 className="text-xs font-bold uppercase tracking-wider text-indigo-700 m-0 flex items-center gap-1.5">
                   🤝 Agency Commercial Tie-Up & Payout
                 </h5>
 
@@ -1555,7 +2068,7 @@ export default function CollegeDetailClient() {
                       type="number"
                       className="input text-sm"
                       value={courseForm.commissionRate}
-                      onChange={e => setCourseForm(f => ({ ...f, commissionRate: e.target.value }))}
+                      onChange={e => setCourseForm(f => ({ ...f, commissionRate: Number(e.target.value) }))}
                     />
                   </div>
                 </div>
@@ -1581,6 +2094,17 @@ export default function CollegeDetailClient() {
                       onChange={e => setCourseForm(f => ({ ...f, contactPersonPhone: e.target.value }))}
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label className="label">SPOC Email Address</label>
+                  <input
+                    type="email"
+                    className="input text-sm"
+                    placeholder="spoc.admissions@university.edu.in"
+                    value={courseForm.contactPersonEmail}
+                    onChange={e => setCourseForm(f => ({ ...f, contactPersonEmail: e.target.value }))}
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

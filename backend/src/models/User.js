@@ -49,7 +49,7 @@ const userSchema = new mongoose.Schema({
   // ─────────────────────────────────────────────────────────────
   role: {
     type: String,
-    enum: ['admin', 'superadmin', 'user', 'owner', 'manager', 'counsellor', 'member'],
+    enum: ['admin', 'superadmin', 'user', 'owner', 'manager', 'counsellor', 'member', 'auditor'],
     default: 'user',
     required: true,
     set: (v) => {
@@ -74,7 +74,7 @@ const userSchema = new mongoose.Schema({
   // Single-User Tenancy Architecture
   workStatus: {
     type: String,
-    enum: ['single_user', 'company_owner', 'manager', 'counsellor', 'solo'],
+    enum: ['single_user', 'company_owner', 'manager', 'counsellor', 'solo', 'auditor', 'employee'],
     default: 'single_user',
     set: (v) => {
       if (!v) return v;
@@ -85,8 +85,8 @@ const userSchema = new mongoose.Schema({
   },
   companyRole: {
     type: String,
-    enum: ['owner', 'solo', 'manager', 'counsellor', 'member'],
-    default: 'owner',
+    enum: ['owner', 'solo', 'manager', 'counsellor', 'member', 'auditor'],
+    default: 'counsellor',
     set: (v) => {
       if (!v) return v;
       const lower = String(v).toLowerCase().trim();

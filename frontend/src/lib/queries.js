@@ -41,7 +41,7 @@ export function dashboardStatsOptions() {
   return queryOptions({
     queryKey: ['dashboard', 'stats'],
     queryFn: async ({ signal }) => {
-      const res = await api.get('/admin/dashboard-stats', { signal }).catch(async () => {
+      const res = await api.get('/analytics', { signal }).catch(async () => {
         return await api.get('/leads?limit=1', { signal });
       });
       return res.data;
@@ -184,15 +184,34 @@ export function bootstrapOptions(queryClient) {
     queryFn: async ({ signal }) => {
       const res = await api.get('/bootstrap', { signal });
       const data = res.data;
-      if (queryClient && data) {
-        if (data.user) queryClient.setQueryData(['auth', 'me'], data.user);
-        if (data.workspace) queryClient.setQueryData(['workspace', 'current'], data.workspace);
-        if (data.members) queryClient.setQueryData(['workspace', 'members'], data.members);
-        if (data.counts) {
-          queryClient.setQueryData(['notifications', 'unread-count'], data.counts.unreadNotifications);
-          queryClient.setQueryData(['leads', 'follow-ups', 'due-count'], data.counts.dueFollowUps);
+      if (data) {
+        if (data.user) {
+          const effectivePermissions = data.effectivePermissions || data.user.effectivePermissions || [];
+          const updatedUser = {
+            ...data.user,
+            effectivePermissions,
+          };
+          if (typeof window !== 'undefined') {
+            try {
+              const currentU = localStorage.getItem('user');
+              const parsed = currentU ? JSON.parse(currentU) : {};
+              localStorage.setItem('user', JSON.stringify({ ...parsed, ...updatedUser }));
+              window.dispatchEvent(new CustomEvent('user-updated', { detail: { ...parsed, ...updatedUser } }));
+            } catch (_) {}
+          }
+          if (queryClient) {
+            queryClient.setQueryData(['auth', 'me'], updatedUser);
+          }
         }
-        if (data.integrations) queryClient.setQueryData(['integrations', 'list'], data.integrations);
+        if (queryClient) {
+          if (data.workspace) queryClient.setQueryData(['workspace', 'current'], data.workspace);
+          if (data.members) queryClient.setQueryData(['workspace', 'members'], data.members);
+          if (data.counts) {
+            queryClient.setQueryData(['notifications', 'unread-count'], data.counts.unreadNotifications);
+            queryClient.setQueryData(['leads', 'follow-ups', 'due-count'], data.counts.dueFollowUps);
+          }
+          if (data.integrations) queryClient.setQueryData(['integrations', 'list'], data.integrations);
+        }
       }
       return data;
     },

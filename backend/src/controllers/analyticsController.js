@@ -4,12 +4,48 @@ const Recording = require('../models/Recording');
 const xlsx = require('xlsx');
 const PDFDocument = require('pdfkit');
 
+const getScopedLeadFilter = (req) => {
+  const wsId = req.workspaceId || req.tenantId || req.user?.workspaceId;
+  const isManagerOrOwner = req.user?.role === 'superadmin' ||
+    req.user?.isAdmin ||
+    req.membership?.role === 'owner' ||
+    req.membership?.role === 'manager' ||
+    req.user?.companyRole === 'owner' ||
+    req.user?.companyRole === 'manager';
+
+  let baseFilter = {};
+  if (wsId) {
+    baseFilter = {
+      $or: [
+        { workspaceId: wsId },
+        { companyId: req.user.companyId || req.user._id },
+        { userId: req.user._id }
+      ]
+    };
+  } else {
+    baseFilter = { userId: req.user._id };
+  }
+
+  if (!isManagerOrOwner) {
+    baseFilter = {
+      ...baseFilter,
+      $or: [
+        { assignedTo: req.user._id },
+        { userId: req.user._id },
+        { currentOwnerId: req.user._id }
+      ]
+    };
+  }
+  return baseFilter;
+};
+
 // @desc  Analytics summary
 // @route GET /api/analytics
 // @access Private
 exports.getAnalytics = async (req, res) => {
   try {
     const userId = req.user._id;
+    const leadFilter = getScopedLeadFilter(req);
 
     const [
       totalLeads,
@@ -21,23 +57,23 @@ exports.getAnalytics = async (req, res) => {
       revenueAgg,
     ] = await Promise.all([
       // Total leads
-      Lead.countDocuments({ userId }),
+      Lead.countDocuments(leadFilter),
 
       // Leads by status (aggregation)
       Lead.aggregate([
-        { $match: { userId } },
+        { $match: leadFilter },
         { $group: { _id: '$status', count: { $sum: 1 } } },
       ]),
 
       // Templates count
-      Template.countDocuments({ userId }),
+      Template.countDocuments({ $or: [{ userId }, ...(req.workspaceId ? [{ workspaceId: req.workspaceId }] : [])] }),
 
       // Recordings count
-      Recording.countDocuments({ userId }),
+      Recording.countDocuments({ $or: [{ userId }, ...(req.workspaceId ? [{ workspaceId: req.workspaceId }] : [])] }),
 
       // Today's follow-ups
       Lead.countDocuments({
-        userId,
+        ...leadFilter,
         followUpDate: {
           $gte: new Date(new Date().setHours(0, 0, 0, 0)),
           $lte: new Date(new Date().setHours(23, 59, 59, 999)),
@@ -49,7 +85,7 @@ exports.getAnalytics = async (req, res) => {
       Lead.aggregate([
         {
           $match: {
-            userId,
+            ...leadFilter,
             createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
           },
         },
@@ -68,7 +104,7 @@ exports.getAnalytics = async (req, res) => {
       Lead.aggregate([
         {
           $match: {
-            userId,
+            ...leadFilter,
             status: { $in: ['closed', 'Closed', 'Closed / Won', 'payment_done'] },
           },
         },
@@ -118,17 +154,18 @@ exports.exportAnalytics = async (req, res) => {
   try {
     const { format = 'xlsx' } = req.query;
     const userId = req.user._id;
+    const leadFilter = getScopedLeadFilter(req);
 
     const [totalLeads, statusCounts, revenueAgg, todayFollowUps] = await Promise.all([
-      Lead.countDocuments({ userId }),
+      Lead.countDocuments(leadFilter),
       Lead.aggregate([
-        { $match: { userId } },
+        { $match: leadFilter },
         { $group: { _id: '$status', count: { $sum: 1 } } },
       ]),
       Lead.aggregate([
         {
           $match: {
-            userId,
+            ...leadFilter,
             status: { $in: ['closed', 'Closed', 'Closed / Won', 'payment_done'] },
           },
         },
@@ -140,7 +177,7 @@ exports.exportAnalytics = async (req, res) => {
         },
       ]),
       Lead.countDocuments({
-        userId,
+        ...leadFilter,
         followUpDate: {
           $gte: new Date(new Date().setHours(0, 0, 0, 0)),
           $lte: new Date(new Date().setHours(23, 59, 59, 999)),

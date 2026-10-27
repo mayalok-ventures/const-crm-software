@@ -1,5 +1,4 @@
 const express = require('express');
-
 const router = express.Router();
 
 const metaOAuthController = require('../controllers/integrations/metaOAuthController');
@@ -11,84 +10,34 @@ const { protect } = require('../middleware/auth');
 // META OAUTH
 // ============================================================
 
-router.get(
-  '/oauth',
-  protect,
-  metaOAuthController.startOAuth
-);
-
-router.get(
-  '/connect',
-  protect,
-  metaOAuthController.startOAuth
-);
-
-router.get(
-  '/oauth/callback',
-  metaOAuthController.callback
-);
+router.get('/oauth', protect, metaOAuthController.startOAuth);
+router.get('/connect', protect, metaOAuthController.startOAuth);
+router.get('/oauth/callback', metaOAuthController.callback);
 
 // ============================================================
-// META WEBHOOK
+// META WEBHOOK (Public endpoints verified via challenge & HMAC)
 // ============================================================
 
-// Meta verification
-// GET /api/integrations/meta/webhook
-//
-// IMPORTANT:
-// Do NOT put JWT middleware here.
-
-router.get(
-  '/webhook',
-  metaWebhookController.verify
-);
-
-// Meta lead events
-// POST /api/integrations/meta/webhook
-//
-// IMPORTANT:
-// Do NOT put JWT middleware here.
-
-router.post(
-  '/webhook',
-  express.json({
-    type: 'application/json',
-  }),
-  metaWebhookController.receive
-);
+router.get('/webhook', metaWebhookController.verify);
+router.post('/webhook', metaWebhookController.receive);
 
 // ============================================================
-// META ACCOUNT MANAGEMENT
+// META APP REVIEW COMPLIANCE CALLBACKS
 // ============================================================
 
-router.get(
-  '/',
-  protect,
-  metaIntegrationController.getIntegrations
-);
+router.all('/deauthorize', metaWebhookController.deauthorizeCallback);
+router.all('/data-deletion', metaWebhookController.dataDeletionCallback);
 
-router.get(
-  '/assets',
-  protect,
-  metaIntegrationController.getAssets
-);
+// ============================================================
+// META RECONCILIATION & ACCOUNT MANAGEMENT (Protected)
+// ============================================================
 
-router.post(
-  '/configure',
-  protect,
-  metaIntegrationController.configure
-);
-
-router.post(
-  '/test',
-  protect,
-  metaIntegrationController.testConnection
-);
-
-router.delete(
-  '/:integrationId',
-  protect,
-  metaIntegrationController.disconnect
-);
+router.post('/sync/:integrationId', protect, metaWebhookController.syncNow);
+router.post('/:integrationId/sync', protect, metaWebhookController.syncNow);
+router.get('/', protect, metaIntegrationController.getIntegrations);
+router.get('/assets', protect, metaIntegrationController.getAssets);
+router.post('/configure', protect, metaIntegrationController.configure);
+router.post('/test', protect, metaIntegrationController.testConnection);
+router.delete('/:integrationId', protect, metaIntegrationController.disconnect);
 
 module.exports = router;

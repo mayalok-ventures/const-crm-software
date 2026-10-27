@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { optionalAuth, protect, adminOnly } = require('../middleware/auth');
+const { optionalAuth, protect, superAdminOnly } = require('../middleware/auth');
 const { paymentUpload, processPaymentUpload } = require('../middleware/paymentUpload');
 const {
   createRazorpayOrder,
@@ -26,9 +26,9 @@ router.post('/webhook', handleRazorpayWebhook);
 router.post('/', protect, paymentUpload, processPaymentUpload, createPaymentRequest);
 router.get('/my-request', protect, getUserPaymentRequest);
 
-// Admin payments endpoints
-router.get('/admin', protect, adminOnly, getAdminPaymentRequests);
-router.put('/admin/:id/approve', protect, adminOnly, approvePaymentRequest);
-router.put('/admin/:id/reject', protect, adminOnly, rejectPaymentRequest);
+// Platform SuperAdmin payments endpoints
+router.get('/admin', protect, superAdminOnly, getAdminPaymentRequests);
+router.put('/admin/:id/approve', protect, superAdminOnly, approvePaymentRequest);
+router.put('/admin/:id/reject', protect, superAdminOnly, rejectPaymentRequest);
 
 module.exports = router;

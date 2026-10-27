@@ -1,7 +1,7 @@
-# CoreSetu CRM — Production Rollback Runbook
+# Sahyak CRM — Production Rollback Runbook
 
 ## Rollback Strategy
-CoreSetu CRM employs a stateless application layer design with backward-compatible MongoDB schemas. Rollbacks can be executed rapidly without requiring database restoration unless an intentional destructive migration was executed.
+Sahyak CRM employs a stateless application layer design with backward-compatible MongoDB schemas. Rollbacks can be executed rapidly without requiring database restoration unless an intentional destructive migration was executed.
 
 ---
 

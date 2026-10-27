@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
+import api, { cachedGet } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
 import {
   GraduationCap, Search, Plus, Building2, MapPin, Globe,
@@ -13,6 +13,7 @@ import {
   DollarSign, UserCheck, ExternalLink, RefreshCw, BookOpen, AlertCircle,
   PlusCircle, School, Award, ChevronRight, X
 } from 'lucide-react';
+import { getUser, hasPermission, canViewField } from '@/lib/auth';
 import {
   COMMON_DEGREES,
   ACCREDITATION_TAGS,
@@ -29,6 +30,7 @@ const ADMISSION_STATUS_LABELS = {
 
 export default function CataloguePage() {
   const router = useRouter();
+  const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('my_catalogue'); // 'my_catalogue' | 'master_explore'
   const [loading, setLoading] = useState(true);
   const [importingId, setImportingId] = useState(null);
@@ -67,13 +69,20 @@ export default function CataloguePage() {
   });
 
   useEffect(() => {
+    const updateAuth = () => {
+      setUser(getUser());
+    };
+    updateAuth();
+    window.addEventListener('user-updated', updateAuth);
     loadMyCatalogue();
     loadMasterColleges(1, '');
+    return () => window.removeEventListener('user-updated', updateAuth);
   }, []);
 
-  const loadMyCatalogue = async () => {
+  const loadMyCatalogue = async (isManual = false) => {
+    if (myCatalogue.length === 0 && !isManual) setLoading(true);
     try {
-      const res = await api.get('/catalogue/my-catalogue');
+      const res = await cachedGet('/catalogue/my-catalogue', { forceRefresh: isManual });
       const items = res.data?.catalogue || [];
       setMyCatalogue(items);
       if (items.length === 0) {
@@ -86,8 +95,8 @@ export default function CataloguePage() {
     }
   };
 
-  const loadMasterColleges = async (page = 1, search = '', type = 'all', state = 'all') => {
-    setMasterLoading(true);
+  const loadMasterColleges = async (page = 1, search = '', type = 'all', state = 'all', isManual = false) => {
+    if (masterColleges.length === 0 && !isManual) setMasterLoading(true);
     try {
       const params = {
         page,
@@ -97,7 +106,7 @@ export default function CataloguePage() {
       if (type && type !== 'all') params.type = type;
       if (state && state !== 'all') params.state = state;
 
-      const res = await api.get('/catalogue/master-colleges', { params });
+      const res = await cachedGet('/catalogue/master-colleges', { params, forceRefresh: isManual });
       if (res.data?.success) {
         setMasterColleges(res.data.colleges || []);
         setMasterPagination({
@@ -270,8 +279,11 @@ export default function CataloguePage() {
   }, [myCatalogue, masterColleges]);
 
   return (
-    <div className="app-shell pb-mobile-nav">
-      <div className="page-container max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8">
+    <div className="app-container">
+      <BottomNav active="catalogue" />
+
+      <main className="main-content" data-crm-canvas="true">
+        <div style={{ width: '100%' }} className="pb-mobile-nav">
         
         {/* ─────────────────────────────────────────────────────────────
             PAGE HEADER & ACTIONS
@@ -294,15 +306,17 @@ export default function CataloguePage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
-            <button
-              type="button"
-              onClick={() => setShowAddCustomModal(true)}
-              className="btn btn-primary btn-sm flex items-center gap-2 text-xs py-2 px-4 rounded-xl font-semibold shadow-sm"
-            >
-              <PlusCircle size={16} /> Add Custom Partner
-            </button>
-          </div>
+          {hasPermission(user, 'catalogue.manage_workspace') && (
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowAddCustomModal(true)}
+                className="btn btn-primary btn-sm flex items-center gap-2 text-xs py-2 px-4 rounded-xl font-semibold shadow-sm"
+              >
+                <PlusCircle size={16} /> Add Custom Partner
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ─────────────────────────────────────────────────────────────
@@ -326,21 +340,23 @@ export default function CataloguePage() {
               </span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('master_explore')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === 'master_explore'
-                  ? 'bg-white text-purple-600 shadow-sm font-bold border border-slate-200/60'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Globe size={15} />
-              <span>Explore Master Repository</span>
-              <span className="bg-purple-100 text-purple-700 border border-purple-200 text-[10px] px-2 py-0.5 rounded-full font-bold">
-                10,000+
-              </span>
-            </button>
+            {hasPermission(user, 'catalogue.view_master') && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('master_explore')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'master_explore'
+                    ? 'bg-white text-purple-600 shadow-sm font-bold border border-slate-200/60'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Globe size={15} />
+                <span>Explore Master Repository</span>
+                <span className="bg-purple-100 text-purple-700 border border-purple-200 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                  10,000+
+                </span>
+              </button>
+            )}
           </div>
 
           <div className="text-xs text-slate-500 font-medium">
@@ -361,14 +377,10 @@ export default function CataloguePage() {
             : 'border-slate-200'
         }`}>
           <div className="flex flex-col gap-3">
-            {/* Top Row: Expanding Search Input & Filters */}
-            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
+            {/* Top Row: Search Input & Filters */}
+            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2.5 sm:gap-3">
               {/* Dynamic Expanding Search Input */}
-              <div className={`relative transition-all duration-300 ease-in-out w-full ${
-                isSearchFocused || searchQuery
-                  ? 'md:flex-1'
-                  : 'md:w-96 md:flex-initial'
-              }`}>
+              <div className="relative flex-1 min-w-0">
                 <Search
                   size={18}
                   className={`absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors duration-200 pointer-events-none ${
@@ -389,7 +401,7 @@ export default function CataloguePage() {
                     setTimeout(() => setIsSearchFocused(false), 200);
                   }}
                   onChange={e => setSearchQuery(e.target.value)}
-                  className={`input pl-10 pr-10 py-2.5 sm:py-3 text-xs sm:text-sm w-full rounded-xl transition-all duration-200 ${
+                  className={`input input-search pl-10 pr-10 py-2 sm:py-2.5 text-xs sm:text-sm w-full rounded-xl transition-all duration-200 ${
                     isSearchFocused || searchQuery
                       ? 'bg-white border-indigo-500 shadow-sm ring-1 ring-indigo-500'
                       : 'bg-slate-50 border-slate-200 hover:border-slate-300 focus:bg-white'
@@ -407,29 +419,33 @@ export default function CataloguePage() {
                 )}
               </div>
 
-              {/* Filter Dropdowns */}
-              <div className="grid grid-cols-2 sm:flex items-center gap-2 sm:gap-2.5 w-full md:w-auto flex-shrink-0">
-                <select
-                  value={typeFilter}
-                  onChange={e => setTypeFilter(e.target.value)}
-                  className="input py-2.5 sm:py-2.5 text-xs bg-slate-50 border-slate-200 rounded-xl w-full sm:w-44 focus:bg-white focus:border-indigo-500 truncate"
-                >
-                  <option value="all">All Types</option>
-                  {INSTITUTION_TYPES.map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
+              {/* Filter Dropdowns & Reset */}
+              <div className="flex items-center gap-2 sm:gap-2.5 w-full md:w-auto shrink-0">
+                <div className="flex-1 md:w-44 md:flex-none">
+                  <select
+                    value={typeFilter}
+                    onChange={e => setTypeFilter(e.target.value)}
+                    className="input py-2 px-3 text-xs bg-slate-50 border-slate-200 rounded-xl w-full focus:bg-white focus:border-indigo-500 cursor-pointer truncate"
+                  >
+                    <option value="all">All Types</option>
+                    {INSTITUTION_TYPES.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
 
-                <select
-                  value={stateFilter}
-                  onChange={e => setStateFilter(e.target.value)}
-                  className="input py-2.5 sm:py-2.5 text-xs bg-slate-50 border-slate-200 rounded-xl w-full sm:w-40 focus:bg-white focus:border-indigo-500 truncate"
-                >
-                  <option value="all">All States</option>
-                  {allStates.map(st => (
-                    <option key={st} value={st}>{st}</option>
-                  ))}
-                </select>
+                <div className="flex-1 md:w-40 md:flex-none">
+                  <select
+                    value={stateFilter}
+                    onChange={e => setStateFilter(e.target.value)}
+                    className="input py-2 px-3 text-xs bg-slate-50 border-slate-200 rounded-xl w-full focus:bg-white focus:border-indigo-500 cursor-pointer truncate"
+                  >
+                    <option value="all">All States</option>
+                    {allStates.map(st => (
+                      <option key={st} value={st}>{st}</option>
+                    ))}
+                  </select>
+                </div>
 
                 {(typeFilter !== 'all' || stateFilter !== 'all' || searchQuery) && (
                   <button
@@ -439,10 +455,11 @@ export default function CataloguePage() {
                       setTypeFilter('all');
                       setStateFilter('all');
                     }}
-                    className="col-span-2 sm:col-span-1 p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 text-xs font-semibold flex items-center justify-center gap-1 border border-slate-200 transition"
+                    className="p-2 sm:px-2.5 h-[38px] rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 text-xs font-semibold flex items-center justify-center gap-1 border border-slate-200 transition shrink-0"
                     title="Reset all filters"
                   >
-                    <X size={14} /> <span className="sm:hidden">Reset</span>
+                    <X size={15} />
+                    <span className="hidden sm:inline text-xs">Reset</span>
                   </button>
                 )}
               </div>
@@ -543,20 +560,24 @@ export default function CataloguePage() {
                       Clear Search Filter
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('master_explore')}
-                    className="btn btn-primary btn-sm flex items-center gap-2"
-                  >
-                    <Globe size={14} /> Explore Master Repository
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddCustomModal(true)}
-                    className="btn btn-secondary btn-sm flex items-center gap-2"
-                  >
-                    <PlusCircle size={14} /> Add Custom Partner
-                  </button>
+                  {hasPermission(user, 'catalogue.view_master') && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('master_explore')}
+                      className="btn btn-primary btn-sm flex items-center gap-2"
+                    >
+                      <Globe size={14} /> Explore Master Repository
+                    </button>
+                  )}
+                  {hasPermission(user, 'catalogue.manage_workspace') && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCustomModal(true)}
+                      className="btn btn-secondary btn-sm flex items-center gap-2"
+                    >
+                      <PlusCircle size={14} /> Add Custom Partner
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (
@@ -656,17 +677,19 @@ export default function CataloguePage() {
 
                       {/* Footer Actions */}
                       <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100 mt-1">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteCatalogueItem(col._id, name);
-                          }}
-                          className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
-                          title="Remove from catalogue"
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                        {hasPermission(user, 'catalogue.manage_workspace') && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteCatalogueItem(col._id, name);
+                            }}
+                            className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                            title="Remove from catalogue"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
 
                         <div className="flex-1 flex items-center justify-end gap-1 text-xs font-bold text-indigo-600 group-hover:translate-x-0.5 transition-transform">
                           <span>View Details & Fees</span>
@@ -801,7 +824,7 @@ export default function CataloguePage() {
                               <span>Configured in Active Catalogue</span>
                               <ChevronRight size={14} />
                             </div>
-                          ) : (
+                          ) : hasPermission(user, 'catalogue.manage_workspace') ? (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -820,6 +843,11 @@ export default function CataloguePage() {
                                 </>
                               )}
                             </button>
+                          ) : (
+                            <div className="w-full flex items-center justify-between text-xs font-semibold text-slate-500 py-1.5">
+                              <span>Master Institution</span>
+                              <ChevronRight size={14} />
+                            </div>
                           )}
                         </div>
                       </div>
@@ -855,7 +883,8 @@ export default function CataloguePage() {
             )}
           </div>
         )}
-      </div>
+        </div>
+      </main>
 
       {/* ─────────────────────────────────────────────────────────────
           MODAL: ADD CUSTOM INSTITUTION BUILDER
@@ -874,7 +903,13 @@ export default function CataloguePage() {
                   <p className="text-xs text-slate-500 m-0">Create an institution not found in the master database.</p>
                 </div>
               </div>
-              <button onClick={() => setShowAddCustomModal(false)} className="text-slate-400 hover:text-slate-700 text-lg">&times;</button>
+              <button
+                type="button"
+                onClick={() => setShowAddCustomModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition text-lg leading-none"
+              >
+                &times;
+              </button>
             </div>
 
             <form onSubmit={handleCreateCustomInstitution} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">

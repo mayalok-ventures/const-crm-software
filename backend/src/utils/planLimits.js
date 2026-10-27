@@ -82,110 +82,15 @@ const INDIVIDUAL_PLANS = {
   },
 };
 
-const ORG_PLANS = {
-  team_starter: {
-    id: 'team_starter',
-    name: 'Team Starter',
-    tierType: 'organization',
-    monthlyPrice: 1499,
-    yearlyPrice: 14999,
-    maxUsers: 3, // 3 seats included
-    maxLeads: 15000,
-    maxGroups: 25,
-    maxRecipientsPerCampaign: 2500,
-    maxConcurrentCampaigns: 5,
-    canStartCampaign: true,
-    canCreateGroup: true,
-    features: [
-      'Includes 3 Team Agent Seats',
-      'Up to 15,000 shared leads',
-      'Agency common pool & lead assignment',
-      'Agent performance & commission tracking',
-      '25 contact groups & 2,500 broadcast recipients',
-      'Centralized agency WhatsApp routing',
-    ],
-    popular: false,
-    description: 'Ideal for boutique sales agencies with up to 3 team members.',
-  },
-  business: {
-    id: 'business',
-    name: 'Business Agency',
-    tierType: 'organization',
-    monthlyPrice: 2499,
-    yearlyPrice: 24999,
-    maxUsers: 10, // 10 seats included
-    maxLeads: 50000,
-    maxGroups: 100,
-    maxRecipientsPerCampaign: 10000,
-    maxConcurrentCampaigns: 10,
-    canStartCampaign: true,
-    canCreateGroup: true,
-    features: [
-      'Includes 10 Team Agent Seats',
-      'Up to 50,000 organization leads',
-      'Advanced team hierarchy & smart exit rules',
-      'Selective export permissions & audit logs',
-      '100 contact groups & 10k broadcast recipients',
-      'Master agency revenue KPIs & conversion analytics',
-    ],
-    popular: true,
-    description: 'Designed for scaling organizations with up to 10 sales agents.',
-  },
-  enterprise: {
-    id: 'enterprise',
-    name: 'Enterprise Command',
-    tierType: 'organization',
-    monthlyPrice: 4999,
-    yearlyPrice: 49999,
-    maxUsers: 25, // 25 seats included
-    maxLeads: Infinity,
-    maxGroups: Infinity,
-    maxRecipientsPerCampaign: 25000,
-    maxConcurrentCampaigns: 20,
-    canStartCampaign: true,
-    canCreateGroup: true,
-    features: [
-      'Includes 25 Team Agent Seats',
-      'Unlimited Organization Leads',
-      'Unlimited contact groups',
-      '25,000 recipients per broadcast job',
-      'Dedicated account manager & SLA support',
-      'Full API integrations & custom webhooks',
-    ],
-    popular: false,
-    description: 'Enterprise grade CRM infrastructure for multi-branch organizations.',
-  },
-  custom_enterprise: {
-    id: 'custom_enterprise',
-    name: 'Custom Enterprise',
-    tierType: 'organization',
-    monthlyPrice: 9999,
-    yearlyPrice: 99999,
-    maxUsers: 100,
-    maxLeads: Infinity,
-    maxGroups: Infinity,
-    maxRecipientsPerCampaign: 50000,
-    maxConcurrentCampaigns: 50,
-    canStartCampaign: true,
-    canCreateGroup: true,
-    features: [
-      'Custom Negotiated Team Seats',
-      'Unlimited Organization Leads',
-      'Unlimited contact groups & high-throughput broadcasts',
-      'Custom SLAs, dedicated DevOps & VIP support',
-    ],
-    popular: false,
-    description: 'Bespoke enterprise contract for massive scale.',
-  },
-};
+const ORG_PLANS = {};
 
 const FREE_TIER = {
   id: 'free',
   name: 'Free Trial',
-  tierType: 'free',
+  tierType: 'individual',
   monthlyPrice: 0,
   yearlyPrice: 0,
-  maxUsers: 10, // Generous free trial / development limit: 10 staff seats
+  maxUsers: 1, // Exclusively single user
   maxLeads: 1000,
   maxGroups: 10,
   maxRecipientsPerCampaign: 100,
@@ -193,13 +98,13 @@ const FREE_TIER = {
   canStartCampaign: true,
   canCreateGroup: true,
   features: [
-    'Up to 10 team members / staff seats',
+    'Single-User Dedicated Workspace',
     'Up to 1,000 active leads',
     'Custom pipeline workflow',
-    'Follow-up reminders & site visits',
+    'Follow-up reminders & campus visits',
   ],
   popular: false,
-  description: 'Free trial with up to 10 team seats.',
+  description: 'Free trial for individual admission consultants.',
 };
 
 // Legacy plan mappings for backward compatibility

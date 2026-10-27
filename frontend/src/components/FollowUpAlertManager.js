@@ -173,7 +173,7 @@ export default function FollowUpAlertManager() {
 
     isCheckingRef.current = true;
     try {
-      const { data } = await cachedGet('/leads/follow-ups/due', { ttl: 20000 });
+      const { data } = await cachedGet('/leads/follow-ups/due', { ttl: 20000, silentAuth: true, _isBackground: true });
       const leads = Array.isArray(data) ? data : [];
       setDueLeads(leads);
 

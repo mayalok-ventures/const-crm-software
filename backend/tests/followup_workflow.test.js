@@ -26,13 +26,15 @@ const runFollowUpTests = async () => {
   };
 
   try {
-    // 1. SuperAdmin Login
-    const loginRes = await axios.post(`${BASE_URL}/api/auth/login`, {
-      identifier: 'admin@crm.com',
-      password: 'Admin@123'
+    // 1. Authenticate Consultant
+    const regRes = await axios.post(`${BASE_URL}/api/auth/register`, {
+      name: 'FollowUp Consultant',
+      email: `followup_${Date.now()}@edcrm.com`,
+      phone: `91${Math.floor(1000000000 + Math.random() * 9000000000)}`,
+      password: 'Password@123',
     });
-    const token = loginRes.data.token;
-    assert(!!token, 'Step 1: Admin authenticates');
+    const token = regRes.data.token;
+    assert(!!token, 'Step 1: Consultant authenticates');
 
     const authAxios = axios.create({
       baseURL: BASE_URL,
@@ -48,6 +50,7 @@ const runFollowUpTests = async () => {
       email: `rohan_${uniqueNum}@example.com`,
       budget: '₹5,00,000',
       service_required: 'smart_solo',
+      targetDomain: 'Engineering (B.Tech/BE)',
     });
     const lead = createLeadRes.data;
     assert(lead && lead._id, 'Step 2a: Manual lead created successfully');
@@ -176,6 +179,98 @@ const runFollowUpTests = async () => {
     assert(dueRes.status === 200, 'Step 7a: Fetched due follow-ups');
     assert(Array.isArray(dueRes.data) && dueRes.data.some(l => String(l._id) === String(leadId)), 'Step 7b: Overdue prospect returned in due query for alarm engine');
 
+    // 8. Test Complete Follow-Up: scheduledAt Cleared & Excluded from Due Query
+    const completeOverdueRes = await authAxios.post(`/api/leads/${leadId}/follow-up/complete`, {
+      outcomeNote: 'Spoke with Rohan again. Closed all open questions.',
+    });
+    assert(completeOverdueRes.status === 200, 'Step 8a: Completed overdue follow-up');
+    assert(completeOverdueRes.data.lead?.followUpDate === null, 'Step 8b: followUpDate set to null');
+    assert(completeOverdueRes.data.lead?.activeFollowUp?.scheduledAt === null, 'Step 8c: activeFollowUp.scheduledAt set to null (stale timestamp cleared)');
+    assert(completeOverdueRes.data.lead?.activeFollowUp?.status === 'completed', 'Step 8d: activeFollowUp.status is "completed"');
+
+    const dueAfterCompleteRes = await authAxios.get('/api/leads/follow-ups/due');
+    assert(
+      !dueAfterCompleteRes.data.some(l => String(l._id) === String(leadId)),
+      'Step 8e: Completed lead STRICTLY excluded from /follow-ups/due (Zombie Alarm Eliminated)'
+    );
+
+    // 9. Test Follow-Up Cancellation Endpoint (/follow-up/cancel)
+    // Schedule an overdue follow-up again
+    await authAxios.post(`/api/leads/${leadId}/follow-up`, {
+      scheduledAt: new Date(Date.now() - 120000).toISOString(),
+      note: 'Urgent callback to be cancelled',
+    });
+    const dueBeforeCancel = await authAxios.get('/api/leads/follow-ups/due');
+    assert(dueBeforeCancel.data.some(l => String(l._id) === String(leadId)), 'Step 9a: Overdue lead appears in due query before cancel');
+
+    // Cancel without reason should succeed with default or prompt
+    const cancelRes = await authAxios.post(`/api/leads/${leadId}/follow-up/cancel`, {
+      reason: 'Candidate enrolled in another college. Requested no more calls.',
+    });
+    assert(cancelRes.status === 200, 'Step 9b: Follow-up cancelled successfully via POST /follow-up/cancel');
+    assert(cancelRes.data.lead?.followUpStatus === 'cancelled', 'Step 9c: Lead followUpStatus is "cancelled"');
+    assert(cancelRes.data.lead?.activeFollowUp?.status === 'cancelled', 'Step 9d: activeFollowUp.status is "cancelled"');
+    assert(cancelRes.data.lead?.activeFollowUp?.scheduledAt === null, 'Step 9e: activeFollowUp.scheduledAt is null');
+    assert(cancelRes.data.lead?.followUpDate === null, 'Step 9f: followUpDate is null');
+
+    const dueAfterCancelRes = await authAxios.get('/api/leads/follow-ups/due');
+    assert(
+      !dueAfterCancelRes.data.some(l => String(l._id) === String(leadId)),
+      'Step 9g: Cancelled follow-up strictly excluded from /follow-ups/due query'
+    );
+
+    // 10. Test Add Note with stopFollowUp: true
+    // Schedule another follow-up first
+    await authAxios.post(`/api/leads/${leadId}/follow-up`, {
+      scheduledAt: new Date(Date.now() - 60000).toISOString(),
+      note: 'Pending consultation call',
+    });
+    const noteWithStopRes = await authAxios.post(`/api/leads/${leadId}/notes`, {
+      text: 'Candidate explicitly opted out of further communications.',
+      stopFollowUp: true,
+    });
+    assert(noteWithStopRes.status === 201, 'Step 10a: Note added with stopFollowUp: true');
+    assert(noteWithStopRes.data?.followUpStatus === 'cancelled', 'Step 10b: Follow-up cancelled via note stopFollowUp flag');
+    assert(noteWithStopRes.data?.activeFollowUp?.scheduledAt === null, 'Step 10c: activeFollowUp.scheduledAt cleared to null');
+
+    const dueAfterNoteStop = await authAxios.get('/api/leads/follow-ups/due');
+    assert(
+      !dueAfterNoteStop.data.some(l => String(l._id) === String(leadId)),
+      'Step 10d: Stopped follow-up excluded from due alarms'
+    );
+
+    // 11. Test Add Note WITHOUT stopFollowUp does NOT cancel scheduled follow-up
+    await authAxios.post(`/api/leads/${leadId}/follow-up`, {
+      scheduledAt: new Date(Date.now() + 86400000).toISOString(),
+      note: 'Discussion planned for tomorrow',
+    });
+    const regularNoteRes = await authAxios.post(`/api/leads/${leadId}/notes`, {
+      text: 'Sent brochure over WhatsApp.',
+    });
+    assert(regularNoteRes.status === 201, 'Step 11a: Regular note saved successfully');
+    assert(regularNoteRes.data?.followUpStatus === 'scheduled', 'Step 11b: Scheduled followUpStatus preserved');
+    assert(regularNoteRes.data?.activeFollowUp?.scheduledAt !== null, 'Step 11c: Scheduled timestamp preserved');
+
+    // 12. Test Tenant Isolation on Cancellation
+    const regRes2 = await axios.post(`${BASE_URL}/api/auth/register`, {
+      name: 'Other Tenant Consultant',
+      email: `other_${Date.now()}@edcrm.com`,
+      phone: `91${Math.floor(1000000000 + Math.random() * 9000000000)}`,
+      password: 'Password@123',
+    });
+    const otherAxios = axios.create({
+      baseURL: BASE_URL,
+      headers: { Authorization: `Bearer ${regRes2.data.token}` },
+    });
+
+    try {
+      await otherAxios.post(`/api/leads/${leadId}/follow-up/cancel`, {
+        reason: 'Malicious cancellation attempt across tenant boundary',
+      });
+      assert(false, 'Step 12: Unauthorized cancellation across tenant rejected');
+    } catch (err) {
+      assert(err.response?.status === 404, 'Step 12: Unauthorized cross-tenant cancellation returned HTTP 404');
+    }
   } catch (err) {
     console.error('Fatal test error:', err.response?.data || err.message);
     failed++;

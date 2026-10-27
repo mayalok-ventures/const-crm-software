@@ -18,14 +18,14 @@ export default function TermsOfServicePage() {
           <Link href="/" className="flex items-center gap-3 text-decoration-none group">
             <Image
               src="/logo.png"
-              alt="CoreSetu Logo"
+              alt="Sahyak Logo"
               width={34}
               height={34}
               className="rounded-xl shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform"
             />
             <div>
               <span className="font-extrabold text-lg text-white tracking-tight block leading-none">
-                CoreSetu <span className="text-indigo-400 font-semibold text-sm">SalesCRM</span>
+                Sahyak <span className="text-indigo-400 font-semibold text-sm">SalesCRM</span>
               </span>
               <span className="text-[10px] text-slate-400 font-medium tracking-wider uppercase">
                 Terms of Service
@@ -63,7 +63,7 @@ export default function TermsOfServicePage() {
           </h1>
 
           <p className="text-base sm:text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed">
-            Please read these Terms of Service carefully before utilizing CoreSetu SalesCRM. By creating an account or accessing the platform, you agree to be bound by this agreement.
+            Please read these Terms of Service carefully before utilizing Sahyak SalesCRM. By creating an account or accessing the platform, you agree to be bound by this agreement.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 mt-8 text-xs font-semibold text-slate-400">
@@ -89,7 +89,7 @@ export default function TermsOfServicePage() {
               1. Acceptance of Terms & Subscription Scope
             </h2>
             <p className="mb-3">
-              By accessing, browsing, registering for, or using CoreSetu SalesCRM (the &ldquo;Service&rdquo;), operated by CoreSetu Technologies (&ldquo;Company&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;), you (&ldquo;Customer&rdquo;, &ldquo;Tenant&rdquo;, or &ldquo;User&rdquo;) agree to be legally bound by these Terms of Service.
+              By accessing, browsing, registering for, or using Sahyak SalesCRM (the &ldquo;Service&rdquo;), operated by Sahyak Technologies (&ldquo;Company&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;), you (&ldquo;Customer&rdquo;, &ldquo;Tenant&rdquo;, or &ldquo;User&rdquo;) agree to be legally bound by these Terms of Service.
             </p>
             <p>
               If you are accepting these terms on behalf of a company, organization, or agency, you represent and warrant that you possess full legal authority to bind said entity to these conditions.
@@ -120,7 +120,7 @@ export default function TermsOfServicePage() {
               3. WhatsApp Usage & Anti-Spam Compliance
             </h2>
             <p className="mb-3">
-              CoreSetu facilitates WhatsApp communication via multi-device WebSockets. Users must strictly comply with applicable anti-spam laws, consumer protection regulations, and acceptable use guidelines.
+              Sahyak facilitates WhatsApp communication via multi-device WebSockets. Users must strictly comply with applicable anti-spam laws, consumer protection regulations, and acceptable use guidelines.
             </p>
             <ul className="list-disc list-inside space-y-2 text-slate-300 pl-2">
               <li>You may only send messages to contacts who have explicitly opted in or requested communication.</li>
@@ -167,7 +167,7 @@ export default function TermsOfServicePage() {
               Privacy Policy
             </Link>
           </div>
-          <p>© {new Date().getFullYear()} CoreSetu Technologies. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} Sahyak Technologies. All rights reserved.</p>
         </div>
       </main>
     </div>

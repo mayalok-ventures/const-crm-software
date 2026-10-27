@@ -1,5 +1,5 @@
 /* global use, db */
-// MongoDB Local Playground for CoreSetu CRM
+// MongoDB Local Playground for Sahyak CRM
 // Connects to local MongoDB server on 127.0.0.1:27017
 // Click the "Play" (▶) button at top-right to execute.
 

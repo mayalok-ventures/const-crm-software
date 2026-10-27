@@ -21,6 +21,12 @@ function validateEnvironment() {
       errors.push('MONGO_URI: Must be set to a valid mongodb:// or mongodb+srv:// connection URI in production.');
     }
 
+    // 3. Sensitive Data Encryption Key Validation (AES-256-GCM tokens)
+    const encKey = process.env.INTEGRATION_ENCRYPTION_KEY || process.env.ENCRYPTION_KEY;
+    if (!encKey || encKey === 'crm_default_integration_aes_key_32_bytes_2026' || encKey.length < 32) {
+      errors.push('ENCRYPTION_KEY / INTEGRATION_ENCRYPTION_KEY: Must be configured in production with min 32 chars to safeguard OAuth tokens and webhook secrets.');
+    }
+
     if (errors.length > 0) {
       console.error('\n❌ [FATAL] Production Environment Validation Failed:');
       errors.forEach((err) => console.error(`  - ${err}`));

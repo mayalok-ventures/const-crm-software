@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const followUpSchema = new mongoose.Schema({
+  workspaceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Workspace',
+    index: true,
+  },
   lead_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Lead',
@@ -91,8 +96,7 @@ const followUpSchema = new mongoose.Schema({
     default: 'call',
   },
   siteVisitDetails: {
-    projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
-    inventoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Inventory', default: null },
+    projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'TenantCatalogue', default: null },
     location: { type: String, default: '', trim: true },
     outcome: {
       type: String,
@@ -105,8 +109,15 @@ const followUpSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['open', 'done', 'postponed', 'scheduled', 'completed', 'cancelled'],
+    enum: ['open', 'completed', 'postponed', 'cancelled'],
     default: 'open',
+    set: (v) => {
+      if (!v) return 'open';
+      const clean = String(v).toLowerCase().trim();
+      if (clean === 'scheduled' || clean === 'pending') return 'open';
+      if (clean === 'done') return 'completed';
+      return clean;
+    },
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -115,6 +126,15 @@ const followUpSchema = new mongoose.Schema({
   creatorName: {
     type: String,
     default: 'Agent',
+  },
+  notified: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
+  notifiedAt: {
+    type: Date,
+    default: null,
   },
 }, { timestamps: true });
 
@@ -134,6 +154,7 @@ followUpSchema.pre('save', function (next) {
   next();
 });
 
+followUpSchema.index({ workspaceId: 1, scheduled_at: 1, status: 1 });
 followUpSchema.index({ lead_id: 1, scheduled_at: 1 });
 followUpSchema.index({ agent_id: 1, status: 1 });
 followUpSchema.index({ status: 1, scheduled_at: 1 });

@@ -18,14 +18,14 @@ export default function PrivacyPolicyPage() {
           <Link href="/" className="flex items-center gap-3 text-decoration-none group">
             <Image
               src="/logo.png"
-              alt="CoreSetu Logo"
+              alt="Sahyak Logo"
               width={34}
               height={34}
               className="rounded-xl shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform"
             />
             <div>
               <span className="font-extrabold text-lg text-white tracking-tight block leading-none">
-                CoreSetu <span className="text-indigo-400 font-semibold text-sm">SalesCRM</span>
+                Sahyak <span className="text-indigo-400 font-semibold text-sm">SalesCRM</span>
               </span>
               <span className="text-[10px] text-slate-400 font-medium tracking-wider uppercase">
                 Privacy & Trust Center
@@ -63,7 +63,7 @@ export default function PrivacyPolicyPage() {
           </h1>
 
           <p className="text-base sm:text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed">
-            This Privacy Policy governs how CoreSetu collects, processes, encrypts, and retains data across our multi-tenant SalesCRM platform.
+            This Privacy Policy governs how Sahyak collects, processes, encrypts, and retains data across our multi-tenant SalesCRM platform.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 mt-8 text-xs font-semibold text-slate-400">
@@ -94,14 +94,14 @@ export default function PrivacyPolicyPage() {
               </h2>
             </div>
             <p className="mb-4">
-              CoreSetu Technologies (referred to herein as <strong>&ldquo;CoreSetu&rdquo;</strong>, <strong>&ldquo;we&rdquo;</strong>, <strong>&ldquo;us&rdquo;</strong>, or <strong>&ldquo;our&rdquo;</strong>) operates the CoreSetu SalesCRM multi-tenant Software-as-a-Service (SaaS) web application accessible via mobile and desktop browsers. We are committed to protecting the privacy, security, and integrity of all personal, transactional, and customer data entrusted to our infrastructure.
+              Sahyak Technologies (referred to herein as <strong>&ldquo;Sahyak&rdquo;</strong>, <strong>&ldquo;we&rdquo;</strong>, <strong>&ldquo;us&rdquo;</strong>, or <strong>&ldquo;our&rdquo;</strong>) operates the Sahyak SalesCRM multi-tenant Software-as-a-Service (SaaS) web application accessible via mobile and desktop browsers. We are committed to protecting the privacy, security, and integrity of all personal, transactional, and customer data entrusted to our infrastructure.
             </p>
             <p className="mb-4">
               To establish complete transparency, the following terms are defined:
             </p>
             <ul className="list-disc list-inside space-y-2.5 pl-2 text-slate-300">
               <li>
-                <strong className="text-white">&ldquo;Platform&rdquo;</strong>: The CoreSetu SalesCRM web application, API servers, background synchronization engines, and associated digital services.
+                <strong className="text-white">&ldquo;Platform&rdquo;</strong>: The Sahyak SalesCRM web application, API servers, background synchronization engines, and associated digital services.
               </li>
               <li>
                 <strong className="text-white">&ldquo;User&rdquo; or &ldquo;Tenant&rdquo;</strong>: The account holder, business owner, agency administrator, or designated sales representative who registers on the Platform to manage leads and communication workflows.
@@ -110,7 +110,7 @@ export default function PrivacyPolicyPage() {
                 <strong className="text-white">&ldquo;Leads&rdquo; or &ldquo;End-Customers&rdquo;</strong>: Prospective clients, buyers, or individuals whose contact coordinates (names, phone numbers, deal notes) are uploaded, imported, or synchronized by Tenants into their isolated CRM workspace.
               </li>
               <li>
-                <strong className="text-white">&ldquo;Data Controller vs. Data Processor&rdquo;</strong>: Under applicable data protection frameworks, the Tenant acts as the <em>Data Controller</em> for all Lead records uploaded to their CRM workspace. CoreSetu operates strictly as the <em>Data Processor</em>, handling Lead information solely pursuant to the Tenant&rsquo;s direct instructions and software workflows.
+                <strong className="text-white">&ldquo;Data Controller vs. Data Processor&rdquo;</strong>: Under applicable data protection frameworks, the Tenant acts as the <em>Data Controller</em> for all Lead records uploaded to their CRM workspace. Sahyak operates strictly as the <em>Data Processor</em>, handling Lead information solely pursuant to the Tenant&rsquo;s direct instructions and software workflows.
               </li>
             </ul>
           </section>
@@ -128,7 +128,7 @@ export default function PrivacyPolicyPage() {
             <p className="mb-4">
               We collect information strictly necessary to provide reliable CRM capabilities, billing verification, and anti-fraud platform security. The categories of collected data comprise:
             </p>
-            
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
               <div className="bg-slate-950/80 border border-slate-800 p-5 rounded-xl">
                 <h3 className="text-base font-bold text-white mb-2 flex items-center gap-2">
@@ -181,7 +181,7 @@ export default function PrivacyPolicyPage() {
             <p className="mb-4">
               Our WhatsApp Hub integrates multi-device WebSocket connectivity (via open-source Baileys socket libraries) to allow sales agents to send personalized templates, follow-up messages, and catalog brochures directly from their CRM dashboard.
             </p>
-            
+
             <div className="bg-emerald-950/20 border border-emerald-500/30 p-5 rounded-xl my-4">
               <h3 className="text-sm font-bold text-emerald-400 mb-2 flex items-center gap-2">
                 <Smartphone size={16} /> Strict Principles Governing WhatsApp Data:
@@ -214,7 +214,7 @@ export default function PrivacyPolicyPage() {
               </h2>
             </div>
             <p className="mb-4">
-              CoreSetu partners with globally recognized infrastructure providers to deliver maximum availability, security, and scalability. All sub-processors adhere to rigorous data privacy and encryption benchmarks:
+              Sahyak partners with globally recognized infrastructure providers to deliver maximum availability, security, and scalability. All sub-processors adhere to rigorous data privacy and encryption benchmarks:
             </p>
 
             <div className="overflow-x-auto my-6">
@@ -250,7 +250,7 @@ export default function PrivacyPolicyPage() {
                   <tr>
                     <td className="p-3 font-semibold text-white">Razorpay Payments</td>
                     <td className="p-3">PCI-DSS Level 1 compliant gateway for credit/debit card, UPI, and recurring subscription processing.</td>
-                    <td className="p-3">PCI-DSS Certified, Zero raw card storage on CoreSetu.</td>
+                    <td className="p-3">PCI-DSS Certified, Zero raw card storage on Sahyak.</td>
                   </tr>
                 </tbody>
               </table>
@@ -268,7 +268,7 @@ export default function PrivacyPolicyPage() {
               </h2>
             </div>
             <p className="mb-4">
-              CoreSetu enforces defense-in-depth architectural safeguards to eliminate unauthorized data access or cross-tenant contamination:
+              Sahyak enforces defense-in-depth architectural safeguards to eliminate unauthorized data access or cross-tenant contamination:
             </p>
             <ul className="list-disc list-inside space-y-2.5 pl-2 text-slate-300">
               <li>
@@ -299,7 +299,7 @@ export default function PrivacyPolicyPage() {
             <p className="mb-4">
               We retain CRM records only as long as an active subscription or legitimate business relationship exists. In the event of subscription expiration or non-renewal, our automated lifecycle engine executes the following protocol:
             </p>
-            
+
             <div className="space-y-4 my-6">
               <div className="flex items-start gap-3 bg-slate-950 p-4 rounded-xl border border-slate-800">
                 <span className="px-2.5 py-1 rounded bg-amber-500/20 text-amber-400 text-xs font-bold shrink-0">Stage 1</span>
@@ -344,7 +344,7 @@ export default function PrivacyPolicyPage() {
               </h2>
             </div>
             <p className="mb-4">
-              As a CoreSetu tenant, you maintain full control over your business data:
+              As a Sahyak tenant, you maintain full control over your business data:
             </p>
             <ul className="list-disc list-inside space-y-2 pl-2 text-slate-300">
               <li>
@@ -370,7 +370,7 @@ export default function PrivacyPolicyPage() {
               </h2>
             </div>
             <p className="mb-4">
-              CoreSetu does not utilize invasive third-party cross-site advertising cookies. We use essential local browser storage strictly for application operations:
+              Sahyak does not utilize invasive third-party cross-site advertising cookies. We use essential local browser storage strictly for application operations:
             </p>
             <ul className="list-disc list-inside space-y-2 pl-2 text-slate-300 text-xs sm:text-sm">
               <li>
@@ -415,8 +415,8 @@ export default function PrivacyPolicyPage() {
             </p>
 
             <div className="bg-slate-950/90 border border-slate-800 p-5 rounded-xl text-xs sm:text-sm space-y-2">
-              <p><strong className="text-white">Grievance & Privacy Officer:</strong> CoreSetu Legal & Compliance Team</p>
-              <p><strong className="text-white">Entity:</strong> CoreSetu Technologies</p>
+              <p><strong className="text-white">Grievance & Privacy Officer:</strong> Sahyak Legal & Compliance Team</p>
+              <p><strong className="text-white">Entity:</strong> Sahyak Technologies</p>
               <p><strong className="text-white">Email:</strong> <a href="mailto:privacy@sahyak.com" className="text-indigo-400 hover:underline">privacy@sahyak.com</a></p>
               <p><strong className="text-white">Support Desk:</strong> <a href="mailto:support@sahyak.com" className="text-indigo-400 hover:underline">support@sahyak.com</a></p>
               <p><strong className="text-white">Response Window:</strong> Within 48 business hours.</p>
@@ -440,7 +440,7 @@ export default function PrivacyPolicyPage() {
               Data Deletion Instructions
             </Link>
           </div>
-          <p>© {new Date().getFullYear()} CoreSetu Technologies. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} Sahyak Technologies. All rights reserved.</p>
         </div>
       </main>
     </div>

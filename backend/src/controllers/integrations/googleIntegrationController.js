@@ -172,15 +172,10 @@ exports.testConnection = async (req, res) => {
       }
 
       if (!targetIntegration) {
-        targetIntegration = await Integration.create({
-          userId: req.user._id,
-          companyId: req.user.companyId || (req.user.companyRole === 'owner' ? req.user._id : null),
-          provider: 'google',
-          mode: 'client_managed',
-          status: 'connected',
-          accountId: '1234567890',
-          accountName: 'Google Ads Test Customer Account',
-          connectedAt: new Date(),
+        return res.status(404).json({
+          success: false,
+          connected: false,
+          message: 'No active Google Ads integration found. Please configure Google Ads first.',
         });
       }
 
@@ -196,6 +191,12 @@ exports.testConnection = async (req, res) => {
         adGroupName: req.body.adGroupName || 'Enterprise Software Keywords',
         adName: req.body.adName || 'Ad Variation A',
       });
+
+      targetIntegration.metadata = {
+        ...(targetIntegration.metadata || {}),
+        lastTestReceivedAt: new Date(),
+      };
+      await targetIntegration.save();
 
       return res.json({
         success: true,

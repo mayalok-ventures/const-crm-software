@@ -1,9 +1,33 @@
 const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs');
+const net = require('net');
+const { getDbPath, cleanLockFiles } = require('./getDbPath');
+const { ensureLocalMongoRunning } = require('./embeddedMongo');
 
 let isReconnecting = false;
 let listenersAttached = false;
+let isSeeded = false;
+
+function isPortActive(port = 27017, host = '127.0.0.1') {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(800);
+    socket.on('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.on('error', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.connect(port, host);
+  });
+}
 
 const attachConnectionListeners = (activeUri) => {
   if (listenersAttached) return;
@@ -19,7 +43,7 @@ const attachConnectionListeners = (activeUri) => {
             await mongoose.connect(activeUri, {
               maxPoolSize: 50,
               minPoolSize: 5,
-              serverSelectionTimeoutMS: 5000,
+              serverSelectionTimeoutMS: 10000,
               socketTimeoutMS: 45000,
             });
             console.log('✅ [MongoDB] Reconnection successful!');
@@ -40,105 +64,55 @@ const attachConnectionListeners = (activeUri) => {
 
 const connectDB = async () => {
   try {
-    let mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
+    let mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/mobile-crm';
+    const isLocal = mongoUri.includes('127.0.0.1') || mongoUri.includes('localhost');
 
-    if (mongoUri && mongoUri.startsWith('mongodb')) {
-      try {
-        const conn = await mongoose.connect(mongoUri, {
-          maxPoolSize: 50,
-          minPoolSize: 5,
-          serverSelectionTimeoutMS: 15000,
-          socketTimeoutMS: 45000,
-        });
-        console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
-        attachConnectionListeners(mongoUri);
-        await seedAdminUser();
-        return;
-      } catch (e) {
-        console.log(`Direct MongoDB connection failed (${e.message}). Initializing resilient embedded MongoDB...`);
+    // If targeting local MongoDB in non-production, ensure MongoDB is actively running
+    if (isLocal && process.env.NODE_ENV !== 'production') {
+      const portActive = await isPortActive(27017);
+      if (!portActive) {
+        console.log('[MongoDB] Port 27017 inactive. Automatically launching embedded MongoDB engine...');
+        await ensureLocalMongoRunning();
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      console.warn('⚠️ [Production MongoDB] Direct connection failed. Scheduling background reconnection loop...');
-      setTimeout(() => {
-        connectDB().catch(err => console.error('Background DB retry error:', err.message));
-      }, 5000);
-      return;
-    }
-
-    let defaultLocalUri = 'mongodb://127.0.0.1:27017/mobile-crm';
-
-    // First, test if a local MongoDB is already running on port 27017
+    const safeUri = mongoUri.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@');
     try {
-      const conn = await mongoose.connect(defaultLocalUri, {
+      const conn = await mongoose.connect(mongoUri, {
         maxPoolSize: 50,
         minPoolSize: 5,
-        serverSelectionTimeoutMS: 1500,
+        serverSelectionTimeoutMS: isLocal ? 8000 : 15000,
         socketTimeoutMS: 45000,
       });
-      console.log(`✅ Local MongoDB Connected: ${conn.connection.host} (${defaultLocalUri})`);
-      process.env.MONGO_URI = defaultLocalUri;
-      attachConnectionListeners(defaultLocalUri);
+      console.log(`✅ MongoDB Connected: ${conn.connection.host} (${safeUri})`);
+      attachConnectionListeners(mongoUri);
       await seedAdminUser();
-      return;
-    } catch (localErr) {
-      // Port 27017 not yet active, spawn embedded instance in development
-    }
-
-    const { MongoMemoryServer } = require('mongodb-memory-server');
-    const dbPath = path.join(__dirname, '..', '..', 'data', 'db');
-    if (!fs.existsSync(dbPath)) fs.mkdirSync(dbPath, { recursive: true });
-
-    // Clean up stale lock files from previous unclean shutdowns
-    const lockFile = path.join(dbPath, 'mongod.lock');
-    const wtLockFile = path.join(dbPath, 'WiredTiger.lock');
-    try { if (fs.existsSync(lockFile)) fs.unlinkSync(lockFile); } catch {}
-    try { if (fs.existsSync(wtLockFile)) fs.unlinkSync(wtLockFile); } catch {}
-
-    if (!global.__mongodInstance) {
-      try {
-        global.__mongodInstance = await MongoMemoryServer.create({
-          instance: {
-            port: 27017,
-            dbPath: dbPath,
-            storageEngine: 'wiredTiger',
-            dbName: 'mobile-crm',
-          }
-        });
-      } catch (err) {
-        console.warn('WiredTiger persistent instance busy or unavailable, launching in-memory engine on port 27017...');
-        try {
-          global.__mongodInstance = await MongoMemoryServer.create({
-            instance: {
-              port: 27017,
-              dbName: 'mobile-crm',
-            }
-          });
-        } catch (e2) {
-          console.warn('Port 27017 busy, launching on dynamic port...');
-          global.__mongodInstance = await MongoMemoryServer.create({
-            instance: {
-              dbName: 'mobile-crm',
-            }
-          });
-        }
+      return conn;
+    } catch (directErr) {
+      if (process.env.NODE_ENV === 'production') {
+        console.warn('⚠️ [Production MongoDB] Direct connection failed. Scheduling background reconnection loop...', directErr.message);
+        setTimeout(() => {
+          connectDB().catch(err => console.error('Background DB retry error:', err.message));
+        }, 5000);
+        return;
       }
-    }
-    mongoUri = global.__mongodInstance ? global.__mongodInstance.getUri() : defaultLocalUri;
-    process.env.MONGO_URI = mongoUri;
 
-    const conn = await mongoose.connect(mongoUri, {
-      maxPoolSize: 50,
-      minPoolSize: 5,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-    });
-    console.log(`✅ Resilient MongoDB Connected: ${conn.connection.host} (${mongoUri})`);
-    attachConnectionListeners(mongoUri);
-    await seedAdminUser();
+      console.warn(`[MongoDB] Initial connection attempt failed (${directErr.message}). Triggering auto-recovery...`);
+      await ensureLocalMongoRunning();
+
+      const conn = await mongoose.connect(mongoUri, {
+        maxPoolSize: 50,
+        minPoolSize: 5,
+        serverSelectionTimeoutMS: 10000,
+        socketTimeoutMS: 45000,
+      });
+      console.log(`✅ Resilient MongoDB Connected: ${conn.connection.host} (${safeUri})`);
+      attachConnectionListeners(mongoUri);
+      await seedAdminUser();
+      return conn;
+    }
   } catch (error) {
-    console.error('MongoDB connection error:', error.message);
+    console.error('❌ MongoDB connection error:', error.message);
     if (process.env.NODE_ENV !== 'production') {
       process.exit(1);
     }
@@ -146,13 +120,20 @@ const connectDB = async () => {
 };
 
 const seedAdminUser = async () => {
-  const { seedSuperAdmin } = require('../utils/seedSuperAdmin');
-  const { seedPlans } = require('../utils/seedPlans');
-  const { seedDemoData } = require('../utils/seedDemoData');
-  await seedSuperAdmin();
-  await seedPlans();
-  if (process.env.NODE_ENV !== 'production') {
-    await seedDemoData();
+  if (isSeeded) return;
+  isSeeded = true;
+
+  try {
+    const { seedSuperAdmin } = require('../utils/seedSuperAdmin');
+    const { seedPlans } = require('../utils/seedPlans');
+    const { seedDemoData } = require('../utils/seedDemoData');
+    await seedSuperAdmin();
+    await seedPlans();
+    if (process.env.NODE_ENV !== 'production') {
+      await seedDemoData();
+    }
+  } catch (err) {
+    console.error('[Seed Error]:', err.message);
   }
 };
 

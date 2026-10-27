@@ -1,4 +1,4 @@
-# CoreSetu CRM — Disaster Recovery & Database Restore Runbook
+# Sahyak CRM — Disaster Recovery & Database Restore Runbook
 
 ## 1. Disaster Recovery Objectives
 - **RPO (Recovery Point Objective)**: < 5 minutes (Continuous backup via MongoDB Atlas Oplog)

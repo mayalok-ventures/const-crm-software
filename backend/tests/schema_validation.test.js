@@ -3,7 +3,6 @@ const ActivityLog = require('../src/models/ActivityLog');
 const User = require('../src/models/User');
 const Pipeline = require('../src/models/Pipeline');
 const FormSchema = require('../src/models/FormSchema');
-const DistributionRule = require('../src/models/DistributionRule');
 
 function runSchemaValidationTests() {
   console.log('\n======================================================');
@@ -115,33 +114,6 @@ function runSchemaValidationTests() {
   assert(!formErr, 'FormSchema with dynamic fields passes validation');
   assert(form.fields.length === 4, 'Dynamic field definitions (text, phone, dropdown) verified');
   assert(String(form.routing.targetPipeline) === String(pipeline._id), 'Form target pipeline routing linked');
-
-  // 5. DistributionRule Schema Validation
-  console.log('\n5️⃣ Validating DistributionRule Schema (Automated Lead Routing Strategies)...');
-  const distRule = new DistributionRule({
-    ruleName: 'Google Ads High-Budget Leads - Manager Routing',
-    isActive: true,
-    priority: 1,
-    conditions: {
-      sourceType: 'Google',
-      campaignId: 'GOOGLE_SEARCH_2026',
-      location: 'Delhi NCR',
-    },
-    strategy: {
-      routingMethod: 'MANAGER_ROUTED',
-    },
-    targets: {
-      assignedAgents: [
-        { agentId: agentUser._id, weightPercentage: 50, managerId: managerId },
-        { agentId: dummyActorId, weightPercentage: 50, managerId: managerId },
-      ],
-    },
-  });
-
-  const distRuleErr = distRule.validateSync();
-  assert(!distRuleErr, 'DistributionRule schema passes validation');
-  assert(distRule.strategy.routingMethod === 'MANAGER_ROUTED', 'Routing strategy set to MANAGER_ROUTED');
-  assert(distRule.targets.assignedAgents.length === 2, 'Assigned agents and weights confirmed');
 
   console.log('\n======================================================');
   console.log(`📊 FINAL RESULT: ${passed} PASSED | ${failed} FAILED`);

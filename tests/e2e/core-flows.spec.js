@@ -1,7 +1,7 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
 
-test.describe('CoreSetu SalesCRM — Master E2E Automation Suite', () => {
+test.describe('Sahyak SalesCRM — Master E2E Automation Suite', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/login/');
@@ -16,7 +16,7 @@ test.describe('CoreSetu SalesCRM — Master E2E Automation Suite', () => {
   // ─────────────────────────────────────────────────────────────
   test('TC-AUTH-01: Valid Login should store JWT and redirect to Dashboard', async ({ page }) => {
     await page.goto('/login/');
-    
+
     await page.fill('input[placeholder*="email" i], input[type="text"]', 'admin@crm.com');
     await page.fill('input[placeholder*="password" i], input[type="password"]', 'Admin@123');
     await page.click('button[type="submit"]', { force: true });
@@ -32,14 +32,14 @@ test.describe('CoreSetu SalesCRM — Master E2E Automation Suite', () => {
 
   test('TC-AUTH-02: Invalid Password shows error toast without redirecting', async ({ page }) => {
     await page.goto('/login/');
-    
+
     await page.fill('input[placeholder*="email" i], input[type="text"]', 'admin@crm.com');
     await page.fill('input[placeholder*="password" i], input[type="password"]', 'WrongPassword!999');
     await page.click('button[type="submit"]', { force: true });
 
     await page.waitForTimeout(1500);
     expect(page.url()).toContain('/login');
-    
+
     const toastError = page.locator('text=/invalid|failed|incorrect|unauthorized/i');
     await expect(toastError.first()).toBeVisible({ timeout: 8000 });
   });
@@ -96,7 +96,7 @@ test.describe('CoreSetu SalesCRM — Master E2E Automation Suite', () => {
 
     await page.goto('/leads/placeholder/');
     await page.waitForTimeout(1500);
-    
+
     const heading = await page.locator('body').innerText();
     expect(heading).not.toContain('404 Not Found');
   });

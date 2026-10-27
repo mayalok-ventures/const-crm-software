@@ -10,10 +10,20 @@ const waSession = require('../services/waSession');
 // @access Private
 exports.createCampaign = async (req, res) => {
   try {
-    const { groupId, template, name } = req.body;
-    if (!groupId || !template?.trim() || !name?.trim()) {
-      return res.status(400).json({ message: 'groupId, name, and template are required' });
+    const { groupId, template, name, channel = 'baileys', templateName, languageCode = 'en' } = req.body;
+
+    // If no groupId provided, delegate to Inbound Advertising Campaign creation
+    if (!groupId) {
+      const inbound = require('./inboundCampaignController');
+      return inbound.createInboundCampaign(req, res);
     }
+
+    if ((!template?.trim() && !templateName?.trim()) || !name?.trim()) {
+      return res.status(400).json({ message: 'groupId, name, and template (or templateName) are required' });
+    }
+
+    const plan = req.user.plan || 'free';
+    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
 
     if (req.user.role !== 'superadmin' && !req.user.isAdmin) {
       try {
@@ -31,12 +41,26 @@ exports.createCampaign = async (req, res) => {
       }
     }
 
-    // WhatsApp must be connected
-    const waStatus = waSession.getStatus(req.user._id);
-    if (waStatus.status !== 'connected') {
-      return res.status(400).json({
-        message: 'WhatsApp is not connected. Please connect WhatsApp before starting a campaign.',
+    // Check connection based on selected channel
+    if (channel === 'meta_cloud') {
+      const WhatsAppBusinessAccount = require('../models/WhatsAppBusinessAccount');
+      const waba = await WhatsAppBusinessAccount.findOne({
+        workspaceId: req.workspaceId || req.user.workspaceId,
+        status: 'CONNECTED',
       });
+      if (!waba) {
+        return res.status(400).json({
+          message: 'No official Meta WhatsApp Business Account connected for this workspace.',
+        });
+      }
+    } else {
+      // Baileys phone connection
+      const waStatus = waSession.getStatus(req.user._id);
+      if (waStatus.status !== 'connected') {
+        return res.status(400).json({
+          message: 'WhatsApp phone is not linked. Please connect WhatsApp before starting a campaign.',
+        });
+      }
     }
 
     const group = await Group.findOne({ _id: groupId, userId: req.user._id }).lean();
@@ -62,10 +86,11 @@ exports.createCampaign = async (req, res) => {
     }
 
     // Enforce recipient limit per campaign
-    if (totalLeads > limits.maxRecipientsPerCampaign) {
+    const maxRecipients = limits.maxRecipientsPerCampaign || 500;
+    if (totalLeads > maxRecipients) {
       return res.status(403).json({
         code: 'PLAN_LIMIT',
-        message: `Your ${plan} plan allows max ${limits.maxRecipientsPerCampaign} recipients per campaign. This group has ${totalLeads} leads.`,
+        message: `Your ${plan} plan allows max ${maxRecipients} recipients per campaign. This group has ${totalLeads} leads.`,
       });
     }
 
@@ -74,20 +99,28 @@ exports.createCampaign = async (req, res) => {
       userId: req.user._id,
       status: { $in: ['queued', 'running'] },
     });
-    if (activeCount >= limits.maxConcurrentCampaigns) {
+    const maxConcurrent = limits.maxConcurrentCampaigns || 3;
+    if (activeCount >= maxConcurrent) {
       return res.status(403).json({
         code: 'PLAN_LIMIT',
-        message: `Your ${plan} plan allows max ${limits.maxConcurrentCampaigns} concurrent campaign(s). Please pause or wait for existing campaigns to finish.`,
+        message: `Your ${plan} plan allows max ${maxConcurrent} concurrent campaign(s). Please pause or wait for existing campaigns to finish.`,
       });
     }
 
     const campaign = await Campaign.create({
       userId: req.user._id,
+      workspaceId: req.workspaceId || req.user.workspaceId,
       groupId,
       name: name.trim(),
-      template: template.trim(),
+      campaignName: name.trim(),
+      platform: 'broadcast',
+      template: (template || templateName || '').trim(),
+      templateName: (templateName || '').trim(),
+      languageCode: languageCode || 'en',
+      channel: channel || 'baileys',
       totalLeads,
       status: 'queued',
+      lastSentIndex: -1,
     });
 
     res.status(201).json(campaign);
@@ -97,12 +130,16 @@ exports.createCampaign = async (req, res) => {
   }
 };
 
-// @desc  List user campaigns
+// @desc  List campaigns
 // @route GET /api/campaigns
 // @access Private
 exports.getCampaigns = async (req, res) => {
   try {
-    const campaigns = await Campaign.find({ userId: req.user._id })
+    if (req.query.type !== 'broadcast') {
+      const inbound = require('./inboundCampaignController');
+      return inbound.getInboundCampaigns(req, res);
+    }
+    const campaigns = await Campaign.find({ userId: req.user._id, platform: 'broadcast' })
       .sort({ createdAt: -1 })
       .limit(50)
       .lean();
@@ -117,11 +154,27 @@ exports.getCampaigns = async (req, res) => {
 // @access Private
 exports.getCampaign = async (req, res) => {
   try {
+    const inbound = require('./inboundCampaignController');
+    const tenantFilter = inbound.getTenantFilter(req);
+
+    // Prevent IDOR by strictly enforcing tenant boundary
     const campaign = await Campaign.findOne({
       _id: req.params.id,
-      userId: req.user._id,
-    }).lean();
+      ...tenantFilter,
+    })
+      .populate('assignmentRule.specificCounselorId', 'name email usercode phone')
+      .populate('assignmentRule.fallbackUserId', 'name email usercode phone')
+      .populate('assignmentRule.counselorPool.userId', 'name email usercode phone')
+      .populate('integrationId', 'accountName provider pageName sheetsConfig')
+      .lean();
+
     if (!campaign) return res.status(404).json({ message: 'Campaign not found' });
+
+    // If inbound marketing campaign, return full metrics and attribution details
+    if (campaign.platform !== 'broadcast') {
+      return inbound.getCampaignDetails(req, res);
+    }
+
     res.json(campaign);
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -156,11 +209,29 @@ exports.pauseCampaign = async (req, res) => {
 // @access Private
 exports.resumeCampaign = async (req, res) => {
   try {
-    const waStatus = waSession.getStatus(req.user._id);
-    if (waStatus.status !== 'connected') {
-      return res.status(400).json({
-        message: 'WhatsApp is not connected. Please reconnect before resuming.',
+    const campaignToResume = await Campaign.findOne({ _id: req.params.id, userId: req.user._id, status: 'paused' });
+    if (!campaignToResume) {
+      return res.status(404).json({ message: 'Campaign not found or not in paused state' });
+    }
+
+    if (campaignToResume.channel === 'meta_cloud') {
+      const WhatsAppBusinessAccount = require('../models/WhatsAppBusinessAccount');
+      const waba = await WhatsAppBusinessAccount.findOne({
+        workspaceId: req.workspaceId || req.user.workspaceId,
+        status: 'CONNECTED',
       });
+      if (!waba) {
+        return res.status(400).json({
+          message: 'No official Meta WhatsApp Business Account connected for this workspace.',
+        });
+      }
+    } else {
+      const waStatus = waSession.getStatus(req.user._id);
+      if (waStatus.status !== 'connected') {
+        return res.status(400).json({
+          message: 'WhatsApp is not connected. Please reconnect before resuming.',
+        });
+      }
     }
 
     const campaign = await Campaign.findOneAndUpdate(
@@ -168,20 +239,31 @@ exports.resumeCampaign = async (req, res) => {
       { status: 'queued' },
       { new: true }
     );
-    if (!campaign) {
-      return res.status(404).json({ message: 'Campaign not found or not in paused state' });
-    }
     res.json(campaign);
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-// @desc  Cancel a campaign
+// @desc  Cancel a broadcast campaign or delete an inbound marketing campaign
 // @route DELETE /api/campaigns/:id
 // @access Private
 exports.cancelCampaign = async (req, res) => {
   try {
+    const inbound = require('./inboundCampaignController');
+    const tenantFilter = inbound.getTenantFilter(req);
+
+    const existing = await Campaign.findOne({ _id: req.params.id, ...tenantFilter });
+    if (!existing) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
+    // Inbound marketing campaigns use inbound deletion
+    if (existing.platform !== 'broadcast') {
+      return inbound.deleteCampaign(req, res);
+    }
+
+    // Broadcast campaigns are cancelled
     const campaign = await Campaign.findOneAndUpdate(
       {
         _id: req.params.id,
@@ -211,6 +293,7 @@ exports.getCampaignLogs = async (req, res) => {
     }).lean();
     if (!campaign) return res.status(404).json({ message: 'Campaign not found' });
 
+    const { limit = 100, page = 1 } = req.query;
     const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 100));
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
     const skip = (parsedPage - 1) * parsedLimit;

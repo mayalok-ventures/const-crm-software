@@ -1,4 +1,4 @@
-# CoreSetu CRM — WhatsApp & Baileys Architecture Topology
+# Sahyak CRM — WhatsApp & Baileys Architecture Topology
 
 ## 1. Current Architectural Design
 - **Session Management**: Baileys WebSocket sockets are maintained in Node.js process memory (`waSession.js`).

@@ -1,56 +1,42 @@
 const mongoose = require('mongoose');
 
 const roleSchema = new mongoose.Schema({
-  tenantId: {
+  workspaceId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: 'Workspace',
     required: true,
     index: true,
   },
   name: {
     type: String,
-    required: true,
+    required: [true, 'Role name is required'],
     trim: true,
-    lowercase: true,
   },
   description: {
     type: String,
     default: '',
     trim: true,
   },
-  roleType: {
-    type: String,
-    enum: ['OWNER', 'MANAGER', 'AGENT', 'CUSTOM'],
-    default: 'CUSTOM',
-    index: true,
-  },
-  permissions: [{
-    type: String,
-    trim: true,
-  }],
-  isSystemRole: {
+  isSystem: {
     type: Boolean,
     default: false,
   },
-  isActive: {
-    type: Boolean,
-    default: true,
-    index: true,
-  },
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    default: null,
-  },
-  updatedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    default: null,
-  },
-}, { timestamps: true });
+  permissions: [{
+    key: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    scope: {
+      type: String,
+      enum: ['own', 'team', 'workspace', 'restricted'],
+      default: 'own',
+    },
+  }],
+}, {
+  timestamps: true,
+});
 
-// Production-grade compound indexes
-roleSchema.index({ tenantId: 1, name: 1 }, { unique: true });
-roleSchema.index({ tenantId: 1, isActive: 1 });
+roleSchema.index({ workspaceId: 1, name: 1 }, { unique: true });
 
 module.exports = mongoose.models.Role || mongoose.model('Role', roleSchema);

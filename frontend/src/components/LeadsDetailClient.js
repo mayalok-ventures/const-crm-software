@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
@@ -9,54 +9,38 @@ import {
   ArrowLeft, MessageCircle, Phone, Edit2, Trash2, Mic, MicOff,
   Play, Pause, Send, Plus, X, Check, Calendar, AlertTriangle, ExternalLink,
   Image as ImageIcon, Video as VideoIcon, File as FileIcon, CheckCheck, RefreshCw,
-  Paperclip, Copy, Package, UserCheck, ShieldCheck, History, Activity, Sparkles, Briefcase
+  Paperclip, Copy, Package, UserCheck, ShieldCheck, History, Activity, Sparkles, Briefcase,
+  GraduationCap, BookOpen, Clock, Building2, ChevronRight, FileText, CheckCircle2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { getIndustryDefaults } from '@/lib/industryTemplates';
 import LostReasonModal, { isLostStage, LOST_REASON_OPTIONS } from '@/components/LostReasonModal';
 import FollowUpSchedulerModal from '@/components/FollowUpSchedulerModal';
 import FollowUpCompleteModal from '@/components/FollowUpCompleteModal';
-import RealEstateLeadPanel from '@/components/RealEstateLeadPanel';
 import { SourcePill, getLeadSourceTag } from '@/lib/sourceHelper';
+import ShareCollegeFeeModal from '@/components/leads/ShareCollegeFeeModal';
 import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
 
 const STATUS_OPTIONS = [
-  'new',
-  'cold',
-  'warm',
-  'hot',
+  'new_lead',
   'contacted',
+  'shortlisted',
   'site_visit_scheduled',
   'negotiation',
-  'payment_done',
-  'closed',
+  'converted',
   'lost'
 ];
 
 const STAGE_LABELS = {
-  new: '🆕 New Lead',
-  cold: '❄️ Cold',
-  warm: '🌤️ Warm',
-  hot: '🔥 Hot Lead',
-  contacted: '📞 Contacted',
-  site_visit_scheduled: '📅 Meeting / Demo Scheduled',
-  negotiation: '🤝 In Negotiation',
-  payment_done: '💳 Payment Done',
-  closed: '🏆 Closed / Won',
-  lost: '❌ Lost / Dropped'
-};
-
-const STATUS_COLORS = {
-  new: 'badge-new',
-  cold: 'badge-tag',
-  warm: 'badge-follow_up',
-  hot: 'badge-danger',
-  contacted: 'badge-tag',
-  site_visit_scheduled: 'badge-follow_up',
-  negotiation: 'badge-follow_up',
-  payment_done: 'badge-closed',
-  closed: 'badge-closed',
-  lost: 'badge-tag',
+  new_lead: '1. New Lead',
+  new: '1. New Lead',
+  contacted: '2. Tele-Counsel',
+  shortlisted: '3. Shortlisted',
+  site_visit_scheduled: '4. Campus Visit',
+  negotiation: '5. Quota Booking',
+  converted: '6. Confirmed Won',
+  closed: '6. Confirmed Won',
+  lost: '❌ Dropped / Lost'
 };
 
 const ACTION_ICONS = {
@@ -73,6 +57,7 @@ const ACTION_ICONS = {
   lead_updated: '✍️',
 };
 
+// ── AUDIO NOTES & CALL MEMOS ──────────────────────────────────
 function RecordingSection({ leadId }) {
   const [recordings, setRecordings] = useState([]);
   const [recording, setRecording] = useState(false);
@@ -86,7 +71,9 @@ function RecordingSection({ leadId }) {
   const [uploadingFile, setUploadingFile] = useState(false);
 
   useEffect(() => {
-    api.get(`/recordings/${leadId}`).then(r => setRecordings(r.data)).catch(() => {});
+    if (leadId) {
+      api.get(`/recordings/${leadId}`).then(r => setRecordings(r.data || [])).catch(() => {});
+    }
   }, [leadId]);
 
   const startRecording = async () => {
@@ -181,7 +168,8 @@ function RecordingSection({ leadId }) {
   };
 
   const formatDuration = s => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
-  const BASE = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000';
+  const BASE = process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, '') ||
+    (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : 'https://api.sahyak.com');
 
   return (
     <div>
@@ -256,7 +244,7 @@ function RecordingSection({ leadId }) {
 }
 
 // ── LIVE WHATSAPP CHAT & DUAL SENDER SECTION ──────────────────────────────────
-function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, refreshKey }) {
+function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, onOpenShareFee, refreshKey }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [chatText, setChatText] = useState('');
@@ -266,7 +254,7 @@ function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, refreshKey }) {
   const isFetchingHistoryRef = useRef(false);
 
   const canUseCompanyWA = Boolean(waStatus?.allowCompanyWhatsApp && waStatus?.company?.status === 'connected');
-  const isPersonalConnected = waStatus?.personal?.status === 'connected';
+  const isPersonalConnected = waStatus?.personal?.status === 'connected' || waStatus?.status === 'connected';
   const isAnyConnected = isPersonalConnected || canUseCompanyWA;
 
   useEffect(() => {
@@ -275,7 +263,7 @@ function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, refreshKey }) {
     } else if (waStatus?.defaultSender) {
       setSenderMode(waStatus.defaultSender);
     }
-  }, [waStatus]);
+  }, [waStatus, canUseCompanyWA, isPersonalConnected]);
 
   const fetchHistory = async (silent = false) => {
     if (!lead?.phone) return;
@@ -284,7 +272,7 @@ function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, refreshKey }) {
     isFetchingHistoryRef.current = true;
     try {
       const { data } = await api.get(`/whatsapp/chats/${lead.phone}?leadId=${lead._id || ''}`);
-      setMessages(data);
+      setMessages(data || []);
       if (!silent) setLoading(false);
     } catch {
       if (!silent) setLoading(false);
@@ -362,7 +350,8 @@ function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, refreshKey }) {
     toast.success('Copied! 📋');
   };
 
-  const BASE = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000';
+  const BASE = process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, '') ||
+    (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : 'https://api.sahyak.com');
 
   return (
     <div className="card" style={{ marginBottom: 16, padding: '16px 16px' }}>
@@ -378,14 +367,16 @@ function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, refreshKey }) {
           </div>
         </div>
 
-        <button
-          onClick={() => fetchHistory()}
-          title="Refresh messages"
-          className="btn btn-ghost btn-sm"
-          style={{ padding: 6, minHeight: 'auto', borderRadius: 8 }}
-        >
-          <RefreshCw size={13} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
+            onClick={() => fetchHistory()}
+            title="Refresh messages"
+            className="btn btn-ghost btn-sm"
+            style={{ padding: 6, minHeight: 'auto', borderRadius: 8 }}
+          >
+            <RefreshCw size={13} />
+          </button>
+        </div>
       </div>
 
       {/* Dual Sender Toggle */}
@@ -471,7 +462,7 @@ function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, refreshKey }) {
           <div style={{ textAlign: 'center', padding: '40px 12px', color: 'var(--text-muted)' }}>
             <MessageCircle size={32} color="var(--border)" style={{ marginBottom: 6 }} />
             <p style={{ margin: '0 0 4px 0', fontSize: 13, fontWeight: 600 }}>No messages yet</p>
-            <p style={{ margin: 0, fontSize: 11 }}>Send a proposal template or type a message below.</p>
+            <p style={{ margin: 0, fontSize: 11 }}>Send a proposal template or type an English message below.</p>
           </div>
         ) : (
           messages.map((m, idx) => {
@@ -548,121 +539,312 @@ function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, refreshKey }) {
         )}
       </div>
 
-      {/* Input Bar */}
-      <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button
-          type="button"
-          onClick={onOpenTemplates}
-          title="Use saved template"
-          className="btn btn-secondary btn-sm"
-          style={{ padding: '8px 12px', height: 42, flexShrink: 0, gap: 5, borderRadius: 10 }}
-        >
-          <Paperclip size={14} />
-          <span style={{ fontSize: 12 }}>Templates</span>
-        </button>
+      {/* Input Bar & Direct Action Shortcuts */}
+      <form onSubmit={handleSendMessage} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={onOpenTemplates}
+            title="Use English template"
+            className="btn btn-secondary btn-sm"
+            style={{ padding: '6px 10px', height: 38, flexShrink: 0, gap: 5, borderRadius: 10, fontSize: 12 }}
+          >
+            <Paperclip size={13} />
+            <span>Templates</span>
+          </button>
 
-        <input
-          type="text"
-          placeholder={`Type message (${senderMode === 'company' ? 'Org WA' : 'Personal WA'})...`}
-          value={chatText}
-          onChange={e => setChatText(e.target.value)}
-          disabled={!isAnyConnected || sending}
-          className="input"
-          style={{ flex: 1, height: 42, fontSize: 13, borderRadius: 10 }}
-        />
+          <button
+            type="button"
+            onClick={onOpenShareFee}
+            title="Share College Fee Structure"
+            className="btn btn-secondary btn-sm"
+            style={{ padding: '6px 10px', height: 38, flexShrink: 0, gap: 5, borderRadius: 10, fontSize: 12, color: 'var(--accent)', borderColor: 'var(--accent)' }}
+          >
+            <GraduationCap size={14} />
+            <span>Fee Structure</span>
+          </button>
+        </div>
 
-        <button
-          type="submit"
-          disabled={!isAnyConnected || !chatText.trim() || sending}
-          className="btn btn-primary"
-          style={{ width: 42, height: 42, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, borderRadius: 10 }}
-        >
-          {sending ? <div className="spinner" style={{ width: 16, height: 16 }} /> : <Send size={15} />}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            type="text"
+            placeholder={`Type English message (${senderMode === 'company' ? 'Org WA' : 'Personal WA'})...`}
+            value={chatText}
+            onChange={e => setChatText(e.target.value)}
+            disabled={!isAnyConnected || sending}
+            className="input"
+            style={{ flex: 1, height: 42, fontSize: 13, borderRadius: 10 }}
+          />
+
+          <button
+            type="submit"
+            disabled={!isAnyConnected || !chatText.trim() || sending}
+            className="btn btn-primary"
+            style={{ width: 42, height: 42, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, borderRadius: 10 }}
+          >
+            {sending ? <div className="spinner" style={{ width: 16, height: 16 }} /> : <Send size={15} />}
+          </button>
+        </div>
       </form>
     </div>
   );
 }
 
+// ── FULLY EDITABLE ENGLISH TEMPLATE PICKER MODAL ──────────────────────────────
 function TemplatePickerModal({ lead, waStatus, onClose, onSent }) {
-  const [templates, setTemplates] = useState([]);
+  const [dbTemplates, setDbTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [sendingId, setSendingId] = useState(null);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [editableText, setEditableText] = useState('');
+  const [sending, setSending] = useState(false);
+
+  // Standard high-converting English admission templates
+  const defaultEnglishPresets = useMemo(() => [
+    {
+      _id: 'preset-inquiry',
+      title: '🎓 1. Admission Inquiry & Course Details',
+      text: `Hello ${lead.name || 'Student'},
+
+Thank you for reaching out to us regarding your higher education admission! 🎓
+
+We have received your interest in ${lead.targetCourse || 'the requested program'}. Our admission team is ready to guide you on eligibility criteria, seat availability, and upcoming admission rounds.
+
+Would you be available for a quick 5-minute telephonic counseling session today?
+
+Best regards,
+Admissions Team`
+    },
+    {
+      _id: 'preset-fee-scholarship',
+      title: '💰 2. College Fee & Merit Scholarship Overview',
+      text: `Dear ${lead.name || 'Student'},
+
+Here is a quick overview regarding course fees and scholarship opportunities for ${lead.targetCourse || 'your desired course'}:
+
+✅ Institutional Merit Scholarships available up to 40%
+✅ Flexible semester-wise installment options
+✅ Complete bank loan assistance and documentation support
+
+Please let me know if you would like me to share the verified fee breakdown of your preferred colleges!
+
+Warm regards,
+Academic Counselor`
+    },
+    {
+      _id: 'preset-campus-visit',
+      title: '🏛️ 3. Campus Tour & Counseling Invitation',
+      text: `Hi ${lead.name || 'Student'},
+
+We invite you and your parents to visit our campus for an in-person counseling session and campus tour! 🏛️
+
+During your visit, you can:
+- Tour the labs, libraries, and hostel facilities
+- Interact directly with senior department faculty
+- Verify required admission documents
+
+Please share your preferred day (Monday - Saturday) between 10 AM to 4 PM so we can reserve your counseling slot.
+
+Warm regards,
+Admissions Coordinator`
+    },
+    {
+      _id: 'preset-seat-reservation',
+      title: '🔒 4. Provisional Seat Booking Reminder',
+      text: `Dear ${lead.name || 'Candidate'},
+
+This is an important update regarding seat allocation for ${lead.targetCourse || 'your program'}.
+
+Seats in the preferred quota are filling rapidly. To safeguard your provisional admission and secure the scholarship benefit, we recommend completing the token confirmation within the next 48 hours.
+
+Please reply or call us directly if you need any clarification on the admission procedure.
+
+Best regards,
+Director of Admissions`
+    }
+  ], [lead]);
 
   useEffect(() => {
-    api.get('/templates').then(r => setTemplates(r.data)).finally(() => setLoading(false));
+    api.get('/templates')
+      .then(r => setDbTemplates(r.data || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
-  const sendTemplate = async (template) => {
-    const text = mergeTemplate(template.text, lead);
+  const allTemplates = useMemo(() => {
+    return [...defaultEnglishPresets, ...dbTemplates];
+  }, [defaultEnglishPresets, dbTemplates]);
+
+  // Select initial template
+  useEffect(() => {
+    if (!selectedTemplate && allTemplates.length > 0) {
+      const first = allTemplates[0];
+      setSelectedTemplate(first);
+      setEditableText(mergeTemplate(first.text, lead));
+    }
+  }, [allTemplates, selectedTemplate, lead]);
+
+  const handleSelectTemplate = (template) => {
+    setSelectedTemplate(template);
+    setEditableText(mergeTemplate(template.text, lead));
+  };
+
+  const handleSend = async () => {
+    if (!editableText.trim() || sending) return;
     const sender = (waStatus?.allowCompanyWhatsApp && waStatus?.company?.status === 'connected') ? 'company' : 'personal';
 
-    setSendingId(template._id);
+    setSending(true);
     try {
       await api.post('/whatsapp/send-media', {
         to: lead.phone,
-        text,
-        image: template.imageFile?.url,
-        video: template.videoFile?.url,
-        document: template.docFile?.url,
+        text: editableText.trim(),
+        image: selectedTemplate?.imageFile?.url,
+        video: selectedTemplate?.videoFile?.url,
+        document: selectedTemplate?.docFile?.url,
         sender,
       });
-      api.post(`/templates/${template._id}/use`).catch(() => {});
-      toast.success('Dispatched message directly to client! 🚀');
-      if (onSent) onSent(template);
+
+      if (selectedTemplate?._id && !selectedTemplate._id.startsWith('preset-')) {
+        api.post(`/templates/${selectedTemplate._id}/use`).catch(() => {});
+      }
+
+      toast.success('Dispatched English message to client via WhatsApp! 🚀');
+      if (onSent) onSent();
       onClose();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to send');
+      toast.error(err.response?.data?.message || 'Failed to dispatch message');
     } finally {
-      setSendingId(null);
+      setSending(false);
     }
+  };
+
+  const handleOpenWebWA = () => {
+    if (!lead?.phone || !editableText.trim()) return;
+    const url = waLink(lead.phone, editableText.trim());
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleCopy = () => {
+    if (!editableText.trim()) return;
+    navigator.clipboard.writeText(editableText.trim());
+    toast.success('English message copied to clipboard! 📋');
   };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
+      <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 620, width: '100%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
         <div className="modal-handle" />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Choose Message Template</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={20} /></button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div>
+            <h2 style={{ fontSize: 17, fontWeight: 800, margin: 0, color: 'var(--text)' }}>
+              💬 Send English Template via WhatsApp
+            </h2>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+              Choose a template, edit any sentence before dispatching to <strong>+{lead.phone}</strong>
+            </p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>
+            <X size={20} />
+          </button>
         </div>
 
         {loading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 0' }}><div className="spinner" /></div>
-        ) : templates.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)' }}>
-            <p>No templates created yet.</p>
-            <Link href="/templates" style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }} onClick={onClose}>Create templates →</Link>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '36px 0' }}>
+            <div className="spinner" />
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '50dvh', overflowY: 'auto' }}>
-            {templates.map(t => (
-              <button
-                key={t._id}
-                disabled={sendingId !== null}
-                onClick={() => sendTemplate(t)}
-                style={{ width: '100%', textAlign: 'left', padding: '12px 14px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, cursor: 'pointer', transition: 'border-color 0.2s', position: 'relative' }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
-              >
-                {sendingId === t._id && (
-                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div className="spinner" style={{ width: 20, height: 20 }} />
-                  </div>
-                )}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{t.title}</span>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    {t.imageFile && <span style={{ fontSize: 9, padding: '1px 4px', background: 'rgba(79,70,229,0.15)', borderRadius: 3, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 1 }}><ImageIcon size={8} /> Image</span>}
-                    {t.videoFile && <span style={{ fontSize: 9, padding: '1px 4px', background: 'rgba(234,179,8,0.15)', borderRadius: 3, color: '#d97706', display: 'flex', alignItems: 'center', gap: 1 }}><VideoIcon size={8} /> Video</span>}
-                    {t.docFile && <span style={{ fontSize: 9, padding: '1px 4px', background: 'rgba(34,197,94,0.15)', borderRadius: 3, color: '#16a34a', display: 'flex', alignItems: 'center', gap: 1 }}><FileIcon size={8} /> Doc</span>}
-                  </div>
-                </div>
-                <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                  {mergeTemplate(t.text, lead)}
-                </p>
-              </button>
-            ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', paddingRight: 4 }}>
+            {/* Template Selector Horizontal Pill Carousel */}
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                Select Preset or Custom Template
+              </label>
+              <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 6 }}>
+                {allTemplates.map(t => {
+                  const isSelected = selectedTemplate?._id === t._id;
+                  return (
+                    <button
+                      key={t._id}
+                      type="button"
+                      onClick={() => handleSelectTemplate(t)}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: 10,
+                        border: isSelected ? '1.5px solid var(--accent)' : '1px solid var(--border)',
+                        background: isSelected ? 'rgba(99,102,241,0.08)' : 'var(--surface)',
+                        color: isSelected ? 'var(--accent)' : 'var(--text)',
+                        fontWeight: isSelected ? 700 : 500,
+                        fontSize: 12,
+                        whiteSpace: 'nowrap',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6
+                      }}
+                    >
+                      <span>{t.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Editable English Text Area */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                  Editable English Message Review
+                </label>
+                <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600 }}>
+                  ✏️ You can edit anything below
+                </span>
+              </div>
+              <textarea
+                className="input"
+                rows={9}
+                value={editableText}
+                onChange={e => setEditableText(e.target.value)}
+                placeholder="Compose your English message..."
+                style={{ width: '100%', fontSize: 13, lineHeight: 1.5, fontFamily: 'inherit', resize: 'vertical' }}
+              />
+            </div>
+
+            {/* Action Bar */}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', paddingTop: 6, borderTop: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="btn btn-secondary btn-sm"
+                  style={{ gap: 5, fontSize: 12 }}
+                >
+                  <Copy size={13} /> Copy
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenWebWA}
+                  className="btn btn-secondary btn-sm"
+                  style={{ gap: 5, fontSize: 12, color: 'var(--green)' }}
+                >
+                  <ExternalLink size={13} /> Web WA
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" onClick={onClose} className="btn btn-secondary btn-sm">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSend}
+                  disabled={sending || !editableText.trim()}
+                  className="btn btn-primary btn-sm"
+                  style={{ gap: 6, fontWeight: 700 }}
+                >
+                  {sending ? <div className="spinner" style={{ width: 14, height: 14 }} /> : <Send size={13} />}
+                  <span>Send via WhatsApp</span>
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -670,53 +852,55 @@ function TemplatePickerModal({ lead, waStatus, onClose, onSent }) {
   );
 }
 
+// ── CLOSE DEAL MODAL ──────────────────────────────────────────────────────────
 function CloseDealModal({ isOpen, onClose, onConfirm, initialAmount }) {
-  const [amount, setAmount] = useState(initialAmount || '');
+  const [dealAmount, setDealAmount] = useState(initialAmount || '');
+
+  useEffect(() => {
+    setDealAmount(initialAmount || '');
+  }, [initialAmount]);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const num = Number(amount);
-    if (!num || isNaN(num) || num <= 0) {
-      toast.error('Please enter a valid deal amount greater than 0');
-      return;
+    const val = Number(dealAmount);
+    if (!val || isNaN(val) || val <= 0) {
+      return toast.error('Please enter a valid deal amount.');
     }
-    onConfirm(num);
+    onConfirm(val);
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 10000 }}>
-      <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(34,197,94,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
-              🏆
-            </div>
-            <div>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Close Deal / Mark Won</h3>
-              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>Enter the final closed transaction amount</p>
-            </div>
-          </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
+        <div className="modal-handle" />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 6, color: '#16a34a' }}>
+            🏆 Confirmed Admission / Won Deal
+          </h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+            <X size={18} />
+          </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: 16 }}>
-            <label className="label" style={{ fontWeight: 700 }}>
-              Final Deal Amount (₹) <span style={{ color: 'var(--red)' }}>*Required</span>
-            </label>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 14px' }}>
+          Please enter the finalized package or token amount to mark this candidate as closed won.
+        </p>
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label className="label" style={{ fontSize: 12, fontWeight: 600 }}>Total Package / Token Value (₹) *</label>
             <input
               type="number"
+              className="input"
+              required
               min="1"
               step="any"
+              placeholder="e.g. 150000"
+              value={dealAmount}
+              onChange={e => setDealAmount(e.target.value)}
               autoFocus
-              required
-              placeholder="e.g. 250000"
-              className="input"
-              value={amount}
-              onChange={e => setAmount(e.target.value)}
-              style={{ fontSize: 16, fontWeight: 700, borderColor: 'var(--green)' }}
             />
           </div>
 
@@ -734,11 +918,11 @@ function CloseDealModal({ isOpen, onClose, onConfirm, initialAmount }) {
   );
 }
 
+// ── MAIN LEAD DETAIL PAGE COMPONENT ───────────────────────────────────────────
 export default function LeadDetailPage() {
   const params = useParams();
   const router = useRouter();
 
-  // Extract actual ID from params or window.location for Cloudflare Pages static SPA fallback
   const getActualId = () => {
     if (params?.id && params.id !== 'placeholder' && params.id !== '[id]' && params.id !== 'undefined' && params.id !== 'null' && /^[0-9a-fA-F]{24}$/.test(params.id)) {
       return params.id;
@@ -761,6 +945,7 @@ export default function LeadDetailPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showShareFeeModal, setShowShareFeeModal] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [showLostModal, setShowLostModal] = useState(false);
   const [pendingLostStage, setPendingLostStage] = useState('');
@@ -774,105 +959,8 @@ export default function LeadDetailPage() {
   const [waStatus, setWaStatus] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [mobileTab, setMobileTab] = useState('details');
-
-  // Agency Control Systems State & Handlers
-  const [claiming, setClaiming] = useState(false);
-  const [showTransferModal, setShowTransferModal] = useState(false);
-  const [showForceTransferModal, setShowForceTransferModal] = useState(false);
-  const [showReleaseModal, setShowReleaseModal] = useState(false);
-  const [agentsList, setAgentsList] = useState([]);
-  const [selectedAgentId, setSelectedAgentId] = useState('');
-  const [transferReason, setTransferReason] = useState('');
-  const [releaseReason, setReleaseReason] = useState('');
-  const [releasing, setReleasing] = useState(false);
-
-  const loadCompanyAgents = async () => {
-    try {
-      const res = await api.get('/company/agents');
-      setAgentsList(res.data?.agents || []);
-    } catch {
-      api.get('/agency/agents').then(r => setAgentsList(r.data?.agents || [])).catch(() => {});
-    }
-  };
-
-  const handleClaimLead = async () => {
-    setClaiming(true);
-    try {
-      const res = await api.put(`/leads/${id}/reassign`, {
-        toAgentId: currentUser?._id,
-        reason: 'Claimed from Unassigned Pool'
-      });
-      toast.success('Lead claimed successfully! 🎉');
-      const leadRes = await api.get(`/leads/${id}`);
-      setLead(leadRes.data);
-      setForm(leadRes.data);
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to claim lead');
-    } finally {
-      setClaiming(false);
-    }
-  };
-
-  const handleRequestTransfer = async (e) => {
-    e.preventDefault();
-    if (!selectedAgentId) return toast.error('Please select recipient agent');
-    try {
-      await api.put(`/leads/${id}/reassign`, {
-        toAgentId: selectedAgentId,
-        reason: transferReason || 'Transferred by agent'
-      });
-      toast.success('Lead transferred successfully! 🚀');
-      setShowTransferModal(false);
-      setTransferReason('');
-      setSelectedAgentId('');
-      const leadRes = await api.get(`/leads/${id}`);
-      setLead(leadRes.data);
-      setForm(leadRes.data);
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to transfer lead');
-    }
-  };
-
-  const handleForceTransfer = async (e) => {
-    e.preventDefault();
-    if (!selectedAgentId) return toast.error('Please select target agent');
-    try {
-      await api.put(`/leads/${id}/reassign`, {
-        toAgentId: selectedAgentId,
-        reason: transferReason || 'Manager override reassignment'
-      });
-      toast.success('Lead reassigned successfully! ⚡');
-      setShowForceTransferModal(false);
-      setTransferReason('');
-      setSelectedAgentId('');
-      const leadRes = await api.get(`/leads/${id}`);
-      setLead(leadRes.data);
-      setForm(leadRes.data);
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to force transfer lead');
-    }
-  };
-
-  const handleReleaseLead = async (e) => {
-    e.preventDefault();
-    if (!releaseReason || !releaseReason.trim()) {
-      return toast.error('Please enter a reason for releasing this lead');
-    }
-    setReleasing(true);
-    try {
-      await api.put(`/leads/${id}/release`, { reason: releaseReason.trim() });
-      toast.success('Lead released back to Unassigned Pool! 📦');
-      setShowReleaseModal(false);
-      setReleaseReason('');
-      const leadRes = await api.get(`/leads/${id}`);
-      setLead(leadRes.data);
-      setForm(leadRes.data);
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to release lead');
-    } finally {
-      setReleasing(false);
-    }
-  };
+  const [activeRightTab, setActiveRightTab] = useState('chat'); // 'chat' | 'notes' | 'memos' | 'audit'
+  const [editTab, setEditTab] = useState('academics'); // 'academics' | 'entrance' | 'preferences' | 'personal' | 'milestones'
 
   useEffect(() => {
     if (!leadId) {
@@ -914,17 +1002,10 @@ export default function LeadDetailPage() {
 
   const industryDefaults = getIndustryDefaults(currentUser?.industryType);
 
-  const availableStages = (currentUser?.pipelineStages && currentUser.pipelineStages.length > 0)
-    ? currentUser.pipelineStages
-    : (currentUser?.customPipelineStages && currentUser.customPipelineStages.length > 0)
-      ? currentUser.customPipelineStages
-      : industryDefaults.pipelineStages;
-
   const rawSchema = (currentUser?.leadFormSchema && Array.isArray(currentUser.leadFormSchema) && currentUser.leadFormSchema.length > 0)
     ? currentUser.leadFormSchema
     : industryDefaults.leadFormSchema;
 
-  // Real-time Conditional Logic Evaluator (dependsOn)
   const isFieldVisible = (field) => {
     if (field.isHidden) return false;
     if (!field.dependsOn || !field.dependsOn.field) return true;
@@ -936,49 +1017,25 @@ export default function LeadDetailPage() {
     .sort((a, b) => (a.order || 0) - (b.order || 0))
     .filter(isFieldVisible);
 
-  const isRealEstate = (
+  const isRealEstate = Boolean(
     String(currentUser?.industryType || '').toLowerCase().includes('real') ||
     String(currentUser?.industryType || '').toLowerCase().includes('estate') ||
-    String(currentUser?.industryType || '').toLowerCase().includes('property') ||
-    Boolean(lead?.propertyType || lead?.possessionTimeline || lead?.purchasePurpose || (lead?.score !== undefined && lead?.score > 0) || lead?.budgetMin || lead?.budgetMax)
+    lead?.propertyType
   );
 
-  const handleConfirmCloseDeal = async (amount) => {
-    setShowCloseModal(false);
-    setForm(f => ({ ...f, status: 'closed', closedDealAmount: amount }));
-    if (!editing) {
-      try {
-        const { data } = await api.put(`/leads/${id}`, { status: 'closed', closedDealAmount: amount });
-        setLead(data);
-        setForm(data);
-        toast.success(`🎉 Deal Closed & Won for ₹${amount.toLocaleString('en-IN')}!`);
-      } catch (err) {
-        toast.error(err.response?.data?.message || 'Failed to close deal');
-      }
-    }
-  };
-
-  const handleConfirmLostReason = async ({ lostReason, lostReasonDetail, targetStage }) => {
-    setShowLostModal(false);
-    setForm(f => ({ ...f, status: targetStage, lostReason, lostReasonDetail }));
-    if (!editing) {
-      try {
-        const { data } = await api.put(`/leads/${id}`, {
-          status: targetStage,
-          lostReason,
-          lostReasonDetail,
-        });
-        setLead(data);
-        setForm(data);
-        toast.success(`Prospect moved to ${targetStage} (Lost)`);
-      } catch (err) {
-        toast.error(err.response?.data?.message || 'Failed to update stage');
-      }
+  const handleQuickTemperature = async (newTemp) => {
+    try {
+      const { data } = await api.put(`/leads/${id}`, { temperature: newTemp });
+      setLead(data);
+      setForm(data);
+      toast.success(`Priority updated to ${newTemp}!`);
+    } catch {
+      toast.error('Failed to update temperature');
     }
   };
 
   const handleStatusSelectChange = (newStatus) => {
-    if (newStatus === 'closed' || newStatus === 'Closed Won' || newStatus === 'Won') {
+    if (newStatus === 'closed' || newStatus === 'converted' || newStatus === 'Closed Won' || newStatus === 'Won') {
       setShowCloseModal(true);
       return;
     }
@@ -992,45 +1049,119 @@ export default function LeadDetailPage() {
       api.put(`/leads/${id}`, { status: newStatus }).then(res => {
         setLead(res.data);
         setForm(res.data);
-        toast.success(`Stage updated to ${newStatus}`);
+        toast.success(`Stage updated to ${STAGE_LABELS[newStatus] || newStatus}`);
       }).catch(err => {
         toast.error(err.response?.data?.message || 'Failed to update stage');
       });
     }
   };
 
+  const handleConfirmCloseDeal = async (amount) => {
+    setShowCloseModal(false);
+    const targetStatus = lead.status === 'converted' ? 'converted' : 'closed';
+    setForm(f => ({ ...f, status: targetStatus, closedDealAmount: amount, admissionFinalFee: amount }));
+    try {
+      const { data } = await api.put(`/leads/${id}`, { status: targetStatus, closedDealAmount: amount, admissionFinalFee: amount });
+      setLead(data);
+      setForm(data);
+      toast.success(`🎉 Deal Confirmed & Closed Won for ₹${amount.toLocaleString('en-IN')}!`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to close deal');
+    }
+  };
+
+  const handleConfirmLostReason = async ({ lostReason, lostReasonDetail, targetStage }) => {
+    setShowLostModal(false);
+    setForm(f => ({ ...f, status: targetStage, lostReason, lostReasonDetail }));
+    try {
+      const { data } = await api.put(`/leads/${id}`, {
+        status: targetStage,
+        lostReason,
+        lostReasonDetail,
+      });
+      setLead(data);
+      setForm(data);
+      toast.success(`Status updated to ${targetStage}`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update status');
+    }
+  };
+
+  const startEditing = () => {
+    setForm({
+      ...lead,
+      name: lead.name || '',
+      phone: lead.phone || '',
+      alternatePhone: lead.alternatePhone || '',
+      email: lead.email || '',
+      dob: lead.dob ? toLocalDatetimeString(lead.dob).slice(0, 10) : '',
+      gender: lead.gender || '',
+      category: lead.category || '',
+      city: lead.city || lead.targetCity || '',
+      state: lead.state || lead.targetState || '',
+      address: lead.address || '',
+      pincode: lead.pincode || '',
+      fatherName: lead.fatherName || '',
+      fatherPhone: lead.fatherPhone || '',
+      fatherOccupation: lead.fatherOccupation || '',
+      motherName: lead.motherName || '',
+      tenthBoard: lead.tenthBoard || '',
+      tenthPercentage: lead.tenthPercentage ?? lead.academicScore10th ?? '',
+      tenthYear: lead.tenthYear || '',
+      twelfthBoard: lead.twelfthBoard || '',
+      twelfthStream: lead.twelfthStream || lead.stream || '',
+      twelfthPercentage: lead.twelfthPercentage ?? lead.academicScore12th ?? '',
+      twelfthGroupPercentage: lead.twelfthGroupPercentage ?? '',
+      twelfthYear: lead.twelfthYear || '',
+      gradDegree: lead.gradDegree || '',
+      gradCollege: lead.gradCollege || '',
+      gradPercentage: lead.gradPercentage ?? lead.academicScoreGrad ?? '',
+      gradYear: lead.gradYear || '',
+      entranceExam: lead.entranceExam || '',
+      entranceExamRollNo: lead.entranceExamRollNo || '',
+      entranceScore: lead.entranceScore || '',
+      entranceRank: lead.entranceRank || '',
+      entrancePercentile: lead.entrancePercentile || '',
+      targetCourse: lead.targetCourse || '',
+      targetStream: lead.targetStream || lead.targetDomain || '',
+      degreeLevel: lead.degreeLevel || '',
+      preferredSpecialization: lead.preferredSpecialization || '',
+      preferredColleges: lead.preferredColleges || '',
+      targetState: lead.targetState || '',
+      quotaPreference: lead.quotaPreference || '',
+      budget: lead.budget || lead.packageBudget || '',
+      campusVisitDate: (lead.campusVisitDate || lead.siteVisitDate) ? toLocalDatetimeString(lead.campusVisitDate || lead.siteVisitDate).slice(0, 16) : '',
+      tokenAdvancePaid: lead.tokenAdvancePaid || '',
+      admissionFinalFee: lead.admissionFinalFee || lead.closedDealAmount || '',
+      customData: { ...(lead.customData || {}) },
+    });
+    setEditing(true);
+  };
+
   const saveLead = async () => {
-    if (form.status === 'closed') {
-      const amt = Number(form.closedDealAmount);
-      if (!amt || isNaN(amt) || amt <= 0) {
-        toast.error('Deal amount is required to close a lead.');
-        setShowCloseModal(true);
-        return;
-      }
-    }
-
-    const isLost = isLostStage(form.status);
-    if (isLost && !form.lostReason) {
-      setPendingLostStage(form.status);
-      setShowLostModal(true);
-      return;
-    }
-
     setSaving(true);
     try {
       const payload = {
         ...form,
-        closedDealAmount: form.closedDealAmount ? Number(form.closedDealAmount) : null,
-        tags: typeof form.tags === 'string' ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : form.tags,
-        areasOfInterest: typeof form.areasOfInterest === 'string' ? form.areasOfInterest.split(',').map(t => t.trim()).filter(Boolean) : form.areasOfInterest,
-        lostReason: isLost ? form.lostReason : '',
-        lostReasonDetail: isLost ? form.lostReasonDetail : '',
+        closedDealAmount: form.closedDealAmount ? Number(form.closedDealAmount) : (form.admissionFinalFee ? Number(form.admissionFinalFee) : null),
+        admissionFinalFee: form.admissionFinalFee ? Number(form.admissionFinalFee) : (form.closedDealAmount ? Number(form.closedDealAmount) : 0),
+        tokenAdvancePaid: form.tokenAdvancePaid ? Number(form.tokenAdvancePaid) : 0,
+        tenthPercentage: form.tenthPercentage !== '' && form.tenthPercentage !== null && !isNaN(Number(form.tenthPercentage)) ? Number(form.tenthPercentage) : null,
+        academicScore10th: form.tenthPercentage !== '' && form.tenthPercentage !== null && !isNaN(Number(form.tenthPercentage)) ? Number(form.tenthPercentage) : null,
+        twelfthPercentage: form.twelfthPercentage !== '' && form.twelfthPercentage !== null && !isNaN(Number(form.twelfthPercentage)) ? Number(form.twelfthPercentage) : null,
+        academicScore12th: form.twelfthPercentage !== '' && form.twelfthPercentage !== null && !isNaN(Number(form.twelfthPercentage)) ? Number(form.twelfthPercentage) : null,
+        twelfthGroupPercentage: form.twelfthGroupPercentage !== '' && form.twelfthGroupPercentage !== null && !isNaN(Number(form.twelfthGroupPercentage)) ? Number(form.twelfthGroupPercentage) : null,
+        gradPercentage: form.gradPercentage !== '' && form.gradPercentage !== null && !isNaN(Number(form.gradPercentage)) ? Number(form.gradPercentage) : null,
+        academicScoreGrad: form.gradPercentage !== '' && form.gradPercentage !== null && !isNaN(Number(form.gradPercentage)) ? Number(form.gradPercentage) : null,
+        dob: form.dob ? new Date(form.dob) : null,
+        campusVisitDate: form.campusVisitDate ? new Date(form.campusVisitDate) : null,
+        siteVisitDate: form.campusVisitDate ? new Date(form.campusVisitDate) : (form.siteVisitDate ? new Date(form.siteVisitDate) : null),
       };
       const { data } = await api.put(`/leads/${id}`, payload);
       setLead(data);
       setForm(data);
       setEditing(false);
-      toast.success('Lead updated ✅');
+      toast.success('Candidate profile updated ✅');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to save lead');
     } finally {
@@ -1039,11 +1170,11 @@ export default function LeadDetailPage() {
   };
 
   const deleteLead = async () => {
-    if (!confirm('Are you sure you want to delete this lead?')) return;
+    if (!confirm('Are you sure you want to delete this candidate record?')) return;
     try {
       await api.delete(`/leads/${id}`);
       toast.success('Lead deleted successfully');
-      router.push('/dashboard');
+      router.push('/leads');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to delete lead');
     }
@@ -1053,10 +1184,10 @@ export default function LeadDetailPage() {
     if (!noteText.trim()) return;
     setAddingNote(true);
     try {
-      const { data } = await api.post(`/leads/${id}/notes`, { text: noteText });
+      const { data } = await api.post(`/leads/${id}/notes`, { text: noteText.trim() });
       setLead(data);
       setNoteText('');
-      toast.success('Note added');
+      toast.success('Counseling note added ✅');
     } catch {
       toast.error('Failed to add note');
     } finally {
@@ -1064,884 +1195,1436 @@ export default function LeadDetailPage() {
     }
   };
 
-  if (loading) return (
-    <div className="app-shell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh' }}>
-      <div className="spinner" />
-    </div>
-  );
+  if (loading) {
+    return (
+      <div className="app-shell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh' }}>
+        <div className="spinner" />
+      </div>
+    );
+  }
 
   if (!lead) return null;
 
   return (
     <div className="app-shell pb-mobile-nav">
       <div className="page-container max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="page-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
-            <button onClick={() => router.back()} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)', padding: 4, display: 'flex', borderRadius: 8 }}>
-              <ArrowLeft size={22} />
-            </button>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lead.name}</h1>
-                <SourcePill lead={lead} showDetail={true} />
-              </div>
-              <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>+{lead.phone}</p>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            {!editing ? (
-              <>
-                <button onClick={() => setEditing(true)} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', cursor: 'pointer', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 5, fontSize: 13 }}>
-                  <Edit2 size={14} /> Edit
-                </button>
-                <button onClick={deleteLead} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, padding: '8px 10px', cursor: 'pointer', color: 'var(--red)', display: 'flex', alignItems: 'center' }}>
-                  <Trash2 size={15} />
-                </button>
-              </>
-            ) : (
-              <>
-                <button onClick={() => { setEditing(false); setForm(lead); }} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', fontSize: 13 }}>
-                  <X size={15} /> Cancel
-                </button>
-                <button onClick={saveLead} disabled={saving} style={{ background: 'var(--accent)', border: 'none', borderRadius: 10, padding: '8px 16px', cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
-                  {saving ? <div className="spinner" style={{ width: 14, height: 14 }} /> : <><Check size={14} /> Save</>}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+        
+        {/* ── PSYCHOLOGICALLY IMPACTFUL EXECUTIVE HERO & PIPELINE BANNER ── */}
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-sm mb-4 space-y-4">
+          
+          {/* Top Row: Candidate Identity, Source & Priority */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="w-9 h-9 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition shrink-0 mt-0.5 sm:mt-0"
+                title="Go back"
+              >
+                <ArrowLeft size={18} />
+              </button>
 
-        <div className="page-content">
-          {/* Agency Lead Ownership Actions Card */}
-          {lead && (
-            <div className="card" style={{ padding: 14, marginBottom: 14, background: 'var(--surface)', border: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-                <div>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block' }}>Lead Handling Ownership</span>
-                  <strong style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {lead.assignedTo || lead.currentOwnerId ? (
-                      <>👤 Claimed / Assigned to: <span style={{ color: 'var(--accent)' }}>{lead.assignedToName || lead.assignedTo?.name || 'Teammate'}</span></>
-                    ) : (
-                      <>📢 Unassigned (Available in Pool)</>
-                    )}
-                  </strong>
-                </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight m-0 truncate">
+                    {lead.name}
+                  </h1>
+                  <SourcePill lead={lead} showDetail={true} />
 
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {/* 1. Claim Lead (unassigned / unclaimed) */}
-                  {(!lead.assignedTo && !lead.currentOwnerId) && (
+                  {/* Priority / Temperature Toggle */}
+                  <div className="flex items-center p-0.5 bg-slate-100 rounded-lg border border-slate-200 text-xs">
                     <button
-                      onClick={handleClaimLead}
-                      disabled={claiming}
-                      className="btn btn-primary btn-sm"
-                      style={{ gap: 4 }}
+                      type="button"
+                      onClick={() => handleQuickTemperature('HOT')}
+                      className={`px-2.5 py-0.5 rounded-md font-bold transition flex items-center gap-1 ${
+                        (lead.temperature || 'WARM').toUpperCase() === 'HOT'
+                          ? 'bg-rose-500 text-white shadow-xs'
+                          : 'text-slate-500 hover:text-rose-600'
+                      }`}
+                      title="Set Priority: Hot"
                     >
-                      🙋 {claiming ? 'Claiming...' : 'Claim Lead'}
+                      🔥 Hot
                     </button>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() => handleQuickTemperature('WARM')}
+                      className={`px-2.5 py-0.5 rounded-md font-bold transition flex items-center gap-1 ${
+                        (lead.temperature || 'WARM').toUpperCase() === 'WARM'
+                          ? 'bg-amber-500 text-white shadow-xs'
+                          : 'text-slate-500 hover:text-amber-600'
+                      }`}
+                      title="Set Priority: Warm"
+                    >
+                      🌤️ Warm
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickTemperature('COLD')}
+                      className={`px-2.5 py-0.5 rounded-md font-bold transition flex items-center gap-1 ${
+                        (lead.temperature || 'WARM').toUpperCase() === 'COLD' || (lead.temperature || 'WARM').toUpperCase() === 'COL'
+                          ? 'bg-sky-600 text-white shadow-xs'
+                          : 'text-slate-500 hover:text-sky-600'
+                      }`}
+                      title="Set Priority: Cold"
+                    >
+                      ❄️ Cold
+                    </button>
+                  </div>
+                </div>
 
-                  {/* 2. Transfer / Release (claimed by current user or assigned) */}
-                  {((lead.assignedTo && String(lead.assignedTo._id || lead.assignedTo) === String(currentUser?._id)) ||
-                    (lead.currentOwnerId && String(lead.currentOwnerId._id || lead.currentOwnerId) === String(currentUser?._id))) && (
+                {/* Subtitle Contact Details */}
+                <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 flex-wrap">
+                  <a
+                    href={`tel:${lead.phone}`}
+                    className="font-mono font-bold text-slate-700 hover:text-indigo-600 flex items-center gap-1 transition"
+                  >
+                    📞 +{lead.phone}
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(lead.phone);
+                      toast.success('Phone copied! 📋');
+                    }}
+                    className="text-slate-400 hover:text-slate-700"
+                    title="Copy phone"
+                  >
+                    <Copy size={11} />
+                  </button>
+
+                  {lead.email && (
                     <>
-                      <button
-                        onClick={() => {
-                          loadCompanyAgents();
-                          setShowTransferModal(true);
-                        }}
-                        className="btn btn-secondary btn-sm"
-                        style={{ gap: 4 }}
+                      <span>•</span>
+                      <a
+                        href={`mailto:${lead.email}`}
+                        className="text-slate-600 hover:text-indigo-600 flex items-center gap-1 truncate max-w-xs"
                       >
-                        🔄 Transfer Lead
-                      </button>
-                      <button
-                        onClick={() => setShowReleaseModal(true)}
-                        className="btn btn-ghost btn-sm"
-                        style={{ gap: 4, color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.06)' }}
-                      >
-                        📦 Release to Pool
-                      </button>
+                        ✉️ {lead.email}
+                      </a>
                     </>
                   )}
 
-                  {/* 3. Manager / Owner Control (Reassign or Release any lead) */}
-                  {(currentUser?.companyRole === 'owner' || currentUser?.workStatus === 'company_owner' || currentUser?.role === 'admin' || currentUser?.role === 'manager' || currentUser?.companyRole === 'manager' || currentUser?.role === 'superadmin') && (
+                  {lead.targetCourse && (
                     <>
-                      <button
-                        onClick={() => {
-                          loadCompanyAgents();
-                          setShowForceTransferModal(true);
-                        }}
-                        className="btn btn-ghost btn-sm"
-                        style={{ gap: 4, color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)', background: 'rgba(245,158,11,0.06)' }}
-                      >
-                        ⚡ Reassign Lead
-                      </button>
-                      {(lead.assignedTo || lead.currentOwnerId) && (
-                        <button
-                          onClick={() => setShowReleaseModal(true)}
-                          className="btn btn-ghost btn-sm"
-                          style={{ gap: 4, color: '#ef4444', border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.06)' }}
-                        >
-                          📦 Release to Pool
-                        </button>
-                      )}
+                      <span>•</span>
+                      <span className="font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 flex items-center gap-1">
+                        <GraduationCap size={12} /> {lead.targetCourse}
+                      </span>
                     </>
                   )}
                 </div>
               </div>
+            </div>
 
-              {/* Release Reason Banner (if lead was previously dropped/released) */}
-              {(lead.releaseReason || lead.customData?.releaseReason) && (
-                <div style={{
-                  marginTop: 10,
-                  padding: '8px 12px',
-                  borderRadius: 8,
-                  background: 'rgba(239, 68, 68, 0.08)',
-                  border: '1px dashed rgba(239, 68, 68, 0.35)',
-                  fontSize: 12,
-                  color: '#ef4444',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  flexWrap: 'wrap'
-                }}>
-                  <span>⚠️ <strong>Released Reason:</strong> &ldquo;{lead.releaseReason || lead.customData?.releaseReason}&rdquo;</span>
-                  {(lead.releasedByName || lead.customData?.releasedByName) && (
-                    <span style={{ color: 'var(--text-muted)' }}>— Dropped by {lead.releasedByName || lead.customData?.releasedByName}</span>
-                  )}
+            {/* Edit Profile & Action Tools */}
+            <div className="flex items-center gap-2 self-end md:self-center">
+              {!editing ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={startEditing}
+                    className="btn btn-secondary btn-sm flex items-center gap-1.5 text-xs font-bold rounded-xl cursor-pointer"
+                  >
+                    <Edit2 size={13} /> Edit Profile
+                  </button>
+                  <button
+                    type="button"
+                    onClick={deleteLead}
+                    className="btn btn-ghost btn-sm text-rose-600 hover:bg-rose-50 p-2 rounded-xl"
+                    title="Delete Candidate Record"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm(lead);
+                      setEditing(false);
+                    }}
+                    className="btn btn-secondary btn-sm text-xs rounded-xl"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveLead}
+                    disabled={saving}
+                    className="btn btn-primary btn-sm flex items-center gap-1.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                  >
+                    {saving ? <div className="spinner" style={{ width: 13, height: 13 }} /> : <Check size={14} />}
+                    <span>Save Changes</span>
+                  </button>
                 </div>
               )}
             </div>
-          )}
+          </div>
 
-          {/* Transfer Lead Modal */}
-          {showTransferModal && (
-            <div className="modal-overlay" onClick={() => setShowTransferModal(false)}>
-              <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
-                <h3 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700 }}>🔄 Transfer Lead to Team Agent</h3>
-                <form onSubmit={handleRequestTransfer} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Select Recipient Agent</label>
-                    <select
-                      value={selectedAgentId}
-                      onChange={e => setSelectedAgentId(e.target.value)}
-                      className="form-control"
-                      style={{ width: '100%' }}
-                      required
-                    >
-                      <option value="">-- Choose Agent --</option>
-                      {agentsList.filter(a => String(a._id) !== String(currentUser?._id)).map(a => (
-                        <option key={a._id} value={a._id}>👤 {a.name} ({a.roleId?.name || a.role || 'Agent'})</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Reason for Transfer</label>
-                    <textarea
-                      placeholder="e.g. Client requested representative in their local territory or language."
-                      value={transferReason}
-                      onChange={e => setTransferReason(e.target.value)}
-                      className="form-control"
-                      style={{ width: '100%', height: 75, resize: 'none' }}
-                      required
-                    />
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-                    <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }}>Transfer Lead Now</button>
-                    <button type="button" onClick={() => setShowTransferModal(false)} className="btn btn-ghost">Cancel</button>
-                  </div>
-                </form>
-              </div>
+          {/* Interactive Admissions Funnel Stepper */}
+          <div className="border-t border-slate-100 pt-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                Admissions Funnel Progression:
+              </span>
+              <span className="text-[11px] font-bold text-indigo-700 capitalize">
+                Stage: {STAGE_LABELS[lead.status] || (lead.status || 'new').replace(/_/g, ' ')}
+              </span>
             </div>
-          )}
 
-          {/* Force Transfer / Manager Reassign Modal */}
-          {showForceTransferModal && (
-            <div className="modal-overlay" onClick={() => setShowForceTransferModal(false)}>
-              <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
-                <h3 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700, color: '#f59e0b' }}>⚡ Reassign Lead to Agent</h3>
-                <form onSubmit={handleForceTransfer} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Select Target Agent</label>
-                    <select
-                      value={selectedAgentId}
-                      onChange={e => setSelectedAgentId(e.target.value)}
-                      className="form-control"
-                      style={{ width: '100%' }}
-                      required
-                    >
-                      <option value="">-- Choose Agent --</option>
-                      {agentsList.map(a => (
-                        <option key={a._id} value={a._id}>👤 {a.name} ({a.roleId?.name || a.role || 'Agent'})</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Reassignment Note / Reason</label>
-                    <textarea
-                      placeholder="e.g. Manager reassignment based on territory or workload."
-                      value={transferReason}
-                      onChange={e => setTransferReason(e.target.value)}
-                      className="form-control"
-                      style={{ width: '100%', height: 75, resize: 'none' }}
-                    />
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-                    <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center', background: '#f59e0b', borderColor: '#f59e0b' }}>Confirm Reassign</button>
-                    <button type="button" onClick={() => setShowForceTransferModal(false)} className="btn btn-ghost">Cancel</button>
-                  </div>
-                </form>
-              </div>
+            <div className="flex sm:grid sm:grid-cols-4 lg:grid-cols-7 gap-1.5 overflow-x-auto no-scrollbar pb-1 sm:pb-0 scroll-smooth snap-x touch-pan-x">
+              {[
+                { key: 'new_lead', aliases: ['new', 'new_lead'], label: '1. New Lead' },
+                { key: 'contacted', aliases: ['contacted'], label: '2. Tele-Counsel' },
+                { key: 'shortlisted', aliases: ['shortlisted'], label: '3. Shortlisted' },
+                { key: 'site_visit_scheduled', aliases: ['site_visit_scheduled'], label: '4. Campus Visit' },
+                { key: 'negotiation', aliases: ['negotiation'], label: '5. Quota Booking' },
+                { key: 'converted', aliases: ['closed', 'converted'], label: '6. Confirmed Won' },
+                { key: 'lost', aliases: ['lost', 'not_interested'], label: '❌ Dropped / Lost' },
+              ].map(st => {
+                const isActive = st.aliases.includes(lead.status) || lead.status === st.key;
+                return (
+                  <button
+                    key={st.key}
+                    type="button"
+                    onClick={() => handleStatusSelectChange(st.key)}
+                    className={`py-1.5 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 border cursor-pointer shrink-0 whitespace-nowrap min-w-[110px] sm:min-w-0 sm:shrink snap-start ${
+                      isActive
+                        ? (st.key === 'converted' || lead.status === 'closed')
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                          : (st.key === 'lost' || lead.status === 'not_interested')
+                          ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                          : 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                        : 'bg-slate-50 border-slate-200/80 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>{st.label}</span>
+                  </button>
+                );
+              })}
             </div>
-          )}
+          </div>
 
-          {/* Release to Pool Modal */}
-          {showReleaseModal && (
-            <div className="modal-overlay" onClick={() => setShowReleaseModal(false)}>
-              <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
-                <h3 style={{ margin: '0 0 10px', fontSize: 16, fontWeight: 700, color: '#ef4444' }}>📦 Release Lead to Unassigned Pool</h3>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
-                  This lead will be unassigned and returned to the common Unassigned Pool. Please specify the reason why you are releasing this lead.
-                </p>
-                <form onSubmit={handleReleaseLead} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Reason for Release *</label>
-                    <textarea
-                      placeholder="e.g. Client budget does not match / Client requested different project / Not reachable on call."
-                      value={releaseReason}
-                      onChange={e => setReleaseReason(e.target.value)}
-                      className="form-control"
-                      style={{ width: '100%', height: 80, resize: 'none' }}
-                      required
-                    />
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-                    <button type="submit" disabled={releasing} className="btn btn-primary" style={{ flex: 1, justifyContent: 'center', background: '#ef4444', borderColor: '#ef4444' }}>
-                      {releasing ? 'Releasing...' : 'Confirm Release to Pool'}
-                    </button>
-                    <button type="button" onClick={() => setShowReleaseModal(false)} className="btn btn-ghost">Cancel</button>
-                  </div>
-                </form>
-              </div>
+          {/* Scheduled Follow-Up Alert Strip */}
+          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-slate-400 font-bold uppercase text-[10px]">Follow-Up:</span>
+              {lead.followUpDate ? (
+                <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                  <Clock size={13} className="text-amber-500" />
+                  <span>{formatDisplayDateTime(lead.followUpDate)}</span>
+                  {lead.followUpStatus === 'completed' && (
+                    <span className="badge badge-closed text-[10px]">Completed ✅</span>
+                  )}
+                </div>
+              ) : (
+                <span className="text-slate-400 italic">No scheduled follow-up</span>
+              )}
             </div>
-          )}
 
-          {/* Quick Action Top Bar */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14, width: '100%' }}>
-            <a href={`tel:${lead.phone}`} className="btn btn-secondary btn-sm" style={{ flex: '1 1 130px', minWidth: 110, gap: 6, justifyContent: 'center', flexShrink: 0 }}>
-              <Phone size={14} className="flex-shrink-0" /> Call Client
-            </a>
-            
-            <button 
-              onClick={() => setShowTemplates(true)} 
-              className="btn btn-primary btn-sm" 
-              style={{ flex: '1.2 1 150px', minWidth: 130, gap: 6, justifyContent: 'center', flexShrink: 0 }}
+            <div className="flex items-center gap-2">
+              {lead.followUpDate && lead.followUpStatus !== 'completed' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowCompleteFollowUpModal(true)}
+                    className="btn btn-xs btn-primary font-bold px-3 py-1 rounded-lg flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    <CheckCircle2 size={12} /> Mark Done
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowSchedulerModal(true)}
+                    className="btn btn-xs btn-secondary font-bold px-3 py-1 rounded-lg flex items-center gap-1"
+                  >
+                    <Calendar size={12} /> Reschedule
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowSchedulerModal(true)}
+                  className="btn btn-xs btn-secondary font-bold px-3 py-1 rounded-lg flex items-center gap-1 text-indigo-700"
+                >
+                  <Calendar size={12} /> Schedule Follow-Up
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 1-Click High-Converting Action Command Bar */}
+          <div className="flex flex-wrap gap-1.5 sm:gap-2 pt-1 border-t border-slate-100">
+            <a
+              href={`tel:${lead.phone}`}
+              className="btn btn-secondary btn-sm flex-1 sm:flex-initial min-w-[75px] sm:min-w-[105px] text-xs py-2 px-2.5 sm:px-3.5 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-xs"
             >
-              <MessageCircle size={14} className="flex-shrink-0" /> Send Proposal
+              <Phone size={14} className="text-indigo-600 shrink-0" /> <span>Call</span>
+            </a>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveRightTab('chat');
+                setMobileTab('chat');
+              }}
+              className="btn btn-secondary btn-sm flex-1 sm:flex-initial min-w-[100px] sm:min-w-[125px] text-xs py-2 px-2.5 sm:px-3.5 rounded-xl font-bold flex items-center justify-center gap-1.5 text-emerald-700 bg-emerald-50/60 border-emerald-200 hover:bg-emerald-100 shadow-xs"
+            >
+              <MessageCircle size={14} className="text-emerald-600 shrink-0" /> <span>WhatsApp</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowTemplates(true)}
+              className="btn btn-secondary btn-sm flex-1 sm:flex-initial min-w-[100px] sm:min-w-[130px] text-xs py-2 px-2.5 sm:px-3.5 rounded-xl font-bold flex items-center justify-center gap-1.5 text-indigo-700 bg-indigo-50/60 border-indigo-200 hover:bg-indigo-100 shadow-xs"
+            >
+              <Paperclip size={14} className="text-indigo-600 shrink-0" /> <span>Templates</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowShareFeeModal(true)}
+              className="btn btn-primary btn-sm flex-1 sm:flex-initial min-w-[125px] sm:min-w-[160px] text-xs py-2 px-3 sm:px-4 rounded-xl font-bold flex items-center justify-center gap-1.5 bg-gradient-to-r from-indigo-600 via-indigo-700 to-blue-600 text-white shadow-md hover:from-indigo-700 hover:to-blue-700 transition"
+            >
+              <GraduationCap size={15} className="text-white shrink-0" />
+              <span>Share Fee</span>
             </button>
           </div>
+        </div>
 
-          {/* Mobile Segmented Tab Controller (Visible on Mobile & Tablet < 1024px) */}
-          <div className="lg:hidden" style={{ marginBottom: 14 }}>
-            <div className="segmented-control">
-              <button
-                type="button"
-                onClick={() => setMobileTab('details')}
-                className={`segmented-btn ${mobileTab === 'details' ? 'active' : ''}`}
-              >
-                📋 Info
-              </button>
-              <button
-                type="button"
-                onClick={() => setMobileTab('chat')}
-                className={`segmented-btn ${mobileTab === 'chat' ? 'active' : ''}`}
-              >
-                💬 Chat
-              </button>
-              <button
-                type="button"
-                onClick={() => setMobileTab('memos')}
-                className={`segmented-btn ${mobileTab === 'memos' ? 'active' : ''}`}
-              >
-                🎙️ Audio
-              </button>
-              <button
-                type="button"
-                onClick={() => setMobileTab('audit')}
-                className={`segmented-btn ${mobileTab === 'audit' ? 'active' : ''}`}
-              >
-                ⏱️ Timeline
-              </button>
-            </div>
+        {/* Mobile Tab Switcher */}
+        <div className="lg:hidden mb-3">
+          <div className="segmented-control bg-slate-100/90 dark:bg-slate-800/90 p-1.5 rounded-2xl flex items-center gap-1 border border-slate-200/80 dark:border-slate-700/80 shadow-xs overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => setMobileTab('details')}
+              className={`segmented-btn flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all duration-150 flex items-center justify-center gap-1 cursor-pointer shrink-0 ${
+                mobileTab === 'details'
+                  ? 'active bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs border border-slate-200/60 dark:border-slate-700 font-extrabold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 hover:bg-white/50 border border-transparent'
+              }`}
+            >
+              📋 Info
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileTab('chat')}
+              className={`segmented-btn flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all duration-150 flex items-center justify-center gap-1 cursor-pointer shrink-0 ${
+                mobileTab === 'chat'
+                  ? 'active bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs border border-slate-200/60 dark:border-slate-700 font-extrabold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 hover:bg-white/50 border border-transparent'
+              }`}
+            >
+              💬 Chat
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileTab('notes')}
+              className={`segmented-btn flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all duration-150 flex items-center justify-center gap-1 cursor-pointer shrink-0 ${
+                mobileTab === 'notes'
+                  ? 'active bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs border border-slate-200/60 dark:border-slate-700 font-extrabold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 hover:bg-white/50 border border-transparent'
+              }`}
+            >
+              📝 Notes
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileTab('memos')}
+              className={`segmented-btn flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all duration-150 flex items-center justify-center gap-1 cursor-pointer shrink-0 ${
+                mobileTab === 'memos'
+                  ? 'active bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs border border-slate-200/60 dark:border-slate-700 font-extrabold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 hover:bg-white/50 border border-transparent'
+              }`}
+            >
+              🎙️ Audio
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileTab('audit')}
+              className={`segmented-btn flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all duration-150 flex items-center justify-center gap-1 cursor-pointer shrink-0 ${
+                mobileTab === 'audit'
+                  ? 'active bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs border border-slate-200/60 dark:border-slate-700 font-extrabold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 hover:bg-white/50 border border-transparent'
+              }`}
+            >
+              ⏱️ Audit
+            </button>
           </div>
+        </div>
 
-          {/* ─────────────────────────────────────────────────────────────
-              DESKTOP SPLIT-SCREEN LAYOUT:
-              Left Column (40%): Deal Requirements, Info, Notes, Audio Memos
-              Right Column (60%): WhatsApp Live Chat, Activity Audit Trail
-             ───────────────────────────────────────────────────────────── */}
-          <div className="details-split-grid">
-            {/* LEFT COLUMN */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* Deal & Lead Info Card */}
-              <div className={`card ${mobileTab === 'details' ? 'block' : 'hidden lg:block'}`}>
-                <p className="section-title" style={{ margin: '0 0 12px' }}>📋 Deal Requirements & Client Info</p>
-                {editing ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {activeFields.map((field) => {
-                      const isMandatory = ['name', 'phone', 'followUpDate'].includes(field.fieldId) || field.isRequired;
-                      const isSystem = Boolean(field.isSystem);
-                      const currentVal = isSystem ? (form[field.fieldId] || '') : (form.customData?.[field.fieldId] || '');
+        {/* ── DESKTOP SPLIT-SCREEN WORKSPACE ── */}
+        <div className="details-split-grid">
+          
+          {/* LEFT COLUMN: Candidate Dossier & Academic Profile */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            
+            {/* Academic & Personal Profile Card */}
+            <div className={`card ${mobileTab === 'details' ? 'block' : 'hidden lg:block'}`}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <p className="section-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <GraduationCap size={16} color="var(--accent)" /> Student Candidate Dossier
+                </p>
+                <div className="flex items-center gap-2">
+                  {lead.score !== undefined && lead.score > 0 && (
+                    <span className="badge badge-primary text-[10px] font-bold">
+                      Score: {lead.score}/100
+                    </span>
+                  )}
+                  {editing && (
+                    <span className="badge badge-warning text-[10px] font-bold">
+                      Editing Mode
+                    </span>
+                  )}
+                </div>
+              </div>
 
-                      if (field.fieldId === 'projectId') {
-                        return (
-                          <div key={field.fieldId}>
-                            <label className="label">{field.label} {isMandatory && '*'}</label>
-                            <select
-                              className="input"
-                              value={form.projectId || ''}
-                              onChange={e => {
-                                const p = projects.find(proj => proj._id === e.target.value);
-                                setForm(f => ({ ...f, projectId: e.target.value, project: p?.name || f.project }));
-                              }}
-                            >
-                              <option value="">-- Select Offering --</option>
-                              {projects.map(p => (
-                                <option key={p._id} value={p._id}>📦 {p.name} ({p.location})</option>
-                              ))}
-                            </select>
-                          </div>
-                        );
-                      }
+              {editing ? (
+                <div className="space-y-4">
+                  {/* Edit Tabs Controller */}
+                  <div className="segmented-control bg-slate-100/90 dark:bg-slate-800/90 p-1 rounded-xl flex items-center gap-1 border border-slate-200/80 overflow-x-auto">
+                    {[
+                      { id: 'academics', label: '🎓 Academics' },
+                      { id: 'entrance', label: '📝 Entrance' },
+                      { id: 'preferences', label: '🏛️ Preferences' },
+                      { id: 'personal', label: '👤 Personal & Family' },
+                      { id: 'milestones', label: '💼 Milestones & Fee' },
+                    ].map(tab => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setEditTab(tab.id)}
+                        className={`segmented-btn flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer shrink-0 ${
+                          editTab === tab.id
+                            ? 'active bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs border border-slate-200/60 font-extrabold'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 hover:bg-white/50 border border-transparent'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
 
-                      if (field.fieldId === 'status') {
-                        return (
-                          <div key={field.fieldId}>
-                            <label className="label">{field.label} {isMandatory && '*'}</label>
-                            <select
-                              className="input"
-                              value={form.status || availableStages[0] || 'new'}
-                              onChange={e => handleStatusSelectChange(e.target.value)}
-                            >
-                              {availableStages.map(s => (
-                                <option key={s} value={s}>{STAGE_LABELS[s] || s}</option>
-                              ))}
-                            </select>
-
-                            {form.status === 'closed' && (
-                              <div style={{ marginTop: 8, padding: '10px 12px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 10 }}>
-                                <label className="label" style={{ color: '#16a34a', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                  <span>🏆 Final Closed Deal Amount (₹) <span style={{ color: 'var(--red)' }}>*Required</span></span>
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowCloseModal(true)}
-                                    style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 11, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
-                                  >
-                                    Open Prompt
-                                  </button>
-                                </label>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  required
-                                  placeholder="e.g. 250000"
-                                  className="input"
-                                  value={form.closedDealAmount || ''}
-                                  onChange={e => setForm(f => ({ ...f, closedDealAmount: e.target.value }))}
-                                  style={{ borderColor: 'var(--green)', fontWeight: 700, fontSize: 14 }}
-                                />
-                              </div>
-                            )}
-
-                            {isLostStage(form.status) && (
-                              <div style={{ marginTop: 8, padding: '10px 12px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--red)', textTransform: 'uppercase' }}>
-                                    ⚠️ Lost Reason Details (Mandatory)
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => { setPendingLostStage(form.status); setShowLostModal(true); }}
-                                    style={{ background: 'none', border: 'none', color: 'var(--red)', fontSize: 11, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
-                                  >
-                                    Open Dialog
-                                  </button>
-                                </div>
-                                <select
-                                  className="input"
-                                  value={form.lostReason || ''}
-                                  onChange={e => setForm(f => ({ ...f, lostReason: e.target.value }))}
-                                  style={{ height: 36, fontSize: 12 }}
-                                  required
-                                >
-                                  <option value="">-- Select Reason --</option>
-                                  {LOST_REASON_OPTIONS.map(opt => (
-                                    <option key={opt} value={opt}>{opt}</option>
-                                  ))}
-                                </select>
-                                <input
-                                  className="input"
-                                  placeholder="Lost context / competitor feedback..."
-                                  value={form.lostReasonDetail || ''}
-                                  onChange={e => setForm(f => ({ ...f, lostReasonDetail: e.target.value }))}
-                                  style={{ height: 36, fontSize: 12 }}
-                                />
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }
-
-                      if (field.fieldType === 'dropdown') {
-                        const options = field.options || [];
-                        return (
-                          <div key={field.fieldId}>
-                            <label className="label">{field.label} {isMandatory && '*'}</label>
-                            <select
-                              className="input"
-                              value={currentVal}
-                              onChange={e => {
-                                const val = e.target.value;
-                                if (isSystem) {
-                                  setForm(f => ({ ...f, [field.fieldId]: val }));
-                                } else {
-                                  setForm(f => ({ ...f, customData: { ...(f.customData || {}), [field.fieldId]: val } }));
-                                }
-                              }}
-                            >
-                              <option value="">Select {field.label}...</option>
-                              {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                            </select>
-                          </div>
-                        );
-                      }
-
-                      if (field.fieldType === 'date' || field.fieldType === 'datetime') {
-                        const isDateTime = field.fieldType === 'datetime' || field.fieldId === 'followUpDate' || field.fieldId === 'siteVisitDate';
-                        const dateFormatted = currentVal ? (isDateTime ? toLocalDatetimeString(currentVal) : String(currentVal).slice(0, 10)) : '';
-
-                        return (
-                          <div key={field.fieldId}>
-                            <label className="label">{field.label} {isMandatory && '*'}</label>
+                  {/* 1. Academics Tab */}
+                  {editTab === 'academics' && (
+                    <div className="space-y-4 pt-1">
+                      {/* 10th Details */}
+                      <div className="bg-slate-50/70 p-3 rounded-xl border border-slate-200/60">
+                        <span className="text-[11px] font-extrabold uppercase text-slate-500 block mb-2">
+                          📘 10th Standard / Secondary School
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">10th Board</label>
                             <input
-                              className="input"
-                              type={isDateTime ? 'datetime-local' : 'date'}
-                              value={dateFormatted}
-                              onChange={e => {
-                                const val = e.target.value ? (isDateTime ? fromLocalDatetimeStringToISO(e.target.value) : e.target.value) : null;
-                                if (isSystem) {
-                                  setForm(f => ({ ...f, [field.fieldId]: val }));
-                                } else {
-                                  setForm(f => ({ ...f, customData: { ...(f.customData || {}), [field.fieldId]: val } }));
-                                }
-                              }}
-                              required={isMandatory}
+                              type="text"
+                              className="input text-xs"
+                              placeholder="e.g. CBSE, ICSE, State Board"
+                              value={form.tenthBoard ?? ''}
+                              onChange={e => setForm(f => ({ ...f, tenthBoard: e.target.value }))}
                             />
                           </div>
-                        );
-                      }
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">10th Percentage (%)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="100"
+                              className="input text-xs"
+                              placeholder="e.g. 88.5"
+                              value={form.tenthPercentage ?? form.academicScore10th ?? ''}
+                              onChange={e => setForm(f => ({ ...f, tenthPercentage: e.target.value, academicScore10th: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Passing Year</label>
+                            <input
+                              type="text"
+                              className="input text-xs"
+                              placeholder="e.g. 2022"
+                              value={form.tenthYear ?? ''}
+                              onChange={e => setForm(f => ({ ...f, tenthYear: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                      </div>
 
-                      return (
-                        <div key={field.fieldId}>
-                          <label className="label">{field.label} {isMandatory && '*'}</label>
+                      {/* 12th Details */}
+                      <div className="bg-slate-50/70 p-3 rounded-xl border border-slate-200/60">
+                        <span className="text-[11px] font-extrabold uppercase text-slate-500 block mb-2">
+                          📗 12th Standard / Higher Secondary (10+2)
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-2.5">
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">12th Board</label>
+                            <input
+                              type="text"
+                              className="input text-xs"
+                              placeholder="e.g. CBSE, ISC, State Board"
+                              value={form.twelfthBoard ?? ''}
+                              onChange={e => setForm(f => ({ ...f, twelfthBoard: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Academic Stream</label>
+                            <select
+                              className="input text-xs cursor-pointer"
+                              value={form.twelfthStream ?? form.stream ?? ''}
+                              onChange={e => setForm(f => ({ ...f, twelfthStream: e.target.value, stream: e.target.value }))}
+                            >
+                              <option value="">-- Select Stream --</option>
+                              <option value="PCM">PCM (Physics, Chemistry, Maths)</option>
+                              <option value="PCB">PCB (Physics, Chemistry, Biology)</option>
+                              <option value="PCMB">PCMB (Maths & Biology)</option>
+                              <option value="Commerce">Commerce</option>
+                              <option value="Arts / Humanities">Arts / Humanities</option>
+                              <option value="Other">Other</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Aggregate Marks (%)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="100"
+                              className="input text-xs"
+                              placeholder="e.g. 84.2"
+                              value={form.twelfthPercentage ?? form.academicScore12th ?? ''}
+                              onChange={e => setForm(f => ({ ...f, twelfthPercentage: e.target.value, academicScore12th: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">PCM / PCB Group (%)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="100"
+                              className="input text-xs"
+                              placeholder="Key for B.Tech/MBBS"
+                              value={form.twelfthGroupPercentage ?? ''}
+                              onChange={e => setForm(f => ({ ...f, twelfthGroupPercentage: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Passing Year</label>
+                            <input
+                              type="text"
+                              className="input text-xs"
+                              placeholder="e.g. 2024"
+                              value={form.twelfthYear ?? ''}
+                              onChange={e => setForm(f => ({ ...f, twelfthYear: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Graduation Details */}
+                      <div className="bg-slate-50/70 p-3 rounded-xl border border-slate-200/60">
+                        <span className="text-[11px] font-extrabold uppercase text-slate-500 block mb-2">
+                          🎓 Graduation / Undergraduate (For PG/MBA applicants)
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-2.5">
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Graduation Degree</label>
+                            <input
+                              type="text"
+                              className="input text-xs"
+                              placeholder="e.g. B.Tech, B.Com, B.Sc, BBA"
+                              value={form.gradDegree ?? ''}
+                              onChange={e => setForm(f => ({ ...f, gradDegree: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">College / University</label>
+                            <input
+                              type="text"
+                              className="input text-xs"
+                              placeholder="e.g. Delhi University, VTU, Pune University"
+                              value={form.gradCollege ?? ''}
+                              onChange={e => setForm(f => ({ ...f, gradCollege: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Graduation % / CGPA</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="100"
+                              className="input text-xs"
+                              placeholder="e.g. 76.5 or 8.1"
+                              value={form.gradPercentage ?? form.academicScoreGrad ?? ''}
+                              onChange={e => setForm(f => ({ ...f, gradPercentage: e.target.value, academicScoreGrad: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Passing / Completion Year</label>
+                            <input
+                              type="text"
+                              className="input text-xs"
+                              placeholder="e.g. 2025"
+                              value={form.gradYear ?? ''}
+                              onChange={e => setForm(f => ({ ...f, gradYear: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2. Entrance Exams Tab */}
+                  {editTab === 'entrance' && (
+                    <div className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/60 space-y-3 pt-2">
+                      <span className="text-[11px] font-extrabold uppercase text-slate-500 block">
+                        📝 Competitive & National / State Entrance Examinations
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600 block mb-1">Exam Name</label>
                           <input
-                            className="input"
-                            type={field.fieldType === 'number' ? 'number' : field.fieldType === 'email' ? 'email' : 'text'}
-                            placeholder={`Enter ${field.label}...`}
-                            value={currentVal}
-                            onChange={e => {
-                              const val = e.target.value;
-                              if (isSystem) {
-                                setForm(f => ({ ...f, [field.fieldId]: val }));
-                              } else {
-                                setForm(f => ({ ...f, customData: { ...(f.customData || {}), [field.fieldId]: val } }));
-                              }
-                            }}
-                            required={isMandatory}
+                            type="text"
+                            className="input text-xs"
+                            placeholder="e.g. NEET-UG, JEE-Main, CAT, CUET, CLAT"
+                            value={form.entranceExam ?? ''}
+                            onChange={e => setForm(f => ({ ...f, entranceExam: e.target.value }))}
                           />
                         </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, width: '100%' }}>
-                      <div style={{ minWidth: 0 }}>
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Status / Stage</span>
-                        <div style={{ marginTop: 2 }}>
-                          <span className={`badge ${STATUS_COLORS[lead.status] || 'badge-tag'} flex-shrink-0`}>
-                            {STAGE_LABELS[lead.status] || lead.status}
-                          </span>
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600 block mb-1">Roll / Application Number</label>
+                          <input
+                            type="text"
+                            className="input text-xs"
+                            placeholder="e.g. 2403100582"
+                            value={form.entranceExamRollNo ?? ''}
+                            onChange={e => setForm(f => ({ ...f, entranceExamRollNo: e.target.value }))}
+                          />
                         </div>
                       </div>
-
-                      <div style={{ minWidth: 0 }}>
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Lead Origin / Source</span>
-                        <div style={{ marginTop: 2 }}>
-                          <SourcePill lead={lead} showDetail={true} />
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600 block mb-1">Marks / Score Obtained</label>
+                          <input
+                            type="text"
+                            className="input text-xs"
+                            placeholder="e.g. 580/720 or 195/300"
+                            value={form.entranceScore ?? ''}
+                            onChange={e => setForm(f => ({ ...f, entranceScore: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600 block mb-1">All India Rank (AIR)</label>
+                          <input
+                            type="text"
+                            className="input text-xs"
+                            placeholder="e.g. 14250"
+                            value={form.entranceRank ?? ''}
+                            onChange={e => setForm(f => ({ ...f, entranceRank: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600 block mb-1">Percentile (%ile)</label>
+                          <input
+                            type="text"
+                            className="input text-xs"
+                            placeholder="e.g. 96.8"
+                            value={form.entrancePercentile ?? ''}
+                            onChange={e => setForm(f => ({ ...f, entrancePercentile: e.target.value }))}
+                          />
                         </div>
                       </div>
+                    </div>
+                  )}
 
-                      {lead.company && (
-                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Company</span>
-                          <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{lead.company}</p>
+                  {/* 3. Preferences & Quota Tab */}
+                  {editTab === 'preferences' && (
+                    <div className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/60 space-y-3 pt-2">
+                      <span className="text-[11px] font-extrabold uppercase text-slate-500 block">
+                        🏛️ Target Program, Quota & College Preferences
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600 block mb-1">Target Program / Course</label>
+                          <input
+                            type="text"
+                            className="input text-xs"
+                            placeholder="e.g. B.Tech Computer Science, MBBS, MBA"
+                            value={form.targetCourse ?? ''}
+                            onChange={e => setForm(f => ({ ...f, targetCourse: e.target.value }))}
+                          />
                         </div>
-                      )}
-
-                      {lead.email && (
-                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Email</span>
-                          <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-                            <a href={`mailto:${lead.email}`} style={{ color: 'var(--accent)', textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lead.email}</a>
-                          </p>
-                        </div>
-                      )}
-
-                      {lead.project && (
-                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Selected Offering</span>
-                          <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>📦 {lead.project}</p>
-                        </div>
-                      )}
-
-                      {lead.propertyType && (
-                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Category / Type</span>
-                          <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{lead.propertyType}</p>
-                        </div>
-                      )}
-
-                      {lead.budget && (
-                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Budget</span>
-                          <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--green)' }}>💰 {lead.budget}</p>
-                        </div>
-                      )}
-
-                      {lead.closedDealAmount && (
-                        <div style={{ background: 'rgba(34,197,94,0.1)', padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(34,197,94,0.3)', minWidth: 0, overflow: 'hidden' }}>
-                          <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 700 }}>🏆 Closed Deal Value</span>
-                          <p className="truncate" style={{ margin: 0, fontSize: 15, fontWeight: 800, color: 'var(--green)' }}>
-                            ₹{Number(lead.closedDealAmount).toLocaleString('en-IN')}
-                          </p>
-                        </div>
-                      )}
-
-                      {lead.location && (
-                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Location</span>
-                          <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>📍 {lead.location}</p>
-                        </div>
-                      )}
-
-                      {/* Follow-Up Action Card */}
-                      {lead.followUpDate ? (
-                        <div style={{ minWidth: 0, overflow: 'hidden', gridColumn: '1/-1', padding: '12px 14px', background: 'rgba(99,102,241,0.08)', borderRadius: 12, border: '1px solid rgba(99,102,241,0.25)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                            <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 800, textTransform: 'uppercase' }}>⏰ Next Scheduled Follow-Up</span>
-                                {Boolean((lead.followUpDelayCount || lead.activeFollowUp?.delayCount || 0) > 0) && (
-                                  <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', background: 'rgba(245,158,11,0.2)', color: '#d97706', borderRadius: 6, border: '1px solid rgba(245,158,11,0.3)' }}>
-                                    Delay: {lead.followUpDelayCount || lead.activeFollowUp?.delayCount} / 2 Used
-                                  </span>
-                                )}
-                              </div>
-                              <p style={{ margin: '3px 0 0', fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
-                                📅 {format(new Date(lead.followUpDate), 'dd MMM yyyy, h:mm a')}
-                              </p>
-                            </div>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button
-                                type="button"
-                                onClick={() => setShowSchedulerModal(true)}
-                                className="btn btn-ghost btn-sm"
-                                style={{ padding: '6px 10px', fontSize: 11, color: 'var(--accent)', gap: 4, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontWeight: 600 }}
-                              >
-                                <Calendar size={13} /> Reschedule
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setShowCompleteFollowUpModal(true)}
-                                className="btn btn-primary btn-sm"
-                                style={{ padding: '6px 12px', fontSize: 11, background: '#16a34a', borderColor: '#16a34a', color: 'white', gap: 4, borderRadius: 8, fontWeight: 700 }}
-                              >
-                                <Check size={13} /> Note & Silence Alarm
-                              </button>
-                            </div>
-                          </div>
-
-                          {lead.followUpNote && (
-                            <div style={{ fontSize: 12, color: 'var(--text-muted)', background: 'var(--surface)', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)' }}>
-                              <strong style={{ color: 'var(--text)', fontWeight: 600 }}>Agenda:</strong> {lead.followUpNote}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div style={{ gridColumn: '1/-1' }}>
-                          <button
-                            type="button"
-                            onClick={() => setShowSchedulerModal(true)}
-                            className="btn btn-ghost btn-sm"
-                            style={{ width: '100%', padding: '10px', background: 'rgba(99,102,241,0.06)', border: '1px dashed rgba(99,102,241,0.3)', color: 'var(--accent)', borderRadius: 10, fontWeight: 700, fontSize: 12, justifyContent: 'center', gap: 6 }}
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600 block mb-1">Stream / Domain</label>
+                          <select
+                            className="input text-xs cursor-pointer"
+                            value={form.targetStream ?? form.targetDomain ?? ''}
+                            onChange={e => setForm(f => ({ ...f, targetStream: e.target.value, targetDomain: e.target.value }))}
                           >
-                            <Calendar size={14} /> + Schedule Follow-Up ⏰
-                          </button>
+                            <option value="">-- Select Domain --</option>
+                            <option value="Engineering (B.Tech/BE)">Engineering (B.Tech/BE)</option>
+                            <option value="Management (MBA/PGDM/BBA)">Management (MBA/PGDM/BBA)</option>
+                            <option value="Medical (MBBS/BDS/BAMS)">Medical (MBBS/BDS/BAMS)</option>
+                            <option value="Pharmacy (B.Pharm)">Pharmacy (B.Pharm)</option>
+                            <option value="Law (BA LLB/BBA LLB)">Law (BA LLB/BBA LLB)</option>
+                            <option value="Architecture / Design">Architecture / Design</option>
+                            <option value="Nursing & Allied Health">Nursing & Allied Health</option>
+                            <option value="Arts & Sciences">Arts & Sciences</option>
+                          </select>
                         </div>
-                      )}
-
-                      {lead.assignedToName && (
-                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Assigned Specialist</span>
-                          <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>👤 {lead.assignedToName}</p>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600 block mb-1">Degree Level</label>
+                          <select
+                            className="input text-xs cursor-pointer"
+                            value={form.degreeLevel ?? ''}
+                            onChange={e => setForm(f => ({ ...f, degreeLevel: e.target.value }))}
+                          >
+                            <option value="">-- Select Degree Level --</option>
+                            <option value="Undergraduate (UG)">Undergraduate (UG)</option>
+                            <option value="Postgraduate (PG)">Postgraduate (PG)</option>
+                            <option value="Diploma">Diploma</option>
+                            <option value="Doctorate (Ph.D)">Doctorate (Ph.D)</option>
+                          </select>
                         </div>
-                      )}
-
-                      {/* Dynamic Custom Fields */}
-                      {lead.customData && Object.keys(lead.customData).length > 0 && (
-                        Object.entries(lead.customData)
-                          .filter(([k, v]) => v !== null && v !== undefined && v !== '' && typeof v !== 'object')
-                          .map(([key, val]) => (
-                            <div key={key} style={{ minWidth: 0, overflow: 'hidden' }}>
-                              <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-                                {key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ')}
-                              </span>
-                              <p className="truncate" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-                                {String(val)}
-                              </p>
-                            </div>
-                          ))
-                      )}
-
-                      {/* Ad Attribution Section */}
-                      {(lead.leadSource?.provider || lead.firstTouch?.source || lead.lastTouch?.source) && (
-                        <div style={{ gridColumn: '1/-1', marginTop: 10, padding: 12, background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                          <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                            🎯 Ad Attribution Details
-                          </span>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-                            {lead.leadSource?.provider && (
-                              <div>
-                                <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>Provider</span>
-                                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
-                                  {lead.leadSource.provider.toUpperCase()}
-                                </p>
-                              </div>
-                            )}
-                            {lead.leadSource?.externalLeadId && (
-                              <div>
-                                <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>External Lead ID</span>
-                                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text)', fontFamily: 'monospace' }}>
-                                  {lead.leadSource.externalLeadId}
-                                </p>
-                              </div>
-                            )}
-                            {lead.leadSource?.campaignName && (
-                              <div>
-                                <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>Campaign</span>
-                                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
-                                  {lead.leadSource.campaignName}
-                                </p>
-                              </div>
-                            )}
-                            {lead.leadSource?.adGroupName && (
-                              <div>
-                                <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>Ad Group</span>
-                                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
-                                  {lead.leadSource.adGroupName}
-                                </p>
-                              </div>
-                            )}
-                            {lead.leadSource?.adName && (
-                              <div>
-                                <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>Ad Variation</span>
-                                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
-                                  {lead.leadSource.adName}
-                                </p>
-                              </div>
-                            )}
-                            {lead.leadSource?.formName && (
-                              <div>
-                                <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>Lead Form</span>
-                                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
-                                  {lead.leadSource.formName}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* First Touch & Last Touch Timeline */}
-                          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            {lead.firstTouch?.source && (
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
-                                <span style={{ color: 'var(--text-muted)' }}>First Touch:</span>
-                                <span style={{ fontWeight: 600, color: 'var(--text)' }}>
-                                  {lead.firstTouch.source.toUpperCase()} ({lead.firstTouch.channel || 'organic'}) • {lead.firstTouch.campaign || 'Direct'}
-                                </span>
-                              </div>
-                            )}
-                            {lead.lastTouch?.source && (
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
-                                <span style={{ color: 'var(--text-muted)' }}>Last Touch:</span>
-                                <span style={{ fontWeight: 600, color: 'var(--text)' }}>
-                                  {lead.lastTouch.source.toUpperCase()} ({lead.lastTouch.channel || 'organic'}) • {lead.lastTouch.campaign || 'Direct'}
-                                </span>
-                              </div>
-                            )}
-                          </div>
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600 block mb-1">Preferred Specialization</label>
+                          <input
+                            type="text"
+                            className="input text-xs"
+                            placeholder="e.g. AI & ML, Data Science, Pediatrics"
+                            value={form.preferredSpecialization ?? ''}
+                            onChange={e => setForm(f => ({ ...f, preferredSpecialization: e.target.value }))}
+                          />
                         </div>
-                      )}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600 block mb-1">Preferred Colleges / Universities</label>
+                          <input
+                            type="text"
+                            className="input text-xs"
+                            placeholder="e.g. Ramaiah, RVCE, Manipal, SRM"
+                            value={form.preferredColleges ?? ''}
+                            onChange={e => setForm(f => ({ ...f, preferredColleges: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600 block mb-1">Preferred State / Location</label>
+                          <input
+                            type="text"
+                            className="input text-xs"
+                            placeholder="e.g. Karnataka / Bangalore, Maharashtra"
+                            value={form.targetState ?? ''}
+                            onChange={e => setForm(f => ({ ...f, targetState: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600 block mb-1">Admission Quota Preference</label>
+                          <select
+                            className="input text-xs cursor-pointer"
+                            value={form.quotaPreference ?? ''}
+                            onChange={e => setForm(f => ({ ...f, quotaPreference: e.target.value }))}
+                          >
+                            <option value="">-- No Quota Specified --</option>
+                            <option value="Merit Quota">Merit Quota</option>
+                            <option value="Management / Institutional Quota">Management / Institutional Quota</option>
+                            <option value="NRI Quota">NRI Quota</option>
+                            <option value="Govt / Sponsored Quota">Govt / Sponsored Quota</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600 block mb-1">Total Package Budget</label>
+                          <input
+                            type="text"
+                            className="input text-xs"
+                            placeholder="e.g. ₹5 - ₹10 Lakhs, ₹15 - ₹20 Lakhs"
+                            value={form.budget ?? form.packageBudget ?? ''}
+                            onChange={e => setForm(f => ({ ...f, budget: e.target.value, packageBudget: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
-                      {/* Event Management Stall & Pass Cards */}
-                      {lead.customData?.stallInventoryLock?.isLocked && (
-                        <div style={{ gridColumn: '1/-1', padding: '10px 14px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 10 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                            <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase' }}>
-                              🔒 Stall Inventory Lock (Reserved)
-                            </span>
-                            <span className="badge badge-follow_up" style={{ fontSize: 10 }}>Active Lock</span>
+                  {/* 4. Personal & Family Tab */}
+                  {editTab === 'personal' && (
+                    <div className="space-y-4 pt-1">
+                      {/* Personal Coordinates */}
+                      <div className="bg-slate-50/70 p-3 rounded-xl border border-slate-200/60">
+                        <span className="text-[11px] font-extrabold uppercase text-slate-500 block mb-2">
+                          👤 Candidate Coordinates
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-2.5">
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Full Name *</label>
+                            <input
+                              type="text"
+                              required
+                              className="input text-xs font-semibold"
+                              value={form.name ?? ''}
+                              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                            />
                           </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, fontSize: 12 }}>
-                            <div><strong>Lock Code:</strong> {lead.customData.stallInventoryLock.lockCode}</div>
-                            {lead.customData.stallInventoryLock.stallSize && <div><strong>Size:</strong> {lead.customData.stallInventoryLock.stallSize}</div>}
-                            {lead.customData.stallInventoryLock.stallCategory && <div><strong>Category:</strong> {lead.customData.stallInventoryLock.stallCategory}</div>}
-                            {lead.customData.stallInventoryLock.lockExpiresAt && <div><strong>Expires:</strong> {format(new Date(lead.customData.stallInventoryLock.lockExpiresAt), 'dd MMM, h:mm a')}</div>}
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Primary Phone Number *</label>
+                            <input
+                              type="text"
+                              required
+                              className="input text-xs font-semibold"
+                              value={form.phone ?? ''}
+                              onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                            />
                           </div>
                         </div>
-                      )}
-
-                      {lead.customData?.eventPass?.passCode && (
-                        <div style={{ gridColumn: '1/-1', padding: '10px 14px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 10 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                            <span style={{ fontSize: 11, fontWeight: 800, color: '#10b981', textTransform: 'uppercase' }}>
-                              🎟️ Digital Expo Entry Pass
-                            </span>
-                            <span className="badge badge-closed" style={{ fontSize: 10 }}>Pass Issued</span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-2.5">
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Alternate Phone / WhatsApp</label>
+                            <input
+                              type="text"
+                              className="input text-xs"
+                              placeholder="e.g. 9876543210"
+                              value={form.alternatePhone ?? ''}
+                              onChange={e => setForm(f => ({ ...f, alternatePhone: e.target.value }))}
+                            />
                           </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, fontSize: 12 }}>
-                            <div><strong>Pass Code:</strong> {lead.customData.eventPass.passCode}</div>
-                            <div><strong>Access:</strong> {lead.customData.eventPass.accessLevel || 'General Visitor'}</div>
-                            {lead.customData.eventPass.issuedAt && <div><strong>Issued:</strong> {format(new Date(lead.customData.eventPass.issuedAt), 'dd MMM, h:mm a')}</div>}
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Email Address</label>
+                            <input
+                              type="email"
+                              className="input text-xs"
+                              value={form.email ?? ''}
+                              onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                            />
                           </div>
                         </div>
-                      )}
-
-                      {/* Lost Reason Detail Callout (if Lost) */}
-                      {isLostStage(lead.status) && lead.lostReason && (
-                        <div style={{ gridColumn: '1/-1', padding: '10px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--red)', textTransform: 'uppercase' }}>
-                              ⚠️ Dropped Reason:
-                            </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-2.5">
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Date of Birth</label>
+                            <input
+                              type="date"
+                              className="input text-xs"
+                              value={form.dob ?? ''}
+                              onChange={e => setForm(f => ({ ...f, dob: e.target.value }))}
+                            />
                           </div>
-                          <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
-                            {lead.lostReason}
-                          </p>
-                          {lead.lostReasonDetail && (
-                            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                              Context: {lead.lostReasonDetail}
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Gender</label>
+                            <select
+                              className="input text-xs cursor-pointer"
+                              value={form.gender ?? ''}
+                              onChange={e => setForm(f => ({ ...f, gender: e.target.value }))}
+                            >
+                              <option value="">-- Select Gender --</option>
+                              <option value="Male">Male</option>
+                              <option value="Female">Female</option>
+                              <option value="Other">Other</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Category / Quota</label>
+                            <select
+                              className="input text-xs cursor-pointer"
+                              value={form.category ?? ''}
+                              onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                            >
+                              <option value="">-- Select Category --</option>
+                              <option value="General">General / Open</option>
+                              <option value="OBC-NCL">OBC-NCL</option>
+                              <option value="SC">SC</option>
+                              <option value="ST">ST</option>
+                              <option value="EWS">EWS</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">City</label>
+                            <input
+                              type="text"
+                              className="input text-xs"
+                              placeholder="e.g. Pune"
+                              value={form.city ?? form.targetCity ?? ''}
+                              onChange={e => setForm(f => ({ ...f, city: e.target.value, targetCity: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">State</label>
+                            <input
+                              type="text"
+                              className="input text-xs"
+                              placeholder="e.g. Maharashtra"
+                              value={form.state ?? form.targetState ?? ''}
+                              onChange={e => setForm(f => ({ ...f, state: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Full Address / Pincode</label>
+                            <input
+                              type="text"
+                              className="input text-xs"
+                              placeholder="Address with Pincode"
+                              value={form.address ?? ''}
+                              onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Parent & Guardian Coordinates */}
+                      <div className="bg-slate-50/70 p-3 rounded-xl border border-slate-200/60">
+                        <span className="text-[11px] font-extrabold uppercase text-slate-500 block mb-2">
+                          👨‍👩‍👦 Guardian & Family Information
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-2.5">
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Father / Guardian Name</label>
+                            <input
+                              type="text"
+                              className="input text-xs"
+                              placeholder="e.g. Ramesh Kumar"
+                              value={form.fatherName ?? ''}
+                              onChange={e => setForm(f => ({ ...f, fatherName: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Father / Guardian Phone</label>
+                            <input
+                              type="text"
+                              className="input text-xs"
+                              placeholder="e.g. 9876543210"
+                              value={form.fatherPhone ?? ''}
+                              onChange={e => setForm(f => ({ ...f, fatherPhone: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Father / Guardian Occupation</label>
+                            <input
+                              type="text"
+                              className="input text-xs"
+                              placeholder="e.g. Business / Govt Service / Private"
+                              value={form.fatherOccupation ?? ''}
+                              onChange={e => setForm(f => ({ ...f, fatherOccupation: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600 block mb-1">Mother Name</label>
+                            <input
+                              type="text"
+                              className="input text-xs"
+                              placeholder="e.g. Sunita Devi"
+                              value={form.motherName ?? ''}
+                              onChange={e => setForm(f => ({ ...f, motherName: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 5. Milestones & Fees Tab */}
+                  {editTab === 'milestones' && (
+                    <div className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/60 space-y-3 pt-2">
+                      <span className="text-[11px] font-extrabold uppercase text-slate-500 block">
+                        💼 Pipeline Milestones & Financials
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600 block mb-1">Campus Visit Scheduled Date</label>
+                          <input
+                            type="datetime-local"
+                            className="input text-xs"
+                            value={form.campusVisitDate ?? ''}
+                            onChange={e => setForm(f => ({ ...f, campusVisitDate: e.target.value, siteVisitDate: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600 block mb-1">Token Advance Paid (₹)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            className="input text-xs"
+                            placeholder="e.g. 50000"
+                            value={form.tokenAdvancePaid ?? ''}
+                            onChange={e => setForm(f => ({ ...f, tokenAdvancePaid: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600 block mb-1">Confirmed Admission Deal Value (₹)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            className="input text-xs font-bold text-emerald-700"
+                            placeholder="e.g. 1200000"
+                            value={form.admissionFinalFee ?? form.closedDealAmount ?? ''}
+                            onChange={e => setForm(f => ({ ...f, admissionFinalFee: e.target.value, closedDealAmount: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* View Section 1: Academic Scores */}
+                  <div className="bg-slate-50/60 rounded-xl p-3 border border-slate-100">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wide text-indigo-700 flex items-center gap-1.5 mb-2.5">
+                      <GraduationCap size={14} /> Academic Qualifications
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                      {/* 10th Card */}
+                      <div className="bg-white p-2.5 rounded-lg border border-slate-200/80 shadow-2xs">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">10th Standard</span>
+                        {lead.tenthPercentage || lead.academicScore10th ? (
+                          <>
+                            <p className="text-sm font-extrabold text-slate-800 m-0">
+                              {lead.tenthPercentage ?? lead.academicScore10th}%
                             </p>
-                          )}
+                            <span className="text-[11px] text-slate-500 block truncate">
+                              {lead.tenthBoard || 'Board not specified'} {lead.tenthYear ? `(${lead.tenthYear})` : ''}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-slate-400 italic text-xs">Not recorded</span>
+                        )}
+                      </div>
+
+                      {/* 12th Card */}
+                      <div className="bg-white p-2.5 rounded-lg border border-slate-200/80 shadow-2xs">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">12th Standard</span>
+                        {lead.twelfthPercentage || lead.academicScore12th ? (
+                          <>
+                            <p className="text-sm font-extrabold text-slate-800 m-0">
+                              {lead.twelfthPercentage ?? lead.academicScore12th}%
+                            </p>
+                            <span className="text-[11px] text-slate-500 block truncate">
+                              {lead.twelfthStream || lead.stream || 'Stream N/A'} {lead.twelfthBoard ? `• ${lead.twelfthBoard}` : ''}
+                            </span>
+                            {lead.twelfthGroupPercentage && (
+                              <span className="text-[10px] font-semibold text-indigo-600 block mt-0.5">
+                                Group PCM/PCB: {lead.twelfthGroupPercentage}%
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-slate-400 italic text-xs">Not recorded</span>
+                        )}
+                      </div>
+
+                      {/* Graduation Card */}
+                      <div className="bg-white p-2.5 rounded-lg border border-slate-200/80 shadow-2xs">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Undergraduate / Degree</span>
+                        {lead.gradPercentage || lead.academicScoreGrad || lead.gradDegree ? (
+                          <>
+                            <p className="text-sm font-extrabold text-slate-800 m-0">
+                              {lead.gradDegree || 'Degree'} {lead.gradPercentage || lead.academicScoreGrad ? `(${lead.gradPercentage || lead.academicScoreGrad}%)` : ''}
+                            </p>
+                            <span className="text-[11px] text-slate-500 block truncate">
+                              {lead.gradCollege || 'University N/A'} {lead.gradYear ? `• ${lead.gradYear}` : ''}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-slate-400 italic text-xs">Not applicable / N/A</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* View Section 2: Entrance Exams */}
+                  {(lead.entranceExam || lead.entranceRank || lead.entranceScore) && (
+                    <div className="bg-slate-50/60 rounded-xl p-3 border border-slate-100">
+                      <span className="text-[11px] font-extrabold uppercase tracking-wide text-amber-700 flex items-center gap-1.5 mb-2.5">
+                        📝 Entrance Examination
+                      </span>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                        {lead.entranceExam && (
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Exam</span>
+                            <span className="font-bold text-slate-800 text-xs">{lead.entranceExam}</span>
+                          </div>
+                        )}
+                        {lead.entranceRank && (
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">AIR / Rank</span>
+                            <span className="font-extrabold text-amber-600 text-xs">#{lead.entranceRank}</span>
+                          </div>
+                        )}
+                        {lead.entranceScore && (
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Score / Marks</span>
+                            <span className="font-bold text-slate-800 text-xs">{lead.entranceScore}</span>
+                          </div>
+                        )}
+                        {lead.entrancePercentile && (
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Percentile</span>
+                            <span className="font-bold text-indigo-700 text-xs">{lead.entrancePercentile}%ile</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* View Section 3: Target Preferences */}
+                  <div className="bg-slate-50/60 rounded-xl p-3 border border-slate-100">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wide text-indigo-700 flex items-center gap-1.5 mb-2.5">
+                      🏛️ Admission Preferences
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                      {lead.targetCourse && (
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Target Course</span>
+                          <span className="font-bold text-indigo-700 text-xs">🎓 {lead.targetCourse}</span>
+                        </div>
+                      )}
+                      {(lead.targetStream || lead.targetDomain) && (
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Domain / Stream</span>
+                          <span className="font-semibold text-slate-800 text-xs">{lead.targetStream || lead.targetDomain}</span>
+                        </div>
+                      )}
+                      {lead.degreeLevel && (
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Degree Level</span>
+                          <span className="font-semibold text-slate-800 text-xs">{lead.degreeLevel}</span>
+                        </div>
+                      )}
+                      {lead.preferredSpecialization && (
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Specialization</span>
+                          <span className="font-semibold text-slate-800 text-xs">{lead.preferredSpecialization}</span>
+                        </div>
+                      )}
+                      {lead.preferredColleges && (
+                        <div className="col-span-1 sm:col-span-2">
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Preferred Colleges</span>
+                          <span className="font-semibold text-slate-800 text-xs">🏛️ {lead.preferredColleges}</span>
+                        </div>
+                      )}
+                      {lead.targetState && (
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Preferred Location</span>
+                          <span className="font-semibold text-slate-800 text-xs">📍 {lead.targetState}</span>
+                        </div>
+                      )}
+                      {/* Quota Preference ONLY displayed if explicitly provided! */}
+                      {lead.quotaPreference && (
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Quota Preference</span>
+                          <span className="font-semibold text-slate-800 text-xs">🏛️ {lead.quotaPreference}</span>
+                        </div>
+                      )}
+                      {(lead.budget || lead.packageBudget) && (
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Package Budget</span>
+                          <span className="font-extrabold text-emerald-700 text-xs">💰 {lead.budget || lead.packageBudget}</span>
                         </div>
                       )}
                     </div>
                   </div>
-                )}
-              </div>
 
-              {/* Real Estate Domain Extension Panel (Conditional on Industry Detection) */}
-              {isRealEstate && lead && (
-                <div className={mobileTab === 'details' ? 'block' : 'hidden lg:block'}>
-                  <RealEstateLeadPanel lead={lead} onLeadUpdate={setLead} />
+                  {/* View Section 4: Personal & Family Dossier */}
+                  <div className="bg-slate-50/60 rounded-xl p-3 border border-slate-100">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wide text-indigo-700 flex items-center gap-1.5 mb-2.5">
+                      👤 Personal & Family Dossier
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Phone</span>
+                        <span className="font-semibold text-slate-800 text-xs">📞 {lead.phone}</span>
+                        {lead.alternatePhone && (
+                          <span className="text-[11px] text-emerald-600 block mt-0.5">WA: {lead.alternatePhone}</span>
+                        )}
+                      </div>
+                      {lead.email && (
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Email</span>
+                          <span className="font-semibold text-slate-800 text-xs truncate block">{lead.email}</span>
+                        </div>
+                      )}
+                      {(lead.dob || lead.gender || lead.category) && (
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Identity / Category</span>
+                          <span className="font-semibold text-slate-800 text-xs">
+                            {[lead.gender, lead.category].filter(Boolean).join(' • ')}
+                            {lead.dob ? ` (DOB: ${new Date(lead.dob).toLocaleDateString()})` : ''}
+                          </span>
+                        </div>
+                      )}
+                      {(lead.city || lead.state || lead.location) && (
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Location</span>
+                          <span className="font-semibold text-slate-800 text-xs">
+                            📍 {[lead.city, lead.state, lead.location].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', ')}
+                          </span>
+                        </div>
+                      )}
+                      {lead.fatherName && (
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Father / Guardian</span>
+                          <span className="font-semibold text-slate-800 text-xs">
+                            👨 {lead.fatherName} {lead.fatherPhone ? `(${lead.fatherPhone})` : ''}
+                          </span>
+                          {lead.fatherOccupation && (
+                            <span className="text-[11px] text-slate-500 block">{lead.fatherOccupation}</span>
+                          )}
+                        </div>
+                      )}
+                      {lead.motherName && (
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Mother</span>
+                          <span className="font-semibold text-slate-800 text-xs">👩 {lead.motherName}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* View Section 5: Milestones & Commercials */}
+                  {(lead.campusVisitDate || lead.siteVisitDate || lead.tokenAdvancePaid > 0 || lead.closedDealAmount > 0 || lead.admissionFinalFee > 0) && (
+                    <div className="bg-slate-50/60 rounded-xl p-3 border border-slate-100">
+                      <span className="text-[11px] font-extrabold uppercase tracking-wide text-indigo-700 flex items-center gap-1.5 mb-2.5">
+                        💼 Pipeline Milestones & Commercials
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                        {(lead.campusVisitDate || lead.siteVisitDate) && (
+                          <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">🏛️ Campus Visit</span>
+                            <span className="font-bold text-indigo-700 text-xs">
+                              {formatDisplayDateTime(lead.campusVisitDate || lead.siteVisitDate)}
+                            </span>
+                          </div>
+                        )}
+                        {lead.tokenAdvancePaid > 0 && (
+                          <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">💳 Token Advance Paid</span>
+                            <span className="font-extrabold text-amber-700 text-xs">
+                              ₹{Number(lead.tokenAdvancePaid).toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        )}
+                        {(lead.closedDealAmount > 0 || lead.admissionFinalFee > 0) && (
+                          <div className="bg-white p-2.5 rounded-lg border border-emerald-300 bg-emerald-50/30">
+                            <span className="text-[10px] uppercase font-bold text-emerald-600 block">🏆 Confirmed Package Value</span>
+                            <span className="font-extrabold text-emerald-800 text-sm">
+                              ₹{Number(lead.closedDealAmount || lead.admissionFinalFee).toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Ad Attribution Details (if available) */}
+                  {lead.leadSource?.provider && (
+                    <div style={{ marginTop: 10, padding: 12, background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        🎯 Digital Inbound Attribution
+                      </span>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, fontSize: 12 }}>
+                        <div>
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>Provider</span>
+                          <strong>{lead.leadSource.provider.toUpperCase()}</strong>
+                        </div>
+                        {lead.leadSource.campaignName && (
+                          <div>
+                            <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>Campaign</span>
+                            <span className="truncate block">{lead.leadSource.campaignName}</span>
+                          </div>
+                        )}
+                        {lead.leadSource.adName && (
+                          <div>
+                            <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>Ad Creative</span>
+                            <span className="truncate block">{lead.leadSource.adName}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Dropped / Lost Reason (if lost) */}
+                  {isLostStage(lead.status) && lead.lostReason && (
+                    <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--red)', textTransform: 'uppercase' }}>
+                        ⚠️ Dropped Reason:
+                      </span>
+                      <p style={{ margin: '2px 0 0', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                        {lead.lostReason}
+                      </p>
+                      {lead.lostReasonDetail && (
+                        <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                          {lead.lostReasonDetail}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
+            </div>
 
-              {/* Notes Card */}
-              <div className={`card ${mobileTab === 'details' ? 'block' : 'hidden lg:block'}`}>
-                <p className="section-title" style={{ margin: '0 0 12px' }}>📝 Client & Negotiation Notes</p>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-                  <textarea
-                    className="input"
-                    placeholder="Add customer requirements, deal notes..."
-                    value={noteText}
-                    onChange={e => setNoteText(e.target.value)}
-                    rows={2}
-                    style={{ flex: 1, minHeight: 56 }}
-                  />
-                  <button
-                    onClick={addNote}
-                    disabled={addingNote || !noteText.trim()}
-                    style={{ width: 44, background: 'var(--accent)', border: 'none', borderRadius: 12, cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-                  >
-                    {addingNote ? <div className="spinner" style={{ width: 16, height: 16 }} /> : <Plus size={18} />}
-                  </button>
-                </div>
-
-                {lead.notes?.length > 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 240, overflowY: 'auto' }}>
-                    {[...lead.notes].reverse().map((n, i) => (
-                      <div key={i} style={{ padding: '8px 12px', background: 'var(--surface)', borderRadius: 10, borderLeft: '3px solid var(--accent)', width: '100%', boxSizing: 'border-box' }}>
-                        <p style={{ margin: 0, fontSize: 12, lineHeight: 1.45, wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}>{n.text}</p>
-                        <p style={{ margin: '3px 0 0', fontSize: 10, color: 'var(--text-muted)' }}>
-                          {n.authorName || 'Agent'} • {format(new Date(n.createdAt), 'dd MMM, h:mm a')}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', padding: '6px 0', margin: 0 }}>No notes yet</p>
-                )}
+            {/* Real Estate Panel (if detected) */}
+            {isRealEstate && lead && (
+              <div className={mobileTab === 'details' ? 'block' : 'hidden lg:block'}>
+                <RealEstateLeadPanel lead={lead} onLeadUpdate={setLead} />
               </div>
+            )}
+          </div>
 
-              {/* Audio Memos */}
-              <div className={`card ${mobileTab === 'memos' ? 'block' : 'hidden lg:block'}`}>
-                <RecordingSection leadId={id} />
+          {/* RIGHT COLUMN: Unified Communication & Interaction Hub */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            
+            {/* Desktop Interaction Tab Controller */}
+            <div className="hidden lg:block mb-3">
+              <div className="segmented-control bg-slate-100/90 dark:bg-slate-800/90 p-1.5 rounded-2xl flex items-center gap-1.5 border border-slate-200/80 dark:border-slate-700/80 shadow-xs">
+                <button
+                  type="button"
+                  onClick={() => setActiveRightTab('chat')}
+                  className={`segmented-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all duration-150 flex items-center justify-center gap-1.5 cursor-pointer ${
+                    activeRightTab === 'chat'
+                      ? 'active bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs border border-slate-200/60 dark:border-slate-700 font-extrabold'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 border border-transparent'
+                  }`}
+                >
+                  💬 WhatsApp Live
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveRightTab('notes')}
+                  className={`segmented-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all duration-150 flex items-center justify-center gap-1.5 cursor-pointer ${
+                    activeRightTab === 'notes'
+                      ? 'active bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs border border-slate-200/60 dark:border-slate-700 font-extrabold'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 border border-transparent'
+                  }`}
+                >
+                  📝 Notes ({lead.notes?.length || 0})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveRightTab('memos')}
+                  className={`segmented-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all duration-150 flex items-center justify-center gap-1.5 cursor-pointer ${
+                    activeRightTab === 'memos'
+                      ? 'active bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs border border-slate-200/60 dark:border-slate-700 font-extrabold'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 border border-transparent'
+                  }`}
+                >
+                  🎙️ Audio Memos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveRightTab('audit')}
+                  className={`segmented-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all duration-150 flex items-center justify-center gap-1.5 cursor-pointer ${
+                    activeRightTab === 'audit'
+                      ? 'active bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs border border-slate-200/60 dark:border-slate-700 font-extrabold'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 border border-transparent'
+                  }`}
+                >
+                  ⏱️ Activity Audit
+                </button>
               </div>
             </div>
 
-            {/* RIGHT COLUMN */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* WhatsApp Live Conversation */}
-              <div className={mobileTab === 'chat' ? 'block' : 'hidden lg:block'}>
-                <WhatsAppChatSection
-                  lead={lead}
-                  waStatus={waStatus}
-                  onOpenTemplates={() => setShowTemplates(true)}
-                  refreshKey={chatRefreshKey}
+            {/* 1. WhatsApp Live Conversation */}
+            <div className={`${mobileTab === 'chat' || (activeRightTab === 'chat' && mobileTab === 'details') ? 'block' : 'hidden lg:hidden'} ${activeRightTab === 'chat' ? 'lg:block' : ''}`}>
+              <WhatsAppChatSection
+                lead={lead}
+                waStatus={waStatus}
+                onOpenTemplates={() => setShowTemplates(true)}
+                onOpenShareFee={() => setShowShareFeeModal(true)}
+                refreshKey={chatRefreshKey}
+              />
+            </div>
+
+            {/* 2. Counseling Notes */}
+            <div className={`card ${mobileTab === 'notes' || (activeRightTab === 'notes' && mobileTab === 'details') ? 'block' : 'hidden lg:hidden'} ${activeRightTab === 'notes' ? 'lg:block' : ''}`}>
+              <p className="section-title" style={{ margin: '0 0 12px' }}>📝 Client & Negotiation Notes</p>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                <textarea
+                  className="input"
+                  placeholder="Record admissions counseling discussion, fee negotiations, preferences..."
+                  value={noteText}
+                  onChange={e => setNoteText(e.target.value)}
+                  rows={2}
+                  style={{ flex: 1, minHeight: 56 }}
                 />
+                <button
+                  type="button"
+                  onClick={addNote}
+                  disabled={addingNote || !noteText.trim()}
+                  style={{ width: 44, background: 'var(--accent)', border: 'none', borderRadius: 12, cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                >
+                  {addingNote ? <div className="spinner" style={{ width: 16, height: 16 }} /> : <Plus size={18} />}
+                </button>
               </div>
 
-              {/* Activity Audit Trail */}
-              <div className={`card ${mobileTab === 'audit' ? 'block' : 'hidden lg:block'}`}>
-                <p className="section-title" style={{ margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Activity size={16} color="var(--accent)" /> Client Activity Audit Trail
-                </p>
-                {lead.leadActivities && lead.leadActivities.length > 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 320, overflowY: 'auto' }}>
-                    {lead.leadActivities.slice().reverse().map((act, i) => (
-                      <div key={act._id || i} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 8, display: 'flex', gap: 10, alignItems: 'flex-start', width: '100%', minWidth: 0 }}>
-                        <div style={{ fontSize: 16, marginTop: 1, flexShrink: 0 }}>{ACTION_ICONS[act.action] || '📌'}</div>
-                        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', flexWrap: 'wrap', gap: 4 }}>
-                            <span style={{ fontWeight: 600, color: 'var(--text)' }}>{act.performerName || 'Agent'}</span>
-                            <span>{format(new Date(act.timestamp), 'dd MMM, h:mm a')}</span>
-                          </div>
-                          <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)', wordBreak: 'break-word', overflowWrap: 'break-word' }}>{act.details}</p>
+              {lead.notes?.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 320, overflowY: 'auto' }}>
+                  {[...lead.notes].reverse().map((n, i) => (
+                    <div key={i} style={{ padding: '8px 12px', background: 'var(--surface)', borderRadius: 10, borderLeft: '3px solid var(--accent)', width: '100%', boxSizing: 'border-box' }}>
+                      <p style={{ margin: 0, fontSize: 12, lineHeight: 1.45, wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}>{n.text}</p>
+                      <p style={{ margin: '3px 0 0', fontSize: 10, color: 'var(--text-muted)' }}>
+                        {n.authorName || 'Counselor'} • {format(new Date(n.createdAt), 'dd MMM, h:mm a')}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', padding: '12px 0', margin: 0 }}>No counseling notes added yet</p>
+              )}
+            </div>
+
+            {/* 3. Audio Memos */}
+            <div className={`card ${mobileTab === 'memos' || (activeRightTab === 'memos' && mobileTab === 'details') ? 'block' : 'hidden lg:hidden'} ${activeRightTab === 'memos' ? 'lg:block' : ''}`}>
+              <RecordingSection leadId={id} />
+            </div>
+
+            {/* 4. Activity Audit Trail */}
+            <div className={`card ${mobileTab === 'audit' || (activeRightTab === 'audit' && mobileTab === 'details') ? 'block' : 'hidden lg:hidden'} ${activeRightTab === 'audit' ? 'lg:block' : ''}`}>
+              <p className="section-title" style={{ margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Activity size={16} color="var(--accent)" /> Client Activity Audit Trail
+              </p>
+              {lead.leadActivities && lead.leadActivities.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 320, overflowY: 'auto' }}>
+                  {lead.leadActivities.slice().reverse().map((act, i) => (
+                    <div key={act._id || i} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 8, display: 'flex', gap: 10, alignItems: 'flex-start', width: '100%', minWidth: 0 }}>
+                      <div style={{ fontSize: 16, marginTop: 1, flexShrink: 0 }}>{ACTION_ICONS[act.action] || '📌'}</div>
+                      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', flexWrap: 'wrap', gap: 4 }}>
+                          <span style={{ fontWeight: 600, color: 'var(--text)' }}>{act.performerName || 'Counselor'}</span>
+                          <span>{format(new Date(act.timestamp), 'dd MMM, h:mm a')}</span>
                         </div>
+                        <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)', wordBreak: 'break-word', overflowWrap: 'break-word' }}>{act.details}</p>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', padding: '12px 0', margin: 0 }}>No activity logged yet</p>
-                )}
-              </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', padding: '12px 0', margin: 0 }}>No activity logged yet</p>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* ── MODALS SAFELY NESTED INSIDE ROOT APP-SHELL ── */}
+      {showShareFeeModal && (
+        <ShareCollegeFeeModal
+          isOpen={showShareFeeModal}
+          lead={lead}
+          waStatus={waStatus}
+          onClose={() => setShowShareFeeModal(false)}
+          onSent={() => setChatRefreshKey(k => k + 1)}
+        />
+      )}
 
       {showTemplates && (
         <TemplatePickerModal
@@ -1955,26 +2638,21 @@ export default function LeadDetailPage() {
       {showCloseModal && (
         <CloseDealModal
           isOpen={showCloseModal}
+          initialAmount={lead.closedDealAmount || form.closedDealAmount || ''}
           onClose={() => setShowCloseModal(false)}
           onConfirm={handleConfirmCloseDeal}
-          initialAmount={form.closedDealAmount || lead?.closedDealAmount}
         />
       )}
 
       {showLostModal && (
         <LostReasonModal
           isOpen={showLostModal}
-          targetStage={pendingLostStage}
-          leadName={lead?.name}
+          currentStage={pendingLostStage || lead.status}
+          onClose={() => setShowLostModal(false)}
           onConfirm={handleConfirmLostReason}
-          onCancel={() => {
-            setShowLostModal(false);
-            setPendingLostStage('');
-          }}
         />
       )}
 
-      {/* ── FOLLOW-UP SCHEDULER MODAL (Quick Presets & Mandatory Note) ── */}
       {showSchedulerModal && (
         <FollowUpSchedulerModal
           lead={lead}
@@ -1987,7 +2665,6 @@ export default function LeadDetailPage() {
         />
       )}
 
-      {/* ── FOLLOW-UP COMPLETION MODAL (Mandatory Outcome Note, Silence Alarm, Next Follow-Up) ── */}
       {showCompleteFollowUpModal && (
         <FollowUpCompleteModal
           lead={lead}

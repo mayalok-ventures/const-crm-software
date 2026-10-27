@@ -13,6 +13,7 @@ frontend/.env
 .next/
 frontend/.next/
 out/
+frontend/out/
 
 # Archive and test artifacts
 *.tar.gz
@@ -20,6 +21,8 @@ out/
 playwright-report/
 test-results/
 scratch/
+*.log
+backend/mongo-daemon.log
 
 # Local uploads and session states
 backend/uploads/
@@ -33,4 +36,8 @@ backend/uploads/wa-sessions/*
 backend/data/
 *.exe
 backend/cloudflared.exe
+*.pem
+*.key
+.env*.local
+*.env.production
 

@@ -55,6 +55,22 @@ const workspaceMembershipSchema = new mongoose.Schema({
     ref: 'User',
     default: null,
   },
+  permissionOverrides: [{
+    key: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    scope: {
+      type: String,
+      enum: ['own', 'team', 'workspace', 'restricted'],
+      default: 'workspace',
+    },
+    granted: {
+      type: Boolean,
+      required: true,
+    },
+  }],
 }, {
   timestamps: true,
 });
@@ -64,17 +80,79 @@ workspaceMembershipSchema.index({ workspaceId: 1, role: 1, status: 1 });
 
 /**
  * Resolves effective permissions for a membership record
+ * Prioritizes:
+ * 1. Owner role -> all permissions in catalogue
+ * 2. Custom role -> Role.findById(this.customRoleId)
+ * 3. Dynamic workspace-level rolePermissions (Workspace.rolePermissions) or Role document
+ * 4. System static fallback DEFAULT_ROLE_PERMISSIONS
+ * 5. Per-member explicit permissionOverrides (granted: true / false)
  */
 workspaceMembershipSchema.methods.getEffectivePermissions = async function() {
+  const { PERMISSIONS } = require('../config/permissions');
+  const Workspace = mongoose.models.Workspace || require('./Workspace');
+  const Role = mongoose.models.Role || require('./Role');
+
+  if (this.role === 'owner') {
+    return Object.keys(PERMISSIONS).map(key => ({ key, scope: 'workspace' }));
+  }
+
+  let basePermissions = [];
+
   if (this.role === 'custom' && this.customRoleId) {
-    const Role = mongoose.models.Role || require('./Role');
     const customRole = await Role.findById(this.customRoleId).lean();
     if (customRole && Array.isArray(customRole.permissions)) {
-      return customRole.permissions;
+      basePermissions = customRole.permissions;
+    }
+  } else {
+    // Check if workspace owner dynamically edited this standard role's permissions
+    const ws = await Workspace.findById(this.workspaceId).select('rolePermissions').lean();
+    let wsRolePerms = null;
+    if (ws && ws.rolePermissions) {
+      wsRolePerms = ws.rolePermissions instanceof Map
+        ? ws.rolePermissions.get(this.role)
+        : ws.rolePermissions[this.role];
+    }
+
+    if (Array.isArray(wsRolePerms) && wsRolePerms.length > 0) {
+      basePermissions = wsRolePerms;
+    } else {
+      // Also check if an explicit Role record exists for this role name in the workspace
+      const roleDoc = await Role.findOne({ workspaceId: this.workspaceId, name: this.role }).lean();
+      if (roleDoc && Array.isArray(roleDoc.permissions)) {
+        basePermissions = roleDoc.permissions;
+      } else {
+        basePermissions = DEFAULT_ROLE_PERMISSIONS[this.role] || DEFAULT_ROLE_PERMISSIONS.counsellor;
+      }
     }
   }
 
-  return DEFAULT_ROLE_PERMISSIONS[this.role] || DEFAULT_ROLE_PERMISSIONS.counsellor;
+  // Merge per-member permission overrides if present
+  if (Array.isArray(this.permissionOverrides) && this.permissionOverrides.length > 0) {
+    const permMap = new Map();
+    for (const p of basePermissions) {
+      if (typeof p === 'string') {
+        permMap.set(p, { key: p, scope: 'workspace' });
+      } else if (p && p.key) {
+        permMap.set(p.key, { ...p });
+      }
+    }
+
+    for (const override of this.permissionOverrides) {
+      if (!override || !override.key) continue;
+      if (override.granted === false) {
+        permMap.delete(override.key);
+      } else if (override.granted === true) {
+        permMap.set(override.key, {
+          key: override.key,
+          scope: override.scope || 'workspace',
+        });
+      }
+    }
+
+    return Array.from(permMap.values());
+  }
+
+  return basePermissions;
 };
 
 /**
@@ -82,7 +160,10 @@ workspaceMembershipSchema.methods.getEffectivePermissions = async function() {
  */
 workspaceMembershipSchema.methods.hasPermission = async function(permissionKey, requiredScope = null) {
   if (this.status !== 'active') return false;
-  if (this.role === 'owner') return true; // Owner has all permissions
+  const { PERMISSIONS } = require('../config/permissions');
+  // Unknown permission keys fail closed safely (cannot be granted even to owner)
+  if (!PERMISSIONS[permissionKey]) return false;
+  if (this.role === 'owner') return true; // Owner has all permissions in catalogue
 
   const permissions = await this.getEffectivePermissions();
   const match = permissions.find(p => p.key === permissionKey);
@@ -101,11 +182,13 @@ workspaceMembershipSchema.methods.hasPermission = async function(permissionKey, 
 workspaceMembershipSchema.post(['save', 'findOneAndUpdate', 'findByIdAndUpdate', 'updateOne', 'deleteOne', 'findOneAndDelete', 'deleteMany'], function (doc) {
   try {
     const { invalidateWorkspaceCache, invalidateUserAuthCache } = require('../utils/authCache');
+    const { invalidateBootstrapCache } = require('../controllers/bootstrapController');
     const query = this.getQuery ? this.getQuery() : null;
     const userId = doc?.userId || query?.userId;
     const wsId = doc?.workspaceId || query?.workspaceId;
     if (userId) invalidateUserAuthCache(userId);
     if (wsId) invalidateWorkspaceCache(wsId);
+    if (userId || wsId) invalidateBootstrapCache(userId, wsId);
   } catch (_) {}
 });
 

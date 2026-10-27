@@ -1,10 +1,20 @@
 const mongoose = require('mongoose');
 
 const pipelineStageSchema = new mongoose.Schema({
+  stageId: {
+    type: String,
+    required: true,
+    trim: true,
+  },
   name: {
     type: String,
     required: [true, 'Stage name is required'],
     trim: true,
+  },
+  category: {
+    type: String,
+    enum: ['open', 'won', 'lost'],
+    default: 'open',
   },
   order: {
     type: Number,
@@ -29,7 +39,28 @@ const pipelineStageSchema = new mongoose.Schema({
   },
 }, { _id: true });
 
+const DEFAULT_ADMISSION_STAGES = [
+  { stageId: 'new_lead', name: 'Lead Received', category: 'open', order: 0, probability: 15, colorCode: '#6366f1', slaHours: 4 },
+  { stageId: 'contacted', name: 'Tele-Counselling', category: 'open', order: 1, probability: 30, colorCode: '#0ea5e9', slaHours: 12 },
+  { stageId: 'shortlisted', name: 'Colleges Shortlisted', category: 'open', order: 2, probability: 50, colorCode: '#8b5cf6', slaHours: 24 },
+  { stageId: 'site_visit_scheduled', name: 'Campus Visit Arranged', category: 'open', order: 3, probability: 70, colorCode: '#f59e0b', slaHours: 48 },
+  { stageId: 'negotiation', name: 'Quota & Seat Booking', category: 'open', order: 4, probability: 85, colorCode: '#ec4899', slaHours: 48 },
+  { stageId: 'converted', name: 'Admission Confirmed', category: 'won', order: 5, probability: 100, colorCode: '#10b981', slaHours: 72 },
+  { stageId: 'lost', name: 'Not Interested', category: 'lost', order: 6, probability: 0, colorCode: '#ef4444', slaHours: 72 },
+];
+
 const pipelineSchema = new mongoose.Schema({
+  workspaceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Workspace',
+    index: true,
+  },
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+    index: true,
+  },
   name: {
     type: String,
     required: [true, 'Pipeline name is required'],
@@ -48,12 +79,6 @@ const pipelineSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-  companyId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    default: null,
-    index: true,
-  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -61,26 +86,43 @@ const pipelineSchema = new mongoose.Schema({
   },
   stages: {
     type: [pipelineStageSchema],
-    default: [
-      { name: 'New Inquiry', order: 0, probability: 10, colorCode: '#3b82f6', slaHours: 2 },
-      { name: 'Contacted', order: 1, probability: 20, colorCode: '#eab308', slaHours: 12 },
-      { name: 'Requirement Qualified', order: 2, probability: 30, colorCode: '#6366f1', slaHours: 24 },
-      { name: 'Property Shared', order: 3, probability: 40, colorCode: '#a855f7', slaHours: 24 },
-      { name: 'Site Visit Scheduled', order: 4, probability: 50, colorCode: '#f97316', slaHours: 24 },
-      { name: 'Site Visit Completed', order: 5, probability: 70, colorCode: '#06b6d4', slaHours: 48 },
-      { name: 'Negotiation', order: 6, probability: 80, colorCode: '#8b5cf6', slaHours: 48 },
-      { name: 'EOI Submitted', order: 7, probability: 90, colorCode: '#14b8a6', slaHours: 48 },
-      { name: 'Booking Confirmed', order: 8, probability: 100, colorCode: '#10b981', slaHours: 72 },
-      { name: 'Closed Lost', order: 9, probability: 0, colorCode: '#ef4444', slaHours: 72 },
-    ],
+    default: DEFAULT_ADMISSION_STAGES,
   },
 }, {
   timestamps: true,
   strict: true,
 });
 
+pipelineSchema.index({ workspaceId: 1, isActive: 1 });
 pipelineSchema.index({ companyId: 1, isActive: 1 });
 pipelineSchema.index({ name: 1, isActive: 1 });
 pipelineSchema.index({ createdBy: 1 });
 
+/**
+ * Ensures workspace has a default pipeline
+ */
+pipelineSchema.statics.seedDefaultPipelines = async function(workspaceId, createdBy) {
+  if (!workspaceId) return null;
+
+  let defaultPipeline = await this.findOne({ workspaceId, isDefault: true, isActive: true });
+  if (!defaultPipeline) {
+    defaultPipeline = await this.findOne({ workspaceId, isActive: true });
+  }
+
+  if (!defaultPipeline) {
+    defaultPipeline = await this.create({
+      workspaceId,
+      createdBy,
+      name: 'College Admissions',
+      description: 'Standard admissions counseling lifecycle from initial inquiry to admission confirmation',
+      isDefault: true,
+      isActive: true,
+      stages: DEFAULT_ADMISSION_STAGES,
+    });
+  }
+
+  return defaultPipeline;
+};
+
 module.exports = mongoose.models.Pipeline || mongoose.model('Pipeline', pipelineSchema);
+module.exports.DEFAULT_ADMISSION_STAGES = DEFAULT_ADMISSION_STAGES;

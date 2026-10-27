@@ -23,17 +23,7 @@ async function resolveTenantId(subjectId) {
   if (typeof subjectId === 'object' && subjectId._id) {
     subjectId = subjectId._id;
   }
-  const idStr = subjectId.toString();
-
-  const user = await User.findById(idStr).select('companyId role workStatus companyRole plan').lean();
-  if (!user) return new mongoose.Types.ObjectId(idStr);
-
-  // If user is an agent/manager under a company, canonical tenant is their companyId
-  if (user.companyId && ['agent', 'manager', 'user'].includes(user.role)) {
-    return user.companyId;
-  }
-
-  return user._id;
+  return new mongoose.Types.ObjectId(subjectId.toString());
 }
 
 /**

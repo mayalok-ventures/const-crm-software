@@ -13,14 +13,16 @@ import {
   isAgent,
   getUserRole,
   clearAuth,
+  canAccessRoute,
+  hasPermission,
 } from '@/lib/auth';
 import api, { cachedGet } from '@/lib/api';
 import {
   Home, FileText, Users, BarChart2, User, MessageCircle, MoreHorizontal, Grid, X as CloseIcon,
-  Package, Send, Zap, Shield, Crown, GraduationCap,
+  Package, Send, Zap, Shield, Crown, GraduationCap, Target,
   ChevronLeft, ChevronRight, Building2, Calendar, TrendingUp,
   Award, MapPin, ChevronDown, Sliders, Bell, IndianRupee,
-  Percent, CheckSquare, Layers, LogOut, Settings, ShieldCheck
+  Percent, CheckSquare, Layers, LogOut, Settings, ShieldCheck, Mail, Bot
 } from 'lucide-react';
 import PlanStatusWidget from '@/components/PlanStatusWidget';
 import { useQueryClient } from '@tanstack/react-query';
@@ -133,7 +135,7 @@ function BottomNavContent({ active }) {
     const fetchUnread = async () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       try {
-        const res = await cachedGet('/notifications', { ttl: 20000 });
+        const res = await cachedGet('/notifications', { ttl: 20000, silentAuth: true, _isBackground: true });
         if (mounted) {
           setUnreadCount(res.data?.unreadCount || 0);
         }
@@ -182,20 +184,26 @@ function BottomNavContent({ active }) {
   const [isAdminOrOwner, setIsAdminOrOwner] = useState(false);
 
   useEffect(() => {
-    const localUser = getUser();
-    setUser(localUser);
+    const updateUserState = () => {
+      const localUser = getUser();
+      setUser(localUser);
 
-    const superAdminCheck = isSuperAdmin(localUser);
-    setIsSuper(superAdminCheck);
-    setIsEducation(true);
-    setProfileHref('/profile');
-
-    const adminCheck = superAdminCheck || localUser?.role === 'admin' || localUser?.role === 'owner' || localUser?.companyRole === 'owner' || localUser?.workStatus === 'company_owner' || (!localUser?.companyRole && localUser?.role !== 'agent' && localUser?.role !== 'staff');
-    setIsAdminOrOwner(Boolean(adminCheck));
-
-    if (String(localUser?.industryType || '').trim().toLowerCase() === 'education') {
+      const superAdminCheck = isSuperAdmin(localUser);
+      setIsSuper(superAdminCheck);
       setIsEducation(true);
-    }
+      setProfileHref('/profile');
+
+      const adminCheck = superAdminCheck || isOwner(localUser) || isManager(localUser);
+      setIsAdminOrOwner(Boolean(adminCheck));
+
+      if (String(localUser?.industryType || '').trim().toLowerCase() === 'education') {
+        setIsEducation(true);
+      }
+    };
+
+    updateUserState();
+    window.addEventListener('user-updated', updateUserState);
+    return () => window.removeEventListener('user-updated', updateUserState);
   }, []);
 
   const normalize = (p) => (p || '').replace(/\/$/, '').toLowerCase();
@@ -236,31 +244,38 @@ function BottomNavContent({ active }) {
 
   const orgInitial = (orgName || 'C').trim().charAt(0).toUpperCase();
 
-  // Mobile Bottom Nav for Single Consultant
-  const mobileItems = [
-    { href: '/dashboard', label: 'Dashboard', icon: Home, key: 'dashboard' },
-    { href: '/leads', label: 'Candidates', icon: Users, key: 'leads' },
-    { href: '/catalogue', label: 'Colleges', icon: GraduationCap, key: 'catalogue' },
+  // Mobile Navigation: Strict Permission-Driven Items
+  const allMobileCandidates = [
+    { href: '/dashboard', label: 'Home', icon: Home, key: 'dashboard' },
+    { href: '/leads', label: 'Leads', icon: Users, key: 'leads' },
     { href: '/pipeline', label: 'Pipeline', icon: TrendingUp, key: 'pipeline' },
-    { href: profileHref, label: 'Profile', icon: User, key: 'profile' },
+    { href: '/follow-ups', label: 'Follow-ups', icon: Calendar, key: 'follow_ups', badge: overdueCount },
+    { href: '/catalogue', label: 'Colleges', icon: GraduationCap, key: 'catalogue' },
+    { href: '/campaigns', label: 'Campaigns', icon: Target, key: 'campaigns' },
+    { href: '/deals', label: 'Deals', icon: IndianRupee, key: 'deals' },
+    { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle, key: 'whatsapp' },
   ];
+  const mobileNavItems = allMobileCandidates.filter((item) => canAccessRoute(user, item.href)).slice(0, 4);
 
-  // Desktop Navigation: Strict Target Information Architecture (Admission Consultant CRM)
-  // 1. Home, 2. Leads, 3. Pipelines, 4. Follow-ups, 5. Colleges, 6. Communication,
-  // 7. Admissions & Finance, 8. Reports, 9. Forms & Automation, 10. Integrations (Admin/Owner), 11. Workspace Settings
-  const desktopItems = [
+  // Desktop Navigation: Strict Permission-Driven Items
+  const allDesktopItems = [
     { href: '/dashboard', label: 'Home', icon: Home, key: 'dashboard' },
     { href: '/leads', label: 'Leads', icon: Users, key: 'leads' },
     { href: '/pipeline', label: 'Pipelines', icon: TrendingUp, key: 'pipeline' },
     { href: '/follow-ups', label: 'Follow-ups', icon: Calendar, key: 'follow_ups', badge: overdueCount },
     { href: '/catalogue', label: 'Colleges', icon: GraduationCap, key: 'catalogue' },
-    { href: '/whatsapp', label: 'Communication', icon: MessageCircle, key: 'whatsapp', badge: unreadCount },
+    { href: '/campaigns', label: 'Campaigns', icon: Target, key: 'campaigns' },
+    { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle, key: 'whatsapp' },
+    { href: '/email', label: 'Email', icon: Mail, key: 'email' },
+    { href: '/automations', label: 'Automations', icon: Bot, key: 'automations' },
+    { href: '/notifications', label: 'Notifications', icon: Bell, key: 'notifications', badge: unreadCount },
     { href: '/deals', label: 'Admissions & Finance', icon: IndianRupee, key: 'deals' },
     { href: '/analytics', label: 'Reports', icon: BarChart2, key: 'analytics' },
-    { href: '/forms', label: 'Forms & Automation', icon: Layers, key: 'forms' },
-    ...(isAdminOrOwner ? [{ href: '/integrations', label: 'Integrations', icon: Zap, key: 'integrations' }] : []),
+    { href: '/forms', label: 'Forms & Pages', icon: Layers, key: 'forms' },
+    { href: '/integrations', label: 'Integrations', icon: Zap, key: 'integrations' },
     { href: '/workspace', label: 'Workspace Settings', icon: Settings, key: 'workspace' },
   ];
+  const desktopItems = allDesktopItems.filter((item) => canAccessRoute(user, item.href));
 
   return (
     <>
@@ -269,91 +284,58 @@ function BottomNavContent({ active }) {
         className="bottom-nav md:hidden"
         aria-label="Mobile Navigation"
       >
-        {/* 1. Home */}
-        <Link
-          href="/dashboard"
-          prefetch={true}
-          onMouseEnter={() => handlePrefetch('dashboard', '/dashboard')}
-          onTouchStart={() => handlePrefetch('dashboard', '/dashboard')}
-          onFocus={() => handlePrefetch('dashboard', '/dashboard')}
-          className={`bottom-nav-link btn-touch ${isLinkActive('dashboard', '/dashboard') ? 'active' : ''}`}
-          onClick={() => setIsMoreDrawerOpen(false)}
-          style={{ minHeight: 48, minWidth: 0, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, textDecoration: 'none', position: 'relative', color: isLinkActive('dashboard', '/dashboard') ? '#4f46e5' : '#64748b' }}
-        >
-          <Home size={19} className={isLinkActive('dashboard', '/dashboard') ? 'stroke-[2.5]' : 'stroke-[1.8]'} />
-          <span className="bottom-nav-label" style={{ fontWeight: isLinkActive('dashboard', '/dashboard') ? 800 : 500 }}>Home</span>
-          {isLinkActive('dashboard', '/dashboard') && (
-            <span style={{ position: 'absolute', bottom: 3, width: 4, height: 4, borderRadius: 9999, backgroundColor: '#4f46e5' }} />
-          )}
-        </Link>
-
-        {/* 2. Leads */}
-        <Link
-          href="/leads"
-          prefetch={true}
-          onMouseEnter={() => handlePrefetch('leads', '/leads')}
-          onTouchStart={() => handlePrefetch('leads', '/leads')}
-          onFocus={() => handlePrefetch('leads', '/leads')}
-          className={`bottom-nav-link btn-touch ${isLinkActive('leads', '/leads') ? 'active' : ''}`}
-          onClick={() => setIsMoreDrawerOpen(false)}
-          style={{ minHeight: 48, minWidth: 0, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, textDecoration: 'none', position: 'relative', color: isLinkActive('leads', '/leads') ? '#4f46e5' : '#64748b' }}
-        >
-          <Users size={19} className={isLinkActive('leads', '/leads') ? 'stroke-[2.5]' : 'stroke-[1.8]'} />
-          <span className="bottom-nav-label" style={{ fontWeight: isLinkActive('leads', '/leads') ? 800 : 500 }}>Leads</span>
-          {isLinkActive('leads', '/leads') && (
-            <span style={{ position: 'absolute', bottom: 3, width: 4, height: 4, borderRadius: 9999, backgroundColor: '#4f46e5' }} />
-          )}
-        </Link>
-
-        {/* 3. Pipeline */}
-        <Link
-          href="/pipeline"
-          prefetch={true}
-          onMouseEnter={() => handlePrefetch('pipeline', '/pipeline')}
-          onTouchStart={() => handlePrefetch('pipeline', '/pipeline')}
-          onFocus={() => handlePrefetch('pipeline', '/pipeline')}
-          className={`bottom-nav-link btn-touch ${isLinkActive('pipeline', '/pipeline') ? 'active' : ''}`}
-          onClick={() => setIsMoreDrawerOpen(false)}
-          style={{ minHeight: 48, minWidth: 0, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, textDecoration: 'none', position: 'relative', color: isLinkActive('pipeline', '/pipeline') ? '#4f46e5' : '#64748b' }}
-        >
-          <TrendingUp size={19} className={isLinkActive('pipeline', '/pipeline') ? 'stroke-[2.5]' : 'stroke-[1.8]'} />
-          <span className="bottom-nav-label" style={{ fontWeight: isLinkActive('pipeline', '/pipeline') ? 800 : 500 }}>Pipeline</span>
-          {isLinkActive('pipeline', '/pipeline') && (
-            <span style={{ position: 'absolute', bottom: 3, width: 4, height: 4, borderRadius: 9999, backgroundColor: '#4f46e5' }} />
-          )}
-        </Link>
-
-        {/* 4. Follow-ups (with dynamic overdue alarm badge) */}
-        <Link
-          href="/follow-ups"
-          prefetch={true}
-          className={`bottom-nav-link btn-touch ${isLinkActive('follow_ups', '/follow-ups') ? 'active' : ''}`}
-          onClick={() => setIsMoreDrawerOpen(false)}
-          style={{ minHeight: 48, minWidth: 0, width: '100%', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, textDecoration: 'none', color: isLinkActive('follow_ups', '/follow-ups') ? '#4f46e5' : '#64748b' }}
-        >
-          <Calendar size={19} className={isLinkActive('follow_ups', '/follow-ups') ? 'stroke-[2.5]' : 'stroke-[1.8]'} />
-          <span className="bottom-nav-label" style={{ fontWeight: isLinkActive('follow_ups', '/follow-ups') ? 800 : 500 }}>Follow-ups</span>
-          {overdueCount > 0 && (
-            <span style={{
-              position: 'absolute',
-              top: 3,
-              right: '20%',
-              background: '#e11d48',
-              color: '#ffffff',
-              fontSize: 9,
-              fontWeight: 800,
-              padding: '1px 5px',
-              borderRadius: 9999,
-              lineHeight: 1.2,
-              boxShadow: '0 2px 6px rgba(225, 29, 72, 0.4)'
-            }}>
-              {overdueCount}
+        {mobileNavItems.map(({ href, label, icon: Icon, key, badge }) => (
+          <Link
+            key={key}
+            href={href}
+            prefetch={true}
+            onMouseEnter={() => handlePrefetch(key, href)}
+            onTouchStart={() => handlePrefetch(key, href)}
+            onFocus={() => handlePrefetch(key, href)}
+            className={`bottom-nav-link btn-touch ${isLinkActive(key, href) ? 'active' : ''}`}
+            onClick={() => setIsMoreDrawerOpen(false)}
+            style={{
+              minHeight: 48,
+              minWidth: 0,
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 2,
+              textDecoration: 'none',
+              position: 'relative',
+              color: isLinkActive(key, href) ? '#4f46e5' : '#64748b',
+            }}
+          >
+            <Icon size={19} className={isLinkActive(key, href) ? 'stroke-[2.5]' : 'stroke-[1.8]'} />
+            <span className="bottom-nav-label" style={{ fontWeight: isLinkActive(key, href) ? 800 : 500 }}>
+              {label}
             </span>
-          )}
-          {isLinkActive('follow_ups', '/follow-ups') && (
-            <span style={{ position: 'absolute', bottom: 3, width: 4, height: 4, borderRadius: 9999, backgroundColor: '#4f46e5' }} />
-          )}
-        </Link>
+            {badge > 0 && (
+              <span
+                style={{
+                  position: 'absolute',
+                  top: 3,
+                  right: '20%',
+                  background: '#e11d48',
+                  color: '#ffffff',
+                  fontSize: 9,
+                  fontWeight: 800,
+                  padding: '1px 5px',
+                  borderRadius: 9999,
+                  lineHeight: 1.2,
+                  boxShadow: '0 2px 6px rgba(225, 29, 72, 0.4)',
+                }}
+              >
+                {badge}
+              </span>
+            )}
+            {isLinkActive(key, href) && (
+              <span style={{ position: 'absolute', bottom: 3, width: 4, height: 4, borderRadius: 9999, backgroundColor: '#4f46e5' }} />
+            )}
+          </Link>
+        ))}
 
         {/* 5. More (Workspaces & Settings Sheet Trigger) */}
         <button
@@ -418,101 +400,146 @@ function BottomNavContent({ active }) {
 
             <div className="space-y-4">
               {/* Category 1: Sales Operations */}
-              <div>
-                <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                  Sales Operations
-                </span>
-                <div className="grid grid-cols-2 gap-2">
-                  <Link
-                    href="/catalogue"
-                    onClick={() => setIsMoreDrawerOpen(false)}
-                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
-                  >
-                    <GraduationCap size={16} className="text-indigo-600 shrink-0" />
-                    <span>Colleges & Courses</span>
-                  </Link>
+              {(canAccessRoute(user, '/catalogue') || canAccessRoute(user, '/pipeline') || canAccessRoute(user, '/deals') || canAccessRoute(user, '/forms')) && (
+                <div>
+                  <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                    Sales Operations
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {canAccessRoute(user, '/catalogue') && (
+                      <Link
+                        href="/catalogue"
+                        onClick={() => setIsMoreDrawerOpen(false)}
+                        className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                      >
+                        <GraduationCap size={16} className="text-indigo-600 shrink-0" />
+                        <span>Colleges & Courses</span>
+                      </Link>
+                    )}
 
-                  <Link
-                    href="/pipeline"
-                    onClick={() => setIsMoreDrawerOpen(false)}
-                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
-                  >
-                    <TrendingUp size={16} className="text-indigo-600 shrink-0" />
-                    <span>Admission Pipeline</span>
-                  </Link>
+                    {canAccessRoute(user, '/pipeline') && (
+                      <Link
+                        href="/pipeline"
+                        onClick={() => setIsMoreDrawerOpen(false)}
+                        className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                      >
+                        <TrendingUp size={16} className="text-indigo-600 shrink-0" />
+                        <span>Admission Pipeline</span>
+                      </Link>
+                    )}
 
-                  <Link
-                    href="/deals"
-                    onClick={() => setIsMoreDrawerOpen(false)}
-                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
-                  >
-                    <IndianRupee size={16} className="text-emerald-600 shrink-0" />
-                    <span>Deals & Commission</span>
-                  </Link>
+                    {canAccessRoute(user, '/deals') && (
+                      <Link
+                        href="/deals"
+                        onClick={() => setIsMoreDrawerOpen(false)}
+                        className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                      >
+                        <IndianRupee size={16} className="text-emerald-600 shrink-0" />
+                        <span>Deals & Commission</span>
+                      </Link>
+                    )}
 
-                  <Link
-                    href="/forms"
-                    onClick={() => setIsMoreDrawerOpen(false)}
-                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
-                  >
-                    <Layers size={16} className="text-indigo-600 shrink-0" />
-                    <span>Form Studio</span>
-                  </Link>
+                    {canAccessRoute(user, '/forms') && (
+                      <Link
+                        href="/forms"
+                        onClick={() => setIsMoreDrawerOpen(false)}
+                        className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                      >
+                        <Layers size={16} className="text-indigo-600 shrink-0" />
+                        <span>Form Studio</span>
+                      </Link>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Category 2: Marketing & Comms */}
-              <div>
-                <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                  Marketing & Integrations
-                </span>
-                <div className="grid grid-cols-2 gap-2">
-                  <Link
-                    href="/whatsapp"
-                    onClick={() => setIsMoreDrawerOpen(false)}
-                    className="flex items-center justify-between p-3 rounded-xl bg-emerald-50/80 hover:bg-emerald-100/80 border border-emerald-200 text-emerald-950 text-xs font-semibold transition"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <MessageCircle size={16} className="text-emerald-600 shrink-0" />
-                      <span>WhatsApp Chat</span>
-                    </div>
-                    {unreadCount > 0 && (
-                      <span className="px-1.5 py-0.5 rounded-full bg-emerald-600 text-white text-[9px] font-extrabold">
-                        {unreadCount}
-                      </span>
+              {(canAccessRoute(user, '/whatsapp') || canAccessRoute(user, '/email') || canAccessRoute(user, '/campaigns') || canAccessRoute(user, '/templates') || canAccessRoute(user, '/integrations')) && (
+                <div>
+                  <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                    Marketing & Integrations
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {canAccessRoute(user, '/whatsapp') && (
+                      <Link
+                        href="/whatsapp"
+                        onClick={() => setIsMoreDrawerOpen(false)}
+                        className="flex items-center justify-between p-3 rounded-xl bg-emerald-50/80 hover:bg-emerald-100/80 border border-emerald-200 text-emerald-950 text-xs font-semibold transition"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <MessageCircle size={16} className="text-emerald-600 shrink-0" />
+                          <span>WhatsApp Chat</span>
+                        </div>
+                        {unreadCount > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-emerald-600 text-white text-[9px] font-extrabold">
+                            {unreadCount}
+                          </span>
+                        )}
+                      </Link>
                     )}
-                  </Link>
 
-                  <Link
-                    href="/campaigns"
-                    onClick={() => setIsMoreDrawerOpen(false)}
-                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
-                  >
-                    <Send size={16} className="text-violet-600 shrink-0" />
-                    <span>Broadcasts</span>
-                  </Link>
+                    {canAccessRoute(user, '/email') && (
+                      <Link
+                        href="/email"
+                        onClick={() => setIsMoreDrawerOpen(false)}
+                        className="flex items-center justify-between p-3 rounded-xl bg-indigo-50/80 hover:bg-indigo-100/80 border border-indigo-200 text-indigo-950 text-xs font-semibold transition"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Mail size={16} className="text-indigo-600 shrink-0" />
+                          <span>Email Inbox</span>
+                        </div>
+                        <span className="px-1.5 py-0.5 rounded-full bg-indigo-600 text-white text-[9px] font-extrabold">
+                          Active
+                        </span>
+                      </Link>
+                    )}
 
-                  <Link
-                    href="/templates"
-                    onClick={() => setIsMoreDrawerOpen(false)}
-                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
-                  >
-                    <FileText size={16} className="text-violet-600 shrink-0" />
-                    <span>HSM Templates</span>
-                  </Link>
+                    {canAccessRoute(user, '/campaigns') && (
+                      <Link
+                        href="/campaigns"
+                        onClick={() => setIsMoreDrawerOpen(false)}
+                        className="flex items-center gap-2.5 p-3 rounded-xl bg-indigo-50/80 hover:bg-indigo-100/80 border border-indigo-200 text-indigo-950 text-xs font-semibold transition"
+                      >
+                        <Target size={16} className="text-indigo-600 shrink-0" />
+                        <span>Campaigns</span>
+                      </Link>
+                    )}
 
-                  {isAdminOrOwner && (
-                    <Link
-                      href="/integrations"
-                      onClick={() => setIsMoreDrawerOpen(false)}
-                      className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
-                    >
-                      <Zap size={16} className="text-amber-600 shrink-0" />
-                      <span>Ad & Lead Integrations</span>
-                    </Link>
-                  )}
+                    {canAccessRoute(user, '/templates') && (
+                      <Link
+                        href="/templates"
+                        onClick={() => setIsMoreDrawerOpen(false)}
+                        className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                      >
+                        <FileText size={16} className="text-violet-600 shrink-0" />
+                        <span>HSM Templates</span>
+                      </Link>
+                    )}
+
+                    {canAccessRoute(user, '/automations') && (
+                      <Link
+                        href="/automations"
+                        onClick={() => setIsMoreDrawerOpen(false)}
+                        className="flex items-center gap-2.5 p-3 rounded-xl bg-purple-50/80 hover:bg-purple-100/80 border border-purple-200 text-purple-950 text-xs font-semibold transition"
+                      >
+                        <Bot size={16} className="text-purple-600 shrink-0" />
+                        <span>Automations & Bots</span>
+                      </Link>
+                    )}
+
+                    {canAccessRoute(user, '/integrations') && (
+                      <Link
+                        href="/integrations"
+                        onClick={() => setIsMoreDrawerOpen(false)}
+                        className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                      >
+                        <Zap size={16} className="text-amber-600 shrink-0" />
+                        <span>Ad & Lead Integrations</span>
+                      </Link>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Category 3: Analytics & Management */}
               <div>
@@ -520,14 +547,16 @@ function BottomNavContent({ active }) {
                   Management & Reporting
                 </span>
                 <div className="grid grid-cols-2 gap-2">
-                  <Link
-                    href="/analytics"
-                    onClick={() => setIsMoreDrawerOpen(false)}
-                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
-                  >
-                    <BarChart2 size={16} className="text-blue-600 shrink-0" />
-                    <span>Sales Analytics</span>
-                  </Link>
+                  {canAccessRoute(user, '/analytics') && (
+                    <Link
+                      href="/analytics"
+                      onClick={() => setIsMoreDrawerOpen(false)}
+                      className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                    >
+                      <BarChart2 size={16} className="text-blue-600 shrink-0" />
+                      <span>Sales Analytics</span>
+                    </Link>
+                  )}
 
                   <Link
                     href="/notifications"
@@ -556,42 +585,50 @@ function BottomNavContent({ active }) {
                     </Link>
                   )}
 
-                  <Link
-                    href="/plans"
-                    onClick={() => setIsMoreDrawerOpen(false)}
-                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition col-span-2"
-                  >
-                    <Award size={16} className="text-indigo-600 shrink-0" />
-                    <span>Subscription Plans & Invoices</span>
-                  </Link>
+                  {canAccessRoute(user, '/plans') && (
+                    <Link
+                      href="/plans"
+                      onClick={() => setIsMoreDrawerOpen(false)}
+                      className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition col-span-2"
+                    >
+                      <Award size={16} className="text-indigo-600 shrink-0" />
+                      <span>Subscription Plans & Invoices</span>
+                    </Link>
+                  )}
                 </div>
               </div>
 
               {/* Category 4: Workspace Settings */}
-              <div>
-                <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                  Workspace Settings & Team
-                </span>
-                <div className="grid grid-cols-2 gap-2">
-                  <Link
-                    href="/workspace"
-                    onClick={() => setIsMoreDrawerOpen(false)}
-                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
-                  >
-                    <Settings size={16} className="text-indigo-600 shrink-0" />
-                    <span>Workspace Settings</span>
-                  </Link>
+              {(canAccessRoute(user, '/workspace') || canAccessRoute(user, '/workspace/team')) && (
+                <div>
+                  <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                    Workspace Settings & Team
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {canAccessRoute(user, '/workspace') && (
+                      <Link
+                        href="/workspace"
+                        onClick={() => setIsMoreDrawerOpen(false)}
+                        className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                      >
+                        <Settings size={16} className="text-indigo-600 shrink-0" />
+                        <span>Workspace Settings</span>
+                      </Link>
+                    )}
 
-                  <Link
-                    href="/workspace/team"
-                    onClick={() => setIsMoreDrawerOpen(false)}
-                    className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
-                  >
-                    <ShieldCheck size={16} className="text-indigo-600 shrink-0" />
-                    <span>Team & Roles</span>
-                  </Link>
+                    {canAccessRoute(user, '/workspace/team') && (
+                      <Link
+                        href="/workspace/team"
+                        onClick={() => setIsMoreDrawerOpen(false)}
+                        className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
+                      >
+                        <ShieldCheck size={16} className="text-indigo-600 shrink-0" />
+                        <span>Team & Roles</span>
+                      </Link>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Category 4: Profile & Logout */}
               <div className="pt-2 border-t border-slate-100 flex items-center gap-2">

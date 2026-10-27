@@ -840,27 +840,25 @@ export default function ProfileModule({
               </span>
             </div>
 
-            {isTenantOwner && (
-              currentUser?.twoFactorEnabled ? (
-                <button
-                  type="button"
-                  onClick={() => setShowDisable2FAModal(true)}
-                  className="text-xs font-bold text-red-600 hover:text-red-700 inline-flex items-center gap-1 cursor-pointer bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors border border-red-200"
-                >
-                  <Lock size={13} />
-                  <span>Disable 2FA</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleOpen2FASetup}
-                  className="text-xs font-bold text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1 cursor-pointer bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors border border-indigo-200"
-                >
-                  <ShieldCheck size={13} />
-                  <span>Enable 2FA</span>
-                  <ArrowUpRight size={13} />
-                </button>
-              )
+            {currentUser?.twoFactorEnabled ? (
+              <button
+                type="button"
+                onClick={() => setShowDisable2FAModal(true)}
+                className="text-xs font-bold text-red-600 hover:text-red-700 inline-flex items-center gap-1 cursor-pointer bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors border border-red-200"
+              >
+                <Lock size={13} />
+                <span>Disable 2FA</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleOpen2FASetup}
+                className="text-xs font-bold text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1 cursor-pointer bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors border border-indigo-200"
+              >
+                <ShieldCheck size={13} />
+                <span>Enable 2FA</span>
+                <ArrowUpRight size={13} />
+              </button>
             )}
           </div>
         </form>

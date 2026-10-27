@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { cachedGet, getCachedData } from '@/lib/api';
 import { pipelineOptions } from '@/lib/queries';
-import { waLink, getUser } from '@/lib/auth';
+import { waLink, getUser, hasPermission, canAccessRoute } from '@/lib/auth';
 import BottomNav from '@/components/BottomNav';
 import {
   TrendingUp, Search, Phone, MessageSquare, Plus, RefreshCw,
@@ -81,12 +81,22 @@ function PipelineContent() {
   }, [searchParams]);
 
   useEffect(() => {
-    const u = getUser();
-    if (!u) {
-      router.replace('/login');
-      return;
-    }
-    setUser(u);
+    const checkAuth = () => {
+      const u = getUser();
+      if (!u) {
+        router.replace('/login');
+        return;
+      }
+      if (!canAccessRoute(u, '/pipeline')) {
+        router.replace('/leads');
+        return;
+      }
+      setUser(u);
+    };
+
+    checkAuth();
+    window.addEventListener('user-updated', checkAuth);
+    return () => window.removeEventListener('user-updated', checkAuth);
   }, [router]);
 
   const queryClient = useQueryClient();
@@ -476,23 +486,27 @@ function PipelineContent() {
                     ))}
                   </select>
 
-                  <button
-                    type="button"
-                    onClick={() => setShowPipelineSettingsModal(true)}
-                    className="p-1 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-white transition"
-                    title="Configure Pipeline & Stages"
-                  >
-                    <Settings size={15} />
-                  </button>
+                  {hasPermission(user, 'pipelines.manage') && (
+                    <button
+                      type="button"
+                      onClick={() => setShowPipelineSettingsModal(true)}
+                      className="p-1 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-white transition"
+                      title="Configure Pipeline & Stages"
+                    >
+                      <Settings size={15} />
+                    </button>
+                  )}
 
-                  <button
-                    type="button"
-                    onClick={() => setShowCreatePipelineModal(true)}
-                    className="p-1 rounded-lg text-indigo-600 hover:text-indigo-800 hover:bg-white transition"
-                    title="Create New Pipeline"
-                  >
-                    <Plus size={15} />
-                  </button>
+                  {hasPermission(user, 'pipelines.manage') && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCreatePipelineModal(true)}
+                      className="p-1 rounded-lg text-indigo-600 hover:text-indigo-800 hover:bg-white transition"
+                      title="Create New Pipeline"
+                    >
+                      <Plus size={15} />
+                    </button>
+                  )}
                 </div>
               </div>
               <p className="m-0 mt-1 text-xs sm:text-sm text-slate-500">
@@ -502,13 +516,15 @@ function PipelineContent() {
 
             {/* Top Right Primary Action Buttons */}
             <div className="flex items-center gap-2 self-start lg:self-auto shrink-0">
-              <button
-                type="button"
-                onClick={() => setShowAddModal(true)}
-                className="btn btn-primary btn-sm flex items-center gap-1.5 text-xs font-bold whitespace-nowrap shrink-0 shadow-sm px-3.5 py-2"
-              >
-                <Plus size={15} /> <span>Add Lead</span>
-              </button>
+              {hasPermission(user, 'leads.create') && (
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(true)}
+                  className="btn btn-primary btn-sm flex items-center gap-1.5 text-xs font-bold whitespace-nowrap shrink-0 shadow-sm px-3.5 py-2"
+                >
+                  <Plus size={15} /> <span>Add Lead</span>
+                </button>
+              )}
 
               <button
                 type="button"

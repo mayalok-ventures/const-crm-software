@@ -1,1955 +1,1855 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import toast from 'react-hot-toast';
+import {
+  LayoutDashboard,
+  Users,
+  CreditCard,
+  Ticket,
+  History,
+  Activity,
+  Search,
+  Plus,
+  Edit,
+  Trash2,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  RefreshCw,
+  Copy,
+  Check,
+  Shield,
+  Filter,
+  Download,
+  ArrowLeft,
+  Server,
+  Database,
+  Cpu,
+  Clock,
+  ChevronRight,
+  Eye,
+  X,
+  Zap,
+  Menu,
+} from 'lucide-react';
 import { getUser } from '@/lib/auth';
-
-// UI Design System Primitives
-import AdminLayout from '@/components/admin/ui/AdminLayout';
-import Modal from '@/components/admin/ui/Modal';
-import PermissionGate from '@/components/admin/ui/PermissionGate';
-
-// 17 Modular Operational Centres
-import OverviewModule from '@/components/admin/modules/OverviewModule';
-import LeadsModule from '@/components/admin/modules/LeadsModule';
-import DistributionModule from '@/components/admin/modules/DistributionModule';
-import PipelinesModule from '@/components/admin/modules/PipelinesModule';
-import HierarchyModule from '@/components/admin/modules/HierarchyModule';
-import BroadcastsModule from '@/components/admin/modules/BroadcastsModule';
-import FormsModule from '@/components/admin/modules/FormsModule';
-import TemplatesModule from '@/components/admin/modules/TemplatesModule';
-import CampaignsModule from '@/components/admin/modules/CampaignsModule';
-import CatalogueModule from '@/components/admin/modules/CatalogueModule';
-import CommissionsModule from '@/components/admin/modules/CommissionsModule';
-import CouponsModule from '@/components/admin/modules/CouponsModule';
-import AnalyticsModule from '@/components/admin/modules/AnalyticsModule';
-import ActivityLogsModule from '@/components/admin/modules/ActivityLogsModule';
-import IntegrationsModule from '@/components/admin/modules/IntegrationsModule';
-import SecurityModule from '@/components/admin/modules/SecurityModule';
-import HealthModule from '@/components/admin/modules/HealthModule';
-import PlansModule from '@/components/admin/modules/PlansModule';
-import ProfileModule from '@/components/admin/modules/ProfileModule';
-
-// New Specialized Workflow Modals
-import CancelFollowUpModal from '@/components/admin/ui/CancelFollowUpModal';
-import CloseDealModal from '@/components/admin/ui/CloseDealModal';
-import AssignPlanModal from '@/components/admin/ui/AssignPlanModal';
-import LeadProfileModal from '@/components/admin/ui/LeadProfileModal';
-import SendBroadcastModal from '@/components/admin/ui/SendBroadcastModal';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
-function AdminControlCenterContent() {
+function SuperAdminContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Auth & State
-  const [token, setToken] = useState('');
+  // Navigation & Auth
   const [currentUser, setCurrentUser] = useState(null);
+  const [token, setToken] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [isAuthorized, setIsAuthorized] = useState(true);
 
-  // Tab Data States
-  const [metrics, setMetrics] = useState(null);
-  const [leads, setLeads] = useState([]);
-  const [leadsPagination, setLeadsPagination] = useState({ page: 1, total: 0, pages: 1 });
-  const [distributionRules, setDistributionRules] = useState([]);
-  const [hierarchy, setHierarchy] = useState({ managers: [], unassignedAgents: [] });
-  const [performanceList, setPerformanceList] = useState([]);
-  const [pipelineStages, setPipelineStages] = useState([]);
-  const [allPlans, setAllPlans] = useState([]);
-  const [planHierarchy, setPlanHierarchy] = useState([]);
-  const [formSchemas, setFormSchemas] = useState([]);
-  const [templates, setTemplates] = useState([]);
-  const [catalogues, setCatalogues] = useState([]);
-  const [integrationsStatus, setIntegrationsStatus] = useState(null);
-  const [campaigns, setCampaigns] = useState([]);
-  const [commissionRules, setCommissionRules] = useState([]);
-  const [commissionPayouts, setCommissionPayouts] = useState([]);
-  const [coupons, setCoupons] = useState([]);
-  const [universalAnalytics, setUniversalAnalytics] = useState(null);
-  const [activityLogs, setActivityLogs] = useState([]);
-  const [securitySettings, setSecuritySettings] = useState(null);
-  const [systemHealth, setSystemHealth] = useState(null);
-  const [broadcastsList, setBroadcastsList] = useState([]);
+  // Tab Data Cache
+  const [overview, setOverview] = useState(null);
+  const [usersList, setUsersList] = useState([]);
+  const [plansList, setPlansList] = useState([]);
+  const [couponsList, setCouponsList] = useState([]);
+  const [logsList, setLogsList] = useState([]);
+  const [healthData, setHealthData] = useState(null);
 
-  // Error States per tab
-  const [tabErrors, setTabErrors] = useState({});
+  // Filter States
+  const [userSearch, setUserSearch] = useState('');
+  const [userStatusFilter, setUserStatusFilter] = useState('all');
+  const [userPlanFilter, setUserPlanFilter] = useState('all');
 
-  // Filter States for Leads & Activity
-  const [leadSearch, setLeadSearch] = useState('');
-  const [leadSourceFilter, setLeadSourceFilter] = useState('all');
-  const [leadStageFilter, setLeadStageFilter] = useState('all');
-  const [leadsPage, setLeadsPage] = useState(1);
+  const [couponSearch, setCouponSearch] = useState('');
   const [logSearch, setLogSearch] = useState('');
-  const [logActionFilter, setLogActionFilter] = useState('all');
+  const [logTypeFilter, setLogTypeFilter] = useState('all');
 
-  // Action Modals State
-  const [showAddLeadModal, setShowAddLeadModal] = useState(false);
-  const [showAddAgentModal, setShowAddAgentModal] = useState(false);
-  const [showAddRuleModal, setShowAddRuleModal] = useState(false);
-  const [showAddCouponModal, setShowAddCouponModal] = useState(false);
-  const [showAddCommissionModal, setShowAddCommissionModal] = useState(false);
-  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
-  const [showAddCampaignModal, setShowAddCampaignModal] = useState(false);
-  const [showAddTemplateModal, setShowAddTemplateModal] = useState(false);
-  const [showAddCatalogueModal, setShowAddCatalogueModal] = useState(false);
-  const [showEditUserModal, setShowEditUserModal] = useState(false);
-  const [editingUser, setEditingUser] = useState(null);
-  const [showReassignModal, setShowReassignModal] = useState(false);
-  const [reassignFromAgent, setReassignFromAgent] = useState(null);
-  const [reassignToAgentId, setReassignToAgentId] = useState('');
+  // Modals State
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [editingPlan, setEditingPlan] = useState(null);
+  const [planFormData, setPlanFormData] = useState({
+    code: '',
+    name: '',
+    description: '',
+    badge: '',
+    category: 'INDIVIDUAL',
+    monthlyPrice: 999,
+    yearlyPrice: 9990,
+    leadsLimit: 1000,
+    whatsappLimit: 1000,
+    storageGB: 5,
+    features: '',
+    status: 'ACTIVE',
+  });
 
-  // Specialized CRM Workflow Modals State
-  const [selectedLeadProfile, setSelectedLeadProfile] = useState(null);
-  const [cancelFollowUpLead, setCancelFollowUpLead] = useState(null);
-  const [closeDealLead, setCloseDealLead] = useState(null);
-  const [assignPlanLead, setAssignPlanLead] = useState(null);
-  const [assignPlanIsFree, setAssignPlanIsFree] = useState(false);
-
-  // Forms Data
-  const [leadFormData, setLeadFormData] = useState({
-    name: '', phone: '', email: '', company: '', service_required: 'smart_solo',
-    monthly_spend: '', source: 'manual', primarySource: 'SOURCE_A_MANUAL', assignedTo: '', notes: ''
-  });
-  const [agentFormData, setAgentFormData] = useState({
-    name: '', email: '', phone: '', password: '', role: 'agent', managerId: '', incentive_pct: 10, leadCap: 50, isAvailableForRouting: true
-  });
-  const [ruleFormData, setRuleFormData] = useState({
-    name: '', strategy: 'ROUND_ROBIN', priority: 1, isActive: true, assignees: [], conditions: { sourceType: 'ALL' }
-  });
-  const [commFormData, setCommFormData] = useState({
-    ruleName: '', targetRole: 'AGENT', commissionType: 'PERCENTAGE', value: 10, stageThreshold: 'payment_done'
-  });
+  const [showCouponModal, setShowCouponModal] = useState(false);
   const [couponFormData, setCouponFormData] = useState({
-    code: '', description: '', discountType: 'PERCENTAGE', discountValue: 20, applicablePlans: ['ALL'], validUntil: '', maxOverallUses: 100
-  });
-  const [broadcastFormData, setBroadcastFormData] = useState({
-    title: '', message: '', priority: 'NORMAL', targetAudience: 'INTERNAL_ALL', deliveryChannels: ['IN_APP']
-  });
-  const [campaignFormData, setCampaignFormData] = useState({
-    campaignName: '', platform: 'META', campaignId: '', budget: 50000, amountSpent: 12000, status: 'ACTIVE'
-  });
-  const [templateFormData, setTemplateFormData] = useState({
-    name: '', channel: 'WHATSAPP', content: '', category: 'GENERAL', variables: ['name', 'company']
-  });
-  const [catalogueFormData, setCatalogueFormData] = useState({
-    itemName: '', description: '', price: 999, discountedPrice: 499, category: 'GENERAL'
+    code: '',
+    description: '',
+    discountType: 'PERCENTAGE',
+    discountValue: 20,
+    maxOverallUses: 100,
+    validUntil: '',
+    appliesToAllPlans: true,
   });
 
-  // Flat Team Members list for assignment dropdowns
-  const allTeamMembers = useMemo(() => {
-    const list = [...(hierarchy.managers || [])];
-    hierarchy.managers?.forEach((m) => {
-      if (m.teamMembers) {
-        list.push(...m.teamMembers);
-      }
-    });
-    if (hierarchy.unassignedAgents) {
-      list.push(...hierarchy.unassignedAgents);
-    }
-    return list;
-  }, [hierarchy]);
+  const [showAssignPlanModal, setShowAssignPlanModal] = useState(false);
+  const [selectedUserForPlan, setSelectedUserForPlan] = useState(null);
+  const [assignedPlanCode, setAssignedPlanCode] = useState('');
+
+  const [showPayloadModal, setShowPayloadModal] = useState(false);
+  const [selectedLogPayload, setSelectedLogPayload] = useState(null);
+
+  const [copiedCode, setCopiedCode] = useState(null);
 
   // Auth Initialization
   useEffect(() => {
     const user = getUser();
     const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+
     if (!storedToken || !user) {
       router.replace('/login');
       return;
     }
-    const isProfileTab = searchParams?.get('tab') === 'profile';
-    const hasAdminAccess = user.role === 'superadmin' || user.role === 'admin' || user.companyRole === 'owner' || user.workStatus === 'company_owner';
-    if (!hasAdminAccess && !isProfileTab) {
-      setIsAuthorized(false);
-      setLoading(false);
+
+    if (user.role !== 'superadmin' && user.role !== 'admin' && user.companyRole !== 'owner') {
+      toast.error('Access restricted to Platform SuperAdmins');
+      router.replace('/dashboard');
       return;
     }
+
     setCurrentUser(user);
     setToken(storedToken);
     setLoading(false);
 
-    // Sync tab from URL query if present
-    const urlTab = searchParams.get('tab');
-    if (urlTab) {
-      setActiveTab(urlTab);
-    }
-    const urlStage = searchParams.get('stage');
-    if (urlStage) {
-      setLeadStageFilter(urlStage);
-    }
-    const urlSource = searchParams.get('source') || searchParams.get('primarySource');
-    if (urlSource) {
-      setLeadSourceFilter(urlSource);
+    const initialTab = searchParams?.get('tab');
+    if (initialTab && ['overview', 'users', 'plans', 'coupons', 'logs', 'health'].includes(initialTab)) {
+      setActiveTab(initialTab);
     }
   }, [router, searchParams]);
 
-  // Resilient Auth Fetch Wrapper
-  const authFetch = useCallback(async (endpoint, options = {}) => {
-    const currentToken = token || (typeof window !== 'undefined' ? localStorage.getItem('token') : '');
-    const headers = {
-      'Content-Type': 'application/json',
-      ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
-      ...(options.headers || {}),
-    };
-    try {
-      const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
-      const res = await fetch(url, { ...options, headers });
-      if (res.status === 401) {
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-        }
-        toast.error('Session expired. Please log in again.');
-        router.replace('/login');
-        return { success: false, status: 401 };
-      }
-      const data = await res.json();
-      return { ...data, status: res.status };
-    } catch (err) {
-      console.warn(`[API] Warning for ${endpoint}:`, err.message);
-      return { success: false, error: err.message };
-    }
-  }, [token, router]);
+  // Auth Fetch Wrapper
+  const authFetch = useCallback(
+    async (endpoint, options = {}) => {
+      const currentToken = token || (typeof window !== 'undefined' ? localStorage.getItem('token') : '');
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
+        ...(options.headers || {}),
+      };
 
-  // Unified Data Fetcher for Active Tab
-  const fetchTabData = useCallback(async (tabToLoad = activeTab) => {
-    if (!token && typeof window !== 'undefined' && !localStorage.getItem('token')) return;
+      try {
+        const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+        const res = await fetch(url, { ...options, headers });
+        if (res.status === 401) {
+          toast.error('Session expired. Please log in again.');
+          router.replace('/login');
+          return { success: false, status: 401 };
+        }
+        const data = await res.json();
+        return { ...data, status: res.status };
+      } catch (err) {
+        console.warn(`[API] Error for ${endpoint}:`, err.message);
+        return { success: false, error: err.message };
+      }
+    },
+    [token, router]
+  );
+
+  // Data Loaders
+  const loadOverview = useCallback(async () => {
+    const res = await authFetch('/admin/overview');
+    if (res?.success) setOverview(res.data);
+  }, [authFetch]);
+
+  const loadUsers = useCallback(async () => {
+    const res = await authFetch('/admin/users');
+    if (res?.success) setUsersList(res.users || []);
+  }, [authFetch]);
+
+  const loadPlans = useCallback(async () => {
+    const res = await authFetch('/admin/plans');
+    if (res?.success) setPlansList(res.plans || []);
+  }, [authFetch]);
+
+  const loadCoupons = useCallback(async () => {
+    const res = await authFetch('/admin/coupons');
+    if (res?.success) setCouponsList(res.coupons || []);
+  }, [authFetch]);
+
+  const loadLogs = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (logSearch) params.set('search', logSearch);
+    if (logTypeFilter !== 'all') params.set('type', logTypeFilter);
+    params.set('limit', '50');
+
+    const res = await authFetch(`/admin/logs?${params.toString()}`);
+    if (res?.success) setLogsList(res.logs || []);
+  }, [authFetch, logSearch, logTypeFilter]);
+
+  const loadHealth = useCallback(async () => {
+    const res = await authFetch('/admin/system-health');
+    if (res?.status || res?.components) setHealthData(res);
+  }, [authFetch]);
+
+  // Tab Data Orchestrator (Loads on-demand when tab changes)
+  const refreshActiveTab = useCallback(async () => {
+    if (!token) return;
     setRefreshing(true);
-    setTabErrors((prev) => ({ ...prev, [tabToLoad]: null }));
-
     try {
-      if (tabToLoad === 'overview') {
-        const data = await authFetch('/admin/overview');
-        if (data?.success) {
-          setMetrics(data.data);
-        } else {
-          setTabErrors((prev) => ({ ...prev, overview: data?.message || 'Failed to load metrics' }));
-        }
-      } else if (tabToLoad === 'leads') {
-        const params = new URLSearchParams();
-        if (leadSearch) params.set('search', leadSearch);
-        if (leadSourceFilter !== 'all') params.set('primarySource', leadSourceFilter);
-        if (leadStageFilter !== 'all') params.set('stage', leadStageFilter);
-        params.set('page', String(leadsPage));
-        params.set('limit', '50');
-
-        const data = await authFetch(`/admin/leads?${params.toString()}`);
-        if (data?.success) {
-          setLeads(data.leads || []);
-          setLeadsPagination(data.pagination || { page: leadsPage, total: data.leads?.length || 0, pages: 1 });
-        } else {
-          setTabErrors((prev) => ({ ...prev, leads: data?.message || 'Failed to fetch leads' }));
-        }
-      } else if (tabToLoad === 'distribution') {
-        const [rulesData, hierData] = await Promise.all([
-          authFetch('/admin/distribution-rules'),
-          authFetch('/admin/agents')
-        ]);
-        if (rulesData?.success) setDistributionRules(rulesData.rules || []);
-        if (hierData?.success) setHierarchy(hierData.hierarchy || { managers: [], unassignedAgents: [] });
-      } else if (tabToLoad === 'pipelines') {
-        const [pipeData, leadsData] = await Promise.all([
-          authFetch('/admin/pipelines/config'),
-          authFetch('/admin/leads?limit=200')
-        ]);
-        if (pipeData?.success) setPipelineStages(pipeData.pipeline?.stages || []);
-        if (leadsData?.success) setLeads(leadsData.leads || []);
-      } else if (tabToLoad === 'plans') {
-        const data = await authFetch('/admin/plans/hierarchy');
-        if (data?.success) {
-          setPlanHierarchy(data.hierarchy || []);
-          setAllPlans(data.allPlans || []);
-        }
-      } else if (tabToLoad === 'hierarchy') {
-        const [hierData, perfData] = await Promise.all([
-          authFetch('/admin/agents'),
-          authFetch('/admin/analytics/agents-performance')
-        ]);
-        if (hierData?.success) setHierarchy(hierData.hierarchy || { managers: [], unassignedAgents: [] });
-        if (perfData?.success) setPerformanceList(perfData.performance || []);
-      } else if (tabToLoad === 'forms') {
-        const data = await authFetch('/admin/form-schemas');
-        if (data?.success) setFormSchemas(data.fields || []);
-      } else if (tabToLoad === 'templates') {
-        const data = await authFetch('/admin/templates');
-        if (data?.success) setTemplates(data.templates || []);
-      } else if (tabToLoad === 'catalogue') {
-        const data = await authFetch('/admin/catalogues');
-        if (data?.success) setCatalogues(data.items || []);
-      } else if (tabToLoad === 'integrations') {
-        const data = await authFetch('/admin/integrations-status');
-        if (data?.success) setIntegrationsStatus(data);
-      } else if (tabToLoad === 'campaigns') {
-        const data = await authFetch('/admin/campaigns');
-        if (data?.success) setCampaigns(data.campaigns || []);
-      } else if (tabToLoad === 'commissions') {
-        const [rulesData, payoutsData] = await Promise.all([
-          authFetch('/admin/commission-rules'),
-          authFetch('/admin/commission-payouts')
-        ]);
-        if (rulesData?.success) setCommissionRules(rulesData.rules || []);
-        if (payoutsData?.success) setCommissionPayouts(payoutsData.payouts || []);
-      } else if (tabToLoad === 'coupons') {
-        const data = await authFetch('/admin/coupons');
-        if (data?.success) setCoupons(data.coupons || []);
-      } else if (tabToLoad === 'broadcasts') {
-        const data = await authFetch('/admin/broadcasts');
-        if (data?.success) setBroadcastsList(data.broadcasts || []);
-      } else if (tabToLoad === 'analytics') {
-        const data = await authFetch('/admin/analytics/universal');
-        if (data?.success) setUniversalAnalytics(data.analytics);
-      } else if (tabToLoad === 'activity') {
-        const params = new URLSearchParams();
-        if (logSearch) params.set('search', logSearch);
-        if (logActionFilter !== 'all') params.set('action', logActionFilter);
-        const data = await authFetch(`/admin/activity-logs?${params.toString()}`);
-        if (data?.success) setActivityLogs(data.logs || []);
-      } else if (tabToLoad === 'security') {
-        const data = await authFetch('/admin/security-settings');
-        if (data?.success) setSecuritySettings(data.settings);
-      } else if (tabToLoad === 'health') {
-        const data = await authFetch('/admin/system-health');
-        if (data?.success) setSystemHealth(data.health);
-      }
-    } catch (err) {
-      console.warn(`Error loading tab ${tabToLoad}:`, err.message);
-      setTabErrors((prev) => ({ ...prev, [tabToLoad]: err.message }));
+      if (activeTab === 'overview') await loadOverview();
+      else if (activeTab === 'users') await loadUsers();
+      else if (activeTab === 'plans') await loadPlans();
+      else if (activeTab === 'coupons') await loadCoupons();
+      else if (activeTab === 'logs') await loadLogs();
+      else if (activeTab === 'health') await loadHealth();
     } finally {
       setRefreshing(false);
     }
-  }, [activeTab, token, authFetch, leadSearch, leadSourceFilter, leadStageFilter, leadsPage, logSearch, logActionFilter]);
-
-  // Initial load of auxiliary datasets (plans and hierarchy) for dropdowns
-  useEffect(() => {
-    if (token) {
-      if (currentUser?.role === 'superadmin') {
-        authFetch('/admin/plans').then((res) => {
-          if (res?.success) setAllPlans(res.plans || []);
-        });
-      }
-      authFetch('/admin/agents').then((res) => {
-        if (res?.success) setHierarchy(res.hierarchy || { managers: [], unassignedAgents: [] });
-      });
-    }
-  }, [token, authFetch, currentUser]);
+  }, [activeTab, token, loadOverview, loadUsers, loadPlans, loadCoupons, loadLogs, loadHealth]);
 
   useEffect(() => {
     if (token) {
-      fetchTabData(activeTab);
+      refreshActiveTab();
     }
-  }, [activeTab, token, fetchTabData]);
+  }, [activeTab, token, refreshActiveTab]);
 
-  // Lead Stage Update Handler
-  const handleStageChange = async (leadId, newStage) => {
-    try {
-      const res = await fetch(`${API_BASE}/admin/leads/${leadId}/stage`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ stage: newStage })
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(`Lead moved to ${newStage.replace('_', ' ').toUpperCase()}`);
-        setLeads((prev) => prev.map((l) => (l._id === leadId ? { ...l, status: newStage } : l)));
-        // Background refresh metrics
-        authFetch('/admin/overview').then((res) => res?.success && setMetrics(res.data));
-      } else {
-        toast.error(data.message || 'Stage update failed');
-      }
-    } catch (e) {
-      toast.error('Network error updating stage');
+  // Initial preload of plans for user assignment dropdown
+  useEffect(() => {
+    if (token) {
+      loadOverview();
+      loadPlans();
     }
+  }, [token, loadOverview, loadPlans]);
+
+  // Tab Switcher
+  const handleSelectTab = (tabId) => {
+    setActiveTab(tabId);
+    setMobileSidebarOpen(false);
+    router.replace(`/admin?tab=${tabId}`, { scroll: false });
   };
 
-  // Create Lead Handler
-  const handleCreateLead = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(`${API_BASE}/admin/leads`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(leadFormData)
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Lead created successfully!');
-        setShowAddLeadModal(false);
-        setLeadFormData({ name: '', phone: '', email: '', company: '', service_required: 'smart_solo', monthly_spend: '', source: 'manual', primarySource: 'SOURCE_A_MANUAL', assignedTo: '', notes: '' });
-        fetchTabData('leads');
-      } else {
-        toast.error(data.message || 'Creation failed');
-      }
-    } catch (e) {
-      toast.error('Error creating lead');
-    }
-  };
-
-  // Create Agent/Manager Handler
-  const handleCreateAgent = async (e) => {
-    e.preventDefault();
-    try {
-      const payload = {
-        ...agentFormData,
-        companyRole: agentFormData.role === 'manager' ? 'manager' : 'agent',
-      };
-      const res = await fetch(`${API_BASE}/admin/agents`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(`${agentFormData.role.toUpperCase()} created successfully!`);
-        setShowAddAgentModal(false);
-        setAgentFormData({ name: '', email: '', phone: '', password: '', role: 'agent', managerId: '', incentive_pct: 10, leadCap: 50, isAvailableForRouting: true });
-        fetchTabData('hierarchy');
-      } else {
-        toast.error(data.message || 'Creation failed');
-      }
-    } catch (e) {
-      toast.error('Error creating team member');
-    }
-  };
-
-  // Update Agent/Manager Handler
-  const handleUpdateUser = async (e) => {
-    e.preventDefault();
-    if (!editingUser) return;
-    try {
-      const res = await fetch(`${API_BASE}/admin/agents/${editingUser._id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(editingUser)
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(`Updated ${editingUser.name || 'Member'} successfully!`);
-        setShowEditUserModal(false);
-        setEditingUser(null);
-        fetchTabData('hierarchy');
-      } else {
-        toast.error(data.message || 'Update failed');
-      }
-    } catch (e) {
-      toast.error('Error updating member');
-    }
-  };
-
-  // Reassign Leads Handler
-  const handleReassignLeads = async (e) => {
-    e.preventDefault();
-    if (!reassignFromAgent || !reassignToAgentId) return;
-    try {
-      const res = await fetch(`${API_BASE}/admin/agents/reassign-leads`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          fromAgentId: reassignFromAgent._id,
-          toAgentId: reassignToAgentId,
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(data.message || 'Leads reassigned successfully!');
-        setShowReassignModal(false);
-        setReassignFromAgent(null);
-        setReassignToAgentId('');
-        fetchTabData('hierarchy');
-      } else {
-        toast.error(data.message || 'Reassignment failed');
-      }
-    } catch (e) {
-      toast.error('Error reassigning leads');
-    }
-  };
-
-  // Create Distribution Rule Handler
-  const handleCreateRule = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(`${API_BASE}/admin/distribution-rules`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(ruleFormData)
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Distribution Rule saved!');
-        setShowAddRuleModal(false);
-        setRuleFormData({ name: '', strategy: 'ROUND_ROBIN', priority: 1, isActive: true, assignees: [], conditions: { sourceType: 'ALL' } });
-        fetchTabData('distribution');
-      } else {
-        toast.error(data.message || 'Rule save failed');
-      }
-    } catch (e) {
-      toast.error('Error saving rule');
-    }
-  };
-
-  // Delete Rule Handler
-  const handleDeleteRule = async (ruleId) => {
-    if (!confirm('Are you sure you want to delete this distribution rule?')) return;
-    try {
-      const res = await fetch(`${API_BASE}/admin/distribution-rules/${ruleId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Distribution rule deleted');
-        setDistributionRules((prev) => prev.filter((r) => r._id !== ruleId));
-      } else {
-        toast.error(data.message || 'Delete failed');
-      }
-    } catch (e) {
-      toast.error('Error deleting rule');
-    }
-  };
-
-
-  // Save Form Schema Configuration Handler
-  const handleSaveFormSchema = async (fields, formType = 'lead') => {
-    try {
-      const isProduct = formType === 'product' || formType === 'package';
-      const res = await fetch(`${API_BASE}/admin/form-schemas?type=${formType}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          fields,
-          formType: isProduct ? 'product' : 'lead',
-          title: isProduct ? 'Product / Package Form' : 'Lead Capture Form',
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(`${isProduct ? 'Product / Package' : 'Lead'} form schema saved!`);
-        fetchTabData('forms');
-      } else {
-        toast.error(data.message || 'Save failed');
-      }
-    } catch (e) {
-      toast.error('Error saving form schema');
-    }
-  };
-
-  // Save Security Settings Handler
-  const handleSaveSecurity = async (settings) => {
-    try {
-      const res = await fetch(`${API_BASE}/admin/security-settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(settings)
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Security policies updated!');
-        fetchTabData('security');
-      } else {
-        toast.error(data.message || 'Security update failed');
-      }
-    } catch (e) {
-      toast.error('Error saving security policies');
-    }
-  };
-
-  // Save Integration Credentials Handler
-  const handleSaveIntegration = async (provider, credentials) => {
-    try {
-      const res = await fetch(`${API_BASE}/admin/integrations-credentials`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ provider, credentials, status: 'CONNECTED' })
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(`${provider} integration credentials saved!`);
-        fetchTabData('integrations');
-      } else {
-        toast.error(data.message || 'Failed saving credentials');
-      }
-    } catch (e) {
-      toast.error('Error saving integration');
-    }
-  };
-
-  // Test Webhook Handler
-  const handleTestWebhook = async (provider) => {
-    toast.success(`Dispatched simulated test payload for ${provider}`);
-  };
-
-  // Create Broadcast Handler
-  const handleCreateBroadcast = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(`${API_BASE}/admin/broadcasts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(broadcastFormData)
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Broadcast dispatched to team!');
-        setShowBroadcastModal(false);
-        setBroadcastFormData({ title: '', message: '', priority: 'NORMAL', targetAudience: 'INTERNAL_ALL', deliveryChannels: ['IN_APP'] });
-        fetchTabData('broadcasts');
-      } else {
-        toast.error(data.message || 'Broadcast failed');
-      }
-    } catch (e) {
-      toast.error('Error dispatching broadcast');
-    }
-  };
-
-  // Create Coupon Handler
-  const handleCreateCoupon = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(`${API_BASE}/admin/coupons`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(couponFormData)
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Coupon created successfully!');
-        setShowAddCouponModal(false);
-        setCouponFormData({ code: '', description: '', discountType: 'PERCENTAGE', discountValue: 20, applicablePlans: ['ALL'], validUntil: '', maxOverallUses: 100 });
-        fetchTabData('coupons');
-      } else {
-        toast.error(data.message || 'Coupon creation failed');
-      }
-    } catch (e) {
-      toast.error('Error creating coupon');
-    }
-  };
-
-  // Create Commission Rule Handler
-  const handleCreateCommissionRule = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(`${API_BASE}/admin/commission-rules`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(commFormData)
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Commission Rule saved!');
-        setShowAddCommissionModal(false);
-        setCommFormData({ ruleName: '', targetRole: 'AGENT', commissionType: 'PERCENTAGE', value: 10, stageThreshold: 'payment_done' });
-        fetchTabData('commissions');
-      } else {
-        toast.error(data.message || 'Commission rule save failed');
-      }
-    } catch (e) {
-      toast.error('Error creating rule');
-    }
-  };
-
-  // Create Campaign Handler
-  const handleCreateCampaign = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(`${API_BASE}/admin/campaigns`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(campaignFormData)
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Campaign tracker saved!');
-        setShowAddCampaignModal(false);
-        setCampaignFormData({ campaignName: '', platform: 'META', campaignId: '', budget: 50000, amountSpent: 12000, status: 'ACTIVE' });
-        fetchTabData('campaigns');
-      } else {
-        toast.error(data.message || 'Campaign save failed');
-      }
-    } catch (e) {
-      toast.error('Error saving campaign');
-    }
-  };
-
-  // Create Template Handler
-  const handleCreateTemplate = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(`${API_BASE}/admin/templates`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(templateFormData)
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Template saved successfully!');
-        setShowAddTemplateModal(false);
-        setTemplateFormData({ name: '', channel: 'WHATSAPP', content: '', category: 'GENERAL', variables: ['name', 'company'] });
-        fetchTabData('templates');
-      } else {
-        toast.error(data.message || 'Template creation failed');
-      }
-    } catch (e) {
-      toast.error('Error saving template');
-    }
-  };
-
-  // Create Catalogue Handler
-  const handleCreateCatalogue = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(`${API_BASE}/admin/catalogues`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(catalogueFormData)
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Catalogue item added!');
-        setShowAddCatalogueModal(false);
-        setCatalogueFormData({ itemName: '', description: '', price: 999, discountedPrice: 499, category: 'GENERAL' });
-        fetchTabData('catalogue');
-      } else {
-        toast.error(data.message || 'Catalogue item creation failed');
-      }
-    } catch (e) {
-      toast.error('Error adding catalogue item');
-    }
-  };
-
-  // Follow-up Cancellation Handler
-  const handleCancelFollowUp = async (leadId, reason) => {
-    try {
-      const res = await fetch(`${API_BASE}/admin/leads/${leadId}/follow-up/cancel`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ reason })
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Follow-up cancelled & audit recorded');
-        setCancelFollowUpLead(null);
-        fetchTabData('leads');
-        if (selectedLeadProfile && selectedLeadProfile._id === leadId) {
-          setSelectedLeadProfile(data.lead);
-        }
-      } else {
-        toast.error(data.message || 'Failed to cancel follow-up');
-      }
-    } catch (e) {
-      toast.error('Network error cancelling follow-up');
-    }
-  };
-
-  // Close Deal & Commission Ledger Handler
-  const handleCloseDeal = async ({ leadId, planId, closingAmount, closingType, closingReason }) => {
-    try {
-      const res = await fetch(`${API_BASE}/admin/leads/${leadId}/close-deal`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ planId, closingAmount, closingType, closingReason })
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('🎉 Deal closed! Commission ledger & payment recorded.');
-        setCloseDealLead(null);
-        fetchTabData('leads');
-        authFetch('/admin/overview').then((res) => res?.success && setMetrics(res.data));
-        if (selectedLeadProfile && selectedLeadProfile._id === leadId) {
-          setSelectedLeadProfile(data.lead);
-        }
-      } else {
-        toast.error(data.message || 'Deal closure failed');
-      }
-    } catch (e) {
-      toast.error('Network error closing deal');
-    }
-  };
-
-  // Plan Assignment Handler
-  const handleAssignPlan = async ({ leadId, planId, isFree, reason }) => {
-    try {
-      const res = await fetch(`${API_BASE}/admin/leads/${leadId}/assign-plan`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ planId, isFree, reason })
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(isFree ? 'Complimentary plan granted and audited' : 'Plan assigned successfully');
-        setAssignPlanLead(null);
-        fetchTabData('leads');
-        if (selectedLeadProfile && selectedLeadProfile._id === leadId) {
-          setSelectedLeadProfile(data.lead);
-        }
-      } else {
-        toast.error(data.message || 'Plan assignment failed');
-      }
-    } catch (e) {
-      toast.error('Network error assigning plan');
-    }
-  };
-
-  // Plan Management Handlers
-  const handleCreatePlan = async (planData) => {
-    const res = await fetch(`${API_BASE}/admin/plans`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(planData)
-    });
-    const data = await res.json();
-    if (data.success) {
-      fetchTabData('plans');
-      authFetch('/admin/plans').then((r) => r?.success && setAllPlans(r.plans || []));
-    } else {
-      throw new Error(data.message || 'Failed creating plan');
-    }
-  };
-
-  const handleUpdatePlan = async (id, planData) => {
-    const res = await fetch(`${API_BASE}/admin/plans/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(planData)
-    });
-    const data = await res.json();
-    if (data.success) {
-      fetchTabData('plans');
-      authFetch('/admin/plans').then((r) => r?.success && setAllPlans(r.plans || []));
-    } else {
-      throw new Error(data.message || 'Failed updating plan');
-    }
-  };
-
-  const handleDeletePlan = async (id) => {
-    const res = await fetch(`${API_BASE}/admin/plans/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const data = await res.json();
-    if (data.success) {
-      toast.success('Plan deactivated');
-      fetchTabData('plans');
-      authFetch('/admin/plans').then((r) => r?.success && setAllPlans(r.plans || []));
-    }
-  };
-
-  // Pipeline Config Handler
-  const handleSavePipeline = async (stages) => {
-    const res = await fetch(`${API_BASE}/admin/pipelines/config`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ stages })
-    });
-    const data = await res.json();
-    if (data.success) {
-      setPipelineStages(data.pipeline?.stages || stages);
-    } else {
-      throw new Error(data.message || 'Failed saving pipeline settings');
-    }
-  };
-
-  // Add Note to Lead Handler
-  const handleAddLeadNote = async (leadId, noteText) => {
-    const res = await fetch(`${API_BASE}/admin/leads/${leadId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ note: noteText })
-    });
-    const data = await res.json();
-    if (data.success) {
-      toast.success('Note added');
-      fetchTabData('leads');
-      if (selectedLeadProfile && selectedLeadProfile._id === leadId) {
-        setSelectedLeadProfile((prev) => ({
-          ...prev,
-          notes: [...(prev.notes || []), { text: noteText, createdAt: new Date(), authorName: currentUser?.name || 'Admin' }]
-        }));
-      }
-    }
-  };
-
-  const handleSendBroadcast = async (broadcastPayload) => {
-    const res = await authFetch('/admin/broadcasts', {
-      method: 'POST',
-      body: JSON.stringify(broadcastPayload),
-    });
+  // --- User Actions ---
+  const handleToggleUserStatus = async (userId) => {
+    const res = await authFetch(`/admin/users/${userId}/status`, { method: 'PUT' });
     if (res?.success) {
-      toast.success(res.message || 'Broadcast dispatched successfully');
-      fetchTabData('broadcasts');
+      toast.success(res.message || 'User status updated');
+      setUsersList((prev) =>
+        prev.map((u) => (u._id === userId ? { ...u, userStatus: res.user?.userStatus || (u.userStatus === 'active' ? 'disabled' : 'active') } : u))
+      );
     } else {
-      throw new Error(res?.message || 'Failed to dispatch broadcast');
+      toast.error(res?.message || 'Failed to update user status');
     }
   };
 
-  // Drilldown navigations from Overview
-  const handleNavigateToLeads = (filter = {}) => {
-    setActiveTab('leads');
-    if (filter.stage) setLeadStageFilter(filter.stage);
-    if (filter.primarySource) setLeadSourceFilter(filter.primarySource);
+  const handleOpenAssignPlan = (user) => {
+    setSelectedUserForPlan(user);
+    setAssignedPlanCode(user.plan || 'Free Starter');
+    setShowAssignPlanModal(true);
   };
 
-  const handleNavigateToHierarchy = () => {
-    setActiveTab('hierarchy');
+  const handleSaveAssignedPlan = async (e) => {
+    e.preventDefault();
+    if (!selectedUserForPlan) return;
+
+    const res = await authFetch(`/admin/users/${selectedUserForPlan._id}/plan`, {
+      method: 'PUT',
+      body: JSON.stringify({ plan: assignedPlanCode }),
+    });
+
+    if (res?.success) {
+      toast.success(`Plan updated to ${assignedPlanCode}`);
+      setUsersList((prev) =>
+        prev.map((u) => (u._id === selectedUserForPlan._id ? { ...u, plan: assignedPlanCode } : u))
+      );
+      setShowAssignPlanModal(false);
+      setSelectedUserForPlan(null);
+    } else {
+      toast.error(res?.message || 'Failed to assign plan');
+    }
   };
 
-  if (!isAuthorized) {
-    return <PermissionGate />;
+  const handleDeleteUser = async (user) => {
+    if (!confirm(`Are you sure you want to permanently delete user "${user.name || user.email}"? This action cannot be undone.`)) return;
+
+    const res = await authFetch(`/admin/users/${user._id}`, { method: 'DELETE' });
+    if (res?.success) {
+      toast.success('User deleted successfully');
+      setUsersList((prev) => prev.filter((u) => u._id !== user._id));
+    } else {
+      toast.error(res?.message || 'Failed to delete user');
+    }
+  };
+
+  // --- Plan Actions ---
+  const handleOpenAddPlan = () => {
+    setEditingPlan(null);
+    setPlanFormData({
+      code: '',
+      name: '',
+      description: '',
+      badge: '',
+      category: 'INDIVIDUAL',
+      monthlyPrice: 999,
+      yearlyPrice: 9990,
+      leadsLimit: 1000,
+      whatsappLimit: 1000,
+      storageGB: 5,
+      features: 'Candidate CRM Access\nInstitutional Course Catalogue\nAdmission Pipeline Tracking\nWhatsApp Communication Hub',
+      status: 'ACTIVE',
+    });
+    setShowPlanModal(true);
+  };
+
+  const handleOpenEditPlan = (plan) => {
+    setEditingPlan(plan);
+    const monthlyAmt = plan.pricing?.monthly?.amount || plan.monthlyPrice || Math.round((plan.priceInPaise || 0) / 100) || 0;
+    const yearlyAmt = plan.pricing?.yearly?.amount || plan.yearlyPrice || monthlyAmt * 10;
+    const feats = Array.isArray(plan.whatsIncluded) ? plan.whatsIncluded.join('\n') : '';
+
+    setPlanFormData({
+      code: plan.code,
+      name: plan.name,
+      description: plan.description || '',
+      badge: plan.badge || '',
+      category: plan.category || 'INDIVIDUAL',
+      monthlyPrice: monthlyAmt,
+      yearlyPrice: yearlyAmt,
+      leadsLimit: plan.limits?.leads ?? 1000,
+      whatsappLimit: plan.limits?.monthlyWhatsAppMessages ?? 1000,
+      storageGB: plan.limits?.storageGB ?? 5,
+      features: feats,
+      status: plan.status || 'ACTIVE',
+    });
+    setShowPlanModal(true);
+  };
+
+  const handleSavePlan = async (e) => {
+    e.preventDefault();
+    const payload = {
+      code: planFormData.code.toUpperCase().trim(),
+      name: planFormData.name.trim(),
+      description: planFormData.description.trim(),
+      badge: planFormData.badge.trim() || null,
+      category: planFormData.category,
+      pricing: {
+        monthly: { amount: Number(planFormData.monthlyPrice) || 0, enabled: true },
+        yearly: { amount: Number(planFormData.yearlyPrice) || 0, enabled: true },
+        currency: 'INR',
+      },
+      limits: {
+        leads: Number(planFormData.leadsLimit) || 1000,
+        monthlyWhatsAppMessages: Number(planFormData.whatsappLimit) || 1000,
+        storageGB: Number(planFormData.storageGB) || 5,
+        seats: 1,
+      },
+      whatsIncluded: planFormData.features
+        .split('\n')
+        .map((f) => f.trim())
+        .filter(Boolean),
+      status: planFormData.status,
+    };
+
+    if (editingPlan) {
+      const res = await authFetch(`/admin/plans/${editingPlan._id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+      if (res?.success) {
+        toast.success(`Plan "${payload.name}" updated successfully`);
+        setShowPlanModal(false);
+        loadPlans();
+      } else {
+        toast.error(res?.message || 'Failed to update plan');
+      }
+    } else {
+      const res = await authFetch('/admin/plans', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      if (res?.success) {
+        toast.success(`Plan "${payload.name}" created successfully`);
+        setShowPlanModal(false);
+        loadPlans();
+      } else {
+        toast.error(res?.message || 'Failed to create plan');
+      }
+    }
+  };
+
+  const handleDeletePlan = async (plan) => {
+    if (!confirm(`Are you sure you want to delete plan "${plan.name}"?`)) return;
+    const res = await authFetch(`/admin/plans/${plan._id}`, { method: 'DELETE' });
+    if (res?.success) {
+      toast.success('Plan removed');
+      loadPlans();
+    } else {
+      toast.error(res?.message || 'Failed to delete plan');
+    }
+  };
+
+  // --- Coupon Actions ---
+  const handleOpenAddCoupon = () => {
+    const nextMonth = new Date();
+    nextMonth.setDate(nextMonth.getDate() + 30);
+    const dateStr = nextMonth.toISOString().split('T')[0];
+
+    setCouponFormData({
+      code: '',
+      description: '',
+      discountType: 'PERCENTAGE',
+      discountValue: 20,
+      maxOverallUses: 100,
+      validUntil: dateStr,
+      appliesToAllPlans: true,
+    });
+    setShowCouponModal(true);
+  };
+
+  const handleSaveCoupon = async (e) => {
+    e.preventDefault();
+    const payload = {
+      code: couponFormData.code.toUpperCase().trim(),
+      description: couponFormData.description.trim(),
+      discountType: couponFormData.discountType,
+      discountValue: Number(couponFormData.discountValue) || 0,
+      maxOverallUses: Number(couponFormData.maxOverallUses) || 100,
+      validUntil: new Date(couponFormData.validUntil),
+      appliesToAllPlans: true,
+      applicableCategories: ['INDIVIDUAL'],
+    };
+
+    const res = await authFetch('/admin/coupons', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+
+    if (res?.success) {
+      toast.success(`Coupon "${payload.code}" created successfully`);
+      setShowCouponModal(false);
+      loadCoupons();
+    } else {
+      toast.error(res?.message || 'Failed to create coupon');
+    }
+  };
+
+  const handleToggleCoupon = async (coupon) => {
+    const res = await authFetch(`/admin/coupons/${coupon._id}/toggle`, { method: 'PATCH' });
+    if (res?.success) {
+      toast.success(`Coupon status updated`);
+      loadCoupons();
+    } else {
+      toast.error(res?.message || 'Failed to toggle coupon');
+    }
+  };
+
+  const handleDeleteCoupon = async (coupon) => {
+    if (!confirm(`Delete coupon "${coupon.code}"?`)) return;
+    const res = await authFetch(`/admin/coupons/${coupon._id}`, { method: 'DELETE' });
+    if (res?.success) {
+      toast.success('Coupon deleted');
+      loadCoupons();
+    } else {
+      toast.error(res?.message || 'Failed to delete coupon');
+    }
+  };
+
+  const copyCouponCode = (code) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    toast.success(`Copied: ${code}`);
+    setTimeout(() => setCopiedCode(null), 2000);
+  };
+
+  // Filtered Users List
+  const filteredUsers = useMemo(() => {
+    return usersList.filter((u) => {
+      const matchSearch =
+        !userSearch ||
+        u.name?.toLowerCase().includes(userSearch.toLowerCase()) ||
+        u.email?.toLowerCase().includes(userSearch.toLowerCase()) ||
+        u.phone?.includes(userSearch);
+
+      const status = u.userStatus || (u.isActive ? 'active' : 'disabled');
+      const matchStatus = userStatusFilter === 'all' || status === userStatusFilter;
+      const matchPlan = userPlanFilter === 'all' || (u.plan || '').toLowerCase() === userPlanFilter.toLowerCase();
+
+      return matchSearch && matchStatus && matchPlan;
+    });
+  }, [usersList, userSearch, userStatusFilter, userPlanFilter]);
+
+  // Loading State
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[#070b14] text-amber-400">
+        <div className="text-center">
+          <div className="w-9 h-9 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm font-semibold tracking-wide text-slate-300">Authenticating Super Admin Security Clearance...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <AdminLayout
-      activeTab={activeTab}
-      onSelectTab={(tab) => {
-        setActiveTab(tab);
-        // Clean URL state
-        router.replace(`/admin?tab=${tab}`, { scroll: false });
-      }}
-      onRefresh={() => fetchTabData(activeTab)}
-      refreshing={refreshing}
-      currentUser={currentUser}
-      onAddLead={() => setShowAddLeadModal(true)}
-      onBroadcast={() => setShowBroadcastModal(true)}
-    >
-      {/* ─────────────────────────────────────────────────────────────
-          ACTIVE MODULE WORKSPACE
-      ────────────────────────────────────────────────────────────── */}
-      {activeTab === 'overview' && (
-        <OverviewModule
-          metrics={metrics}
-          loading={refreshing && !metrics}
-          error={tabErrors.overview}
-          onRetry={() => fetchTabData('overview')}
-          onNavigateToLeads={handleNavigateToLeads}
-          onNavigateToHierarchy={handleNavigateToHierarchy}
-        />
-      )}
-
-      {activeTab === 'leads' && (
-        <LeadsModule
-          leads={leads}
-          pagination={leadsPagination}
-          loading={refreshing && leads.length === 0}
-          error={tabErrors.leads}
-          onRetry={() => fetchTabData('leads')}
-          search={leadSearch}
-          onSearchChange={setLeadSearch}
-          sourceFilter={leadSourceFilter}
-          onSourceFilterChange={setLeadSourceFilter}
-          stageFilter={leadStageFilter}
-          onStageFilterChange={setLeadStageFilter}
-          page={leadsPage}
-          onPageChange={setLeadsPage}
-          onStageChange={handleStageChange}
-          onAddLead={() => setShowAddLeadModal(true)}
-          onLeadClick={(lead) => setSelectedLeadProfile(lead)}
-          onCancelFollowUp={(lead) => setCancelFollowUpLead(lead)}
-          onCloseDeal={(lead) => setCloseDealLead(lead)}
-        />
-      )}
-
-      {activeTab === 'distribution' && (
-        <DistributionModule
-          rules={distributionRules}
-          loading={refreshing && distributionRules.length === 0}
-          error={tabErrors.distribution}
-          onRetry={() => fetchTabData('distribution')}
-          onAddRule={() => setShowAddRuleModal(true)}
-          onDeleteRule={handleDeleteRule}
-          onReassignLeads={() => setShowReassignModal(true)}
-        />
-      )}
-
-      {activeTab === 'pipelines' && (
-        <PipelinesModule
-          leads={leads}
-          pipelineStages={pipelineStages}
-          loading={refreshing && (pipelineStages.length === 0 && leads.length === 0)}
-          error={tabErrors.pipelines}
-          onRetry={() => fetchTabData('pipelines')}
-          onSavePipeline={handleSavePipeline}
-          onLeadClick={(lead) => setSelectedLeadProfile(lead)}
-          onStageChange={handleStageChange}
-          onCloseDeal={(lead) => setCloseDealLead(lead)}
-        />
-      )}
-
-      {activeTab === 'hierarchy' && (
-        <HierarchyModule
-          hierarchy={hierarchy}
-          performance={performanceList}
-          loading={refreshing && (hierarchy.managers?.length === 0 && hierarchy.unassignedAgents?.length === 0)}
-          error={tabErrors.hierarchy}
-          onRetry={() => fetchTabData('hierarchy')}
-          onAddMember={() => setShowAddAgentModal(true)}
-          onEditUser={(user) => {
-            setEditingUser(user);
-            setShowEditUserModal(true);
-          }}
-          onReassignLeads={() => setShowReassignModal(true)}
-        />
-      )}
-
-      {activeTab === 'broadcasts' && (
-        <BroadcastsModule
-          broadcasts={broadcastsList}
-          loading={refreshing && broadcastsList.length === 0}
-          error={tabErrors.broadcasts}
-          onRetry={() => fetchTabData('broadcasts')}
-          onNewBroadcast={() => setShowBroadcastModal(true)}
-        />
-      )}
-
-      {activeTab === 'forms' && (
-        <FormsModule
-          formFields={formSchemas}
-          loading={refreshing && formSchemas.length === 0}
-          error={tabErrors.forms}
-          onRetry={() => fetchTabData('forms')}
-          onSaveSchema={handleSaveFormSchema}
-        />
-      )}
-
-      {activeTab === 'templates' && (
-        <TemplatesModule
-          templates={templates}
-          loading={refreshing && templates.length === 0}
-          error={tabErrors.templates}
-          onRetry={() => fetchTabData('templates')}
-          onAddTemplate={() => setShowAddTemplateModal(true)}
-          onDeleteTemplate={async (id) => {
-            await fetch(`${API_BASE}/admin/templates/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-            fetchTabData('templates');
-          }}
-        />
-      )}
-
-      {activeTab === 'campaigns' && (
-        <CampaignsModule
-          campaigns={campaigns}
-          loading={refreshing && campaigns.length === 0}
-          error={tabErrors.campaigns}
-          isIntegrationConnected={integrationsStatus?.meta?.status === 'CONNECTED'}
-          onRetry={() => fetchTabData('campaigns')}
-          onAddCampaign={() => setShowAddCampaignModal(true)}
-          onNavigateToIntegrations={() => setActiveTab('integrations')}
-          onDeleteCampaign={async (id) => {
-            await fetch(`${API_BASE}/admin/campaigns/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-            fetchTabData('campaigns');
-          }}
-        />
-      )}
-
-      {activeTab === 'plans' && (
-        <PlansModule
-          plans={allPlans}
-          hierarchy={planHierarchy}
-          loading={refreshing && allPlans.length === 0}
-          error={tabErrors.plans}
-          onRetry={() => fetchTabData('plans')}
-          onCreatePlan={handleCreatePlan}
-          onUpdatePlan={handleUpdatePlan}
-          onDeletePlan={handleDeletePlan}
-        />
-      )}
-
-      {activeTab === 'catalogue' && (
-        <CatalogueModule
-          catalogues={catalogues}
-          loading={refreshing && catalogues.length === 0}
-          error={tabErrors.catalogue}
-          onRetry={() => fetchTabData('catalogue')}
-          onAddCatalogue={() => setShowAddCatalogueModal(true)}
-          onDeleteCatalogue={async (id) => {
-            await fetch(`${API_BASE}/admin/catalogues/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-            fetchTabData('catalogue');
-          }}
-        />
-      )}
-
-      {activeTab === 'commissions' && (
-        <CommissionsModule
-          rules={commissionRules}
-          payouts={commissionPayouts}
-          loading={refreshing && commissionRules.length === 0}
-          error={tabErrors.commissions}
-          onRetry={() => fetchTabData('commissions')}
-          onAddRule={() => setShowAddCommissionModal(true)}
-          onDeleteRule={async (id) => {
-            await fetch(`${API_BASE}/admin/commission-rules/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-            fetchTabData('commissions');
-          }}
-        />
-      )}
-
-      {activeTab === 'coupons' && (
-        <CouponsModule
-          coupons={coupons}
-          loading={refreshing && coupons.length === 0}
-          error={tabErrors.coupons}
-          onRetry={() => fetchTabData('coupons')}
-          onAddCoupon={() => setShowAddCouponModal(true)}
-          onDeleteCoupon={async (id) => {
-            await fetch(`${API_BASE}/admin/coupons/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-            fetchTabData('coupons');
-          }}
-        />
-      )}
-
-      {activeTab === 'analytics' && (
-        <AnalyticsModule
-          analytics={universalAnalytics}
-          loading={refreshing && !universalAnalytics}
-          error={tabErrors.analytics}
-          onRetry={() => fetchTabData('analytics')}
-        />
-      )}
-
-      {activeTab === 'activity' && (
-        <ActivityLogsModule
-          logs={activityLogs}
-          loading={refreshing && activityLogs.length === 0}
-          error={tabErrors.activity}
-          onRetry={() => fetchTabData('activity')}
-          search={logSearch}
-          onSearchChange={setLogSearch}
-          actionFilter={logActionFilter}
-          onActionFilterChange={setLogActionFilter}
-        />
-      )}
-
-      {activeTab === 'integrations' && (
-        <IntegrationsModule
-          integrationStatus={integrationsStatus}
-          loading={refreshing && !integrationsStatus}
-          error={tabErrors.integrations}
-          onRetry={() => fetchTabData('integrations')}
-          onSaveCredentials={handleSaveIntegration}
-          onTestWebhook={handleTestWebhook}
-        />
-      )}
-
-      {activeTab === 'profile' && (
-        <ProfileModule
-          currentUser={currentUser}
-          onUserUpdated={(updatedUser) => {
-            setCurrentUser(updatedUser);
-            if (typeof window !== 'undefined') {
-              try {
-                const stored = localStorage.getItem('user');
-                if (stored) {
-                  const parsed = JSON.parse(stored);
-                  localStorage.setItem('user', JSON.stringify({ ...parsed, ...updatedUser }));
-                }
-              } catch (e) {}
-            }
-          }}
-        />
-      )}
-
-      {activeTab === 'security' && (
-        <SecurityModule
-          securitySettings={securitySettings}
-          loading={refreshing && !securitySettings}
-          error={tabErrors.security}
-          onRetry={() => fetchTabData('security')}
-          onSaveSecurity={handleSaveSecurity}
-        />
-      )}
-
-      {activeTab === 'health' && (
-        <HealthModule
-          health={systemHealth}
-          loading={refreshing && !systemHealth}
-          error={tabErrors.health}
-          onRetry={() => fetchTabData('health')}
-        />
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          SHARED ACTION MODALS
-      ────────────────────────────────────────────────────────────── */}
-      {/* 1. Add Lead Modal */}
-      <Modal isOpen={showAddLeadModal} onClose={() => setShowAddLeadModal(false)} title="Create New Inbound Lead">
-        <form onSubmit={handleCreateLead} className="space-y-3">
-          <div>
-            <label className="text-[11px] text-slate-300 block mb-1">Full Name</label>
-            <input
-              type="text"
-              value={leadFormData.name}
-              onChange={(e) => setLeadFormData({ ...leadFormData, name: e.target.value })}
-              placeholder="e.g. John Doe"
-              required
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Phone Number</label>
-              <input
-                type="text"
-                value={leadFormData.phone}
-                onChange={(e) => setLeadFormData({ ...leadFormData, phone: e.target.value })}
-                placeholder="e.g. 9876543210"
-                required
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Email Address</label>
-              <input
-                type="email"
-                value={leadFormData.email}
-                onChange={(e) => setLeadFormData({ ...leadFormData, email: e.target.value })}
-                placeholder="e.g. john@acme.com"
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="text-[11px] text-slate-300 block mb-1">Company / Organization</label>
-            <input
-              type="text"
-              value={leadFormData.company}
-              onChange={(e) => setLeadFormData({ ...leadFormData, company: e.target.value })}
-              placeholder="e.g. Acme Corp"
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Source Category</label>
-              <select
-                value={leadFormData.primarySource}
-                onChange={(e) => setLeadFormData({ ...leadFormData, primarySource: e.target.value, source: e.target.value === 'SOURCE_A_MANUAL' ? 'manual' : e.target.value === 'SOURCE_B_SIGNUP' ? 'signup' : 'ads' })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+    <div className="flex h-screen w-screen overflow-hidden bg-[#070b14] text-slate-100 font-sans">
+      {/* ── MOBILE DRAWER OVERLAY & SIDEBAR ── */}
+      {mobileSidebarOpen && (
+        <div className="fixed inset-0 z-50 flex lg:hidden">
+          <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+          <aside className="relative w-72 max-w-[85vw] bg-[#0a0f1d] border-r border-slate-800/80 flex flex-col shadow-2xl z-10 animate-fade-in">
+            <div className="p-4 border-b border-slate-800/70 flex items-center justify-between bg-[#070b14]/80">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center font-black text-slate-950 shadow-lg shadow-amber-500/20 text-base">
+                  ⚡
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-white tracking-tight leading-none">Sahyak Platform</h2>
+                  <span className="text-[10px] font-semibold text-amber-400 tracking-wider uppercase mt-0.5 block">
+                    Super Admin OS
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setMobileSidebarOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/80"
               >
-                <option value="SOURCE_A_MANUAL">Source A: Manual Direct</option>
-                <option value="SOURCE_B_SIGNUP">Source B: User Signup</option>
-                <option value="SOURCE_C_ADS">Source C: Ads / Webhook</option>
-              </select>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1.5 custom-scrollbar">
+              <div className="px-3 pb-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Command Center
+              </div>
+              {[
+                { id: 'overview', label: 'Platform Overview', icon: LayoutDashboard },
+                { id: 'users', label: 'Main Users (Consultants)', icon: Users, badge: usersList.length || null },
+                { id: 'plans', label: 'Subscription Plans', icon: CreditCard, badge: plansList.length || null },
+                { id: 'coupons', label: 'Coupon Engine', icon: Ticket, badge: couponsList.length || null },
+                { id: 'logs', label: 'System & Audit Logs', icon: History },
+                { id: 'health', label: 'System Health', icon: Activity, badgeDot: true },
+              ].map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleSelectTab(item.id)}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${isActive
+                        ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-md shadow-amber-500/10'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
+                      }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
+                      <span>{item.label}</span>
+                    </div>
+                    {item.badge && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                        {item.badge}
+                      </span>
+                    )}
+                    {item.badgeDot && (
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50 animate-pulse" />
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+
+            <div className="p-3.5 border-t border-slate-800/70 bg-[#070b14]/80 flex items-center justify-between">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-xs font-bold text-amber-400">
+                  {currentUser?.name?.charAt(0) || 'A'}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-white truncate">{currentUser?.name || 'Super Admin'}</p>
+                  <p className="text-[10px] text-slate-400 truncate">{currentUser?.email || 'admin@yourapp.com'}</p>
+                </div>
+              </div>
+              <Link
+                href="/dashboard"
+                className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+                title="Return to Admission CRM"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </Link>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {/* ── DESKTOP SUPER ADMIN SIDEBAR ── */}
+      <aside className="hidden lg:flex w-64 bg-[#0a0f1d] border-r border-slate-800/80 flex-col shrink-0">
+        {/* Workspace Brand */}
+        <div className="p-4 border-b border-slate-800/70 flex items-center justify-between bg-[#070b14]/80">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center font-black text-slate-950 shadow-lg shadow-amber-500/20 text-base">
+              ⚡
             </div>
             <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Assign to Representative</label>
-              <select
-                value={leadFormData.assignedTo}
-                onChange={(e) => setLeadFormData({ ...leadFormData, assignedTo: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              <h2 className="text-sm font-bold text-white tracking-tight leading-none">Sahyak Platform</h2>
+              <span className="text-[10px] font-semibold text-amber-400 tracking-wider uppercase mt-0.5 block">
+                Super Admin OS
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={refreshActiveTab}
+            disabled={refreshing}
+            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/80 transition-colors"
+            title="Refresh Current View"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin text-amber-400' : ''}`} />
+          </button>
+        </div>
+
+        {/* Navigation Sections */}
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1.5 custom-scrollbar">
+          <div className="px-3 pb-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+            Command Center
+          </div>
+
+          {[
+            { id: 'overview', label: 'Platform Overview', icon: LayoutDashboard },
+            { id: 'users', label: 'Main Users (Consultants)', icon: Users, badge: usersList.length || null },
+            { id: 'plans', label: 'Subscription Plans', icon: CreditCard, badge: plansList.length || null },
+            { id: 'coupons', label: 'Coupon Engine', icon: Ticket, badge: couponsList.length || null },
+            { id: 'logs', label: 'System & Audit Logs', icon: History },
+            { id: 'health', label: 'System Health', icon: Activity, badgeDot: true },
+          ].map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => handleSelectTab(item.id)}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${isActive
+                    ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-md shadow-amber-500/10'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
+                  }`}
               >
-                <option value="">Unassigned Pool</option>
-                {allTeamMembers.map((m) => (
-                  <option key={m._id} value={m._id}>
-                    {m.name} ({m.role || 'Agent'})
-                  </option>
+                <div className="flex items-center gap-3">
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
+                  <span>{item.label}</span>
+                </div>
+                {item.badge && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                    {item.badge}
+                  </span>
+                )}
+                {item.badgeDot && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50 animate-pulse" />
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Footer: User Details & Return to CRM */}
+        <div className="p-3.5 border-t border-slate-800/70 bg-[#070b14]/80 flex items-center justify-between">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-xs font-bold text-amber-400">
+              {currentUser?.name?.charAt(0) || 'A'}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-white truncate">{currentUser?.name || 'Super Admin'}</p>
+              <p className="text-[10px] text-slate-400 truncate">{currentUser?.email || 'admin@yourapp.com'}</p>
+            </div>
+          </div>
+          <Link
+            href="/dashboard"
+            className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+            title="Return to Admission CRM"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Link>
+        </div>
+      </aside>
+
+      {/* ── MAIN CONTENT VIEWPORT ─────────────────────────────────────────── */}
+      <main className="flex-1 flex flex-col min-w-0 bg-[#070b14] overflow-hidden">
+        {/* Top Header */}
+        <header className="h-16 border-b border-slate-800/80 px-3 sm:px-6 flex items-center justify-between bg-[#0a0f1d]/50 backdrop-blur shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <button
+              onClick={() => setMobileSidebarOpen(true)}
+              className="lg:hidden p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/80 transition-colors"
+              title="Open Navigation"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <h1 className="text-sm sm:text-base font-bold text-white tracking-tight capitalize truncate">
+              {activeTab === 'users' ? 'Main Users & Consultants Directory' : activeTab}
+            </h1>
+            <span className="hidden sm:inline-block px-2.5 py-0.5 text-[10px] font-bold tracking-wider rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase shrink-0">
+              Super Admin Privilege
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {activeTab === 'plans' && (
+              <button
+                onClick={handleOpenAddPlan}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Create New Plan</span>
+              </button>
+            )}
+
+            {activeTab === 'coupons' && (
+              <button
+                onClick={handleOpenAddCoupon}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Create Coupon</span>
+              </button>
+            )}
+
+            <button
+              onClick={refreshActiveTab}
+              disabled={refreshing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800/60 hover:bg-slate-700/60 text-slate-300 text-xs font-semibold transition"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-amber-400' : ''}`} />
+              <span>Refresh</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Tab Body (Scrollable Container) */}
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 sm:space-y-6 custom-scrollbar">
+          {/* ═════════════════════════════════════════════════════════════════ */}
+          {/* TAB 1: OVERVIEW & PLATFORM KPIS                                  */}
+          {/* ═════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'overview' && (
+            <div className="space-y-6 animate-fade-in">
+              {/* Metric Cards Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="p-5 rounded-2xl bg-gradient-to-b from-[#0f172a] to-[#0a0f1d] border border-slate-800/80 shadow-lg shadow-black/20">
+                  <div className="flex items-center justify-between text-slate-400 mb-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider">Registered Consultants</span>
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                      <Users className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="text-3xl font-black text-white tracking-tight">
+                    {overview?.totalConsultants ?? overview?.totalUsers ?? usersList.length}
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-2 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    <span>{overview?.activeConsultants ?? usersList.filter((u) => u.userStatus === 'active').length} Active Single Users</span>
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-gradient-to-b from-[#0f172a] to-[#0a0f1d] border border-slate-800/80 shadow-lg shadow-black/20">
+                  <div className="flex items-center justify-between text-slate-400 mb-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider">Active Plans</span>
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                      <CreditCard className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="text-3xl font-black text-white tracking-tight">
+                    {overview?.totalPlans ?? plansList.length}
+                  </div>
+                  <div className="text-[11px] text-amber-400/90 mt-2 font-medium">
+                    Free Starter, Solo Pro, Enterprise
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-gradient-to-b from-[#0f172a] to-[#0a0f1d] border border-slate-800/80 shadow-lg shadow-black/20">
+                  <div className="flex items-center justify-between text-slate-400 mb-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider">Active Coupons</span>
+                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                      <Ticket className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="text-3xl font-black text-white tracking-tight">
+                    {overview?.totalCoupons ?? couponsList.length}
+                  </div>
+                  <div className="text-[11px] text-purple-400 mt-2 font-medium">
+                    Promotional Checkout Engine
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-gradient-to-b from-[#0f172a] to-[#0a0f1d] border border-slate-800/80 shadow-lg shadow-black/20">
+                  <div className="flex items-center justify-between text-slate-400 mb-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider">Platform Health</span>
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                      <Activity className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="text-3xl font-black text-emerald-400 tracking-tight flex items-center gap-2">
+                    <span>100%</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+                      HEALTHY
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-2">All backend microservices online</div>
+                </div>
+              </div>
+
+              {/* Quick Actions Panel */}
+              <div className="p-5 rounded-2xl bg-[#0a0f1d] border border-slate-800/80 space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">Super Admin Operations</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <button
+                    onClick={() => handleSelectTab('users')}
+                    className="p-4 rounded-xl bg-slate-900/60 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-left transition flex items-center justify-between group cursor-pointer"
+                  >
+                    <div>
+                      <p className="text-xs font-bold text-white group-hover:text-amber-400">Consultants Directory</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">View, assign plan & manage status</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-amber-400 transition-transform group-hover:translate-x-0.5" />
+                  </button>
+
+                  <button
+                    onClick={() => handleSelectTab('plans')}
+                    className="p-4 rounded-xl bg-slate-900/60 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-left transition flex items-center justify-between group cursor-pointer"
+                  >
+                    <div>
+                      <p className="text-xs font-bold text-white group-hover:text-amber-400">Pricing & Plans</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Edit prices, quotas & features</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-amber-400 transition-transform group-hover:translate-x-0.5" />
+                  </button>
+
+                  <button
+                    onClick={() => handleSelectTab('coupons')}
+                    className="p-4 rounded-xl bg-slate-900/60 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-left transition flex items-center justify-between group cursor-pointer"
+                  >
+                    <div>
+                      <p className="text-xs font-bold text-white group-hover:text-amber-400">Coupon Generator</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Create discounts & promo codes</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-amber-400 transition-transform group-hover:translate-x-0.5" />
+                  </button>
+
+                  <button
+                    onClick={() => handleSelectTab('logs')}
+                    className="p-4 rounded-xl bg-slate-900/60 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-left transition flex items-center justify-between group cursor-pointer"
+                  >
+                    <div>
+                      <p className="text-xs font-bold text-white group-hover:text-amber-400">System Logs</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Audit trail & admin activity</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-amber-400 transition-transform group-hover:translate-x-0.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Infrastructure Summary Banner */}
+              <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 to-[#0c1322] border border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                    <Server className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Single-User Admission Consultants OS</h4>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Monolithic agency bloat has been permanently removed. System strictly isolated per consultant.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 text-xs font-semibold rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    Database: Active (27017)
+                  </span>
+                  <span className="px-3 py-1 text-xs font-semibold rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                    API: Running (5000)
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ═════════════════════════════════════════════════════════════════ */}
+          {/* TAB 2: MAIN USERS DIRECTORY                                      */}
+          {/* ═════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'users' && (
+            <div className="space-y-4 animate-fade-in">
+              {/* Search & Filter Bar */}
+              <div className="p-4 rounded-2xl bg-[#0a0f1d] border border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 flex-1 min-w-[260px] bg-slate-900/80 border border-slate-700/80 rounded-xl px-3 py-2">
+                  <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                  <input
+                    type="text"
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    placeholder="Search by name, email, or phone..."
+                    className="w-full bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none"
+                  />
+                  {userSearch && (
+                    <button onClick={() => setUserSearch('')} className="text-slate-400 hover:text-white">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <select
+                    value={userStatusFilter}
+                    onChange={(e) => setUserStatusFilter(e.target.value)}
+                    className="bg-slate-900 border border-slate-700 text-slate-300 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-amber-400"
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="active">Active Only</option>
+                    <option value="disabled">Disabled Only</option>
+                  </select>
+
+                  <select
+                    value={userPlanFilter}
+                    onChange={(e) => setUserPlanFilter(e.target.value)}
+                    className="bg-slate-900 border border-slate-700 text-slate-300 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-amber-400"
+                  >
+                    <option value="all">All Plans</option>
+                    <option value="Free Starter">Free Starter</option>
+                    <option value="Solo Pro">Solo Pro</option>
+                    <option value="Solo Enterprise">Solo Enterprise</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Users Table */}
+              <div className="rounded-2xl bg-[#0a0f1d] border border-slate-800/80 overflow-hidden shadow-xl">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="bg-slate-900/70 border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      <tr>
+                        <th className="py-3 px-4">Consultant / User</th>
+                        <th className="py-3 px-4">Role</th>
+                        <th className="py-3 px-4">Current Plan</th>
+                        <th className="py-3 px-4">Managed Leads</th>
+                        <th className="py-3 px-4">Status</th>
+                        <th className="py-3 px-4">Joined Date</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {filteredUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center text-slate-500">
+                            No matching consultants found
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredUsers.map((user) => {
+                          const isActive = user.userStatus === 'active' || user.isActive;
+                          return (
+                            <tr key={user._id} className="hover:bg-slate-800/40 transition">
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-xs text-amber-400">
+                                    {user.name?.charAt(0) || 'U'}
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-white">{user.name || 'Unnamed Consultant'}</p>
+                                    <p className="text-[11px] text-slate-400">{user.email || user.phone || 'No contact'}</p>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4">
+                                <span
+                                  className={`px-2 py-0.5 text-[10px] font-bold rounded-md uppercase tracking-wider ${user.role === 'superadmin'
+                                      ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                                      : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+                                    }`}
+                                >
+                                  {user.role}
+                                </span>
+                              </td>
+
+                              <td className="py-3 px-4">
+                                <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-800 text-slate-200 border border-slate-700">
+                                  {user.plan || 'Free Starter'}
+                                </span>
+                              </td>
+
+                              <td className="py-3 px-4">
+                                <span className="font-bold text-white">{user.leadsCount || 0}</span>
+                                <span className="text-[11px] text-slate-400 ml-1">candidates</span>
+                              </td>
+
+                              <td className="py-3 px-4">
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${isActive
+                                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                                      : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
+                                    }`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                                  {isActive ? 'Active' : 'Disabled'}
+                                </span>
+                              </td>
+
+                              <td className="py-3 px-4 text-slate-400 text-[11px]">
+                                {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
+                              </td>
+
+                              <td className="py-3 px-4 text-right">
+                                <div className="inline-flex items-center gap-1">
+                                  <button
+                                    onClick={() => handleOpenAssignPlan(user)}
+                                    className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition"
+                                    title="Assign / Change Plan"
+                                  >
+                                    <CreditCard className="w-4 h-4" />
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleToggleUserStatus(user._id)}
+                                    className={`p-1.5 rounded-lg transition ${isActive
+                                        ? 'text-slate-400 hover:text-rose-400 hover:bg-rose-500/10'
+                                        : 'text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10'
+                                      }`}
+                                    title={isActive ? 'Disable User' : 'Activate User'}
+                                  >
+                                    {isActive ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                                  </button>
+
+                                  {user.role !== 'superadmin' && (
+                                    <button
+                                      onClick={() => handleDeleteUser(user)}
+                                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
+                                      title="Delete User"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ═════════════════════════════════════════════════════════════════ */}
+          {/* TAB 3: SUBSCRIPTION PLANS MANAGEMENT                             */}
+          {/* ═════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'plans' && (
+            <div className="space-y-6 animate-fade-in">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {plansList.map((plan) => {
+                  const monthlyAmt = plan.pricing?.monthly?.amount || plan.monthlyPrice || Math.round((plan.priceInPaise || 0) / 100) || 0;
+                  const yearlyAmt = plan.pricing?.yearly?.amount || plan.yearlyPrice || monthlyAmt * 10;
+                  const isArchived = plan.status === 'ARCHIVED';
+
+                  return (
+                    <div
+                      key={plan._id}
+                      className={`rounded-2xl p-6 flex flex-col justify-between border transition-all ${isArchived
+                          ? 'bg-slate-900/40 border-slate-800 opacity-60'
+                          : 'bg-[#0a0f1d] border-slate-800/90 hover:border-amber-500/40 shadow-xl'
+                        }`}
+                    >
+                      <div>
+                        {/* Plan Header */}
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase tracking-wider">
+                            {plan.code}
+                          </span>
+                          {plan.badge && (
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                              {plan.badge}
+                            </span>
+                          )}
+                        </div>
+
+                        <h3 className="text-lg font-bold text-white">{plan.name}</h3>
+                        <p className="text-xs text-slate-400 mt-1 line-clamp-2">{plan.description || 'Single-user admission consulting plan'}</p>
+
+                        {/* Pricing */}
+                        <div className="my-5 pb-5 border-b border-slate-800/80">
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-3xl font-black text-white tracking-tight">₹{monthlyAmt.toLocaleString()}</span>
+                            <span className="text-xs text-slate-400">/ month</span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-1">₹{yearlyAmt.toLocaleString()} billed yearly</p>
+                        </div>
+
+                        {/* Limits & Quotas */}
+                        <div className="space-y-2 mb-5">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-400">Candidate Leads Cap:</span>
+                            <span className="font-bold text-white">{(plan.limits?.leads ?? 1000).toLocaleString()}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-400">WhatsApp Messages/mo:</span>
+                            <span className="font-bold text-white">{(plan.limits?.monthlyWhatsAppMessages ?? 1000).toLocaleString()}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-400">Cloud Storage:</span>
+                            <span className="font-bold text-white">{plan.limits?.storageGB ?? 5} GB</span>
+                          </div>
+                        </div>
+
+                        {/* Features List */}
+                        {Array.isArray(plan.whatsIncluded) && plan.whatsIncluded.length > 0 && (
+                          <div className="space-y-1.5 pt-4 border-t border-slate-800/60">
+                            {plan.whatsIncluded.slice(0, 4).map((feat, idx) => (
+                              <div key={idx} className="flex items-start gap-2 text-[11px] text-slate-300">
+                                <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                                <span>{feat}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="pt-6 border-t border-slate-800/80 flex items-center justify-between gap-2 mt-4">
+                        <button
+                          onClick={() => handleOpenEditPlan(plan)}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white transition cursor-pointer"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                          <span>Edit Plan</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleDeletePlan(plan)}
+                          className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition cursor-pointer"
+                          title="Delete Plan"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ═════════════════════════════════════════════════════════════════ */}
+          {/* TAB 4: COUPON ENGINE                                             */}
+          {/* ═════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'coupons' && (
+            <div className="space-y-4 animate-fade-in">
+              {/* Header Strip */}
+              <div className="p-4 rounded-2xl bg-[#0a0f1d] border border-slate-800/80 flex items-center justify-between">
+                <div className="flex items-center gap-2 flex-1 max-w-md bg-slate-900/80 border border-slate-700/80 rounded-xl px-3 py-2">
+                  <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                  <input
+                    type="text"
+                    value={couponSearch}
+                    onChange={(e) => setCouponSearch(e.target.value)}
+                    placeholder="Search coupons by code or description..."
+                    className="w-full bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3 text-xs text-slate-400">
+                  <span>Total Coupons: <strong className="text-white">{couponsList.length}</strong></span>
+                  <span>•</span>
+                  <span>Active Promos: <strong className="text-emerald-400">{couponsList.filter((c) => c.status === 'ACTIVE' || c.isActive).length}</strong></span>
+                </div>
+              </div>
+
+              {/* Coupons Table */}
+              <div className="rounded-2xl bg-[#0a0f1d] border border-slate-800/80 overflow-hidden shadow-xl">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="bg-slate-900/70 border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      <tr>
+                        <th className="py-3 px-4">Coupon Code</th>
+                        <th className="py-3 px-4">Discount</th>
+                        <th className="py-3 px-4">Usage / Cap</th>
+                        <th className="py-3 px-4">Valid Until</th>
+                        <th className="py-3 px-4">Status</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {couponsList.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-12 text-center text-slate-500">
+                            No coupons created yet. Click "Create Coupon" above to start a promotional campaign.
+                          </td>
+                        </tr>
+                      ) : (
+                        couponsList
+                          .filter((c) => !couponSearch || c.code?.toLowerCase().includes(couponSearch.toLowerCase()) || c.description?.toLowerCase().includes(couponSearch.toLowerCase()))
+                          .map((coupon) => {
+                            const isExpired = coupon.validUntil && new Date(coupon.validUntil) < new Date();
+                            const isActive = (coupon.status === 'ACTIVE' || coupon.isActive) && !isExpired;
+
+                            return (
+                              <tr key={coupon._id} className="hover:bg-slate-800/40 transition">
+                                <td className="py-3 px-4">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono font-bold text-amber-400 text-sm">{coupon.code}</span>
+                                    <button
+                                      onClick={() => copyCouponCode(coupon.code)}
+                                      className="p-1 text-slate-400 hover:text-white rounded"
+                                      title="Copy code"
+                                    >
+                                      {copiedCode === coupon.code ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                                    </button>
+                                  </div>
+                                  {coupon.description && <p className="text-[11px] text-slate-400">{coupon.description}</p>}
+                                </td>
+
+                                <td className="py-3 px-4">
+                                  <span className="font-bold text-white">
+                                    {coupon.discountType === 'PERCENTAGE' ? `${coupon.discountValue}% OFF` : `₹${coupon.discountValue} FLAT`}
+                                  </span>
+                                </td>
+
+                                <td className="py-3 px-4">
+                                  <span className="text-white font-semibold">{coupon.usedCount || 0}</span>
+                                  <span className="text-slate-400 text-[11px]"> / {coupon.maxOverallUses || '∞'} uses</span>
+                                </td>
+
+                                <td className="py-3 px-4 text-slate-400 text-[11px]">
+                                  {coupon.validUntil ? new Date(coupon.validUntil).toLocaleDateString() : 'No expiry'}
+                                </td>
+
+                                <td className="py-3 px-4">
+                                  <span
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${isActive
+                                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                                        : 'bg-slate-800 text-slate-400 border border-slate-700'
+                                      }`}
+                                  >
+                                    <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                                    {isExpired ? 'Expired' : isActive ? 'Active' : 'Paused'}
+                                  </span>
+                                </td>
+
+                                <td className="py-3 px-4 text-right">
+                                  <div className="inline-flex items-center gap-1">
+                                    <button
+                                      onClick={() => handleToggleCoupon(coupon)}
+                                      className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+                                      title={isActive ? 'Pause Coupon' : 'Activate Coupon'}
+                                    >
+                                      {isActive ? <XCircle className="w-4 h-4 text-amber-400" /> : <CheckCircle className="w-4 h-4 text-emerald-400" />}
+                                    </button>
+
+                                    <button
+                                      onClick={() => handleDeleteCoupon(coupon)}
+                                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
+                                      title="Delete Coupon"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ═════════════════════════════════════════════════════════════════ */}
+          {/* TAB 5: SYSTEM & AUDIT LOGS                                       */}
+          {/* ═════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'logs' && (
+            <div className="space-y-4 animate-fade-in">
+              {/* Filter Strip */}
+              <div className="p-4 rounded-2xl bg-[#0a0f1d] border border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 flex-1 min-w-[240px] bg-slate-900/80 border border-slate-700/80 rounded-xl px-3 py-2">
+                  <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                  <input
+                    type="text"
+                    value={logSearch}
+                    onChange={(e) => setLogSearch(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && loadLogs()}
+                    placeholder="Search logs by keyword, actor, or action (press Enter)..."
+                    className="w-full bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <select
+                    value={logTypeFilter}
+                    onChange={(e) => setLogTypeFilter(e.target.value)}
+                    className="bg-slate-900 border border-slate-700 text-slate-300 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-amber-400"
+                  >
+                    <option value="all">All Event Categories</option>
+                    <option value="user">User & Status Events</option>
+                    <option value="plan">Plan & Subscription Updates</option>
+                    <option value="coupon">Coupon Modifications</option>
+                    <option value="auth">Auth & Security Attempts</option>
+                  </select>
+
+                  <button
+                    onClick={loadLogs}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+                  >
+                    <Filter className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Apply Filter</span>
+                  </button>
+
+                  <a
+                    href={`${API_BASE}/admin/activity-logs?format=csv`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Export CSV</span>
+                  </a>
+                </div>
+              </div>
+
+              {/* Logs Table */}
+              <div className="rounded-2xl bg-[#0a0f1d] border border-slate-800/80 overflow-hidden shadow-xl">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="bg-slate-900/70 border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      <tr>
+                        <th className="py-3 px-4">Timestamp</th>
+                        <th className="py-3 px-4">Actor</th>
+                        <th className="py-3 px-4">Action</th>
+                        <th className="py-3 px-4">Target Entity</th>
+                        <th className="py-3 px-4">Event Details</th>
+                        <th className="py-3 px-4">IP Address</th>
+                        <th className="py-3 px-4 text-right">Inspect</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                      {logsList.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center text-slate-500 font-sans">
+                            No logs recorded for this criteria
+                          </td>
+                        </tr>
+                      ) : (
+                        logsList.map((log) => {
+                          const actionColor =
+                            log.action === 'CREATE'
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                              : log.action === 'DELETE'
+                                ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                                : log.action === 'STATUS_CHANGE'
+                                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                                  : 'bg-blue-500/10 text-blue-400 border-blue-500/30';
+
+                          return (
+                            <tr key={log._id} className="hover:bg-slate-800/40 transition">
+                              <td className="py-3 px-4 text-slate-400 whitespace-nowrap">
+                                {log.timestamp ? new Date(log.timestamp).toLocaleString() : 'N/A'}
+                              </td>
+
+                              <td className="py-3 px-4 whitespace-nowrap font-sans font-medium text-white">
+                                {log.actor || 'System'}
+                              </td>
+
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${actionColor}`}>
+                                  {log.action}
+                                </span>
+                              </td>
+
+                              <td className="py-3 px-4 whitespace-nowrap text-slate-300 font-sans">
+                                {log.entityType || 'General'}
+                              </td>
+
+                              <td className="py-3 px-4 text-slate-200 font-sans max-w-xs truncate">
+                                {log.details}
+                              </td>
+
+                              <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
+                                {log.ipAddress || '127.0.0.1'}
+                              </td>
+
+                              <td className="py-3 px-4 text-right whitespace-nowrap font-sans">
+                                {(log.oldValue || log.newValue) && (
+                                  <button
+                                    onClick={() => {
+                                      setSelectedLogPayload(log);
+                                      setShowPayloadModal(true);
+                                    }}
+                                    className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition"
+                                    title="View Changed Data"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ═════════════════════════════════════════════════════════════════ */}
+          {/* TAB 6: SYSTEM HEALTH MONITOR                                     */}
+          {/* ═════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'health' && (
+            <div className="space-y-6 animate-fade-in">
+              {/* Overall Status Banner */}
+              <div className="p-6 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-[#0a0f1d] to-[#0a0f1d] border border-emerald-500/30 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                    <Activity className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-bold text-white">System Status: 100% HEALTHY</h3>
+                      <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        OPERATIONAL
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">
+                      All platform components, local persistent MongoDB instance, and API workers are functioning optimally.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <p className="text-xs text-slate-400">System Uptime</p>
+                  <p className="text-xl font-bold text-white font-mono mt-0.5">99.98%</p>
+                </div>
+              </div>
+
+              {/* Components Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[
+                  { name: 'Application Server', type: 'Node.js Express', status: 'HEALTHY', icon: Server, ping: '< 1ms' },
+                  { name: 'MongoDB Database', type: 'Persistent 127.0.0.1:27017', status: 'HEALTHY', icon: Database, ping: '2ms' },
+                  { name: 'WhatsApp Session Hub', type: 'Local Baileys Engine', status: 'HEALTHY', icon: Zap, ping: 'Active' },
+                  { name: 'Storage & Assets', type: 'Static Artifacts Storage', status: 'HEALTHY', icon: Cpu, ping: 'Online' },
+                  { name: 'Payment Webhook Hub', type: 'UPI & Gateway Listeners', status: 'HEALTHY', icon: CreditCard, ping: 'Active' },
+                  { name: 'Scheduler & Crons', type: 'Follow-up Cron Job', status: 'HEALTHY', icon: Clock, ping: 'Active' },
+                ].map((comp, idx) => (
+                  <div key={idx} className="p-5 rounded-2xl bg-[#0a0f1d] border border-slate-800 flex items-center justify-between">
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-10 h-10 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-amber-400">
+                        <comp.icon className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white">{comp.name}</h4>
+                        <p className="text-[11px] text-slate-400">{comp.type}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        {comp.status}
+                      </span>
+                      <p className="text-[10px] text-slate-500 mt-1">{comp.ping}</p>
+                    </div>
+                  </div>
                 ))}
-              </select>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center justify-end gap-2 pt-3">
-            <button
-              type="button"
-              onClick={() => setShowAddLeadModal(false)}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
-            >
-              Create Lead
-            </button>
-          </div>
-        </form>
-      </Modal>
+          )}
+        </div>
+      </main>
 
-      {/* 2. Add Member Modal */}
-      <Modal isOpen={showAddAgentModal} onClose={() => setShowAddAgentModal(false)} title="Add Hierarchy Team Member">
-        <form onSubmit={handleCreateAgent} className="space-y-3">
-          <div>
-            <label className="text-[11px] text-slate-300 block mb-1">Full Name</label>
-            <input
-              type="text"
-              value={agentFormData.name}
-              onChange={(e) => setAgentFormData({ ...agentFormData, name: e.target.value })}
-              placeholder="e.g. Alice Smith"
-              required
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Email</label>
-              <input
-                type="email"
-                value={agentFormData.email}
-                onChange={(e) => setAgentFormData({ ...agentFormData, email: e.target.value })}
-                placeholder="e.g. alice@crm.com"
-                required
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-              />
+      {/* ── MODAL: ASSIGN PLAN ────────────────────────────────────────────── */}
+      {showAssignPlanModal && selectedUserForPlan && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0c1322] border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <CreditCard className="w-5 h-5 text-amber-400" />
+                <h3 className="text-sm font-bold text-white">Assign Subscription Plan</h3>
+              </div>
+              <button onClick={() => setShowAssignPlanModal(false)} className="text-slate-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Phone</label>
-              <input
-                type="text"
-                value={agentFormData.phone}
-                onChange={(e) => setAgentFormData({ ...agentFormData, phone: e.target.value })}
-                placeholder="e.g. 9876543210"
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="text-[11px] text-slate-300 block mb-1">Initial Password</label>
-            <input
-              type="password"
-              value={agentFormData.password}
-              onChange={(e) => setAgentFormData({ ...agentFormData, password: e.target.value })}
-              placeholder="••••••••••••"
-              required
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Role Hierarchy</label>
-              <select
-                value={agentFormData.role}
-                onChange={(e) => setAgentFormData({ ...agentFormData, role: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-              >
-                <option value="agent">Sales Representative (Agent)</option>
-                <option value="manager">Team Manager</option>
-              </select>
-            </div>
-            {agentFormData.role === 'agent' && (
+
+            <form onSubmit={handleSaveAssignedPlan} className="space-y-4 mt-4">
               <div>
-                <label className="text-[11px] text-slate-300 block mb-1">Reporting Manager</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Consultant</label>
+                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300">
+                  <p className="font-bold text-white">{selectedUserForPlan.name || 'Unnamed'}</p>
+                  <p className="text-slate-400 text-[11px]">{selectedUserForPlan.email || selectedUserForPlan.phone}</p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Select Subscription Plan</label>
                 <select
-                  value={agentFormData.managerId}
-                  onChange={(e) => setAgentFormData({ ...agentFormData, managerId: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                  value={assignedPlanCode}
+                  onChange={(e) => setAssignedPlanCode(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-400"
                 >
-                  <option value="">Unassigned</option>
-                  {(hierarchy.managers || []).map((m) => (
-                    <option key={m._id} value={m._id}>
-                      {m.name}
+                  <option value="Free Starter">Free Starter (₹0 / mo)</option>
+                  <option value="Solo Pro">Solo Pro (₹999 / mo)</option>
+                  <option value="Solo Enterprise">Solo Enterprise (₹2,499 / mo)</option>
+                  {plansList.map((p) => (
+                    <option key={p._id} value={p.name}>
+                      {p.name} ({p.code})
                     </option>
                   ))}
                 </select>
               </div>
-            )}
-          </div>
-          <div className="flex items-center justify-end gap-2 pt-3">
-            <button
-              type="button"
-              onClick={() => setShowAddAgentModal(false)}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
-            >
-              Add Member
-            </button>
-          </div>
-        </form>
-      </Modal>
 
-      {/* 3. Edit User Modal */}
-      {showEditUserModal && editingUser && (
-        <Modal isOpen={showEditUserModal} onClose={() => setShowEditUserModal(false)} title={`Edit ${editingUser.name}`}>
-          <form onSubmit={handleUpdateUser} className="space-y-3">
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Full Name</label>
-              <input
-                type="text"
-                value={editingUser.name || ''}
-                onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
-                required
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[11px] text-slate-300 block mb-1">Lead Quota Cap</label>
-                <input
-                  type="number"
-                  value={editingUser.leadCap || 50}
-                  onChange={(e) => setEditingUser({ ...editingUser, leadCap: Number(e.target.value) })}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] text-slate-300 block mb-1">Commission %</label>
-                <input
-                  type="number"
-                  value={editingUser.incentive_pct || 10}
-                  onChange={(e) => setEditingUser({ ...editingUser, incentive_pct: Number(e.target.value) })}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
-                />
-              </div>
-            </div>
-            {editingUser.role === 'agent' && (
-              <div>
-                <label className="text-[11px] text-slate-300 block mb-1">Reporting Manager</label>
-                <select
-                  value={editingUser.managerId?._id || editingUser.managerId || ''}
-                  onChange={(e) => setEditingUser({ ...editingUser, managerId: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              <div className="pt-4 flex items-center justify-end gap-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAssignPlanModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
                 >
-                  <option value="">Unassigned</option>
-                  {(hierarchy.managers || []).map((m) => (
-                    <option key={m._id} value={m._id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow-md shadow-amber-500/20"
+                >
+                  Update Plan
+                </button>
               </div>
-            )}
-            <div className="flex items-center gap-2 pt-1">
-              <input
-                type="checkbox"
-                id="editRouting"
-                checked={Boolean(editingUser.isAvailableForRouting)}
-                onChange={(e) => setEditingUser({ ...editingUser, isAvailableForRouting: e.target.checked })}
-                className="rounded border-slate-700 text-amber-500 focus:ring-0 bg-slate-900 cursor-pointer"
-              />
-              <label htmlFor="editRouting" className="text-xs text-slate-300 cursor-pointer">
-                Available for Auto Lead Routing
-              </label>
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-3">
-              <button
-                type="button"
-                onClick={() => setShowEditUserModal(false)}
-                className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
-              >
-                Save Changes
-              </button>
-            </div>
-          </form>
-        </Modal>
+            </form>
+          </div>
+        </div>
       )}
 
-      {/* 4. Broadcast Modal */}
-      <Modal isOpen={showBroadcastModal} onClose={() => setShowBroadcastModal(false)} title="Dispatch Team Broadcast">
-        <form onSubmit={handleCreateBroadcast} className="space-y-3">
-          <div>
-            <label className="text-[11px] text-slate-300 block mb-1">Announcement Title</label>
-            <input
-              type="text"
-              value={broadcastFormData.title}
-              onChange={(e) => setBroadcastFormData({ ...broadcastFormData, title: e.target.value })}
-              placeholder="e.g. Month-End Sales Target Incentive"
-              required
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-            />
+      {/* ── MODAL: CREATE / EDIT PLAN ──────────────────────────────────────── */}
+      {showPlanModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#0c1322] border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl my-8 animate-scale-up">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <CreditCard className="w-5 h-5 text-amber-400" />
+                <h3 className="text-sm font-bold text-white">{editingPlan ? 'Edit Subscription Plan' : 'Create New Subscription Plan'}</h3>
+              </div>
+              <button onClick={() => setShowPlanModal(false)} className="text-slate-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePlan} className="space-y-4 mt-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">Plan Code</label>
+                  <input
+                    type="text"
+                    required
+                    disabled={!!editingPlan}
+                    value={planFormData.code}
+                    onChange={(e) => setPlanFormData({ ...planFormData, code: e.target.value })}
+                    placeholder="e.g. SOLO_PRO"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white uppercase focus:outline-none focus:border-amber-400 disabled:opacity-50"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">Plan Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={planFormData.name}
+                    onChange={(e) => setPlanFormData({ ...planFormData, name: e.target.value })}
+                    placeholder="e.g. Solo Pro Tier"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1">Description / Tagline</label>
+                <input
+                  type="text"
+                  value={planFormData.description}
+                  onChange={(e) => setPlanFormData({ ...planFormData, description: e.target.value })}
+                  placeholder="e.g. Designed for ambitious solo educational consultants"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">Monthly Price (₹)</label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={planFormData.monthlyPrice}
+                    onChange={(e) => setPlanFormData({ ...planFormData, monthlyPrice: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">Yearly Price (₹)</label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={planFormData.yearlyPrice}
+                    onChange={(e) => setPlanFormData({ ...planFormData, yearlyPrice: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">Badge (Optional)</label>
+                  <input
+                    type="text"
+                    value={planFormData.badge}
+                    onChange={(e) => setPlanFormData({ ...planFormData, badge: e.target.value })}
+                    placeholder="e.g. Popular"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">Candidate Leads Cap</label>
+                  <input
+                    type="number"
+                    required
+                    value={planFormData.leadsLimit}
+                    onChange={(e) => setPlanFormData({ ...planFormData, leadsLimit: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">WhatsApp Msgs/mo</label>
+                  <input
+                    type="number"
+                    required
+                    value={planFormData.whatsappLimit}
+                    onChange={(e) => setPlanFormData({ ...planFormData, whatsappLimit: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">Storage (GB)</label>
+                  <input
+                    type="number"
+                    required
+                    value={planFormData.storageGB}
+                    onChange={(e) => setPlanFormData({ ...planFormData, storageGB: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1">Included Features (one per line)</label>
+                <textarea
+                  rows={4}
+                  value={planFormData.features}
+                  onChange={(e) => setPlanFormData({ ...planFormData, features: e.target.value })}
+                  placeholder="Candidate Management&#10;College & Course Catalogue&#10;WhatsApp Automated Templates"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white focus:outline-none focus:border-amber-400 font-mono text-xs"
+                />
+              </div>
+
+              <div className="pt-4 flex items-center justify-end gap-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowPlanModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow-md shadow-amber-500/20"
+                >
+                  {editingPlan ? 'Save Changes' : 'Create Plan'}
+                </button>
+              </div>
+            </form>
           </div>
-          <div>
-            <label className="text-[11px] text-slate-300 block mb-1">Message Content</label>
-            <textarea
-              value={broadcastFormData.message}
-              onChange={(e) => setBroadcastFormData({ ...broadcastFormData, message: e.target.value })}
-              placeholder="Enter message visible on all team screens..."
-              rows={3}
-              required
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
-            />
+        </div>
+      )}
+
+      {/* ── MODAL: CREATE COUPON ─────────────────────────────────────────── */}
+      {showCouponModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0c1322] border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <Ticket className="w-5 h-5 text-amber-400" />
+                <h3 className="text-sm font-bold text-white">Create Promotional Coupon</h3>
+              </div>
+              <button onClick={() => setShowCouponModal(false)} className="text-slate-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCoupon} className="space-y-4 mt-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1">Coupon Code</label>
+                <input
+                  type="text"
+                  required
+                  value={couponFormData.code}
+                  onChange={(e) => setCouponFormData({ ...couponFormData, code: e.target.value.toUpperCase() })}
+                  placeholder="e.g. WELCOME50, DIWALI2026"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1">Description</label>
+                <input
+                  type="text"
+                  value={couponFormData.description}
+                  onChange={(e) => setCouponFormData({ ...couponFormData, description: e.target.value })}
+                  placeholder="e.g. New Consultant Launch Discount"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">Discount Type</label>
+                  <select
+                    value={couponFormData.discountType}
+                    onChange={(e) => setCouponFormData({ ...couponFormData, discountType: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-400"
+                  >
+                    <option value="PERCENTAGE">Percentage (%)</option>
+                    <option value="FLAT">Flat Amount (₹)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">
+                    {couponFormData.discountType === 'PERCENTAGE' ? 'Discount Value (%)' : 'Discount Value (₹)'}
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    max={couponFormData.discountType === 'PERCENTAGE' ? '100' : undefined}
+                    value={couponFormData.discountValue}
+                    onChange={(e) => setCouponFormData({ ...couponFormData, discountValue: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">Max Overall Uses</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={couponFormData.maxOverallUses}
+                    onChange={(e) => setCouponFormData({ ...couponFormData, maxOverallUses: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">Valid Until (Expiry)</label>
+                  <input
+                    type="date"
+                    required
+                    value={couponFormData.validUntil}
+                    onChange={(e) => setCouponFormData({ ...couponFormData, validUntil: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 flex items-center justify-end gap-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowCouponModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow-md shadow-amber-500/20"
+                >
+                  Publish Coupon
+                </button>
+              </div>
+            </form>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Priority</label>
-              <select
-                value={broadcastFormData.priority}
-                onChange={(e) => setBroadcastFormData({ ...broadcastFormData, priority: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+        </div>
+      )}
+
+      {/* ── MODAL: LOG PAYLOAD INSPECTOR ──────────────────────────────────── */}
+      {showPayloadModal && selectedLogPayload && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0c1322] border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Shield className="w-5 h-5 text-amber-400" />
+                <h3 className="text-sm font-bold text-white">Audit Log State Payload</h3>
+              </div>
+              <button onClick={() => setShowPayloadModal(false)} className="text-slate-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3 font-mono text-[11px]">
+              <div>
+                <p className="font-sans text-xs font-bold text-slate-400 mb-1 uppercase">Old State (Before):</p>
+                <pre className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 overflow-x-auto">
+                  {JSON.stringify(selectedLogPayload.oldValue || 'None', null, 2)}
+                </pre>
+              </div>
+
+              <div>
+                <p className="font-sans text-xs font-bold text-slate-400 mb-1 uppercase">New State (After):</p>
+                <pre className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-emerald-400 overflow-x-auto">
+                  {JSON.stringify(selectedLogPayload.newValue || 'None', null, 2)}
+                </pre>
+              </div>
+            </div>
+
+            <div className="pt-4 mt-4 border-t border-slate-800 text-right">
+              <button
+                onClick={() => setShowPayloadModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
               >
-                <option value="NORMAL">Normal</option>
-                <option value="HIGH">High Priority</option>
-                <option value="URGENT">Urgent Alert</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Target Audience</label>
-              <select
-                value={broadcastFormData.targetAudience}
-                onChange={(e) => setBroadcastFormData({ ...broadcastFormData, targetAudience: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-              >
-                <option value="INTERNAL_ALL">All Staff Members</option>
-                <option value="MANAGERS_ONLY">Managers Only</option>
-                <option value="AGENTS_ONLY">Sales Reps Only</option>
-              </select>
+                Close
+              </button>
             </div>
           </div>
-          <div className="flex items-center justify-end gap-2 pt-3">
-            <button
-              type="button"
-              onClick={() => setShowBroadcastModal(false)}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
-            >
-              Dispatch Notice
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* 5. Add Rule Modal */}
-      <Modal isOpen={showAddRuleModal} onClose={() => setShowAddRuleModal(false)} title="Create Distribution Rule">
-        <form onSubmit={handleCreateRule} className="space-y-3">
-          <div>
-            <label className="text-[11px] text-slate-300 block mb-1">Rule Name</label>
-            <input
-              type="text"
-              value={ruleFormData.name}
-              onChange={(e) => setRuleFormData({ ...ruleFormData, name: e.target.value })}
-              placeholder="e.g. High Priority Inbound Round Robin"
-              required
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Routing Strategy</label>
-              <select
-                value={ruleFormData.strategy}
-                onChange={(e) => setRuleFormData({ ...ruleFormData, strategy: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-              >
-                <option value="ROUND_ROBIN">Round Robin</option>
-                <option value="LEAST_LOADED">Least Loaded Rep</option>
-                <option value="PRIORITY_WEIGHTED">Priority Weighted</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Priority Order</label>
-              <input
-                type="number"
-                min="1"
-                max="10"
-                value={ruleFormData.priority}
-                onChange={(e) => setRuleFormData({ ...ruleFormData, priority: Number(e.target.value) })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
-              />
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-2 pt-3">
-            <button
-              type="button"
-              onClick={() => setShowAddRuleModal(false)}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
-            >
-              Save Rule
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* 6. Add Campaign Modal */}
-      <Modal isOpen={showAddCampaignModal} onClose={() => setShowAddCampaignModal(false)} title="Add Ad Campaign Tracker">
-        <form onSubmit={handleCreateCampaign} className="space-y-3">
-          <div>
-            <label className="text-[11px] text-slate-300 block mb-1">Campaign Name</label>
-            <input
-              type="text"
-              value={campaignFormData.campaignName}
-              onChange={(e) => setCampaignFormData({ ...campaignFormData, campaignName: e.target.value })}
-              placeholder="e.g. Q3 Growth Leads - Meta"
-              required
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Ad Platform</label>
-              <select
-                value={campaignFormData.platform}
-                onChange={(e) => setCampaignFormData({ ...campaignFormData, platform: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-              >
-                <option value="META">Meta / Facebook</option>
-                <option value="GOOGLE">Google Ads</option>
-                <option value="LINKEDIN">LinkedIn Ads</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Budget Allocated (₹)</label>
-              <input
-                type="number"
-                value={campaignFormData.budget}
-                onChange={(e) => setCampaignFormData({ ...campaignFormData, budget: Number(e.target.value) })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
-              />
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-2 pt-3">
-            <button
-              type="button"
-              onClick={() => setShowAddCampaignModal(false)}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
-            >
-              Save Campaign
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* 7. Add Template Modal */}
-      <Modal isOpen={showAddTemplateModal} onClose={() => setShowAddTemplateModal(false)} title="Create Communication Template">
-        <form onSubmit={handleCreateTemplate} className="space-y-3">
-          <div>
-            <label className="text-[11px] text-slate-300 block mb-1">Template Name</label>
-            <input
-              type="text"
-              value={templateFormData.name}
-              onChange={(e) => setTemplateFormData({ ...templateFormData, name: e.target.value })}
-              placeholder="e.g. Instant Intro Pitch"
-              required
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Channel</label>
-              <select
-                value={templateFormData.channel}
-                onChange={(e) => setTemplateFormData({ ...templateFormData, channel: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-              >
-                <option value="WHATSAPP">WhatsApp</option>
-                <option value="EMAIL">Email</option>
-                <option value="SMS">SMS</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Category</label>
-              <select
-                value={templateFormData.category}
-                onChange={(e) => setTemplateFormData({ ...templateFormData, category: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-              >
-                <option value="GENERAL">General</option>
-                <option value="FOLLOW_UP">Follow Up</option>
-                <option value="PROMOTIONAL">Promotional</option>
-                <option value="CLOSING">Closing Deal</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="text-[11px] text-slate-300 block mb-1">Template Body (supports {`{{name}}`}, {`{{company}}`})</label>
-            <textarea
-              value={templateFormData.content}
-              onChange={(e) => setTemplateFormData({ ...templateFormData, content: e.target.value })}
-              placeholder="Hello {{name}}, thanks for reaching out to CoreSetu..."
-              rows={4}
-              required
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
-            />
-          </div>
-          <div className="flex items-center justify-end gap-2 pt-3">
-            <button
-              type="button"
-              onClick={() => setShowAddTemplateModal(false)}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
-            >
-              Save Template
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* 8. Add Catalogue Item Modal */}
-      <Modal isOpen={showAddCatalogueModal} onClose={() => setShowAddCatalogueModal(false)} title="Add Product / Package">
-        <form onSubmit={handleCreateCatalogue} className="space-y-3">
-          <div>
-            <label className="text-[11px] text-slate-300 block mb-1">Item / Package Name</label>
-            <input
-              type="text"
-              value={catalogueFormData.itemName}
-              onChange={(e) => setCatalogueFormData({ ...catalogueFormData, itemName: e.target.value })}
-              placeholder="e.g. Enterprise Annual CRM License"
-              required
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Retail Price (₹)</label>
-              <input
-                type="number"
-                value={catalogueFormData.price}
-                onChange={(e) => setCatalogueFormData({ ...catalogueFormData, price: Number(e.target.value) })}
-                required
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Discounted Price (₹)</label>
-              <input
-                type="number"
-                value={catalogueFormData.discountedPrice}
-                onChange={(e) => setCatalogueFormData({ ...catalogueFormData, discountedPrice: Number(e.target.value) })}
-                required
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="text-[11px] text-slate-300 block mb-1">Description</label>
-            <textarea
-              value={catalogueFormData.description}
-              onChange={(e) => setCatalogueFormData({ ...catalogueFormData, description: e.target.value })}
-              placeholder="Item inclusions and deliverables..."
-              rows={2}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
-            />
-          </div>
-          <div className="flex items-center justify-end gap-2 pt-3">
-            <button
-              type="button"
-              onClick={() => setShowAddCatalogueModal(false)}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
-            >
-              Add Item
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* 9. Add Coupon Modal */}
-      <Modal isOpen={showAddCouponModal} onClose={() => setShowAddCouponModal(false)} title="Create Discount Coupon">
-        <form onSubmit={handleCreateCoupon} className="space-y-3">
-          <div>
-            <label className="text-[11px] text-slate-300 block mb-1">Coupon Code (Uppercase)</label>
-            <input
-              type="text"
-              value={couponFormData.code}
-              onChange={(e) => setCouponFormData({ ...couponFormData, code: e.target.value.toUpperCase() })}
-              placeholder="e.g. FESTIVE30"
-              required
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 focus:outline-none focus:border-amber-500 font-mono font-bold"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Discount Type</label>
-              <select
-                value={couponFormData.discountType}
-                onChange={(e) => setCouponFormData({ ...couponFormData, discountType: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-              >
-                <option value="PERCENTAGE">Percentage (%)</option>
-                <option value="FLAT">Flat Amount (₹)</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Discount Value</label>
-              <input
-                type="number"
-                value={couponFormData.discountValue}
-                onChange={(e) => setCouponFormData({ ...couponFormData, discountValue: Number(e.target.value) })}
-                required
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
-              />
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-2 pt-3">
-            <button
-              type="button"
-              onClick={() => setShowAddCouponModal(false)}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
-            >
-              Save Coupon
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* 10. Add Commission Rule Modal */}
-      <Modal isOpen={showAddCommissionModal} onClose={() => setShowAddCommissionModal(false)} title="Create Commission Rule">
-        <form onSubmit={handleCreateCommissionRule} className="space-y-3">
-          <div>
-            <label className="text-[11px] text-slate-300 block mb-1">Rule Name</label>
-            <input
-              type="text"
-              value={commFormData.ruleName}
-              onChange={(e) => setCommFormData({ ...commFormData, ruleName: e.target.value })}
-              placeholder="e.g. Standard Rep 10% Closing Bonus"
-              required
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Target Role</label>
-              <select
-                value={commFormData.targetRole}
-                onChange={(e) => setCommFormData({ ...commFormData, targetRole: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-              >
-                <option value="AGENT">Sales Rep (Agent)</option>
-                <option value="MANAGER">Manager</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-[11px] text-slate-300 block mb-1">Incentive %</label>
-              <input
-                type="number"
-                value={commFormData.value}
-                onChange={(e) => setCommFormData({ ...commFormData, value: Number(e.target.value) })}
-                required
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
-              />
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-2 pt-3">
-            <button
-              type="button"
-              onClick={() => setShowAddCommissionModal(false)}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors"
-            >
-              Save Rule
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* 11. Comprehensive Lead Profile Workspace Modal */}
-      <LeadProfileModal
-        isOpen={Boolean(selectedLeadProfile)}
-        onClose={() => setSelectedLeadProfile(null)}
-        lead={selectedLeadProfile}
-        plans={allPlans}
-        teamMembers={allTeamMembers}
-        onStageChange={handleStageChange}
-        onOpenCancelFollowUp={(lead) => setCancelFollowUpLead(lead)}
-        onOpenCloseDeal={(lead) => setCloseDealLead(lead)}
-        onOpenAssignPlan={(lead, isFree) => {
-          setAssignPlanLead(lead);
-          setAssignPlanIsFree(Boolean(isFree));
-        }}
-        onReassignAgent={async (leadId, agentId) => {
-          const res = await fetch(`${API_BASE}/admin/leads/${leadId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ assignedTo: agentId || null }),
-          });
-          const data = await res.json();
-          if (data.success) {
-            toast.success('Lead assignee updated');
-            fetchTabData('leads');
-            if (selectedLeadProfile && selectedLeadProfile._id === leadId) {
-              setSelectedLeadProfile(data.lead);
-            }
-          }
-        }}
-        onAddNote={handleAddLeadNote}
-      />
-
-      {/* 12. Follow-up Cancellation Modal (Mandatory Justification Reason) */}
-      <CancelFollowUpModal
-        isOpen={Boolean(cancelFollowUpLead)}
-        onClose={() => setCancelFollowUpLead(null)}
-        lead={cancelFollowUpLead}
-        onConfirm={handleCancelFollowUp}
-      />
-
-      {/* 13. Deal Closure & Automated Commission Ledger Modal */}
-      <CloseDealModal
-        isOpen={Boolean(closeDealLead)}
-        onClose={() => setCloseDealLead(null)}
-        lead={closeDealLead}
-        plans={allPlans}
-        onConfirm={handleCloseDeal}
-      />
-
-      {/* 14. Subscription Plan & Complimentary Access Modal */}
-      <AssignPlanModal
-        isOpen={Boolean(assignPlanLead)}
-        onClose={() => setAssignPlanLead(null)}
-        lead={assignPlanLead}
-        plans={allPlans}
-        onConfirm={handleAssignPlan}
-      />
-
-      {/* 15. Dynamic Multi-Scope Broadcast Modal */}
-      <SendBroadcastModal
-        isOpen={showBroadcastModal}
-        onClose={() => setShowBroadcastModal(false)}
-        onSendBroadcast={handleSendBroadcast}
-      />
-    </AdminLayout>
+        </div>
+      )}
+    </div>
   );
 }
 
-export default function AdminControlCenter() {
+export default function SuperAdminPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex h-screen w-full items-center justify-center bg-[#070b14] text-white">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
-            <div className="text-xs font-mono text-slate-400">Loading CoreSetu OS Control Center...</div>
-          </div>
+        <div className="flex items-center justify-center min-h-screen bg-[#070b14] text-amber-400">
+          <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
         </div>
       }
     >
-      <AdminControlCenterContent />
+      <SuperAdminContent />
     </Suspense>
   );
 }

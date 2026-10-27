@@ -50,6 +50,34 @@ const chatMessageSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+  workspaceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Workspace',
+    default: null,
+    index: true,
+  },
+  channel: {
+    type: String,
+    enum: ['baileys', 'meta_cloud'],
+    default: 'baileys',
+    index: true,
+  },
+  wabaId: {
+    type: String,
+    default: null,
+  },
+  metaPhoneNumberId: {
+    type: String,
+    default: null,
+  },
+  templateName: {
+    type: String,
+    default: null,
+  },
+  errorDetails: {
+    type: String,
+    default: null,
+  },
   timestamp: {
     type: Date,
     default: Date.now,

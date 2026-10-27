@@ -369,6 +369,29 @@ exports.archiveCoupon = async (req, res) => {
   }
 };
 
+exports.deleteCoupon = exports.archiveCoupon;
+
+/**
+ * Toggle Coupon Active Status.
+ */
+exports.toggleCouponStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const coupon = await Coupon.findById(id);
+    if (!coupon) return res.status(404).json({ success: false, message: 'Coupon not found' });
+
+    const newActive = !coupon.isActive;
+    coupon.isActive = newActive;
+    coupon.status = newActive ? 'ACTIVE' : 'INACTIVE';
+    coupon.updatedBy = req.user?._id;
+    await coupon.save();
+
+    res.json({ success: true, message: `Coupon is now ${coupon.status}`, coupon });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 /**
  * Get paginated customer redemptions for a coupon ("View Customers").
  * @route GET /api/super-admin/coupons/:id/redemptions

@@ -404,7 +404,7 @@ async function reconcilePayment(paymentParams) {
 
 /**
  * Reconcile Subscription State Against Gateway State
- * Compares CoreSetu Subscription vs Razorpay Subscription and heals recoverable discrepancies.
+ * Compares Sahyak Subscription vs Razorpay Subscription and heals recoverable discrepancies.
  * Ambiguous cases are strictly flagged for MANUAL_REVIEW.
  * @param {string|ObjectId} subscriptionIdOrRzpSubId
  * @param {object} options
@@ -425,7 +425,7 @@ async function reconcileSubscription(subscriptionIdOrRzpSubId, options = {}) {
     return {
       success: false,
       reconciliationStatus: 'MISMATCHED',
-      message: `Subscription "${subscriptionIdOrRzpSubId}" not found in CoreSetu database.`,
+      message: `Subscription "${subscriptionIdOrRzpSubId}" not found in Sahyak database.`,
     };
   }
 

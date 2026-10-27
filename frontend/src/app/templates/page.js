@@ -1,5 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { getUser, hasPermission, canAccessRoute } from '@/lib/auth';
 import toast from 'react-hot-toast';
 import api, { uploadApi } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
@@ -277,7 +279,7 @@ export default function TemplatesPage() {
                 <p style={{ margin: 0, fontWeight: 700, fontSize: 15 }}>Quick Start</p>
               </div>
               <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--text-muted)' }}>Add professional outreach templates instantly</p>
-              <button className="btn btn-primary btn-sm" onClick={addPresets}>Add Preset Templates</button>
+              {canManage && <button className="btn btn-primary btn-sm" onClick={addPresets}>Add Preset Templates</button>}
             </div>
           )}
 

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
-import { getUser } from '@/lib/auth';
+import { getUser, hasPermission } from '@/lib/auth';
 import BottomNav from '@/components/BottomNav';
 import {
   Users, UserPlus, Shield, ShieldCheck, Mail, Check, Copy,
@@ -50,6 +50,19 @@ function WorkspaceTeamContent() {
     permissions: [],
   });
   const [savingRole, setSavingRole] = useState(false);
+
+  // System Role Dynamic Editing State
+  const [isEditingSystemRole, setIsEditingSystemRole] = useState(false);
+  const [systemRoleForm, setSystemRoleForm] = useState({
+    roleName: '',
+    permissions: [],
+  });
+  const [savingSystemRole, setSavingSystemRole] = useState(false);
+
+  // Member Overrides Editing State
+  const [editingMemberOverrides, setEditingMemberOverrides] = useState(null);
+  const [memberOverridesList, setMemberOverridesList] = useState([]);
+  const [savingMemberOverrides, setSavingMemberOverrides] = useState(false);
 
   // Member Edit Role Modal
   const [editingMember, setEditingMember] = useState(null);
@@ -123,12 +136,16 @@ function WorkspaceTeamContent() {
   }, []);
 
   useEffect(() => {
-    const u = getUser();
-    if (!u) {
-      router.replace('/login');
-      return;
-    }
-    setCurrentUser(u);
+    const updateAuth = () => {
+      const u = getUser();
+      if (!u) {
+        router.replace('/login');
+        return;
+      }
+      setCurrentUser(u);
+    };
+    updateAuth();
+    window.addEventListener('user-updated', updateAuth);
 
     // Seed from TanStack Query cache if available
     const cachedWs = queryClient.getQueryData(['workspace', 'current']);
@@ -148,6 +165,7 @@ function WorkspaceTeamContent() {
     }
 
     loadWorkspaceData();
+    return () => window.removeEventListener('user-updated', updateAuth);
   }, [router, loadWorkspaceData, queryClient]);
 
   // Handle Send Invite
@@ -354,6 +372,116 @@ function WorkspaceTeamContent() {
     }
   };
 
+  // System Role Dynamic Editing Handlers
+  const handleToggleSystemRolePermission = (permKey) => {
+    setSystemRoleForm(prev => {
+      const existingIdx = prev.permissions.findIndex(p => p.key === permKey);
+      if (existingIdx >= 0) {
+        return {
+          ...prev,
+          permissions: prev.permissions.filter(p => p.key !== permKey),
+        };
+      } else {
+        return {
+          ...prev,
+          permissions: [...prev.permissions, { key: permKey, scope: 'workspace' }],
+        };
+      }
+    });
+  };
+
+  const handleChangeSystemRoleScope = (permKey, newScope) => {
+    setSystemRoleForm(prev => {
+      const existingIdx = prev.permissions.findIndex(p => p.key === permKey);
+      if (existingIdx >= 0) {
+        const copy = [...prev.permissions];
+        copy[existingIdx] = { ...copy[existingIdx], scope: newScope };
+        return { ...prev, permissions: copy };
+      } else {
+        return {
+          ...prev,
+          permissions: [...prev.permissions, { key: permKey, scope: newScope }],
+        };
+      }
+    });
+  };
+
+  const handleSaveSystemRole = async () => {
+    if (!systemRoleForm.roleName) return;
+    setSavingSystemRole(true);
+    try {
+      await api.put(`/workspace/roles/system/${systemRoleForm.roleName}`, {
+        permissions: systemRoleForm.permissions,
+      });
+      toast.success(`Standard role "${systemRoleForm.roleName}" permissions updated`);
+      setIsEditingSystemRole(false);
+      await loadWorkspaceData();
+      window.dispatchEvent(new Event('user-updated'));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update system role');
+    } finally {
+      setSavingSystemRole(false);
+    }
+  };
+
+  // Member Overrides Handlers
+  const openMemberOverridesModal = (member) => {
+    setEditingMemberOverrides(member);
+    setMemberOverridesList(member.permissionOverrides ? JSON.parse(JSON.stringify(member.permissionOverrides)) : []);
+  };
+
+  const handleToggleMemberOverride = (permKey, defaultScope = 'workspace') => {
+    setMemberOverridesList(prev => {
+      const existingIdx = prev.findIndex(p => p.key === permKey);
+      if (existingIdx === -1) {
+        // Not overridden -> Explicitly Granted
+        return [...prev, { key: permKey, scope: defaultScope, granted: true }];
+      } else if (prev[existingIdx].granted === true) {
+        // Explicitly Granted -> Explicitly Revoked
+        const updated = [...prev];
+        updated[existingIdx] = { ...updated[existingIdx], granted: false };
+        return updated;
+      } else {
+        // Explicitly Revoked -> Remove override (Inherit from role)
+        return prev.filter(p => p.key !== permKey);
+      }
+    });
+  };
+
+  const handleChangeMemberOverrideScope = (permKey, newScope) => {
+    setMemberOverridesList(prev => {
+      const existingIdx = prev.findIndex(p => p.key === permKey);
+      if (existingIdx >= 0) {
+        const updated = [...prev];
+        updated[existingIdx] = { ...updated[existingIdx], scope: newScope };
+        return updated;
+      }
+      return prev;
+    });
+  };
+
+  const handleResetMemberOverrides = () => {
+    setMemberOverridesList([]);
+  };
+
+  const handleSaveMemberOverrides = async () => {
+    if (!editingMemberOverrides?._id) return;
+    setSavingMemberOverrides(true);
+    try {
+      await api.put(`/workspace/members/${editingMemberOverrides._id}/permissions`, {
+        permissionOverrides: memberOverridesList,
+      });
+      toast.success(`Permissions customized for ${editingMemberOverrides.name || 'member'}`);
+      setEditingMemberOverrides(null);
+      await loadWorkspaceData();
+      window.dispatchEvent(new Event('user-updated'));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update member permissions');
+    } finally {
+      setSavingMemberOverrides(false);
+    }
+  };
+
   // Helper to copy text to clipboard
   const copyToClipboard = (text, label = 'Link') => {
     navigator.clipboard.writeText(text);
@@ -394,7 +522,7 @@ function WorkspaceTeamContent() {
               </p>
             </div>
 
-            {isOwnerOrManager && (
+            {hasPermission(currentUser, 'members.invite') && (
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -428,31 +556,35 @@ function WorkspaceTeamContent() {
               <span>Team & Members ({members.length})</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('roles')}
-              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all border-b-2 ${
-                activeTab === 'roles'
-                  ? 'border-indigo-600 text-indigo-600 bg-indigo-50/60'
-                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-              }`}
-            >
-              <ShieldCheck size={16} />
-              <span>Dynamic Roles & Permissions ({systemRoles.length + customRoles.length})</span>
-            </button>
+            {hasPermission(currentUser, 'roles.manage') && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('roles')}
+                className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all border-b-2 ${
+                  activeTab === 'roles'
+                    ? 'border-indigo-600 text-indigo-600 bg-indigo-50/60'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                <ShieldCheck size={16} />
+                <span>Dynamic Roles & Permissions ({systemRoles.length + customRoles.length})</span>
+              </button>
+            )}
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('settings')}
-              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all border-b-2 ${
-                activeTab === 'settings'
-                  ? 'border-indigo-600 text-indigo-600 bg-indigo-50/60'
-                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-              }`}
-            >
-              <Sliders size={16} />
-              <span>Workspace Policies & Settings</span>
-            </button>
+            {hasPermission(currentUser, 'workspace.settings.edit') && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('settings')}
+                className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all border-b-2 ${
+                  activeTab === 'settings'
+                    ? 'border-indigo-600 text-indigo-600 bg-indigo-50/60'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                <Sliders size={16} />
+                <span>Workspace Policies & Settings</span>
+              </button>
+            )}
           </div>
 
           {loading ? (
@@ -544,9 +676,16 @@ function WorkspaceTeamContent() {
                                   </div>
                                 </td>
                                 <td className="py-3 px-4">
-                                  <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold uppercase border ${getRoleBadgeClass(member.role)}`}>
-                                    {member.customRole ? `${member.customRole} (Custom)` : member.role}
-                                  </span>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold uppercase border ${getRoleBadgeClass(member.role)}`}>
+                                      {member.customRole ? `${member.customRole} (Custom)` : member.role}
+                                    </span>
+                                    {member.hasCustomPermissions && (
+                                      <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-purple-100 text-purple-800 border border-purple-200" title="Custom individual overrides configured">
+                                        Customized
+                                      </span>
+                                    )}
+                                  </div>
                                 </td>
                                 <td className="py-3 px-4 text-slate-500 font-medium">
                                   {member.team || 'General'}
@@ -559,7 +698,18 @@ function WorkspaceTeamContent() {
                                 </td>
                                 <td className="py-3 px-4 text-right">
                                   <div className="flex items-center justify-end gap-1.5">
-                                    {isOwnerOrManager && (
+                                    {hasPermission(currentUser, 'roles.manage') && member.role !== 'owner' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => openMemberOverridesModal(member)}
+                                        className="p-1.5 rounded-lg border border-purple-200 text-purple-700 bg-purple-50/50 hover:bg-purple-100 transition"
+                                        title="Customize User Permissions"
+                                      >
+                                        <Key size={13} />
+                                      </button>
+                                    )}
+
+                                    {hasPermission(currentUser, 'members.edit_role') && (
                                       <button
                                         type="button"
                                         onClick={() => {
@@ -577,7 +727,7 @@ function WorkspaceTeamContent() {
                                       </button>
                                     )}
 
-                                    {isOwnerOrManager && !isThisUser && (
+                                    {hasPermission(currentUser, 'members.deactivate') && !isThisUser && (
                                       <button
                                         type="button"
                                         onClick={() => handleDeactivateMember(member._id, member.name || member.userId?.name)}
@@ -655,24 +805,28 @@ function WorkspaceTeamContent() {
                                   <span>Copy Link</span>
                                 </button>
 
-                                <button
-                                  type="button"
-                                  onClick={() => handleResendInvitation(inv._id)}
-                                  className="btn btn-outline text-xs flex items-center gap-1.5 py-1.5 px-3 border-slate-200 text-slate-700 hover:bg-slate-50"
-                                  title="Extend 7-day token"
-                                >
-                                  <RefreshCw size={13} />
-                                  <span>Resend</span>
-                                </button>
+                                {hasPermission(currentUser, 'members.invite') && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleResendInvitation(inv._id)}
+                                      className="btn btn-outline text-xs flex items-center gap-1.5 py-1.5 px-3 border-slate-200 text-slate-700 hover:bg-slate-50"
+                                      title="Extend 7-day token"
+                                    >
+                                      <RefreshCw size={13} />
+                                      <span>Resend</span>
+                                    </button>
 
-                                <button
-                                  type="button"
-                                  onClick={() => handleRevokeInvitation(inv._id)}
-                                  className="btn text-xs text-rose-600 hover:bg-rose-50 border border-rose-200 py-1.5 px-3 rounded-lg"
-                                >
-                                  <Trash2 size={13} />
-                                  <span>Revoke</span>
-                                </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRevokeInvitation(inv._id)}
+                                      className="btn text-xs text-rose-600 hover:bg-rose-50 border border-rose-200 py-1.5 px-3 rounded-lg"
+                                    >
+                                      <Trash2 size={13} />
+                                      <span>Revoke</span>
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </div>
                           );
@@ -686,7 +840,7 @@ function WorkspaceTeamContent() {
               {/* ───────────────────────────────────────────────────────────── */}
               {/* TAB 2: DYNAMIC ROLES & PERMISSIONS EDITOR */}
               {/* ───────────────────────────────────────────────────────────── */}
-              {activeTab === 'roles' && (
+              {activeTab === 'roles' && hasPermission(currentUser, 'roles.manage') && (
                 <div className="space-y-6">
                   
                   <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -729,7 +883,7 @@ function WorkspaceTeamContent() {
                     <div className="space-y-4">
                       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
                         <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-3">
-                          System Roles (Immutable)
+                          Standard System Roles (Editable by Admin)
                         </h4>
                         <div className="space-y-2">
                           {systemRoles.map(role => {
@@ -851,37 +1005,62 @@ function WorkspaceTeamContent() {
                               <h3 className="text-sm font-bold text-slate-900 m-0">
                                 {isEditingCustomRole
                                   ? (customRoleForm._id ? `Edit Role: ${customRoleForm.name}` : 'New Custom Role')
-                                  : `Role Details: ${selectedRole?.label || selectedRole?.name}`}
+                                  : isEditingSystemRole
+                                    ? `Edit Standard Role: ${systemRoleForm.roleName}`
+                                    : `Role Details: ${selectedRole?.label || selectedRole?.name}`}
                               </h3>
-                              <span className={`px-2 py-0.5 rounded text-[9.5px] font-extrabold uppercase border ${getRoleBadgeClass(selectedRole?.name)}`}>
-                                {selectedRole?.isSystem ? 'System Default' : 'Custom Configurable'}
+                              <span className={`px-2 py-0.5 rounded text-[9.5px] font-extrabold uppercase border ${getRoleBadgeClass(isEditingSystemRole ? systemRoleForm.roleName : selectedRole?.name)}`}>
+                                {isEditingSystemRole ? 'Customizing Standard Role' : (selectedRole?.isSystem ? 'Standard System Role' : 'Custom Role')}
                               </span>
                             </div>
                             <p className="text-xs text-slate-500 m-0 mt-0.5">
                               {isEditingCustomRole
                                 ? 'Configure permissions and record access scopes for this custom role'
-                                : (selectedRole?.description || 'Inspect effective permissions and record scopes')}
+                                : isEditingSystemRole
+                                  ? `Admins can customize default permissions for all teammates with the ${systemRoleForm.roleName} role`
+                                  : (selectedRole?.description || 'Inspect effective permissions and record scopes')}
                             </p>
                           </div>
 
-                          {!isEditingCustomRole && selectedRole?.isSystem && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setIsEditingCustomRole(true);
-                                setCustomRoleForm({
-                                  _id: null,
-                                  name: `${selectedRole.label || selectedRole.name} (Custom Copy)`,
-                                  description: `Copy of ${selectedRole.label || selectedRole.name} with custom scope overrides`,
-                                  permissions: selectedRole.permissions || [],
-                                });
-                              }}
-                              className="btn btn-outline text-xs flex items-center gap-1.5 py-1.5 px-3 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                            >
-                              <Copy size={13} />
-                              <span>Duplicate as Custom Role</span>
-                            </button>
-                          )}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {!isEditingCustomRole && !isEditingSystemRole && selectedRole?.isSystem && selectedRole?.name !== 'owner' && hasPermission(currentUser, 'roles.manage') && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsEditingSystemRole(true);
+                                  setIsEditingCustomRole(false);
+                                  setSystemRoleForm({
+                                    roleName: selectedRole.name,
+                                    permissions: selectedRole.permissions ? JSON.parse(JSON.stringify(selectedRole.permissions)) : [],
+                                  });
+                                }}
+                                className="btn btn-primary text-xs flex items-center gap-1.5 py-1.5 px-3"
+                              >
+                                <Edit2 size={13} />
+                                <span>Edit Role Permissions</span>
+                              </button>
+                            )}
+
+                            {!isEditingCustomRole && !isEditingSystemRole && selectedRole?.isSystem && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsEditingCustomRole(true);
+                                  setIsEditingSystemRole(false);
+                                  setCustomRoleForm({
+                                    _id: null,
+                                    name: `${selectedRole.label || selectedRole.name} (Custom Copy)`,
+                                    description: `Copy of ${selectedRole.label || selectedRole.name} with custom scope overrides`,
+                                    permissions: selectedRole.permissions || [],
+                                  });
+                                }}
+                                className="btn btn-outline text-xs flex items-center gap-1.5 py-1.5 px-3 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                              >
+                                <Copy size={13} />
+                                <span>Duplicate as Custom Role</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         {/* Custom Role Form Inputs (When Editing) */}
@@ -933,7 +1112,12 @@ function WorkspaceTeamContent() {
 
                               <div className="divide-y divide-slate-100">
                                 {perms.map(p => {
-                                  const effectiveList = isEditingCustomRole ? customRoleForm.permissions : (selectedRole?.permissions || []);
+                                  const isEditing = isEditingCustomRole || isEditingSystemRole;
+                                  const effectiveList = isEditingCustomRole
+                                    ? customRoleForm.permissions
+                                    : isEditingSystemRole
+                                      ? systemRoleForm.permissions
+                                      : (selectedRole?.permissions || []);
                                   const assigned = effectiveList.find(item => item.key === p.key);
                                   const isChecked = !!assigned;
                                   const currentScope = assigned?.scope || 'workspace';
@@ -946,11 +1130,14 @@ function WorkspaceTeamContent() {
                                       }`}
                                     >
                                       <div className="flex items-start gap-2.5">
-                                        {isEditingCustomRole ? (
+                                        {isEditing ? (
                                           <input
                                             type="checkbox"
                                             checked={isChecked}
-                                            onChange={() => handleTogglePermission(p.key)}
+                                            onChange={() => {
+                                              if (isEditingCustomRole) handleTogglePermission(p.key);
+                                              else if (isEditingSystemRole) handleToggleSystemRolePermission(p.key);
+                                            }}
                                             className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                                             id={`chk_${p.key}`}
                                           />
@@ -964,7 +1151,7 @@ function WorkspaceTeamContent() {
 
                                         <div>
                                           <label
-                                            htmlFor={isEditingCustomRole ? `chk_${p.key}` : undefined}
+                                            htmlFor={isEditing ? `chk_${p.key}` : undefined}
                                             className="text-xs font-bold text-slate-900 block cursor-pointer m-0"
                                           >
                                             {p.label || p.key}
@@ -978,10 +1165,13 @@ function WorkspaceTeamContent() {
                                       {/* Scope Selector */}
                                       <div className="shrink-0 flex items-center gap-1.5 self-end sm:self-auto">
                                         <span className="text-[10px] font-bold text-slate-400 uppercase">Scope:</span>
-                                        {isEditingCustomRole && isChecked ? (
+                                        {isEditing && isChecked ? (
                                           <select
                                             value={currentScope}
-                                            onChange={e => handleChangeScope(p.key, e.target.value)}
+                                            onChange={e => {
+                                              if (isEditingCustomRole) handleChangeScope(p.key, e.target.value);
+                                              else if (isEditingSystemRole) handleChangeSystemRoleScope(p.key, e.target.value);
+                                            }}
                                             className="text-[11px] font-bold rounded-lg border border-slate-200 bg-white px-2 py-1 outline-none text-slate-800"
                                           >
                                             <option value="own">Own Records</option>
@@ -1029,6 +1219,34 @@ function WorkspaceTeamContent() {
                             </button>
                           </div>
                         )}
+
+                        {isEditingSystemRole && (
+                          <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="text-xs text-slate-600">
+                              Editing standard system role: <span className="font-extrabold text-indigo-700 uppercase">{systemRoleForm.roleName}</span>. Modifies permissions for all teammates with this role.
+                            </div>
+                            <div className="flex items-center gap-2 self-end sm:self-auto">
+                              <button
+                                type="button"
+                                onClick={() => setIsEditingSystemRole(false)}
+                                className="btn btn-outline text-xs px-4 py-2"
+                                disabled={savingSystemRole}
+                              >
+                                Cancel
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={handleSaveSystemRole}
+                                disabled={savingSystemRole}
+                                className="btn btn-primary text-xs px-5 py-2 flex items-center gap-2"
+                              >
+                                {savingSystemRole && <RefreshCw size={13} className="animate-spin" />}
+                                <span>{savingSystemRole ? 'Saving...' : 'Save Standard Role Permissions'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1038,7 +1256,7 @@ function WorkspaceTeamContent() {
               {/* ───────────────────────────────────────────────────────────── */}
               {/* TAB 3: WORKSPACE POLICIES & SETTINGS */}
               {/* ───────────────────────────────────────────────────────────── */}
-              {activeTab === 'settings' && (
+              {activeTab === 'settings' && hasPermission(currentUser, 'workspace.settings.edit') && (
                 <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm max-w-2xl">
                   <h3 className="text-sm sm:text-base font-bold text-slate-900 m-0 flex items-center gap-2">
                     <Sliders size={18} className="text-indigo-600" />
@@ -1151,7 +1369,7 @@ function WorkspaceTeamContent() {
       {/* ───────────────────────────────────────────────────────────── */}
       {/* MODAL 1: INVITE TEAMMATE MODAL */}
       {/* ───────────────────────────────────────────────────────────── */}
-      {showInviteModal && (
+      {showInviteModal && hasPermission(currentUser, 'members.invite') && (
         <div
           className="fixed inset-0 z-[9600] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
           onClick={() => setShowInviteModal(false)}
@@ -1296,7 +1514,7 @@ function WorkspaceTeamContent() {
       {/* ───────────────────────────────────────────────────────────── */}
       {/* MODAL 2: EDIT MEMBER ROLE MODAL */}
       {/* ───────────────────────────────────────────────────────────── */}
-      {editingMember && (
+      {editingMember && hasPermission(currentUser, 'members.edit_role') && (
         <div
           className="fixed inset-0 z-[9600] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
           onClick={() => setEditingMember(null)}
@@ -1385,6 +1603,168 @@ function WorkspaceTeamContent() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* MODAL 3: MEMBER PERMISSION OVERRIDES MODAL */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      {editingMemberOverrides && hasPermission(currentUser, 'roles.manage') && (
+        <div
+          className="fixed inset-0 z-[9700] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setEditingMemberOverrides(null)}
+        >
+          <div
+            className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-scale-up"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Key size={18} className="text-purple-600" />
+                  <h3 className="text-sm sm:text-base font-bold text-slate-900 m-0">
+                    Customize Member Permissions
+                  </h3>
+                  <span className={`px-2 py-0.5 rounded text-[9.5px] font-extrabold uppercase border ${getRoleBadgeClass(editingMemberOverrides.role)}`}>
+                    {editingMemberOverrides.role}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 m-0 mt-0.5">
+                  Overriding permissions for <strong className="text-slate-800">{editingMemberOverrides.name || editingMemberOverrides.userId?.name}</strong> ({editingMemberOverrides.email || editingMemberOverrides.userId?.email}).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingMemberOverrides(null)}
+                className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-200"
+              >
+                <CloseIcon size={14} />
+              </button>
+            </div>
+
+            {/* Overrides Explanation Banner */}
+            <div className="bg-purple-50/60 border-b border-purple-100 px-4 py-2.5 text-[11px] text-purple-900 flex items-center justify-between gap-3">
+              <span>
+                <strong>Override Precedence:</strong> Explicit overrides take immediate effect over role defaults.
+              </span>
+              <button
+                type="button"
+                onClick={handleResetMemberOverrides}
+                className="text-[10.5px] font-bold text-purple-700 hover:text-purple-900 underline shrink-0"
+              >
+                Reset All to Role Defaults
+              </button>
+            </div>
+
+            {/* Modal Body: Grouped Permissions with 3-State Controls */}
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
+              {Object.entries(groupedPermissions).map(([category, perms]) => (
+                <div key={category} className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="bg-slate-50 px-3.5 py-1.5 border-b border-slate-200 flex items-center justify-between">
+                    <span className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">
+                      {category}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-bold">
+                      {perms.length} Permissions
+                    </span>
+                  </div>
+
+                  <div className="divide-y divide-slate-100">
+                    {perms.map(p => {
+                      const override = memberOverridesList.find(o => o.key === p.key);
+                      const isOverridden = !!override;
+                      const isGranted = override ? override.granted === true : false;
+                      const isRevoked = override ? override.granted === false : false;
+                      const currentScope = override?.scope || 'workspace';
+
+                      return (
+                        <div key={p.key} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:bg-slate-50/40 transition">
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-slate-900">{p.label || p.key}</span>
+                              {isOverridden ? (
+                                isGranted ? (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-100 text-emerald-800">
+                                    Explicitly Granted
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-rose-100 text-rose-800">
+                                    Explicitly Revoked
+                                  </span>
+                                )
+                              ) : (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold text-slate-400 bg-slate-100">
+                                  Role Default
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10.5px] text-slate-500 m-0 mt-0.5">{p.description}</p>
+                          </div>
+
+                          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                            {/* Scope Selector if Granted */}
+                            {isGranted && (
+                              <select
+                                value={currentScope}
+                                onChange={e => handleChangeMemberOverrideScope(p.key, e.target.value)}
+                                className="text-[10.5px] font-bold rounded-lg border border-slate-200 bg-white px-2 py-1 outline-none text-slate-800"
+                              >
+                                <option value="own">Own</option>
+                                <option value="team">Team</option>
+                                <option value="workspace">Workspace</option>
+                              </select>
+                            )}
+
+                            {/* 3-State Toggle Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleToggleMemberOverride(p.key)}
+                              className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border transition ${
+                                !isOverridden
+                                  ? 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                                  : isGranted
+                                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                                    : 'border-rose-300 bg-rose-50 text-rose-700'
+                              }`}
+                            >
+                              {!isOverridden ? 'Default' : (isGranted ? '✓ Granted' : '✕ Revoked')}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+              <div className="text-xs text-slate-500">
+                {memberOverridesList.length} custom {memberOverridesList.length === 1 ? 'override' : 'overrides'} configured
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingMemberOverrides(null)}
+                  className="btn btn-outline text-xs px-4 py-2"
+                  disabled={savingMemberOverrides}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveMemberOverrides}
+                  disabled={savingMemberOverrides}
+                  className="btn btn-primary text-xs px-5 py-2 flex items-center gap-2 bg-purple-600 hover:bg-purple-700 border-purple-600"
+                >
+                  {savingMemberOverrides && <RefreshCw size={13} className="animate-spin" />}
+                  <span>{savingMemberOverrides ? 'Saving...' : 'Apply Overrides'}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

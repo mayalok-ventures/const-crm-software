@@ -4,7 +4,6 @@ const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 const Lead = require('../models/Lead');
 const Payment = require('../models/Payment');
-const Incentive = require('../models/Incentive');
 const ActivityLog = require('../models/ActivityLog');
 const Coupon = require('../models/Coupon');
 const AbuseLog = require('../models/AbuseLog');
@@ -436,23 +435,7 @@ exports.handleRazorpayWebhook = async (req, res) => {
               }
             }
 
-            // Calculate Agent Incentive if assigned
-            if (lead.assignedTo) {
-              const agent = await User.findById(lead.assignedTo);
-              if (agent && (agent.incentive_pct > 0 || agent.incentivePct > 0)) {
-                const pct = agent.incentive_pct || agent.incentivePct;
-                const incentiveAmount = (amountInRupees * pct) / 100;
-                await Incentive.create({
-                  agent_id: agent._id,
-                  agentId: agent._id,
-                  total_sales: amountInRupees,
-                  incentive_pct: pct,
-                  incentive_amount: incentiveAmount,
-                  deals_count: 1,
-                  lead_ids: [lead._id],
-                });
-              }
-            }
+            // Payment conversion recorded directly for user
 
             // Log activity
             await ActivityLog.create({

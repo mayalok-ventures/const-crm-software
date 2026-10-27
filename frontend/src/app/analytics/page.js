@@ -4,12 +4,12 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
 import toast from 'react-hot-toast';
-import { isRealEstateTenant, isManager, isOwner, getUser } from '@/lib/auth';
+import { isManager, isOwner, getUser, hasPermission } from '@/lib/auth';
 import {
   BarChart2, TrendingUp, Users, Calendar, MessageSquare, Mic,
   Download, FileSpreadsheet, FileText, X, Award, DollarSign,
   Building2, MapPin, Sparkles, UserCheck, Flame, Layers,
-  ChevronRight, ArrowDown, CheckCircle2, AlertTriangle, ShieldCheck
+  ChevronRight, ArrowDown, CheckCircle2, AlertTriangle, ShieldCheck, GraduationCap
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
@@ -18,9 +18,9 @@ import {
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload?.length) {
     return (
-      <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:8, padding:'8px 12px', fontSize:13 }}>
-        <p style={{ margin:0, color:'var(--text-muted)' }}>{label}</p>
-        <p style={{ margin:'2px 0 0', fontWeight:600 }}>{payload[0].value} leads</p>
+      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13 }}>
+        <p style={{ margin: 0, color: 'var(--text-muted)' }}>{label}</p>
+        <p style={{ margin: '2px 0 0', fontWeight: 600 }}>{payload[0].value} candidates</p>
       </div>
     );
   }
@@ -50,7 +50,7 @@ function ExportAnalyticsModal({ onClose, isCompanyOwner }) {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `analytics_performance_report_${new Date().toISOString().slice(0, 10)}.${format}`);
+      link.setAttribute('download', `admission_analytics_report_${new Date().toISOString().slice(0, 10)}.${format}`);
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
@@ -75,9 +75,9 @@ function ExportAnalyticsModal({ onClose, isCompanyOwner }) {
               📊
             </div>
             <div>
-              <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Export Analytics Report</h2>
+              <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Export Admission Analytics</h2>
               <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-                {isCompanyOwner ? 'Organization KPIs, Agent Leaderboard & Total Revenue' : 'Pipeline Breakdown, Stage Conversion & Revenue'}
+                {isCompanyOwner ? 'Agency KPIs, Counsellor Leaderboard & Enrolment Revenue' : 'Pipeline Breakdown, Stage Conversion & Admission Fees'}
               </p>
             </div>
           </div>
@@ -101,11 +101,14 @@ function ExportAnalyticsModal({ onClose, isCompanyOwner }) {
                   alignItems: 'center',
                   gap: 6,
                   cursor: 'pointer',
+                  textAlign: 'center',
                 }}
               >
-                <FileSpreadsheet size={24} color={format === 'xlsx' ? 'var(--accent)' : 'var(--text-muted)'} />
-                <span style={{ fontSize: 13, fontWeight: 700 }}>Excel (.xlsx)</span>
+                <FileSpreadsheet size={24} color="#16a34a" />
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Excel (.xlsx)</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Full metrics spreadsheet</span>
               </button>
+
               <button
                 type="button"
                 onClick={() => setFormat('pdf')}
@@ -119,20 +122,24 @@ function ExportAnalyticsModal({ onClose, isCompanyOwner }) {
                   alignItems: 'center',
                   gap: 6,
                   cursor: 'pointer',
+                  textAlign: 'center',
                 }}
               >
-                <FileText size={24} color={format === 'pdf' ? 'var(--accent)' : 'var(--text-muted)'} />
-                <span style={{ fontSize: 13, fontWeight: 700 }}>PDF Document</span>
+                <FileText size={24} color="#dc2626" />
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>PDF Document</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Formatted summary memo</span>
               </button>
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" onClick={onClose} className="btn btn-ghost btn-sm">Cancel</button>
-            <button type="submit" disabled={downloading} className="btn btn-primary btn-sm" style={{ gap: 6 }}>
-              <Download size={14} /> {downloading ? 'Exporting...' : 'Download File'}
-            </button>
-          </div>
+          <button
+            type="submit"
+            disabled={downloading}
+            className="btn btn-primary"
+            style={{ width: '100%', justifyContent: 'center', height: 42, fontSize: 14 }}
+          >
+            {downloading ? 'Exporting Report...' : `Download ${format.toUpperCase()} Report`}
+          </button>
         </form>
       </div>
     </div>
@@ -142,38 +149,40 @@ function ExportAnalyticsModal({ onClose, isCompanyOwner }) {
 function AnalyticsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const rawTab = searchParams?.get('tab') || 'performance';
-  const [activeTab, setActiveTab] = useState(rawTab);
+  const rawTab = searchParams?.get('tab') || 'leads';
 
+  const [activeTab, setActiveTab] = useState(rawTab);
   useEffect(() => {
     const tabParam = searchParams?.get('tab');
     if (tabParam) setActiveTab(tabParam);
   }, [searchParams]);
 
   const [data, setData] = useState(null);
-  const [reAnalytics, setReAnalytics] = useState(null);
-  const [teamPerformance, setTeamPerformance] = useState([]);
+  const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showExportModal, setShowExportModal] = useState(false);
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const u = getUser();
-    if (u) setUser(u);
+    const updateAuth = () => {
+      const u = getUser();
+      if (u) setUser(u);
+    };
+    updateAuth();
+    window.addEventListener('user-updated', updateAuth);
 
     Promise.all([
       api.get('/analytics').catch(() => ({ data: null })),
-      api.get('/real-estate/analytics/summary').catch(() => ({ data: { data: null } })),
-      api.get('/real-estate/team/performance').catch(() => ({ data: { data: [] } })),
-    ]).then(([genRes, reRes, teamRes]) => {
+      api.get('/leads?limit=300').catch(() => ({ data: { leads: [] } })),
+    ]).then(([genRes, leadsRes]) => {
       setData(genRes.data || null);
-      setReAnalytics(reRes.data?.data || null);
-      setTeamPerformance(teamRes.data?.data || []);
+      setLeads(leadsRes.data?.leads || []);
     }).finally(() => setLoading(false));
+
+    return () => window.removeEventListener('user-updated', updateAuth);
   }, []);
 
   const isCompanyOwner = isOwner(user);
-  const isRE = isRealEstateTenant(user);
 
   const formatINR = (val) => {
     if (!val || isNaN(val)) return '₹0';
@@ -183,42 +192,62 @@ function AnalyticsContent() {
   };
 
   if (loading) return (
-    <div className="app-shell" style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100dvh' }}>
+    <div className="app-shell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh' }}>
       <div className="spinner" />
     </div>
   );
 
+  if (user && !hasPermission(user, 'reports.view')) {
+    return (
+      <div className="app-shell pb-mobile-nav" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '70vh' }}>
+        <div style={{ textAlign: 'center', padding: '32px 24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, maxWidth: 400 }}>
+          <ShieldCheck size={36} color="var(--text-muted)" style={{ margin: '0 auto 12px' }} />
+          <h2 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 8px', color: 'var(--text)' }}>Access Restricted</h2>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 16px' }}>You do not have permission to view organization analytics reports.</p>
+          <button onClick={() => router.push('/leads')} className="btn btn-primary btn-sm" style={{ margin: '0 auto' }}>
+            Go to Leads
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const {
-    totalLeads = 0,
+    totalLeads = leads.length,
     byStatus = {},
     conversionRate = 0,
     totalRevenue = 0,
-    totalTemplates = 0,
-    todayFollowUps = 0,
   } = data || {};
 
-  const statusChartData = [
-    { name: 'New', value: byStatus.new || 0, color: '#6366f1' },
-    { name: 'Contacted', value: byStatus.contacted || 0, color: '#eab308' },
-    { name: 'Follow-up', value: byStatus.follow_up || 0, color: '#f97316' },
-    { name: 'Closed', value: byStatus.closed || 0, color: '#22c55e' },
-  ];
+  // Calculations for Admission Funnel
+  const totalPipelineBudget = leads.reduce((sum, l) => sum + (Number(l.budget) || Number(l.admissionFinalFee) || 0), 0);
+  const teleCounselledLeads = leads.filter(l => l.status && l.status !== 'new' && l.status !== 'new_lead');
+  const shortlistedLeads = leads.filter(l => (l.shortlistedColleges && l.shortlistedColleges.length > 0) || l.status === 'shortlisted');
+  const campusVisitLeads = leads.filter(l => l.campusVisitDate || l.status === 'site_visit_scheduled' || l.status === 'campus_visit');
+  const tokenPaidLeads = leads.filter(l => (Number(l.tokenAdvancePaid) > 0) || l.status === 'negotiation' || l.status === 'payment_done');
+  const confirmedAdmissions = leads.filter(l => l.status === 'converted' || l.status === 'closed' || (Number(l.admissionFinalFee) > 0));
 
-  // Full 6-Stage Real Estate Funnel Numbers (Pure Real Data from API)
-  const totalLeadsCount = reAnalytics?.leads?.total ?? (totalLeads || 0);
-  const activeRequirementsCount = reAnalytics?.requirements?.active ?? (reAnalytics?.requirements?.total || 0);
-  const totalSiteVisits = reAnalytics?.siteVisits?.total ?? (reAnalytics?.siteVisits?.completed || 0);
-  const openOpportunities = reAnalytics?.pipeline?.openDeals ?? 0;
-  const totalEOIs = reAnalytics?.eois?.total ?? (reAnalytics?.eois?.confirmed || 0);
-  const totalBookings = reAnalytics?.bookings?.count ?? 0;
+  const totalTokenSum = tokenPaidLeads.reduce((sum, l) => sum + (Number(l.tokenAdvancePaid) || 0), 0);
+  const totalAdmissionFees = confirmedAdmissions.reduce((sum, l) => sum + (Number(l.admissionFinalFee) || Number(l.closedDealAmount) || Number(l.budget) || 0), 0);
+
+  const totalLeadsCount = totalLeads || leads.length;
 
   const funnelSteps = [
-    { id: 'leads', name: 'Total Leads Captured', count: totalLeadsCount, color: '#6366f1', pct: totalLeadsCount > 0 ? 100 : 0 },
-    { id: 'requirements', name: 'Requirements Captured', count: activeRequirementsCount, color: '#0ea5e9', pct: totalLeadsCount > 0 ? Math.round((activeRequirementsCount / totalLeadsCount) * 100) : 0 },
-    { id: 'site_visits', name: 'Site Visits Conducted', count: totalSiteVisits, color: '#f59e0b', pct: totalLeadsCount > 0 ? Math.round((totalSiteVisits / totalLeadsCount) * 100) : 0 },
-    { id: 'opportunities', name: 'Active Negotiations', count: openOpportunities, color: '#8b5cf6', pct: totalLeadsCount > 0 ? Math.round((openOpportunities / totalLeadsCount) * 100) : 0 },
-    { id: 'eoi', name: 'EOI Tokens Received', count: totalEOIs, color: '#ec4899', pct: totalLeadsCount > 0 ? Math.round((totalEOIs / totalLeadsCount) * 100) : 0 },
-    { id: 'bookings', name: 'Confirmed Unit Bookings', count: totalBookings, color: '#10b981', pct: totalLeadsCount > 0 ? Math.round((totalBookings / totalLeadsCount) * 100) : 0 },
+    { id: 'inquiries', name: 'Inquiries Captured', count: totalLeadsCount, color: '#6366f1', pct: totalLeadsCount > 0 ? 100 : 0 },
+    { id: 'counselled', name: 'Tele-Counselled', count: teleCounselledLeads.length, color: '#0ea5e9', pct: totalLeadsCount > 0 ? Math.round((teleCounselledLeads.length / totalLeadsCount) * 100) : 0 },
+    { id: 'shortlisted', name: 'Colleges Shortlisted', count: shortlistedLeads.length, color: '#8b5cf6', pct: totalLeadsCount > 0 ? Math.round((shortlistedLeads.length / totalLeadsCount) * 100) : 0 },
+    { id: 'visits', name: 'Campus Visits Arranged', count: campusVisitLeads.length, color: '#f59e0b', pct: totalLeadsCount > 0 ? Math.round((campusVisitLeads.length / totalLeadsCount) * 100) : 0 },
+    { id: 'tokens', name: 'Seat Token Advances Paid', count: tokenPaidLeads.length, color: '#ec4899', pct: totalLeadsCount > 0 ? Math.round((tokenPaidLeads.length / totalLeadsCount) * 100) : 0 },
+    { id: 'confirmed', name: 'Admissions Confirmed', count: confirmedAdmissions.length, color: '#10b981', pct: totalLeadsCount > 0 ? Math.round((confirmedAdmissions.length / totalLeadsCount) * 100) : 0 },
+  ];
+
+  const statusChartData = [
+    { name: 'Inquiry', value: leads.filter(l => l.status === 'new_lead' || l.status === 'new').length || byStatus.new || 0, color: '#6366f1' },
+    { name: 'Counselled', value: leads.filter(l => l.status === 'contacted').length || byStatus.contacted || 0, color: '#0ea5e9' },
+    { name: 'Shortlisted', value: shortlistedLeads.length, color: '#8b5cf6' },
+    { name: 'Campus Visit', value: campusVisitLeads.length, color: '#f59e0b' },
+    { name: 'Token Paid', value: tokenPaidLeads.length, color: '#ec4899' },
+    { name: 'Enrolled', value: confirmedAdmissions.length || byStatus.closed || 0, color: '#10b981' },
   ];
 
   return (
@@ -228,165 +257,111 @@ function AnalyticsContent() {
         <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
           <div>
             <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <BarChart2 size={26} color="var(--accent)" /> Real Estate Sales & Conversion Analytics
+              <BarChart2 size={26} color="var(--accent)" /> Admission Counselling & Enrolment Analytics
             </h1>
             <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
-              Real-time pipeline metrics, team performance leaderboard, funnel conversion and revenue realization.
+              Real-time student inquiry pipeline metrics, admission conversion funnel, campus visits tracking, and fee realization.
             </p>
           </div>
-          <button
-            onClick={() => setShowExportModal(true)}
-            className="btn btn-secondary btn-sm w-full sm:w-auto justify-center"
-            style={{ gap: 6, borderRadius: 10, fontSize: 12, color: 'var(--accent)', borderColor: 'var(--accent)' }}
-          >
-            <Download size={14} /> Export Report
-          </button>
+          {hasPermission(user, 'reports.export') && (
+            <button
+              onClick={() => setShowExportModal(true)}
+              className="btn btn-secondary btn-sm w-full sm:w-auto justify-center"
+              style={{ gap: 6, borderRadius: 10, fontSize: 12, color: 'var(--accent)', borderColor: 'var(--accent)' }}
+            >
+              <Download size={14} /> Export Report
+            </button>
+          )}
         </div>
 
-        {/* Tab Navigation for Real Estate Analytics */}
-        {isRE && (
-          <div className="no-scrollbar" style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20, gap: 14, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-            {[
-              { id: 'performance', label: '🏆 Team Leaderboard' },
-              { id: 'leads', label: '🎯 Conversion Funnel' },
-              { id: 'site_visits', label: '📍 Site Visits Conversion' },
-              { id: 'eoi', label: '📑 EOI Token Analytics' },
-              { id: 'bookings', label: '💰 Booking & Revenue' },
-            ].map(tab => {
-              const active = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: '8px 12px 12px',
-                    cursor: 'pointer',
-                    fontSize: 13,
-                    fontWeight: active ? 700 : 500,
-                    color: active ? 'var(--accent)' : 'var(--text-muted)',
-                    borderBottom: active ? '2.5px solid var(--accent)' : '2.5px solid transparent',
-                    transition: 'all 0.15s ease',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        {/* Tab Navigation */}
+        <div className="no-scrollbar" style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20, gap: 14, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          {[
+            { id: 'leads', label: '🎯 Admission Funnel' },
+            { id: 'site_visits', label: '🏛️ Campus Visits Tracking' },
+            { id: 'eoi', label: '💳 Quota & Seat Tokens' },
+            { id: 'bookings', label: '🎓 Confirmed Admissions & Fees' },
+          ].map(tab => {
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '8px 12px 12px',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: active ? 700 : 500,
+                  color: active ? 'var(--accent)' : 'var(--text-muted)',
+                  borderBottom: active ? '2.5px solid var(--accent)' : '2.5px solid transparent',
+                  transition: 'all 0.15s ease',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
 
         <div className="page-content">
           {/* Top 4 KPI Metrics Banner */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5 dashboard-kpi-grid">
             <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Total Pipeline Value</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Admission Pipeline Potential</span>
               <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: 'var(--accent)' }}>
-                {formatINR(reAnalytics?.pipeline?.totalValue || totalRevenue || 0)}
+                {formatINR(totalPipelineBudget)}
               </h3>
               <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
-                ⚖️ Weighted: {formatINR(reAnalytics?.pipeline?.weightedValue || 0)}
+                👥 {totalLeadsCount} Total Candidates
               </span>
             </div>
 
             <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Site Visit Conversion</span>
-              <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: '#0ea5e9' }}>
-                {reAnalytics?.siteVisits?.conversionRate || '0%'}
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Campus Visits Arranged</span>
+              <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: '#f59e0b' }}>
+                {campusVisitLeads.length}
               </h3>
               <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
-                📍 {reAnalytics?.siteVisits?.completed ?? 0} Visits Completed
+                🏛️ Direct college site inspections
               </span>
             </div>
 
             <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>EOI Conversion Rate</span>
-              <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: '#a855f7' }}>
-                {reAnalytics?.eois?.conversionRate || '0%'}
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Seat Advance Tokens</span>
+              <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: '#ec4899' }}>
+                {formatINR(totalTokenSum)}
               </h3>
               <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
-                📑 {reAnalytics?.eois?.confirmed ?? 0} Confirmed Tokens
+                💳 {tokenPaidLeads.length} Candidates Deposited
               </span>
             </div>
 
             <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Confirmed Bookings</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Confirmed Enrolments</span>
               <h3 style={{ fontSize: 24, fontWeight: 800, margin: '4px 0 0', color: '#10b981' }}>
-                {formatINR(reAnalytics?.bookings?.totalAgreementValue || 0)}
+                {confirmedAdmissions.length}
               </h3>
               <span style={{ fontSize: 11, color: '#10b981', fontWeight: 700, display: 'block', marginTop: 4 }}>
-                🏆 {reAnalytics?.bookings?.count ?? 0} Units Booked
+                🎓 {formatINR(totalAdmissionFees)} Realized
               </span>
             </div>
           </div>
 
-          {/* ========================================================================= */}
-          {/* TAB 1: TEAM LEADERBOARD & PERFORMANCE                                    */}
-          {/* ========================================================================= */}
-          {(activeTab === 'performance' || !isRE) && (
-            <div className="card" style={{ marginBottom: 20, padding: 20 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 800, margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Award size={20} color="#f59e0b" /> Team Agent Performance & Conversion Leaderboard
-              </h3>
-              {teamPerformance.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No team performance data available.</p>
-              ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', textAlign: 'left' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
-                        <th style={{ padding: '10px 8px' }}>Agent</th>
-                        <th style={{ padding: '10px 8px' }}>Leads Assigned</th>
-                        <th style={{ padding: '10px 8px' }}>Visits Done</th>
-                        <th style={{ padding: '10px 8px' }}>Bookings</th>
-                        <th style={{ padding: '10px 8px' }}>Booking Value</th>
-                        <th style={{ padding: '10px 8px' }}>Win Rate %</th>
-                        <th style={{ padding: '10px 8px' }}>Commission</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {teamPerformance.map((agent, i) => (
-                        <tr key={agent.id || i} style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td style={{ padding: '12px 8px', fontWeight: 700 }}>👤 {agent.name}</td>
-                          <td style={{ padding: '12px 8px', fontWeight: 600 }}>{agent.leadsAssigned}</td>
-                          <td style={{ padding: '12px 8px' }}>{agent.completedVisits} / {agent.siteVisits}</td>
-                          <td style={{ padding: '12px 8px', fontWeight: 700, color: '#10b981' }}>{agent.bookings}</td>
-                          <td style={{ padding: '12px 8px', fontWeight: 700, color: 'var(--accent)' }}>{formatINR(agent.bookingValue)}</td>
-                          <td style={{ padding: '12px 8px', fontWeight: 700 }}>
-                            <span style={{
-                              padding: '2px 8px',
-                              borderRadius: 6,
-                              background: parseFloat(agent.conversionRate) > 10 ? 'rgba(16,185,129,0.12)' : 'rgba(99,102,241,0.08)',
-                              color: parseFloat(agent.conversionRate) > 10 ? '#10b981' : 'var(--accent)'
-                            }}>
-                              {agent.conversionRate}
-                            </span>
-                          </td>
-                          <td style={{ padding: '12px 8px', fontWeight: 700, color: '#10b981' }}>
-                            {formatINR(agent.commissionEarned)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* ========================================================================= */}
-          {/* TAB 2: FULL 6-STAGE CONVERSION FUNNEL                                    */}
+          {/* TAB 2: ADMISSION CONVERSION FUNNEL                                       */}
           {/* ========================================================================= */}
           {activeTab === 'leads' && (
             <div className="card" style={{ marginBottom: 20, padding: 22 }}>
               <div style={{ marginBottom: 20 }}>
                 <h3 style={{ fontSize: 17, fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <TrendingUp size={20} color="var(--accent)" /> Real Estate Lead-to-Booking Conversion Funnel
+                  <TrendingUp size={20} color="var(--accent)" /> Candidate-to-Enrolment Admission Funnel
                 </h3>
                 <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-                  Full lifecycle track from first inquiry capture down to registered unit booking.
+                  Full lifecycle track from candidate discovery, tele-counselling, shortlisting, campus visit to final college admission.
                 </p>
               </div>
 
@@ -433,98 +408,96 @@ function AnalyticsContent() {
           )}
 
           {/* ========================================================================= */}
-          {/* TAB 3: SITE VISITS CONVERSION                                            */}
+          {/* TAB 3: CAMPUS VISITS TRACKING                                            */}
           {/* ========================================================================= */}
           {activeTab === 'site_visits' && (
             <div className="card" style={{ marginBottom: 20, padding: 22 }}>
               <h3 style={{ fontSize: 17, fontWeight: 800, margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <MapPin size={20} color="#0ea5e9" /> Site Visits Efficiency & Conversion Matrix
+                <MapPin size={20} color="#0ea5e9" /> Campus Visits Inspection & Conversion Matrix
               </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', gap: 14, marginBottom: 20 }}>
                 <div style={{ background: 'var(--surface)', padding: 14, borderRadius: 12, border: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Total Scheduled</span>
-                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0' }}>{reAnalytics?.siteVisits?.total ?? 0}</h4>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Total Campus Visits</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0' }}>{campusVisitLeads.length}</h4>
                 </div>
                 <div style={{ background: 'var(--surface)', padding: 14, borderRadius: 12, border: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Completed</span>
-                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#10b981' }}>{reAnalytics?.siteVisits?.completed ?? 0}</h4>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Admissions Converted from Visits</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#10b981' }}>
+                    {campusVisitLeads.filter(l => l.status === 'converted' || l.status === 'closed').length}
+                  </h4>
                 </div>
                 <div style={{ background: 'var(--surface)', padding: 14, borderRadius: 12, border: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Cancelled / No-Show</span>
-                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#ef4444' }}>{reAnalytics?.siteVisits?.noShow ?? 0}</h4>
-                </div>
-                <div style={{ background: 'var(--surface)', padding: 14, borderRadius: 12, border: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Visit-to-Booking %</span>
-                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#0ea5e9' }}>{reAnalytics?.siteVisits?.conversionRate || '0%'}</h4>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Visit-to-Admission Rate</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#0ea5e9' }}>
+                    {campusVisitLeads.length > 0 ? `${Math.round((campusVisitLeads.filter(l => l.status === 'converted' || l.status === 'closed').length / campusVisitLeads.length) * 100)}%` : '0%'}
+                  </h4>
                 </div>
               </div>
             </div>
           )}
 
           {/* ========================================================================= */}
-          {/* TAB 4: EOI TOKEN ANALYTICS                                               */}
+          {/* TAB 4: QUOTA & SEAT TOKENS                                                */}
           {/* ========================================================================= */}
           {activeTab === 'eoi' && (
             <div className="card" style={{ marginBottom: 20, padding: 22 }}>
               <h3 style={{ fontSize: 17, fontWeight: 800, margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <FileText size={20} color="#a855f7" /> Expressions of Interest (EOI) Performance
+                <FileText size={20} color="#a855f7" /> Quota Reservations & Seat Token Advances
               </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', gap: 14 }}>
                 <div style={{ background: 'var(--surface)', padding: 14, borderRadius: 12, border: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Total Tokens</span>
-                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#a855f7' }}>{reAnalytics?.eois?.total ?? 0}</h4>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Total Token Candidates</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#a855f7' }}>{tokenPaidLeads.length}</h4>
                 </div>
                 <div style={{ background: 'var(--surface)', padding: 14, borderRadius: 12, border: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Confirmed Tokens</span>
-                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#10b981' }}>{reAnalytics?.eois?.confirmed ?? 0}</h4>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Total Advance Capital</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#10b981' }}>{formatINR(totalTokenSum)}</h4>
                 </div>
                 <div style={{ background: 'var(--surface)', padding: 14, borderRadius: 12, border: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Pending Allotment</span>
-                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#f59e0b' }}>{reAnalytics?.eois?.pending ?? 0}</h4>
-                </div>
-                <div style={{ background: 'var(--surface)', padding: 14, borderRadius: 12, border: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Expiring Soon (20d+)</span>
-                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#ef4444' }}>{reAnalytics?.eois?.expiring ?? 0}</h4>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Average Seat Token Amount</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#f59e0b' }}>
+                    {formatINR(tokenPaidLeads.length > 0 ? Math.round(totalTokenSum / tokenPaidLeads.length) : 0)}
+                  </h4>
                 </div>
               </div>
             </div>
           )}
 
           {/* ========================================================================= */}
-          {/* TAB 5: BOOKINGS & REVENUE                                                */}
+          {/* TAB 5: CONFIRMED ADMISSIONS & TUITION FEES                                */}
           {/* ========================================================================= */}
           {activeTab === 'bookings' && (
             <div className="card" style={{ marginBottom: 20, padding: 22 }}>
               <h3 style={{ fontSize: 17, fontWeight: 800, margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Award size={20} color="#10b981" /> Unit Bookings, Revenue Realization & Collections
+                <GraduationCap size={20} color="#10b981" /> Enrolments & College Fee Realization
               </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', gap: 14 }}>
                 <div style={{ background: 'var(--surface)', padding: 16, borderRadius: 12, border: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Total Agreement Value</span>
-                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: 'var(--accent)' }}>
-                    {formatINR(reAnalytics?.bookings?.totalAgreementValue || 0)}
-                  </h4>
-                </div>
-                <div style={{ background: 'var(--surface)', padding: 16, borderRadius: 12, border: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Total Collected (Paid)</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Total Confirmed Admissions</span>
                   <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#10b981' }}>
-                    {formatINR(reAnalytics?.bookings?.totalCollectedAmount || 0)}
+                    {confirmedAdmissions.length} Students Enrolled
                   </h4>
                 </div>
                 <div style={{ background: 'var(--surface)', padding: 16, borderRadius: 12, border: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Outstanding Balance</span>
-                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#ef4444' }}>
-                    {formatINR(reAnalytics?.bookings?.totalOutstandingAmount || 0)}
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Total Final Admission Fees</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: 'var(--accent)' }}>
+                    {formatINR(totalAdmissionFees)}
+                  </h4>
+                </div>
+                <div style={{ background: 'var(--surface)', padding: 16, borderRadius: 12, border: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Token Advances Deposited</span>
+                  <h4 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 0', color: '#0ea5e9' }}>
+                    {formatINR(totalTokenSum)}
                   </h4>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Generic Stage Breakdown Chart */}
+          {/* Candidate Stage Distribution Chart */}
           <div className="card" style={{ marginBottom: 16, padding: 20 }}>
-            <p style={{ margin: '0 0 16px', fontWeight: 700, fontSize: 14 }}>Leads Distribution by Stage</p>
-            <div style={{ height: 160 }}>
+            <p style={{ margin: '0 0 16px', fontWeight: 700, fontSize: 14 }}>Student Distribution Across Admission Counselling Lifecycle</p>
+            <div style={{ height: 180 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={statusChartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                   <XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} axisLine={false} tickLine={false} />
@@ -540,7 +513,7 @@ function AnalyticsContent() {
         </div>
       </div>
 
-      {showExportModal && (
+      {showExportModal && hasPermission(user, 'reports.export') && (
         <ExportAnalyticsModal
           isCompanyOwner={isCompanyOwner}
           onClose={() => setShowExportModal(false)}

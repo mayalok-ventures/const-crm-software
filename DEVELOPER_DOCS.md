@@ -1,4 +1,4 @@
-# CoreSetu SalesCRM — Master Developer & Architecture Documentation
+# Sahyak SalesCRM — Master Developer & Architecture Documentation
 
 > **Version:** 4.2.0 (Production-Ready)  
 > **Target Audience:** Core Engineering Team, Senior Architects, Full-Stack Developers & System Integrators  
@@ -9,14 +9,14 @@
 
 ## 1. Product Vision & Architecture Goals
 
-### 1.1 What is CoreSetu SalesCRM?
-**CoreSetu SalesCRM** is an ultra-fast, mobile-first Progressive Web Application (PWA) and automated multi-tenant sales outreach engine. Designed specifically for field sales representatives, real estate consultants, agency teams, and enterprise sales organizations, CoreSetu bridges the gap between lead management, WhatsApp communication, team hierarchies, and subscription monetization.
+### 1.1 What is Sahyak SalesCRM?
+**Sahyak SalesCRM** is an ultra-fast, mobile-first Progressive Web Application (PWA) and automated multi-tenant sales outreach engine. Designed specifically for field sales representatives, real estate consultants, agency teams, and enterprise sales organizations, Sahyak bridges the gap between lead management, WhatsApp communication, team hierarchies, and subscription monetization.
 
 ```
 +-----------------------------------------------------------------------------------+
 |                                 CORESETU PLATFORM                                 |
 |                                                                                   |
-|  [ Mobile-First PWA ] <===> [ Secure REST API ] <===> [ WhatsApp Outreach Engine ] |
+|  [ Mobile-First PWA ] <===> [ Secure REST API ] <===> [ WhatsApp Outreach Engine ]|
 |  - Sub-100ms Nav            - JWT + 2FA Gating        - Baileys WebSocket Pool    |
 |  - Offline-First SW         - Multi-Tenant Scoping    - E.164 Auto-Normalizer     |
 |  - Dynamic Form Builder     - Anti-Fraud Engine       - Realtime Chat & Logs      |
@@ -318,7 +318,7 @@ pairingCodeLocks[userId] = true;
 ```
 
 #### 2. WhatsApp Session Persistence (`mongoAuthState.js`)
-Rather than storing multi-device cryptographic keys in ephemeral local files (which are wiped during Docker/EC2 redeployments), CoreSetu implements a custom **MongoDB Auth State Adapter**:
+Rather than storing multi-device cryptographic keys in ephemeral local files (which are wiped during Docker/EC2 redeployments), Sahyak implements a custom **MongoDB Auth State Adapter**:
 * Serializes Baileys buffers and cryptographic key pairs using `BufferJSON.replacer`.
 * Writes session keys into the `WhatsAppAuth` MongoDB collection with `upsert: true`.
 * Restores active sessions automatically on server startup via `waSession.initSessions()`.
@@ -762,4 +762,4 @@ Upon first database connection, the backend automatically seeds:
 
 ---
 
-*This document is maintained by the CoreSetu Engineering Team. For architectural questions or pull request reviews, contact the Lead Platform Architect.*
+*This document is maintained by the Sahyak Engineering Team. For architectural questions or pull request reviews, contact the Lead Platform Architect.*

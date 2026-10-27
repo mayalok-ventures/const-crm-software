@@ -71,8 +71,8 @@ async function runTests() {
   console.log('======================================================\n');
 
   // Connect to local MongoDB
-  const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mobile-crm-meta-test';
-  await mongoose.connect(mongoUri);
+  const connectDB = require('../src/config/db');
+  await connectDB();
   console.log('📦 Connected to Test MongoDB');
 
   // Clean test collections

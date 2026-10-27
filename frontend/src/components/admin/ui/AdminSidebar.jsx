@@ -17,34 +17,26 @@ export const NAV_CATEGORIES = [
     ],
   },
   {
-    name: 'LEADS',
+    name: 'CANDIDATES',
     items: [
-      { id: 'leads', label: 'Leads & Sources', icon: Users },
-      { id: 'distribution', label: 'Lead Distribution', icon: GitFork },
-      { id: 'pipelines', label: 'Pipelines & SLAs', icon: Workflow },
+      { id: 'leads', label: 'Candidate Leads', icon: Users },
+      { id: 'pipelines', label: 'Admission Funnels & SLAs', icon: Workflow },
     ],
   },
   {
-    name: 'ORGANIZATION',
+    name: 'OUTREACH & INTAKE',
     items: [
-      { id: 'hierarchy', label: 'Hierarchy & Teams', icon: UserCheck },
       { id: 'broadcasts', label: 'Broadcast Centre', icon: Bell },
-    ],
-  },
-  {
-    name: 'GROWTH',
-    items: [
-      { id: 'forms', label: 'Forms Centre', icon: FileText },
-      { id: 'templates', label: 'Template Centre', icon: MessageSquare },
+      { id: 'forms', label: 'Intake Forms', icon: FileText },
+      { id: 'templates', label: 'WhatsApp Templates', icon: MessageSquare },
       { id: 'campaigns', label: 'Campaigns & Ads', icon: Target },
     ],
   },
   {
-    name: 'COMMERCE',
+    name: 'ACADEMIC & COMMERCE',
     items: [
-      { id: 'plans', label: 'Plans Centre', icon: ShoppingBag },
-      { id: 'catalogue', label: 'Catalogue Centre', icon: ShoppingBag },
-      { id: 'commissions', label: 'Commission Engine', icon: DollarSign },
+      { id: 'catalogue', label: 'Colleges & Courses', icon: ShoppingBag },
+      { id: 'plans', label: 'Subscription Plans', icon: ShoppingBag },
       { id: 'coupons', label: 'Coupon Engine', icon: Ticket },
     ],
   },
@@ -83,7 +75,7 @@ export default function AdminSidebar({
             ⚡
           </div>
           <div className="min-w-0">
-            <h1 className="font-bold text-sm text-white tracking-tight leading-none truncate">CoreSetu OS</h1>
+            <h1 className="font-bold text-sm text-white tracking-tight leading-none truncate">Sahyak OS</h1>
             <span className="text-[10px] font-medium text-amber-400/90 tracking-wide uppercase">Admin Control</span>
           </div>
         </div>
@@ -138,11 +130,10 @@ export default function AdminSidebar({
                       onSelectTab(item.id);
                       if (onCloseMobile) onCloseMobile();
                     }}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                      isActive
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive
                         ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-sm shadow-amber-500/10'
                         : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
-                    }`}
+                      }`}
                   >
                     <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
                     <span className="truncate">{item.label}</span>

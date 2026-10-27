@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
-import { getUser } from '@/lib/auth';
+import { getUser, hasPermission } from '@/lib/auth';
 import {
   Plus,
   Trash2,
@@ -18,7 +18,6 @@ import {
   ArrowDown,
   Layers,
   Sparkles,
-  Package,
   UserPlus,
   Sliders,
   HelpCircle,
@@ -71,28 +70,6 @@ const DEFAULT_LEAD_FIELDS = [
   { fieldId: 'followUpDate', label: 'Next Follow-up Date & Time', fieldType: 'datetime', isRequired: false, isSystem: true, isHidden: false, order: 7 },
 ];
 
-const DEFAULT_PRODUCT_FIELDS = [
-  { fieldId: 'name', label: 'Package / Product Name', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 1 },
-  { fieldId: 'location', label: 'Market / Region / Location', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 2 },
-  { fieldId: 'city', label: 'City / Territory', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 3 },
-  { fieldId: 'vendorOrBrand', label: 'Vendor / Brand / Provider', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 4 },
-  { fieldId: 'basePrice', label: 'Base Pricing / Rate', fieldType: 'currency', isRequired: false, isSystem: true, isHidden: false, order: 5 },
-  { fieldId: 'productCategory', label: 'Tiers / Variant Categories', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 6 },
-  { fieldId: 'amenities', label: 'Key Features & Inclusions', fieldType: 'textarea', isRequired: false, isSystem: true, isHidden: false, order: 7 },
-  {
-    fieldId: 'status',
-    label: 'Catalog Status',
-    fieldType: 'select',
-    options: ['available', 'in_development', 'upcoming', 'sold_out', 'archived'],
-    isRequired: false,
-    isSystem: true,
-    isHidden: false,
-    order: 8,
-  },
-  { fieldId: 'deliveryOrCompletionDate', label: 'Delivery / Completion Timeline', fieldType: 'text', isRequired: false, isSystem: true, isHidden: false, order: 9 },
-  { fieldId: 'description', label: 'Detailed Scope & Description', fieldType: 'textarea', isRequired: false, isSystem: true, isHidden: false, order: 10 },
-];
-
 export default function FormsModule({
   formFields = [],
   loading: parentLoading = false,
@@ -101,7 +78,7 @@ export default function FormsModule({
   onRetry,
   onSaveSchema,
 }) {
-  const [formType, setFormType] = useState('lead'); // 'lead' | 'product'
+  const formType = 'lead';
   const [leadFields, setLeadFields] = useState(() => {
     const u = getUser();
     if (u?.leadFormSchema && Array.isArray(u.leadFormSchema) && u.leadFormSchema.length > 0) {
@@ -109,19 +86,20 @@ export default function FormsModule({
     }
     return DEFAULT_LEAD_FIELDS;
   });
-  const [productFields, setProductFields] = useState(() => {
-    const u = getUser();
-    if (u?.productFormSchema && Array.isArray(u.productFormSchema) && u.productFormSchema.length > 0) {
-      return u.productFormSchema;
-    }
-    return DEFAULT_PRODUCT_FIELDS;
-  });
   const [activeEditingField, setActiveEditingField] = useState(null);
   const [showFieldModal, setShowFieldModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [loadingSchemas, setLoadingSchemas] = useState(true);
   const [previewValues, setPreviewValues] = useState({});
+  const [currentUser, setCurrentUser] = useState(() => getUser());
+
+  useEffect(() => {
+    const handleUserUpdate = () => setCurrentUser(getUser());
+    window.addEventListener('user-updated', handleUserUpdate);
+    return () => window.removeEventListener('user-updated', handleUserUpdate);
+  }, []);
+  const canManage = hasPermission(currentUser, 'forms.manage');
 
   // Sync incoming schema from API (always bypass HTTP cache)
   useEffect(() => {
@@ -135,11 +113,7 @@ export default function FormsModule({
           setLeadFields(resLead.data.schema);
         }
 
-        // Fetch active product schema with cache-buster
-        const resProd = await api.get(`/auth/form-schema?type=product&_t=${timestamp}`);
-        if (resProd.data?.schema && Array.isArray(resProd.data.schema) && resProd.data.schema.length > 0) {
-          setProductFields(resProd.data.schema);
-        }
+
       } catch (e) {
         console.error('Error loading form schemas:', e);
       } finally {
@@ -150,14 +124,8 @@ export default function FormsModule({
   }, []);
 
   const isDark = theme === 'dark';
-  const activeFields = formType === 'lead' ? leadFields : productFields;
-  const setActiveFields = (updater) => {
-    if (formType === 'lead') {
-      setLeadFields(updater);
-    } else {
-      setProductFields(updater);
-    }
-  };
+  const activeFields = leadFields;
+  const setActiveFields = setLeadFields;
 
   if (error) {
     return <ErrorState message={error} onRetry={onRetry} />;
@@ -199,14 +167,10 @@ export default function FormsModule({
   };
 
   const handleResetToDefaults = () => {
-    if (!confirm(`Are you sure you want to reset the ${formType === 'lead' ? 'Prospect Lead' : 'Product'} form fields to standard defaults?`)) {
+    if (!confirm('Are you sure you want to reset the Candidate Lead form fields to standard defaults?')) {
       return;
     }
-    if (formType === 'lead') {
-      setLeadFields(DEFAULT_LEAD_FIELDS);
-    } else {
-      setProductFields(DEFAULT_PRODUCT_FIELDS);
-    }
+    setLeadFields(DEFAULT_LEAD_FIELDS);
     toast.success('Form reset to defaults. Click "Save Configuration" to apply.');
   };
 
@@ -267,47 +231,32 @@ export default function FormsModule({
     setSavedSuccess(false);
     try {
       const payload = {
-        formType,
+        formType: 'lead',
         schema: activeFields,
         fields: activeFields,
+        leadFormSchema: activeFields,
+        customLeadFields: activeFields,
       };
-      if (formType === 'product') {
-        payload.productFormSchema = activeFields;
-      } else {
-        payload.leadFormSchema = activeFields;
-        payload.customLeadFields = activeFields;
-      }
 
-      const res = await api.put(`/auth/form-schema?type=${formType}`, payload);
+      const res = await api.put('/auth/form-schema?type=lead', payload);
 
       if (res.data?.success || res.status === 200) {
-        const returnedSchema = formType === 'lead'
-          ? (res.data?.leadFormSchema || activeFields)
-          : (res.data?.productFormSchema || activeFields);
-
-        if (formType === 'lead') {
-          setLeadFields(returnedSchema);
-        } else {
-          setProductFields(returnedSchema);
-        }
+        const returnedSchema = res.data?.leadFormSchema || activeFields;
+        setLeadFields(returnedSchema);
 
         setSavedSuccess(true);
-        toast.success(`🎉 ${formType === 'lead' ? 'Prospect Lead' : 'Product / Package'} form configuration saved successfully!`);
+        toast.success('🎉 Candidate Lead form configuration saved successfully!');
 
         // Synchronize in local user state so dashboard reflects instantly
         try {
           const storedUser = getUser();
           if (storedUser) {
-            if (formType === 'lead') {
-              storedUser.leadFormSchema = returnedSchema;
-            } else {
-              storedUser.productFormSchema = returnedSchema;
-            }
+            storedUser.leadFormSchema = returnedSchema;
             localStorage.setItem('user', JSON.stringify(storedUser));
           }
         } catch (e) {}
 
-        if (onSaveSchema) onSaveSchema(returnedSchema, formType);
+        if (onSaveSchema) onSaveSchema(returnedSchema, 'lead');
         setTimeout(() => setSavedSuccess(false), 4000);
       } else {
         toast.error(res.data?.message || 'Failed to save form layout');
@@ -348,42 +297,12 @@ export default function FormsModule({
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
-          {/* Form Switcher */}
-          <div className={`flex p-1 rounded-xl border ${
-            isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'
+          {/* Candidate Form Badge */}
+          <div className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-semibold ${
+            isDark ? 'bg-slate-900 border-slate-800 text-amber-400' : 'bg-slate-100 border-slate-200 text-indigo-700'
           }`}>
-            <button
-              type="button"
-              onClick={() => setFormType('lead')}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all ${
-                formType === 'lead'
-                  ? isDark
-                    ? 'bg-amber-500 text-slate-950 font-bold shadow-md'
-                    : 'bg-white text-indigo-600 font-bold shadow-sm'
-                  : isDark
-                  ? 'text-slate-400 hover:text-white'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <UserPlus className="w-4 h-4" />
-              <span>Prospect Lead Form</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setFormType('product')}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all ${
-                formType === 'product'
-                  ? isDark
-                    ? 'bg-amber-500 text-slate-950 font-bold shadow-md'
-                    : 'bg-white text-indigo-600 font-bold shadow-sm'
-                  : isDark
-                  ? 'text-slate-400 hover:text-white'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Package className="w-4 h-4" />
-              <span>Product / Package Form</span>
-            </button>
+            <UserPlus className="w-4 h-4" />
+            <span>Candidate / Lead Profile Form</span>
           </div>
 
           <button
@@ -420,7 +339,7 @@ export default function FormsModule({
             <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${
               isDark ? 'text-slate-300' : 'text-slate-700'
             }`}>
-              <span>{formType === 'lead' ? 'Prospect Lead Form Fields' : 'Product / Package Fields'}</span>
+              <span>Candidate Lead Form Fields</span>
               <span className="text-slate-400 font-mono">({activeFields.length})</span>
             </h4>
 

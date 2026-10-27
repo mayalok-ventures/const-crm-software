@@ -17,7 +17,9 @@ export default function FollowUpSchedulerModal({ lead, isOpen, onClose, onSucces
 
   useEffect(() => {
     if (isOpen) {
-      api.get('/projects').then(res => setProjects(res.data || [])).catch(() => {});
+      api.get('/catalogue')
+        .then(res => setProjects(res.data?.data || res.data?.colleges || (Array.isArray(res.data) ? res.data : [])))
+        .catch(() => {});
       if (lead?.projectId) setSelectedProjectId(lead.projectId);
       if (lead?.location) setSiteVisitLocation(lead.location);
     }
@@ -188,13 +190,13 @@ export default function FollowUpSchedulerModal({ lead, isOpen, onClose, onSucces
               value={followUpType}
               onChange={e => setFollowUpType(e.target.value)}
             >
-              <option value="call">📞 Phone Call</option>
-              <option value="site_visit">🏡 Site Visit / Property Tour</option>
-              <option value="meeting">🤝 In-Person Meeting</option>
-              <option value="whatsapp">💬 WhatsApp Message</option>
-              <option value="email">✉️ Email Follow-Up</option>
-              <option value="document_collection">📄 Document Collection</option>
-              <option value="payment_reminder">💳 Payment Reminder</option>
+              <option value="call">📞 Tele-Counselling Call</option>
+              <option value="site_visit">🏫 Campus Visit / College Tour</option>
+              <option value="meeting">🤝 In-Person Advisory Meeting</option>
+              <option value="whatsapp">💬 WhatsApp Consultation</option>
+              <option value="email">✉️ Email Prospectus / Details</option>
+              <option value="document_collection">📄 Academic Document Verification</option>
+              <option value="payment_reminder">💳 Token / Admission Fee Reminder</option>
             </select>
           </div>
 
@@ -203,12 +205,12 @@ export default function FollowUpSchedulerModal({ lead, isOpen, onClose, onSucces
             <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-2.5">
               <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-900">
                 <Building size={13} className="text-indigo-600" />
-                <span>Site Visit Configuration</span>
+                <span>Campus Visit Configuration</span>
               </div>
 
               <div>
                 <label className="label text-[11px] font-semibold text-slate-600 mb-1">
-                  Target Project / Property Offering
+                  Target College / University
                 </label>
                 <select
                   className="input text-xs"
@@ -216,23 +218,23 @@ export default function FollowUpSchedulerModal({ lead, isOpen, onClose, onSucces
                   onChange={e => {
                     setSelectedProjectId(e.target.value);
                     const p = projects.find(proj => proj._id === e.target.value);
-                    if (p?.location && !siteVisitLocation) setSiteVisitLocation(p.location);
+                    if ((p?.location || p?.city) && !siteVisitLocation) setSiteVisitLocation(p.location || p.city);
                   }}
                 >
-                  <option value="">-- Select Project / Property --</option>
+                  <option value="">-- Select College / Campus --</option>
                   {projects.map(p => (
-                    <option key={p._id} value={p._id}>📦 {p.name} ({p.location || 'Location'})</option>
+                    <option key={p._id} value={p._id}>🏫 {p.name || p.collegeName} ({p.city || p.location || 'Campus'})</option>
                   ))}
                 </select>
               </div>
 
               <div>
                 <label className="label text-[11px] font-semibold text-slate-600 mb-1 flex items-center gap-1">
-                  <MapPin size={11} className="text-indigo-600" /> Visit Venue / Meeting Location
+                  <MapPin size={11} className="text-indigo-600" /> Campus Venue / Meeting Hall
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Sector 150 Site Office / Model Flat"
+                  placeholder="e.g. Main Administrative Block / Admissions Office"
                   className="input text-xs"
                   value={siteVisitLocation}
                   onChange={e => setSiteVisitLocation(e.target.value)}

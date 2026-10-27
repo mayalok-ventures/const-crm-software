@@ -1,4 +1,4 @@
-# CoreSetu CRM: Forensic Audit & System State Document (`CRM_AUDIT_STATE.md`)
+# Sahyak CRM: Forensic Audit & System State Document (`CRM_AUDIT_STATE.md`)
 *Generated: 2026-08-19 | Role: Principal Full-Stack Architect & UI/UX Lead*
 
 ---

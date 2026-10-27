@@ -4,11 +4,11 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
-import { isOwner, isManager, getUser } from '@/lib/auth';
+import { isOwner, isManager, getUser, hasPermission } from '@/lib/auth';
 import BottomNav from '@/components/BottomNav';
 import {
   Percent, Award, CheckCircle2, Search, RefreshCw, User,
-  Building2, DollarSign, Calendar
+  Building2, DollarSign, Calendar, ShieldCheck
 } from 'lucide-react';
 import { formatDisplayDateTime } from '@/lib/dateUtils';
 
@@ -22,12 +22,17 @@ function CommissionContent() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const u = getUser();
-    if (!u) {
-      router.replace('/login');
-      return;
-    }
-    setUser(u);
+    const updateAuth = () => {
+      const u = getUser();
+      if (!u) {
+        router.replace('/login');
+        return;
+      }
+      setUser(u);
+    };
+    updateAuth();
+    window.addEventListener('user-updated', updateAuth);
+    return () => window.removeEventListener('user-updated', updateAuth);
   }, [router]);
 
   const formatINR = (val) => {
@@ -64,6 +69,24 @@ function CommissionContent() {
     }
     return true;
   });
+
+  if (user && !hasPermission(user, 'commission.view')) {
+    return (
+      <div className="app-container">
+        <BottomNav active="commission" />
+        <main className="main-content flex items-center justify-center min-h-[70vh]">
+          <div className="text-center p-8 bg-white border border-slate-200 rounded-2xl max-w-md shadow-sm">
+            <Percent size={40} className="text-slate-400 mx-auto mb-3" />
+            <h2 className="text-lg font-bold text-slate-900">Access Restricted</h2>
+            <p className="text-xs text-slate-500 mt-1 mb-4">You do not have permission to view commission and incentive payouts.</p>
+            <button onClick={() => router.push('/deals')} className="btn btn-primary btn-sm mx-auto">
+              Go to Admissions
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">

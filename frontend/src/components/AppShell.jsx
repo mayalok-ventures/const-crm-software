@@ -2,6 +2,7 @@
 import { usePathname } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import BottomNav, { AppShellContext } from '@/components/BottomNav';
+import MobileTopHeader from '@/components/MobileTopHeader';
 import { bootstrapOptions } from '@/lib/queries';
 
 const STANDALONE_ROUTES = [
@@ -45,6 +46,8 @@ export default function AppShell({ children }) {
   else if (pathname?.startsWith('/profile')) activeModule = 'profile';
   else if (pathname?.startsWith('/templates')) activeModule = 'templates';
   else if (pathname?.startsWith('/whatsapp')) activeModule = 'whatsapp';
+  else if (pathname?.startsWith('/email')) activeModule = 'email';
+  else if (pathname?.startsWith('/automations')) activeModule = 'automations';
   else if (pathname?.startsWith('/workspace')) activeModule = 'workspace';
   else if (pathname?.startsWith('/commission')) activeModule = 'commission';
   else if (pathname?.startsWith('/groups')) activeModule = 'groups';
@@ -53,6 +56,7 @@ export default function AppShell({ children }) {
   return (
     <AppShellContext.Provider value={true}>
       <div className="app-container app-shell-root">
+        <MobileTopHeader />
         <BottomNav active={activeModule} isRootShell={true} />
         {children}
       </div>

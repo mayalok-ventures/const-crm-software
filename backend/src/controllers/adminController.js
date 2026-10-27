@@ -3,11 +3,9 @@ const User = require('../models/User');
 const Lead = require('../models/Lead');
 const Payment = require('../models/Payment');
 const FollowUp = require('../models/FollowUp');
-const Offer = require('../models/Offer');
 const ActivityLog = require('../models/ActivityLog');
 const Pipeline = require('../models/Pipeline');
 const FormSchema = require('../models/FormSchema');
-const DistributionRule = require('../models/DistributionRule');
 const Template = require('../models/Template');
 const Coupon = require('../models/Coupon');
 const Notification = require('../models/Notification');
@@ -18,15 +16,12 @@ const Plan = require('../models/Plan');
 const TenantCatalogue = require('../models/TenantCatalogue');
 const TenantConfig = require('../models/TenantConfig');
 const Integration = require('../models/Integration');
-const LeadDistributionRule = require('../models/LeadDistributionRule');
-const CommissionRule = require('../models/CommissionRule');
-const CommissionPayout = require('../models/CommissionPayout');
 const { encrypt, decrypt } = require('../utils/encryption');
-const leadDistributionService = require('../services/leadDistributionService');
-const commissionService = require('../services/commissionService');
 const waSession = require('../services/waSession');
 const { generateUniqueUsername } = require('../utils/generateUsername');
 const { generateUniqueUsercode } = require('../utils/generateUsercode');
+const Workspace = require('../models/Workspace');
+const WorkspaceMembership = require('../models/WorkspaceMembership');
 const { auditService } = require('../monitoring/audit/auditService');
 
 // Helper: Immutable Universal Activity Logging
@@ -139,9 +134,15 @@ const getTenantScope = (user) => {
     return { _id: null };
   }
 
-  if (user.companyId) {
-    if (user.role === 'manager' || user.companyRole === 'manager') {
-      const uid = new mongoose.Types.ObjectId(String(user._id));
+  const role = (user.role || '').toLowerCase();
+  const companyRole = (user.companyRole || '').toLowerCase();
+  const wsRole = (user.workspaceRole || '').toLowerCase();
+
+  const isManager = role === 'manager' || companyRole === 'manager' || wsRole === 'manager';
+
+  if (user.companyId || (user.workspaceRole && user.workspaceRole !== 'owner')) {
+    const uid = new mongoose.Types.ObjectId(String(user._id));
+    if (isManager) {
       return {
         $and: [
           { $or: [{ companyId: tenantId }, { userId: tenantId }, { sharedWithCompanyId: tenantId }] },
@@ -149,20 +150,11 @@ const getTenantScope = (user) => {
         ],
       };
     }
-    if (user.role === 'agent' || user.companyRole === 'agent' || user.companyRole === 'sales_rep' || user.companyRole === 'telecaller') {
-      const uid = new mongoose.Types.ObjectId(String(user._id));
-      return {
-        $and: [
-          { $or: [{ companyId: tenantId }, { userId: tenantId }, { sharedWithCompanyId: tenantId }] },
-          { assignedTo: uid },
-        ],
-      };
-    }
+    // All non-manager company members / counsellors only see leads assigned to them
     return {
-      $or: [
-        { companyId: tenantId },
-        { userId: tenantId },
-        { sharedWithCompanyId: tenantId },
+      $and: [
+        { $or: [{ companyId: tenantId }, { userId: tenantId }, { sharedWithCompanyId: tenantId }] },
+        { assignedTo: uid },
       ],
     };
   }
@@ -191,9 +183,15 @@ const getTenantUserScope = (user) => {
     return { _id: null };
   }
 
-  if (user.companyId) {
-    if (user.role === 'manager' || user.companyRole === 'manager') {
-      const uid = new mongoose.Types.ObjectId(String(user._id));
+  const role = (user.role || '').toLowerCase();
+  const companyRole = (user.companyRole || '').toLowerCase();
+  const wsRole = (user.workspaceRole || '').toLowerCase();
+
+  const isManager = role === 'manager' || companyRole === 'manager' || wsRole === 'manager';
+
+  if (user.companyId || (user.workspaceRole && user.workspaceRole !== 'owner')) {
+    const uid = new mongoose.Types.ObjectId(String(user._id));
+    if (isManager) {
       return {
         $and: [
           { $or: [{ companyId: tenantId }, { _id: tenantId }] },
@@ -201,20 +199,11 @@ const getTenantUserScope = (user) => {
         ],
       };
     }
-    if (user.role === 'agent' || user.companyRole === 'agent') {
-      const uid = new mongoose.Types.ObjectId(String(user._id));
-      return {
-        $and: [
-          { $or: [{ companyId: tenantId }, { _id: tenantId }] },
-          { _id: uid },
-        ],
-      };
-    }
+    // Sub-agent / counsellor only sees their own user record
     return {
-      $or: [
-        { companyId: tenantId },
-        { managerId: tenantId },
-        { _id: tenantId },
+      $and: [
+        { $or: [{ companyId: tenantId }, { _id: tenantId }] },
+        { _id: uid },
       ],
     };
   }
@@ -435,15 +424,7 @@ exports.getOverviewMetrics = async (req, res) => {
         },
       ]),
 
-      CommissionPayout.aggregate([
-        {
-          $match: {
-            status: { $in: ['approved', 'paid'] },
-            ...(isCompany ? { companyId: new mongoose.Types.ObjectId(String(compId)) } : {}),
-          },
-        },
-        { $group: { _id: null, totalEarned: { $sum: '$commissionAmount' } } },
-      ]),
+      Promise.resolve([{ totalEarned: 0 }]),
     ]);
 
     const totalsObj = leadAgg[0]?.totals[0] || {
@@ -484,6 +465,22 @@ exports.getOverviewMetrics = async (req, res) => {
     const paymentRevenue = paymentAgg[0]?.total || 0;
     const totalRevenue = paymentRevenue > 0 ? paymentRevenue : totalsObj.totalPaidRevenue || 0;
 
+    let superAdminStats = {};
+    if (req.user.role === 'superadmin') {
+      const [platformUsersCount, activeUsersCount, totalPlansCount, totalCouponsCount] = await Promise.all([
+        User.countDocuments({ role: { $ne: 'superadmin' } }),
+        User.countDocuments({ role: { $ne: 'superadmin' }, userStatus: 'active' }),
+        Plan.countDocuments({ status: 'ACTIVE' }),
+        Coupon.countDocuments({ isActive: true }),
+      ]);
+      superAdminStats = {
+        totalConsultants: platformUsersCount,
+        activeConsultants: activeUsersCount,
+        totalPlans: totalPlansCount,
+        totalCoupons: totalCouponsCount,
+      };
+    }
+
     res.json({
       success: true,
       data: {
@@ -493,13 +490,14 @@ exports.getOverviewMetrics = async (req, res) => {
         conversionRate: `${conversionRate}%`,
         totalRevenue,
         totalCommissions: commissionAgg[0]?.totalEarned || 0,
-        totalUsers: (userMap.agent || 0) + (userMap.manager || 0) + (userMap.admin || 0) + (userMap.user || 0),
+        totalUsers: req.user.role === 'superadmin' ? (superAdminStats.totalConsultants || 0) : ((userMap.agent || 0) + (userMap.manager || 0) + (userMap.admin || 0) + (userMap.user || 0)),
         activeAgents: userMap.agent || 0,
         activeManagers: userMap.manager || 0,
         stageCounts: stageMap,
         sourceBreakdown: sourceMap,
         systemStatus: 'healthy',
         timestamp: new Date(),
+        ...superAdminStats,
       },
     });
   } catch (error) {
@@ -701,21 +699,7 @@ exports.createAdminLead = async (req, res) => {
       distributionStrategy: 'manual',
     };
 
-    if (!assignedTo) {
-      const autoDist = await leadDistributionService.distributeLead({
-        name,
-        phone,
-        source,
-        primarySource,
-        service_required,
-        monthly_spend,
-        utmSource,
-        utmCampaign,
-      });
-      if (autoDist.assignedTo) {
-        assignment = autoDist;
-      }
-    } else {
+    if (assignedTo) {
       const userObj = await User.findById(assignedTo).select('name managerId').lean();
       assignment.assignedToName = userObj?.name || '';
       if (userObj?.managerId) {
@@ -799,14 +783,7 @@ exports.updateAdminLead = async (req, res) => {
         timestamp: new Date(),
       });
 
-      if (['payment_done', 'converted'].includes(updates.status)) {
-        await commissionService.processCommission({
-          lead,
-          dealAmount: updates.paid_amount || lead.paid_amount || lead.payable_amount,
-          stageId: updates.status,
-          performedBy: req.user._id,
-        });
-      }
+      // Single user: no team commission
     }
 
     await lead.save();
@@ -863,14 +840,7 @@ exports.updateLeadStage = async (req, res) => {
       timestamp: new Date(),
     });
 
-    if (['payment_done', 'converted'].includes(targetStage)) {
-      await commissionService.processCommission({
-        lead,
-        dealAmount: lead.paid_amount || lead.payable_amount,
-        stageId: targetStage,
-        performedBy: req.user._id,
-      });
-    }
+    // Single user: no team commission
 
     await lead.save();
     res.json({ success: true, message: `Lead stage updated to ${targetStage}`, lead });
@@ -925,13 +895,7 @@ exports.convertLeadWithPlan = async (req, res) => {
       }
     }
 
-    // Trigger Commission Engine
-    await commissionService.processCommission({
-      lead,
-      dealAmount: finalAmount,
-      stageId: 'converted',
-      performedBy: req.user._id,
-    });
+    // Single user: no team commission
 
     res.json({
       success: true,
@@ -962,221 +926,21 @@ exports.getAdminAlerts = async (req, res) => {
 // 3. LEAD DISTRIBUTION CENTRE
 // ─────────────────────────────────────────────────────────────
 exports.getLeadDistributionRules = async (req, res) => {
-  try {
-    const [rules, newRules] = await Promise.all([
-      LeadDistributionRule.find()
-        .populate('assignees.userId', 'name email role userStatus isAvailable leadCap')
-        .populate('fallbackUserId', 'name email role')
-        .sort({ priority: 1, createdAt: -1 })
-        .lean(),
-      DistributionRule.find()
-        .populate('targets.assignedAgents.agentId', 'name email role userStatus isAvailable leadCap')
-        .sort({ priority: 1, createdAt: -1 })
-        .lean(),
-    ]);
-
-    // Merge & normalize rules for UI
-    const combined = [...newRules.map(r => ({
-      _id: r._id,
-      name: r.ruleName,
-      strategy: r.strategy?.routingMethod || 'ROUND_ROBIN',
-      priority: r.priority || 1,
-      isActive: r.isActive,
-      conditions: r.conditions,
-      assignees: (r.targets?.assignedAgents || []).map(a => ({
-        userId: a.agentId,
-        weight: a.weightPercentage,
-      })),
-      stats: r.stats,
-    })), ...rules];
-
-    res.json({ success: true, rules: combined });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
+  res.json({ success: true, rules: [] });
 };
 
 exports.saveLeadDistributionRule = async (req, res) => {
-  try {
-    const { id, name, ruleName, description, strategy, routingMethod, isActive, priority, conditions, assignees, assignedAgents, fallbackUserId } = req.body;
-    const finalName = (name || ruleName || '').trim();
-
-    if (!finalName) {
-      return res.status(400).json({ success: false, message: 'Rule name is required' });
-    }
-
-    const strat = String(strategy || routingMethod || 'ROUND_ROBIN').toUpperCase();
-    const stratNorm = ['ROUND_ROBIN', 'WEIGHTED', 'MANAGER_ROUTED'].includes(strat) ? strat : 'ROUND_ROBIN';
-
-    const normalizedAgents = (assignedAgents || assignees || []).map(a => ({
-      agentId: a.agentId || a.userId || a.id,
-      weightPercentage: Number(a.weightPercentage || a.weight || 0),
-      managerId: a.managerId || null,
-    })).filter(a => a.agentId);
-
-    let rule;
-    if (id) {
-      const beforeState = await DistributionRule.findById(id).lean() || await LeadDistributionRule.findById(id).lean();
-      rule = await DistributionRule.findByIdAndUpdate(
-        id,
-        {
-          $set: {
-            ruleName: finalName,
-            isActive: isActive !== undefined ? isActive : true,
-            priority: Number(priority) || 1,
-            conditions: conditions || { sourceType: 'ALL' },
-            strategy: { routingMethod: stratNorm },
-            targets: { assignedAgents: normalizedAgents },
-          }
-        },
-        { new: true, upsert: true }
-      );
-
-      await logActivity({
-        actor: req.user._id,
-        actorRole: req.user.role || 'admin',
-        action: 'UPDATE',
-        entityType: 'DistributionRule',
-        entityId: rule._id,
-        beforeState,
-        afterState: rule.toObject(),
-        details: `Updated Distribution Rule "${finalName}" (${stratNorm})`,
-        ipAddress: req.ip,
-      });
-    } else {
-      rule = await DistributionRule.create({
-        ruleName: finalName,
-        isActive: isActive !== undefined ? isActive : true,
-        priority: Number(priority) || 1,
-        createdBy: req.user._id,
-        conditions: conditions || { sourceType: 'ALL' },
-        strategy: { routingMethod: stratNorm },
-        targets: { assignedAgents: normalizedAgents },
-      });
-
-      // Also create backward-compatible LeadDistributionRule
-      await LeadDistributionRule.create({
-        name: finalName,
-        description: description || '',
-        strategy: stratNorm.toLowerCase(),
-        isActive: isActive !== undefined ? isActive : true,
-        priority: Number(priority) || 1,
-        conditions: { sources: ['manual', 'signup', 'meta', 'google'] },
-        assignees: normalizedAgents.map(a => ({ userId: a.agentId, weight: a.weightPercentage || 1 })),
-        createdBy: req.user._id,
-      }).catch(() => {});
-
-      await logActivity({
-        actor: req.user._id,
-        actorRole: req.user.role || 'admin',
-        action: 'CREATE',
-        entityType: 'DistributionRule',
-        entityId: rule._id,
-        afterState: rule.toObject(),
-        details: `Created Distribution Rule "${finalName}" with strategy ${stratNorm}`,
-        ipAddress: req.ip,
-      });
-    }
-
-    res.json({ success: true, message: 'Distribution rule saved successfully', rule });
-  } catch (error) {
-    console.error('saveLeadDistributionRule error:', error.message);
-    res.status(500).json({ success: false, message: error.message });
-  }
+  res.json({ success: true, message: 'Single-user CRM operates without multi-agent distribution rules.' });
 };
 
 exports.deleteLeadDistributionRule = async (req, res) => {
-  try {
-    const { id } = req.params;
-    await Promise.all([
-      DistributionRule.findByIdAndDelete(id),
-      LeadDistributionRule.findByIdAndDelete(id),
-    ]);
-
-    await logActivity({
-      actor: req.user._id,
-      actorRole: req.user.role || 'admin',
-      action: 'DELETE',
-      entityType: 'DistributionRule',
-      entityId: id,
-      details: `Deleted Distribution Rule (ID: ${id})`,
-      ipAddress: req.ip,
-    });
-
-    res.json({ success: true, message: 'Distribution rule deleted' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
+  res.json({ success: true, message: 'Rule deleted' });
 };
 
 exports.reassignAgentLeads = async (req, res) => {
-  try {
-    const { fromAgentId, toAgentId, leadIds } = req.body;
-
-    if (!toAgentId) {
-      return res.status(400).json({ success: false, message: 'Target assignee is required' });
-    }
-
-    const tenantUserScope = getTenantUserScope(req.user);
-    const targetUser = await User.findOne({
-      _id: toAgentId,
-      ...tenantUserScope,
-    }).select('name managerId').lean();
-    if (!targetUser) {
-      return res.status(404).json({ success: false, message: 'Target assignee not found or not in authorized scope' });
-    }
-
-    let managerId = targetUser.managerId || null;
-    let managerName = '';
-    if (managerId) {
-      const mgr = await User.findById(managerId).select('name').lean();
-      managerName = mgr?.name || '';
-    }
-
-    const tenantScope = getTenantScope(req.user);
-    const filter = { ...tenantScope };
-    if (leadIds && Array.isArray(leadIds) && leadIds.length > 0) {
-      filter._id = { $in: leadIds };
-    } else if (fromAgentId) {
-      filter.assignedTo = fromAgentId;
-    } else {
-      return res.status(400).json({ success: false, message: 'Specify either fromAgentId or leadIds' });
-    }
-
-    const result = await Lead.updateMany(filter, {
-      $set: {
-        assignedTo: targetUser._id,
-        assignedToName: targetUser.name,
-        currentOwnerId: targetUser._id,
-        ownershipStatus: 'assigned',
-        releaseReason: '',
-        assignedManager: managerId,
-        assignedManagerName: managerName,
-      },
-      $push: {
-        leadActivities: {
-          action: 'assigned_agent',
-          performedBy: req.user._id,
-          performerName: req.user.name,
-          details: `Reassigned to ${targetUser.name} by Manager/Admin`,
-          timestamp: new Date(),
-        },
-      },
-    });
-
-    res.json({
-      success: true,
-      message: `Successfully reassigned ${result.modifiedCount} lead(s) to ${targetUser.name}`,
-      modifiedCount: result.modifiedCount,
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
+  res.json({ success: true, message: 'All candidate leads are consolidated under your single consultant workspace.' });
 };
 
-// ─────────────────────────────────────────────────────────────
-// 4. PIPELINE CENTRE
-// ─────────────────────────────────────────────────────────────
 exports.getPipelineSettings = async (req, res) => {
   try {
     let pipeline = await Pipeline.findOne({ isActive: true }).sort({ createdAt: -1 }).lean();
@@ -1334,8 +1098,8 @@ exports.createAdminAgent = async (req, res) => {
       role: finalRole,
       companyRole: finalCompanyRole,
       workStatus: finalRole === 'manager' ? 'employee' : 'independent_agent',
-      industryType: req.user.industryType || 'Real Estate',
-      educationSubProfile: req.user.educationSubProfile || null,
+      industryType: 'Education',
+      educationSubProfile: 'admission_consultants',
       companyId: companyId || undefined,
       connectedCompanyId: companyId || undefined,
       companyJoinMethod: 'created_by_company',
@@ -1360,6 +1124,30 @@ exports.createAdminAgent = async (req, res) => {
       details: `Created new team member: ${user.name} (${user.role.toUpperCase()})`,
       ipAddress: req.ip,
     });
+
+    // Auto-enroll new team member in active WorkspaceMembership
+    try {
+      const activeWs = req.workspace || (companyId ? await Workspace.findOne({ ownerId: companyId }).lean() : null);
+      if (activeWs) {
+        await WorkspaceMembership.findOneAndUpdate(
+          { workspaceId: activeWs._id, userId: user._id },
+          {
+            $setOnInsert: {
+              workspaceId: activeWs._id,
+              userId: user._id,
+              joinedAt: new Date(),
+            },
+            $set: {
+              role: isManagerRole ? 'manager' : 'counsellor',
+              status: 'active',
+            },
+          },
+          { upsert: true, new: true }
+        );
+      }
+    } catch (wsErr) {
+      console.warn('WorkspaceMembership auto-enroll warning in createAdminAgent:', wsErr.message);
+    }
 
     res.status(201).json({ success: true, message: `${finalRole.toUpperCase()} created successfully`, user, agent: user });
   } catch (error) {
@@ -1480,10 +1268,7 @@ exports.getAgentsPerformance = async (req, res) => {
           { $match: { assignedTo: agent._id, status: { $in: ['converted', 'payment_done'] } } },
           { $group: { _id: null, total: { $sum: '$paid_amount' } } },
         ]),
-        CommissionPayout.aggregate([
-          { $match: { userId: agent._id, status: { $in: ['approved', 'paid'] } } },
-          { $group: { _id: null, earned: { $sum: '$commissionAmount' } } },
-        ]),
+        Promise.resolve([{ earned: 0 }]),
       ]);
 
       const salesRevenue = revenueAgg[0]?.total || 0;
@@ -1981,153 +1766,21 @@ exports.getCampaignMetrics = async (req, res) => {
 // 11. COMMISSION ENGINE
 // ─────────────────────────────────────────────────────────────
 exports.getCommissionRules = async (req, res) => {
-  try {
-    const rules = await CommissionRule.find().sort({ createdAt: -1 }).lean();
-    res.json({ success: true, rules });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
+  res.json({ success: true, rules: [] });
 };
 
 exports.saveCommissionRule = async (req, res) => {
-  try {
-    const { id, ruleName, name, targetRole = 'AGENT', commissionType = 'PERCENTAGE', value, percentageRate, fixedAmount, stageThreshold = 'payment_done', isActive = true } = req.body;
-    const finalName = (ruleName || name || '').trim();
-    if (!finalName) return res.status(400).json({ success: false, message: 'Rule name is required' });
-
-    const finalRole = String(targetRole).toUpperCase();
-    const finalType = String(commissionType).toUpperCase();
-    const finalValue = value !== undefined ? Number(value) : (finalType === 'PERCENTAGE' ? (Number(percentageRate) || 10) : (Number(fixedAmount) || 0));
-
-    let rule;
-    if (id) {
-      rule = await CommissionRule.findByIdAndUpdate(
-        id,
-        {
-          $set: {
-            ruleName: finalName,
-            targetRole: finalRole,
-            commissionType: finalType,
-            value: finalValue,
-            stageThreshold,
-            isActive,
-          },
-        },
-        { new: true }
-      );
-
-      await logActivity({
-        actor: req.user._id,
-        actorRole: req.user.role || 'admin',
-        action: 'UPDATE',
-        entityType: 'CommissionRule',
-        entityId: rule._id,
-        details: `Updated commission rule "${rule.ruleName}" (${finalRole} - ${finalValue}${finalType === 'PERCENTAGE' ? '%' : '₹'})`,
-        ipAddress: req.ip,
-      });
-    } else {
-      rule = await CommissionRule.create({
-        ruleName: finalName,
-        targetRole: finalRole,
-        commissionType: finalType,
-        value: finalValue,
-        stageThreshold,
-        isActive,
-        createdBy: req.user._id,
-      });
-
-      await logActivity({
-        actor: req.user._id,
-        actorRole: req.user.role || 'admin',
-        action: 'CREATE',
-        entityType: 'CommissionRule',
-        entityId: rule._id,
-        details: `Created commission rule "${rule.ruleName}" (${finalRole} - ${finalValue}${finalType === 'PERCENTAGE' ? '%' : '₹'})`,
-        ipAddress: req.ip,
-      });
-    }
-
-    res.json({ success: true, message: 'Commission rule saved successfully', rule });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
+  res.json({ success: true, message: 'Single-user CRM operates without team commission rules.' });
 };
 
 exports.deleteCommissionRule = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const rule = await CommissionRule.findByIdAndDelete(id);
-    if (rule) {
-      await logActivity({
-        actor: req.user._id,
-        actorRole: req.user.role || 'admin',
-        action: 'DELETE',
-        entityType: 'CommissionRule',
-        entityId: id,
-        details: `Deleted commission rule "${rule.ruleName}"`,
-        ipAddress: req.ip,
-      });
-    }
-    res.json({ success: true, message: 'Commission rule deleted' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
+  res.json({ success: true, message: 'Commission rule deleted' });
 };
 
 exports.getCommissionPayouts = async (req, res) => {
-  try {
-    const { userId, status, page = 1, limit = 50 } = req.query;
-    const query = {};
-
-    if (userId) query.userId = userId;
-    if (status && status !== 'all') query.status = String(status).toUpperCase();
-
-    const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
-    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
-    const skip = (parsedPage - 1) * parsedLimit;
-    const [total, payouts] = await Promise.all([
-      CommissionPayout.countDocuments(query),
-      CommissionPayout.find(query)
-        .populate('userId', 'name email role')
-        .populate('leadId', 'name phone status')
-        .populate('appliedRuleId', 'ruleName targetRole commissionType value')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parsedLimit)
-        .lean(),
-    ]);
-
-    res.json({
-      success: true,
-      payouts: payouts.map(p => ({
-        _id: p._id,
-        userId: p.userId?._id,
-        userName: p.userId?.name || 'Agent',
-        userRole: p.userId?.role || 'agent',
-        leadId: p.leadId?._id,
-        leadName: p.leadId?.name || 'Lead Deal',
-        saleValue: p.saleValue || p.dealAmount || 0,
-        dealAmount: p.saleValue || p.dealAmount || 0,
-        commissionEarned: p.commissionEarned || p.commissionAmount || 0,
-        commissionAmount: p.commissionEarned || p.commissionAmount || 0,
-        ruleName: p.appliedRuleId?.ruleName || p.ruleNameSnapshot || 'Standard Rule',
-        status: p.status,
-        createdAt: p.createdAt,
-      })),
-      pagination: {
-        total,
-        page: parseInt(page, 10),
-        pages: Math.ceil(total / parseInt(limit, 10)),
-      },
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
+  res.json({ success: true, payouts: [], total: 0 });
 };
 
-// ─────────────────────────────────────────────────────────────
-// 12. COUPON ENGINE
-// ─────────────────────────────────────────────────────────────
 exports.getCoupons = async (req, res) => {
   try {
     const coupons = await Coupon.find().sort({ createdAt: -1 }).lean();
@@ -2784,14 +2437,15 @@ exports.cancelFollowUp = async (req, res) => {
     const cleanReason = String(reason).trim();
 
     if (lead.activeFollowUp) {
-      lead.activeFollowUp.status = 'none';
+      lead.activeFollowUp.scheduledAt = null;
+      lead.activeFollowUp.status = 'cancelled';
       lead.activeFollowUp.completionNote = `[Cancelled]: ${cleanReason}`;
       lead.activeFollowUp.completedAt = new Date();
       lead.activeFollowUp.completedBy = req.user._id;
     }
-    lead.followUpStatus = 'none';
+    lead.followUpStatus = 'cancelled';
     lead.followUpDate = null;
-    lead.followUpNotified = false;
+    lead.followUpNotified = true;
 
     lead.notes.push({
       text: `[Follow-Up Cancelled]: ${cleanReason}`,
@@ -2801,7 +2455,7 @@ exports.cancelFollowUp = async (req, res) => {
     });
 
     lead.leadActivities.push({
-      action: 'followup_completed',
+      action: 'followup_cancelled',
       performedBy: req.user._id,
       performerName: req.user.name || 'Admin',
       details: `Follow-up cancelled. Reason: "${cleanReason}"`,
@@ -2910,67 +2564,8 @@ exports.closeLeadWithCommission = async (req, res) => {
 
     await lead.save();
 
-    // Automatic Commission Calculation & Payout Ledger Generation
+    // Single user: No team commission ledger
     const payoutsCreated = [];
-    if (finalAmount > 0) {
-      try {
-        // 1. Agent Commission
-        if (lead.assignedTo) {
-          const agentRule = (await CommissionRule.findOne({ targetRole: 'AGENT', isActive: true }).sort({ createdAt: -1 })) || {
-            _id: new mongoose.Types.ObjectId(),
-            ruleName: 'Default 10% Agent Bonus',
-            commissionType: 'PERCENTAGE',
-            value: 10,
-          };
-          const agentEarned = agentRule.commissionType === 'FLAT' ? agentRule.value : (finalAmount * agentRule.value) / 100;
-          const agentPayout = await CommissionPayout.create({
-            userId: lead.assignedTo,
-            leadId: lead._id,
-            saleValue: finalAmount,
-            commissionEarned: agentEarned,
-            appliedRuleId: agentRule._id,
-            ruleNameSnapshot: agentRule.ruleName,
-            status: 'PENDING',
-            calculationSnapshot: {
-              planName: selectedPlan?.name,
-              closingAmount: finalAmount,
-              ruleType: agentRule.commissionType,
-              ruleValue: agentRule.value,
-            },
-          });
-          payoutsCreated.push(agentPayout);
-        }
-
-        // 2. Manager Commission
-        if (lead.assignedManager) {
-          const mgrRule = (await CommissionRule.findOne({ targetRole: 'MANAGER', isActive: true }).sort({ createdAt: -1 })) || {
-            _id: new mongoose.Types.ObjectId(),
-            ruleName: 'Default 5% Manager Override',
-            commissionType: 'PERCENTAGE',
-            value: 5,
-          };
-          const mgrEarned = mgrRule.commissionType === 'FLAT' ? mgrRule.value : (finalAmount * mgrRule.value) / 100;
-          const mgrPayout = await CommissionPayout.create({
-            userId: lead.assignedManager,
-            leadId: lead._id,
-            saleValue: finalAmount,
-            commissionEarned: mgrEarned,
-            appliedRuleId: mgrRule._id,
-            ruleNameSnapshot: mgrRule.ruleName,
-            status: 'PENDING',
-            calculationSnapshot: {
-              planName: selectedPlan?.name,
-              closingAmount: finalAmount,
-              ruleType: mgrRule.commissionType,
-              ruleValue: mgrRule.value,
-            },
-          });
-          payoutsCreated.push(mgrPayout);
-        }
-      } catch (commErr) {
-        console.warn('[Commission Ledger Notice]:', commErr.message);
-      }
-    }
 
     // Audit Logging
     try {
@@ -3299,79 +2894,49 @@ exports.refundPayment = async (req, res) => {
   res.json({ success: true, message: 'Refund simulated' });
 };
 exports.createAdminOffer = async (req, res) => {
-  try {
-    const { title, code, discount_pct, description, validUntil, terms } = req.body;
-    const offer = await Offer.create({
-      title: title || 'Special Offer',
-      code: code || `OFFER_${Date.now()}`,
-      discount_pct: Number(discount_pct) || 0,
-      description: description || '',
-      validUntil: validUntil ? new Date(validUntil) : new Date(Date.now() + 30 * 86400000),
-      terms: terms || [],
-      createdBy: req.user._id,
-    });
-    res.status(201).json({ success: true, message: 'Offer created', offer });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
+  res.status(400).json({ success: false, message: 'Offers module is not applicable to Admission Consultants CRM' });
 };
 
 exports.applyOfferToLead = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { offer_id } = req.body;
-    const [lead, offer] = await Promise.all([
-      Lead.findById(id),
-      Offer.findById(offer_id),
-    ]);
-    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
-    if (!offer) return res.status(404).json({ success: false, message: 'Offer not found' });
-
-    const baseBudget = parseFloat(lead.budget) || parseFloat(lead.monthly_spend) || 100000;
-    const discountPct = Number(offer.discount_pct) || 0;
-    const discountAmount = (baseBudget * discountPct) / 100;
-    const payable_amount = Math.max(0, baseBudget - discountAmount);
-
-    lead.payable_amount = payable_amount;
-    lead.metadata = lead.metadata || {};
-    lead.metadata.offers_applied = lead.metadata.offers_applied || [];
-    lead.metadata.offers_applied.push(offer._id);
-    lead.metadata.payable_amount = payable_amount;
-    await lead.save();
-
-    res.json({ success: true, message: 'Offer applied', lead, offer, payable_amount });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
+  res.status(400).json({ success: false, message: 'Offers module is not applicable to Admission Consultants CRM' });
 };
 
 exports.getUsers = async (req, res) => {
   try {
-    const users = await User.find().select('-password').sort({ createdAt: -1 }).lean();
-    
-    // Batch lookup all company owners in 1 query to prevent N+1 queries
-    const companyIds = [...new Set(users.map((u) => u.companyId).filter(Boolean))];
-    const owners = companyIds.length > 0
-      ? await User.find({ _id: { $in: companyIds } }).select('companyInfo name').lean()
-      : [];
-    const ownerMap = new Map(owners.map((o) => [String(o._id), o]));
+    const { search, status, plan, role } = req.query;
+    let query = {};
+    if (status && status !== 'all') {
+      query.userStatus = status;
+    }
+    if (plan && plan !== 'all') {
+      query.plan = plan;
+    }
+    if (role && role !== 'all') {
+      query.role = role;
+    }
+    if (search && String(search).trim()) {
+      const s = String(search).trim();
+      const rx = new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      query.$or = [{ name: rx }, { email: rx }, { phone: rx }];
+    }
 
-    const usersWithTags = users.map((user) => {
-      const isSingleUser = !user.companyId && user.role !== 'superadmin' && user.role !== 'admin' && user.companyRole !== 'owner';
-      let organizationTag = undefined;
-      if (user.companyId) {
-        const owner = ownerMap.get(String(user.companyId));
-        if (owner) {
-          organizationTag = (owner.companyInfo && owner.companyInfo.companyName) || owner.name;
-        }
-      }
-      return {
-        ...user,
-        isSingleUser,
-        organizationTag,
-      };
-    });
-    res.json({ success: true, users: usersWithTags });
+    const users = await User.find(query).select('-password').sort({ createdAt: -1 }).lean();
+
+    // Aggregate lead counts per user
+    const userIds = users.map((u) => u._id);
+    const leadCounts = await Lead.aggregate([
+      { $match: { assignedTo: { $in: userIds }, deletedAt: null } },
+      { $group: { _id: '$assignedTo', count: { $sum: 1 } } },
+    ]);
+    const leadCountMap = new Map(leadCounts.map((lc) => [String(lc._id), lc.count]));
+
+    const usersWithStats = users.map((user) => ({
+      ...user,
+      leadsCount: leadCountMap.get(String(user._id)) || 0,
+      userStatus: user.userStatus || (user.isActive ? 'active' : 'disabled'),
+    }));
+
+    res.json({ success: true, count: usersWithStats.length, users: usersWithStats });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }
@@ -3381,8 +2946,27 @@ exports.assignPlan = async (req, res) => {
   try {
     const { id } = req.params;
     const { plan } = req.body;
-    const user = await User.findByIdAndUpdate(id, { $set: { plan } }, { new: true });
-    res.json({ success: true, message: 'Plan assigned', user });
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const oldPlan = user.plan;
+    user.plan = plan;
+    await user.save();
+
+    await logActivity({
+      userId: req.user._id,
+      actor: req.user._id,
+      actorRole: req.user.role,
+      action: 'UPDATE',
+      entityType: 'User',
+      entityId: user._id,
+      oldValue: { plan: oldPlan },
+      newValue: { plan },
+      details: `SuperAdmin updated plan for ${user.name || user.email} to ${plan}`,
+      ipAddress: req.ip,
+    });
+
+    res.json({ success: true, message: `Plan updated to ${plan}`, user });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }
@@ -3391,25 +2975,121 @@ exports.assignPlan = async (req, res) => {
 exports.toggleUserStatus = async (req, res) => {
   try {
     const { id } = req.params;
+    if (String(id) === String(req.user._id)) {
+      return res.status(400).json({ success: false, message: 'Cannot modify your own Super Admin account status' });
+    }
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    user.userStatus = user.userStatus === 'active' ? 'disabled' : 'active';
+    const newStatus = (user.userStatus === 'active' || user.isActive) ? 'disabled' : 'active';
+    user.userStatus = newStatus;
+    user.isActive = newStatus === 'active';
     await user.save();
-    res.json({ success: true, message: `User status set to ${user.userStatus}`, user });
+
+    await logActivity({
+      userId: req.user._id,
+      actor: req.user._id,
+      actorRole: req.user.role,
+      action: 'STATUS_CHANGE',
+      entityType: 'User',
+      entityId: user._id,
+      details: `User ${user.name || user.email} status changed to ${newStatus}`,
+      ipAddress: req.ip,
+    });
+
+    res.json({ success: true, message: `User status set to ${newStatus}`, user });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }
 };
 
 exports.suspendUser = exports.toggleUserStatus;
+
 exports.deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
+    if (String(id) === String(req.user._id)) {
+      return res.status(400).json({ success: false, message: 'Cannot delete your own Super Admin account' });
+    }
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
     await User.findByIdAndDelete(id);
-    res.json({ success: true, message: 'User deleted' });
+
+    await logActivity({
+      userId: req.user._id,
+      actor: req.user._id,
+      actorRole: req.user.role,
+      action: 'DELETE',
+      entityType: 'User',
+      entityId: id,
+      details: `Deleted user ${user.name || user.email} (${user.phone || 'No phone'})`,
+      ipAddress: req.ip,
+    });
+
+    res.json({ success: true, message: 'User deleted successfully' });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+exports.getUnifiedLogs = async (req, res) => {
+  try {
+    const { search, type = 'all', page = 1, limit = 50 } = req.query;
+    const query = {};
+
+    if (search && String(search).trim()) {
+      const rx = new RegExp(String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      query.$or = [{ details: rx }, { action: rx }, { userName: rx }, { entityType: rx }];
+    }
+
+    if (type !== 'all') {
+      if (type === 'auth') query.action = { $in: ['LOGIN', 'LOGOUT', 'REGISTER', 'AUTH'] };
+      else if (type === 'plan') query.entityType = { $in: ['Plan', 'Subscription'] };
+      else if (type === 'user') query.entityType = 'User';
+      else if (type === 'coupon') query.entityType = 'Coupon';
+    }
+
+    const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+    const skip = (parsedPage - 1) * parsedLimit;
+
+    const [total, logs] = await Promise.all([
+      ActivityLog.countDocuments(query),
+      ActivityLog.find(query)
+        .populate('actor', 'name email phone role')
+        .sort({ timestamp: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(parsedLimit)
+        .lean(),
+    ]);
+
+    const formattedLogs = logs.map((l) => ({
+      _id: l._id,
+      timestamp: l.timestamp || l.createdAt,
+      actor: l.actor ? (l.actor.name || l.actor.email || 'Admin') : (l.actorName || l.userName || 'System'),
+      actorRole: l.actorRole || (l.actor ? l.actor.role : 'system'),
+      action: l.action,
+      entityType: l.entityType || 'General',
+      entityId: l.entityId || l.targetId,
+      details: l.details || `${l.action} performed on ${l.entityType || 'System'}`,
+      ipAddress: l.ipAddress || '127.0.0.1',
+      oldValue: l.oldValue,
+      newValue: l.newValue,
+    }));
+
+    res.json({
+      success: true,
+      logs: formattedLogs,
+      pagination: {
+        total,
+        page: parsedPage,
+        pages: Math.ceil(total / parsedLimit) || 1,
+        limit: parsedLimit,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

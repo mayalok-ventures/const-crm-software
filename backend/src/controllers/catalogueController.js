@@ -810,9 +810,11 @@ exports.getMyCatalogue = async (req, res) => {
     const companyId = req.user.companyId || (isOwner ? req.user._id : null);
 
     // Enforce multi-tenant access: Org Owner & sub-agents see org catalogue; Solo users see their own
-    const query = companyId
+    const tenantFilter = companyId
       ? { $or: [{ companyId }, { tenantId: companyId }, { tenantId: req.user._id }] }
       : { tenantId: req.user._id };
+
+    const query = { $and: [tenantFilter] };
 
     if (country && country !== 'all') {
       query['location.country'] = new RegExp(`^${country.trim()}$`, 'i');
@@ -826,14 +828,16 @@ exports.getMyCatalogue = async (req, res) => {
 
     if (search && search.trim()) {
       const rx = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      query.$or = [
-        { customCollegeName: rx },
-        { 'location.city': rx },
-        { 'location.state': rx },
-        { accreditation: rx },
-        { 'courses.degreeName': rx },
-        { 'courses.specialization': rx },
-      ];
+      query.$and.push({
+        $or: [
+          { customCollegeName: rx },
+          { 'location.city': rx },
+          { 'location.state': rx },
+          { accreditation: rx },
+          { 'courses.degreeName': rx },
+          { 'courses.specialization': rx },
+        ],
+      });
     }
 
     const items = await TenantCatalogue.find(query)
@@ -841,10 +845,29 @@ exports.getMyCatalogue = async (req, res) => {
       .sort({ updatedAt: -1, createdAt: -1 })
       .lean();
 
+    const canViewCommission = req.membership && req.membership.hasPermission
+      ? await req.membership.hasPermission('catalogue.view_commission')
+      : (req.membership?.role === 'owner' || req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.companyRole === 'owner');
+
+    const sanitizedItems = canViewCommission
+      ? items
+      : items.map(item => {
+          if (Array.isArray(item.courses)) {
+            return {
+              ...item,
+              courses: item.courses.map(c => {
+                const { customTieUpDetails, ...safeCourse } = c;
+                return safeCourse;
+              }),
+            };
+          }
+          return item;
+        });
+
     res.json({
       success: true,
-      count: items.length,
-      catalogue: items,
+      count: sanitizedItems.length,
+      catalogue: sanitizedItems,
     });
   } catch (error) {
     console.error('getMyCatalogue error:', error);
@@ -872,6 +895,17 @@ exports.getTenantCatalogueItem = async (req, res) => {
       .lean();
 
     if (!item) return res.status(404).json({ success: false, message: 'Catalogue item not found' });
+
+    const canViewCommission = req.membership && req.membership.hasPermission
+      ? await req.membership.hasPermission('catalogue.view_commission')
+      : (req.membership?.role === 'owner' || req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.companyRole === 'owner');
+
+    if (!canViewCommission && Array.isArray(item.courses)) {
+      item.courses = item.courses.map(c => {
+        const { customTieUpDetails, ...safeCourse } = c;
+        return safeCourse;
+      });
+    }
 
     res.json({ success: true, catalogueItem: item });
   } catch (error) {
@@ -1041,7 +1075,7 @@ exports.deleteDegreeFromCatalogueItem = async (req, res) => {
 exports.updateDegreeInCatalogueItem = async (req, res) => {
   try {
     const { id, degreeName } = req.params;
-    const { newDegreeName, level, durationYears } = req.body;
+    const { newDegreeName, level, durationYears, standardAnnualFee } = req.body;
 
     const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner';
     const companyId = req.user.companyId || (isOwner ? req.user._id : null);
@@ -1067,6 +1101,13 @@ exports.updateDegreeInCatalogueItem = async (req, res) => {
         if (level) course.level = level;
         if (durationYears !== undefined && durationYears !== null) {
           course.durationYears = Number(durationYears) || course.durationYears;
+        }
+        if (standardAnnualFee !== undefined && standardAnnualFee !== null && standardAnnualFee !== '') {
+          const annualFeeNum = Number(standardAnnualFee);
+          if (!isNaN(annualFeeNum) && annualFeeNum > 0) {
+            course.customFeeStructure.annualTuitionFee = annualFeeNum;
+            course.customFeeStructure.packageFee = annualFeeNum * (course.durationYears || 4);
+          }
         }
         updatedCount++;
       }
@@ -1102,11 +1143,13 @@ exports.addSpecializationToCatalogueItem = async (req, res) => {
       hostelFeePerYear = 80000,
       oneTimeAdmissionFee = 20000,
       currency = 'INR',
+      feeNotes = '',
       commissionRate = 10,
       commissionType = 'percentage',
       mouStatus = 'direct_tie_up',
       contactPersonName = '',
       contactPersonPhone = '',
+      contactPersonEmail = '',
       admissionStatus = 'admissions_open',
       quotaType = 'management_quota',
       level = 'Undergraduate',
@@ -1141,14 +1184,15 @@ exports.addSpecializationToCatalogueItem = async (req, res) => {
         hostelFeePerYear: Number(hostelFeePerYear) || 0,
         oneTimeAdmissionFee: Number(oneTimeAdmissionFee) || 0,
         currency,
-        feeNotes: '',
+        feeNotes: feeNotes || '',
       },
       customTieUpDetails: {
         commissionType,
         commissionRate: Number(commissionRate) || 10,
         mouStatus,
-        contactPersonName,
-        contactPersonPhone,
+        contactPersonName: contactPersonName || '',
+        contactPersonPhone: contactPersonPhone || '',
+        contactPersonEmail: contactPersonEmail || '',
       },
       admissionStatus,
       quotaType,
@@ -1219,6 +1263,18 @@ exports.updateCourseInCatalogueItem = async (req, res) => {
     }
 
     if (customTieUpDetails) {
+      const canEditCommission = req.membership && req.membership.hasPermission
+        ? await req.membership.hasPermission('catalogue.view_commission')
+        : (req.membership?.role === 'owner' || req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.companyRole === 'owner');
+
+      if (!canEditCommission) {
+        return res.status(403).json({
+          success: false,
+          code: 'COMMISSION_EDIT_FORBIDDEN',
+          message: 'You do not have permission to modify university tie-up commission details',
+        });
+      }
+
       course.customTieUpDetails = {
         ...course.customTieUpDetails,
         ...customTieUpDetails,
@@ -1318,6 +1374,17 @@ exports.updateTenantCatalogueItem = async (req, res) => {
     if (affiliatedUniversity !== undefined) item.affiliatedUniversity = affiliatedUniversity;
 
     if (Array.isArray(courses)) {
+      const canEditCommission = req.membership && req.membership.hasPermission
+        ? await req.membership.hasPermission('catalogue.view_commission')
+        : (req.membership?.role === 'owner' || req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.companyRole === 'owner');
+
+      if (!canEditCommission) {
+        // Preserve existing customTieUpDetails for each course if caller lacks commission permission
+        const existingCoursesMap = new Map((item.courses || []).map(c => [String(c._id || c.specialization), c.customTieUpDetails]));
+        courses.forEach(c => {
+          c.customTieUpDetails = existingCoursesMap.get(String(c._id || c.specialization)) || undefined;
+        });
+      }
       item.courses = courses;
     }
 
@@ -1505,8 +1572,11 @@ ${website ? `🌐 *Official Website:* ${website}\n` : ''}${brochureUrl ? `📑 *
 📞 *Need Assistance with Seat Reservation / Scholarship?*
 Feel free to reply directly to this message or contact your admission counselor *${req.user.name || 'Admissions Team'}* (${req.user.phone || ''}).`;
 
-    // 4. Send Message via Baileys waSession
-    await waSession.sendText(targetSessionId, recipientPhone, formattedMessage, req.user._id, senderName);
+    // 4. Send Message via Baileys waSession (honoring custom edits made by counselor)
+    const messageToSend = (req.body.message && String(req.body.message).trim())
+      ? String(req.body.message).trim()
+      : formattedMessage;
+    await waSession.sendText(targetSessionId, recipientPhone, messageToSend, req.user._id, senderName);
 
     // 5. If linked to an existing Lead in CRM, update lead activities & chat
     if (leadId) {
@@ -1540,3 +1610,81 @@ Feel free to reply directly to this message or contact your admission counselor 
     });
   }
 };
+
+// @desc Get Unified Catalogue (Tenant Catalogue with Master College Fallback for Dropdowns)
+// @route GET /api/catalogue
+exports.getCatalogue = async (req, res) => {
+  try {
+    const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner';
+    const companyId = req.user.companyId || (isOwner ? req.user._id : null);
+
+    const query = companyId
+      ? { $or: [{ companyId }, { tenantId: companyId }, { tenantId: req.user._id }] }
+      : { tenantId: req.user._id };
+
+    let items = await TenantCatalogue.find(query)
+      .populate('masterCollegeId', 'name accreditation establishedYear shortCode logoUrl website location')
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .lean();
+
+    const canViewCommission = req.membership && req.membership.hasPermission
+      ? await req.membership.hasPermission('catalogue.view_commission')
+      : (req.membership?.role === 'owner' || req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.companyRole === 'owner');
+
+    if (!canViewCommission) {
+      items = items.map(item => {
+        if (Array.isArray(item.courses)) {
+          return {
+            ...item,
+            courses: item.courses.map(c => {
+              const { customTieUpDetails, ...safeCourse } = c;
+              return safeCourse;
+            }),
+          };
+        }
+        return item;
+      });
+    }
+
+    // Map tenant items into convenient dropdown options
+    let formatted = items.map(item => ({
+      _id: item._id,
+      name: item.customCollegeName || item.masterCollegeId?.name || 'College',
+      collegeName: item.customCollegeName || item.masterCollegeId?.name || 'College',
+      location: item.location?.city ? `${item.location.city}, ${item.location.state || ''}` : (item.masterCollegeId?.location?.city || ''),
+      city: item.location?.city || item.masterCollegeId?.location?.city || '',
+      state: item.location?.state || item.masterCollegeId?.location?.state || '',
+      collegeType: item.collegeType || 'University',
+      courses: item.courses || [],
+      isTenant: true,
+    }));
+
+    // If tenant hasn't imported any colleges yet, provide top master colleges so modals/dropdowns are not empty
+    if (formatted.length === 0) {
+      const masters = await MasterCollege.find({ isActive: true }).limit(25).lean();
+      formatted = masters.map(m => ({
+        _id: m._id,
+        name: m.name,
+        collegeName: m.name,
+        location: m.location ? `${m.location.city || ''}, ${m.location.state || ''}` : '',
+        city: m.location?.city || '',
+        state: m.location?.state || '',
+        collegeType: m.type || 'University',
+        courses: m.courses || [],
+        isTenant: false,
+      }));
+    }
+
+    res.json({
+      success: true,
+      count: formatted.length,
+      data: formatted,
+      colleges: formatted,
+      catalogue: items,
+    });
+  } catch (error) {
+    console.error('getCatalogue error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+

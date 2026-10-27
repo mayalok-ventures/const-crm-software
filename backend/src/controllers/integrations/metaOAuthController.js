@@ -4,7 +4,7 @@ const Integration = require('../../models/Integration');
 const { encrypt } = require('../../utils/encryption');
 
 function getMetaApiVersion() {
-  return process.env.META_API_VERSION || 'v26.0';
+  return process.env.META_API_VERSION || 'v21.0';
 }
 
 function getMetaAppId() {
@@ -120,11 +120,11 @@ exports.startOAuth = async (req, res) => {
 
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? req.user._id : null);
 
-    if (!appSecret) {
-      return res.status(500).json({
+    if (!appSecret || !appId) {
+      return res.status(400).json({
         success: false,
-        message: 'Meta OAuth app secret is not configured on server',
-        code: 'OAUTH_NOT_CONFIGURED',
+        message: 'Meta App ID or App Secret is not configured on the server. Please configure META_APP_ID and META_APP_SECRET in your backend environment.',
+        code: 'META_CREDENTIALS_MISSING',
       });
     }
 

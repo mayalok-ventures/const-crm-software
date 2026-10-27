@@ -31,6 +31,7 @@ const analyticsRoutes = require('./src/routes/analytics');
 const adminRoutes = require('./src/routes/admin');
 const shareRoutes = require('./src/routes/share');
 const whatsappRoutes = require('./src/routes/whatsapp');
+const metaWhatsAppRoutes = require('./src/routes/metaWhatsAppRoutes');
 const campaignRoutes = require('./src/routes/campaigns');
 const paymentRoutes = require('./src/routes/payments');
 const notificationsRoutes = require('./src/routes/notifications');
@@ -42,6 +43,9 @@ const catalogueRoutes = require('./src/routes/catalogue');
 const workspaceRoutes = require('./src/routes/workspaceRoutes');
 const pipelineRoutes = require('./src/routes/pipelineRoutes');
 const dealRoutes = require('./src/routes/dealRoutes');
+const mediaRoutes = require('./src/routes/mediaRoutes');
+const emailRoutes = require('./src/routes/emailRoutes');
+const automationRoutes = require('./src/routes/automationRoutes');
 const monitoringRoutes = require('./src/routes/monitoring').default;
 const { apiPerformance } = require('./src/monitoring/apiPerformance');
 const { perfTimingMiddleware, startEventLoopMonitor, stopEventLoopMonitor } = require('./src/middleware/perfTiming');
@@ -60,27 +64,76 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-// Bulletproof Universal CORS Middleware & Pre-flight Handler
+// Bulletproof Universal CORS Configuration
+const getAllowedOrigins = () => {
+  const envOrigins = (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map(o => o.trim())
+    .filter(Boolean);
+
+  const defaultOrigins = [
+    'https://app.sahyak.com',
+    'https://crm.sahyak.com',
+  ];
+
+  if (process.env.NODE_ENV !== 'production') {
+    defaultOrigins.push(
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      'http://localhost:5000',
+      'http://127.0.0.1:5000'
+    );
+  }
+
+  return Array.from(new Set([...defaultOrigins, ...envOrigins]));
+};
+
+const isOriginAllowed = (origin) => {
+  if (!origin) return true; // Allow non-browser requests, webhooks (Meta, Google, Razorpay)
+  const allowed = getAllowedOrigins();
+  if (allowed.includes(origin)) return true;
+  if (process.env.NODE_ENV !== 'production') {
+    // In development, allow localhost with any port or local private LAN IPs
+    if (/^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+// Custom CORS and Preflight handler
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+    if (isOriginAllowed(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
   } else {
+    // Server-to-server or curl requests
     res.setHeader('Access-Control-Allow-Origin', '*');
   }
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Workspace-Id, X-Request-Id');
   res.setHeader('Access-Control-Max-Age', '7200'); // 2 hours browser preflight cache
   
   if (req.method === 'OPTIONS') {
+    if (origin && !isOriginAllowed(origin) && process.env.NODE_ENV === 'production') {
+      return res.status(403).json({ error: 'CORS policy: Origin not allowed' });
+    }
     return res.status(204).end();
   }
   next();
 });
 
 app.use(cors({
-  origin: true,
+  origin: (origin, callback) => {
+    if (isOriginAllowed(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   maxAge: 7200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
@@ -88,7 +141,12 @@ app.use(cors({
 }));
 
 // Pre-flight handling
-app.options('*', cors());
+app.options('*', cors({
+  origin: (origin, callback) => {
+    callback(null, isOriginAllowed(origin));
+  },
+  credentials: true,
+}));
 
 // Body parsing with rawBody capture for webhook signature verification
 app.use(express.json({
@@ -169,6 +227,7 @@ app.use('/api/recordings', recordingsRoutes);
 app.use('/api/groups', groupsRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/whatsapp/meta', metaWhatsAppRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
@@ -178,8 +237,12 @@ app.use('/api', shareRoutes);
 app.use('/api/integrations', integrationRoutes);
 app.use('/api/catalogue', catalogueRoutes); // Colleges, Degrees, Specializations & WhatsApp Prospectus
 app.use('/api/workspace', workspaceRoutes);
+app.use('/api/workspaces', workspaceRoutes);
 app.use('/api/pipelines', pipelineRoutes);
 app.use('/api/deals', dealRoutes);
+app.use('/api/media', mediaRoutes);
+app.use('/api/email', emailRoutes);
+app.use('/api/automations', automationRoutes);
 
 // High-speed Single Bootstrap Route (Consolidates startup queries)
 const { protect: protectAuth } = require('./src/middleware/auth');
@@ -262,7 +325,7 @@ connectDB().then(async () => {
   // Start cron jobs
   startFollowUpCron();
 
-  const PORT = process.env.PORT || 5000;
+  const PORT = process.env.X_ZOHO_CATALYST_LISTEN_PORT || process.env.PORT || 5000;
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🚀 Admission Consultants CRM Backend running on http://localhost:${PORT}`);
     console.log(`📦 Environment: ${process.env.NODE_ENV || 'development'}\n`);

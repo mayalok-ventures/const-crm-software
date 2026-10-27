@@ -22,7 +22,7 @@ const resolveWorkspace = async (req, res, next) => {
 
     // Superadmins can inspect any workspace if explicitly requested, or bypass tenant isolation for platform tasks
     if (req.user.role === 'superadmin' || req.user.isAdmin) {
-      const explicitWsId = req.headers['x-workspace-id'] || req.query.workspaceId;
+      const explicitWsId = req.headers?.['x-workspace-id'] || req.query?.workspaceId;
       if (explicitWsId && mongoose.Types.ObjectId.isValid(explicitWsId)) {
         const ws = await Workspace.findById(explicitWsId).lean();
         if (ws) {
@@ -37,11 +37,17 @@ const resolveWorkspace = async (req, res, next) => {
     }
 
     // Check if client requested a specific workspace
-    const requestedWsId = req.headers['x-workspace-id'] || req.query.workspaceId;
+    const requestedWsId = req.headers?.['x-workspace-id'] || req.query?.workspaceId;
     const cacheKey = `${req.user._id}_${requestedWsId || 'default'}`;
     const cachedContext = workspaceContextCache.get(cacheKey);
 
-    if (cachedContext && cachedContext.workspace && !cachedContext.workspace.deletedAt) {
+    if (
+      cachedContext &&
+      cachedContext.workspace &&
+      !cachedContext.workspace.deletedAt &&
+      cachedContext.membership &&
+      cachedContext.membership.status === 'active'
+    ) {
       req.workspace = cachedContext.workspace;
       req.workspaceId = cachedContext.workspace._id;
       req.tenantId = cachedContext.workspace._id;
@@ -114,42 +120,74 @@ const resolveWorkspace = async (req, res, next) => {
  */
 const requirePermission = (permissionKey, requiredScope = null) => {
   return async (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({ message: 'Authentication required' });
-    }
-
-    // Superadmins bypass workspace permissions
-    if (req.user.role === 'superadmin' || req.user.isAdmin) {
-      return next();
-    }
-
-    // Ensure workspace context is resolved
-    if (!req.membership) {
-      await new Promise((resolve) => resolveWorkspace(req, res, resolve));
-      if (!req.membership) {
-        return res.status(403).json({ message: 'No active workspace membership found' });
+    try {
+      if (!req.user) {
+        return res.status(401).json({ message: 'Authentication required' });
       }
-    }
 
-    // Owner has unrestricted workspace authority
-    if (req.membership.role === 'owner') {
-      return next();
-    }
+      // If no permissionKey was provided, basic workspace membership is sufficient
+      if (!permissionKey) {
+        return next();
+      }
 
-    // If no permissionKey was provided, basic workspace membership is sufficient
-    if (!permissionKey) {
-      return next();
-    }
+      const { PERMISSIONS } = require('../config/permissions');
+      const keysToCheck = Array.isArray(permissionKey) ? permissionKey : [permissionKey];
 
-    const hasAccess = await req.membership.hasPermission(permissionKey, requiredScope);
-    if (!hasAccess) {
-      return res.status(403).json({
-        code: 'PERMISSION_DENIED',
-        message: `Forbidden: Missing required permission '${permissionKey}'`,
-      });
-    }
+      // Unknown permission keys fail closed safely (cannot be granted even to owner/superadmin)
+      const hasKnownKey = keysToCheck.some(k => Boolean(PERMISSIONS[k]));
+      if (!hasKnownKey) {
+        return res.status(403).json({
+          code: 'INVALID_OR_UNKNOWN_PERMISSION',
+          message: `Forbidden: Unknown or unrecognized permission '${Array.isArray(permissionKey) ? permissionKey.join(' or ') : permissionKey}'`,
+        });
+      }
 
-    next();
+      // Superadmins bypass workspace permissions on recognized keys
+      if (req.user.role === 'superadmin' || req.user.isAdmin) {
+        return next();
+      }
+
+      // Ensure workspace context is resolved
+      if (!req.membership) {
+        await new Promise((resolve) => resolveWorkspace(req, res, resolve));
+        if (!req.membership) {
+          return res.status(403).json({ message: 'No active workspace membership found' });
+        }
+      }
+
+      // Owner has unrestricted workspace authority on recognized keys
+      if (req.membership.role === 'owner') {
+        return next();
+      }
+
+      let hasAccess = false;
+      for (const key of keysToCheck) {
+        if (req.membership && typeof req.membership.hasPermission === 'function') {
+          if (await req.membership.hasPermission(key, requiredScope)) {
+            hasAccess = true;
+            break;
+          }
+        } else if (req.membership) {
+          const memDoc = await WorkspaceMembership.findById(req.membership._id || req.membership.id);
+          if (memDoc && (await memDoc.hasPermission(key, requiredScope))) {
+            hasAccess = true;
+            break;
+          }
+        }
+      }
+
+      if (!hasAccess) {
+        return res.status(403).json({
+          code: 'PERMISSION_DENIED',
+          message: `Forbidden: Missing required permission '${Array.isArray(permissionKey) ? permissionKey.join(' or ') : permissionKey}'`,
+        });
+      }
+
+      next();
+    } catch (err) {
+      console.error('[requirePermission Error]', err);
+      return res.status(500).json({ message: 'Internal authorization error' });
+    }
   };
 };
 

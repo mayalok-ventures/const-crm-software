@@ -6,8 +6,19 @@ function getEncryptionKey() {
   const secret =
     process.env.INTEGRATION_ENCRYPTION_KEY ||
     process.env.ENCRYPTION_KEY ||
-    process.env.JWT_SECRET ||
-    'crm_default_integration_aes_key_32_bytes_2026';
+    process.env.JWT_SECRET;
+
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'CRITICAL SECURITY CONFIGURATION ERROR: INTEGRATION_ENCRYPTION_KEY or ENCRYPTION_KEY must be set in production environment!'
+      );
+    }
+    return crypto
+      .createHash('sha256')
+      .update('crm_default_integration_aes_key_32_bytes_2026')
+      .digest();
+  }
 
   return crypto
     .createHash('sha256')

@@ -37,7 +37,7 @@ const getFileObject = (file, req) => {
   };
 };
 
-// @desc  Get user & company templates
+// @desc  Get user & company templates (with optional channel and category filtering)
 // @route GET /api/templates
 // @access Private
 exports.getTemplates = async (req, res) => {
@@ -50,9 +50,17 @@ exports.getTemplates = async (req, res) => {
       ]
     };
 
+    if (req.query.channel) {
+      query.channel = { $regex: new RegExp(`^${req.query.channel.trim()}$`, 'i') };
+    }
+
+    if (req.query.category) {
+      query.category = req.query.category.trim();
+    }
+
     const templates = await Template.find(query)
-      .sort({ usageCount: -1, createdAt: -1 })
-      .limit(60)
+      .sort({ usageCount: -1, updatedAt: -1, createdAt: -1 })
+      .limit(100)
       .lean();
 
     res.json(templates);
@@ -61,17 +69,49 @@ exports.getTemplates = async (req, res) => {
   }
 };
 
-// @desc  Create template with media attachments
+// @desc  Create template with media attachments or rich email formatting
 // @route POST /api/templates
 // @access Private
 exports.createTemplate = async (req, res) => {
   try {
-    const { title, text, tags, category } = req.body;
-    if (!title || !text) return res.status(400).json({ message: 'Title and message text are required' });
+    const { title, name, text, content, subject, bodyHtml, channel, tags, category, variables } = req.body;
+    const templateTitle = (title || name || '').trim();
+    if (!templateTitle) {
+      return res.status(400).json({ message: 'Template title is required' });
+    }
+
+    const resolvedChannel = (channel || 'WHATSAPP').toUpperCase();
+    let resolvedText = (text || content || '').trim();
+    let resolvedHtml = (bodyHtml || '').trim();
+
+    // If email template has bodyHtml but no text, generate plain text fallback
+    if (!resolvedText && resolvedHtml) {
+      resolvedText = resolvedHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+    // If template has text but no HTML, wrap into basic HTML paragraph
+    if (!resolvedHtml && resolvedText) {
+      resolvedHtml = `<p>${resolvedText.replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br/>')}</p>`;
+    }
+
+    if (!resolvedText && !resolvedHtml) {
+      return res.status(400).json({ message: 'Template message or HTML body is required' });
+    }
 
     let parsedTags = [];
     if (tags) {
       parsedTags = Array.isArray(tags) ? tags : tags.split(',').map(t => t.trim()).filter(Boolean);
+    }
+
+    let parsedVariables = [];
+    if (variables) {
+      parsedVariables = Array.isArray(variables) ? variables : variables.split(',').map(v => v.trim()).filter(Boolean);
+    } else {
+      // Auto-extract {{variable}} patterns
+      const combined = `${subject || ''} ${resolvedHtml} ${resolvedText}`;
+      const matches = combined.match(/{{\s*([a-zA-Z0-9_]+)\s*}}/g);
+      if (matches) {
+        parsedVariables = Array.from(new Set(matches.map(m => m.replace(/[{}]/g, '').trim())));
+      }
     }
 
     const imageFile = req.files?.image ? getFileObject(req.files.image[0], req) : null;
@@ -80,13 +120,21 @@ exports.createTemplate = async (req, res) => {
 
     const template = await Template.create({
       userId: req.user._id,
-      title: title.trim(),
-      text: text.trim(),
+      createdBy: req.user._id,
+      workspaceId: req.user.workspaceId || req.user.activeWorkspaceId || null,
+      title: templateTitle,
+      name: templateTitle,
+      channel: resolvedChannel,
+      subject: (subject || '').trim(),
+      text: resolvedText,
+      content: resolvedText,
+      bodyHtml: resolvedHtml,
       category: category || 'general',
       imageFile,
       videoFile,
       docFile,
       tags: parsedTags,
+      variables: parsedVariables,
     });
 
     res.status(201).json(template);
@@ -104,13 +152,27 @@ exports.updateTemplate = async (req, res) => {
     const template = await Template.findOne({ _id: req.params.id, userId: req.user._id });
     if (!template) return res.status(404).json({ message: 'Template not found' });
 
-    const { title, text, tags, category, removeImage, removeVideo, removeDoc } = req.body;
-    if (title) template.title = title.trim();
-    if (text) template.text = text.trim();
+    const { title, name, text, content, subject, bodyHtml, channel, tags, category, variables, removeImage, removeVideo, removeDoc } = req.body;
+    if (title || name) {
+      const t = (title || name).trim();
+      template.title = t;
+      template.name = t;
+    }
+    if (channel) template.channel = channel.toUpperCase();
+    if (subject !== undefined) template.subject = (subject || '').trim();
+    if (bodyHtml !== undefined) template.bodyHtml = bodyHtml;
+    if (text !== undefined || content !== undefined) {
+      const val = (text || content || '').trim();
+      template.text = val;
+      template.content = val;
+    }
     if (category) template.category = category;
     
-    if (tags) {
+    if (tags !== undefined) {
       template.tags = Array.isArray(tags) ? tags : tags.split(',').map(t => t.trim()).filter(Boolean);
+    }
+    if (variables !== undefined) {
+      template.variables = Array.isArray(variables) ? variables : variables.split(',').map(v => v.trim()).filter(Boolean);
     }
 
     // Removals

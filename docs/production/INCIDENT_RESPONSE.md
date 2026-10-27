@@ -1,4 +1,4 @@
-# CoreSetu CRM — Production Incident Response Runbook
+# Sahyak CRM — Production Incident Response Runbook
 
 ## Incident Severities
 - **P0**: Critical outage affecting all users (e.g., Database unavailable, server down, data corruption).

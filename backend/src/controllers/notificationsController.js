@@ -1,10 +1,13 @@
 const Notification = require('../models/Notification');
+const PushSubscription = require('../models/PushSubscription');
+const { getVapidPublicKey, subscribe, unsubscribe, sendPushNotification } = require('../services/pushNotificationService');
 
 // Map of active SSE client connections: userId -> Set of res objects
 const sseClients = new Map();
 
 // Helper to broadcast real-time event to active SSE connections
-exports.broadcastNotification = (userId, notificationData) => {
+const broadcastNotification = (userId, notificationData) => {
+  if (!userId) return;
   const userStr = userId.toString();
   const clients = sseClients.get(userStr);
   if (clients && clients.size > 0) {
@@ -19,24 +22,39 @@ exports.broadcastNotification = (userId, notificationData) => {
   }
 };
 
-// @desc  Get user notifications
+// @desc  Get user notifications with filtering and pagination
 // @route GET /api/notifications
 // @access Private
-exports.getNotifications = async (req, res) => {
+const getNotifications = async (req, res) => {
   try {
-    const [notifications, unreadCount] = await Promise.all([
-      Notification.find({ userId: req.user._id })
+    const { category, unreadOnly, page = 1, limit = 50 } = req.query;
+    const query = { userId: req.user._id };
+
+    if (category && category !== 'all') {
+      query.category = category;
+    }
+    if (unreadOnly === 'true') {
+      query.isRead = false;
+    }
+
+    const skip = (Math.max(1, parseInt(page, 10)) - 1) * Math.min(100, parseInt(limit, 10));
+
+    const [notifications, unreadCount, totalCount] = await Promise.all([
+      Notification.find(query)
         .populate('leadId', 'name phone status project location budget followUpDate')
-        .populate('transferRequestId', 'status requestType reason requestedBy requestedTo createdAt expiresAt')
         .sort({ createdAt: -1 })
-        .limit(50)
+        .skip(skip)
+        .limit(Math.min(100, parseInt(limit, 10)))
         .lean(),
       Notification.countDocuments({ userId: req.user._id, isRead: false }),
+      Notification.countDocuments(query),
     ]);
 
     res.json({
       notifications,
       unreadCount,
+      totalCount,
+      page: parseInt(page, 10),
     });
   } catch (error) {
     console.error('getNotifications error:', error);
@@ -44,14 +62,26 @@ exports.getNotifications = async (req, res) => {
   }
 };
 
+// @desc  Get fast unread counter for top-nav bell
+// @route GET /api/notifications/unread-count
+// @access Private
+const getUnreadCount = async (req, res) => {
+  try {
+    const count = await Notification.countDocuments({ userId: req.user._id, isRead: false });
+    res.json({ unreadCount: count });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to count unread notifications' });
+  }
+};
+
 // @desc  Mark all notifications as read
 // @route PUT /api/notifications/read-all
 // @access Private
-exports.markAllRead = async (req, res) => {
+const markAllRead = async (req, res) => {
   try {
     await Notification.updateMany(
       { userId: req.user._id, isRead: false },
-      { isRead: true }
+      { $set: { isRead: true, readAt: new Date() } }
     );
     res.json({ message: 'All notifications marked as read ✅' });
   } catch (error) {
@@ -62,22 +92,117 @@ exports.markAllRead = async (req, res) => {
 // @desc  Mark single notification as read
 // @route PUT /api/notifications/:id/read
 // @access Private
-exports.markOneRead = async (req, res) => {
+const markOneRead = async (req, res) => {
   try {
-    await Notification.findOneAndUpdate(
+    const notif = await Notification.findOneAndUpdate(
       { _id: req.params.id, userId: req.user._id },
-      { isRead: true }
+      { $set: { isRead: true, readAt: new Date() } },
+      { new: true }
     );
-    res.json({ message: 'Notification marked as read' });
+    if (!notif) return res.status(404).json({ message: 'Notification not found' });
+    res.json({ message: 'Notification marked as read', notification: notif });
   } catch (error) {
     res.status(500).json({ message: 'Failed to update notification' });
   }
 };
 
-// @desc  Real-Time Server-Sent Events (SSE) Stream for Instant WhatsApp/Follow-up Alerts
+// @desc  Delete single notification
+// @route DELETE /api/notifications/:id
+// @access Private
+const deleteNotification = async (req, res) => {
+  try {
+    const result = await Notification.deleteOne({ _id: req.params.id, userId: req.user._id });
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ message: 'Notification not found' });
+    }
+    res.json({ message: 'Notification removed' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to delete notification' });
+  }
+};
+
+// @desc  Get VAPID Public Key for Web Push client setup
+// @route GET /api/notifications/push/vapid-key
+// @access Private
+const getVapidKey = (req, res) => {
+  const publicKey = getVapidPublicKey();
+  if (!publicKey) {
+    return res.status(503).json({ message: 'Web Push VAPID is not configured on this server' });
+  }
+  res.json({ publicKey });
+};
+
+// @desc  Register client device push subscription
+// @route POST /api/notifications/push/subscribe
+// @access Private
+const registerPushSubscription = async (req, res) => {
+  try {
+    const { subscription } = req.body;
+    if (!subscription || !subscription.endpoint) {
+      return res.status(400).json({ message: 'Valid PushSubscription required' });
+    }
+
+    const userAgent = req.headers['user-agent'] || '';
+    const platform = req.headers['sec-ch-ua-platform'] || '';
+    const workspaceId = req.workspace?._id || req.user.workspaceId || null;
+    const companyId = req.user.companyId || null;
+
+    const saved = await subscribe(req.user._id, subscription, userAgent, platform, workspaceId, companyId);
+    res.json({ message: 'Device subscribed to Push notifications ✅', subscriptionId: saved._id });
+  } catch (err) {
+    console.error('registerPushSubscription error:', err.message);
+    res.status(500).json({ message: err.message || 'Failed to register push subscription' });
+  }
+};
+
+// @desc  Unsubscribe client device push subscription
+// @route POST /api/notifications/push/unsubscribe
+// @access Private
+const unregisterPushSubscription = async (req, res) => {
+  try {
+    const { endpoint } = req.body;
+    if (!endpoint) return res.status(400).json({ message: 'Endpoint is required' });
+
+    await unsubscribe(req.user._id, endpoint);
+    res.json({ message: 'Device unsubscribed from push notifications' });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to unsubscribe' });
+  }
+};
+
+// @desc  Send a test push notification to user's registered devices
+// @route POST /api/notifications/push/test
+// @access Private
+const testPushNotification = async (req, res) => {
+  try {
+    const result = await sendPushNotification(req.user._id, {
+      title: '🔔 Sahyak CRM Test Notification',
+      body: `Hello ${req.user.name || 'Agent'}! Push notifications are working perfectly on this device.`,
+      url: '/notifications',
+      tag: 'test-push',
+      timestamp: Date.now(),
+    });
+
+    if (result.sentCount === 0) {
+      return res.status(404).json({
+        message: 'No active device subscriptions found for this user. Please enable notifications in your browser first.',
+        details: result,
+      });
+    }
+
+    res.json({
+      message: `Test push sent to ${result.sentCount} device(s) successfully! ✅`,
+      result,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Test push notification failed' });
+  }
+};
+
+// @desc  Real-Time Server-Sent Events (SSE) Stream
 // @route GET /api/notifications/stream
 // @access Private
-exports.streamNotifications = (req, res) => {
+const streamNotifications = (req, res) => {
   const userId = req.user._id.toString();
 
   res.setHeader('Content-Type', 'text/event-stream');
@@ -106,7 +231,23 @@ exports.streamNotifications = (req, res) => {
     const clients = sseClients.get(userId);
     if (clients) {
       clients.delete(res);
-      if (clients.size === 0) sseClients.delete(userId);
+      if (clients.size === 0) {
+        sseClients.delete(userId);
+      }
     }
   });
+};
+
+module.exports = {
+  broadcastNotification,
+  getNotifications,
+  getUnreadCount,
+  markAllRead,
+  markOneRead,
+  deleteNotification,
+  getVapidKey,
+  registerPushSubscription,
+  unregisterPushSubscription,
+  testPushNotification,
+  streamNotifications,
 };

@@ -40,6 +40,7 @@ const tenantCatalogueCourseSchema = new mongoose.Schema({
 });
 
 const tenantCatalogueSchema = new mongoose.Schema({
+  workspaceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Workspace', index: true },
   tenantId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
   masterCollegeId: { type: mongoose.Schema.Types.ObjectId, ref: 'MasterCollege', default: null, index: true },
@@ -63,6 +64,7 @@ const tenantCatalogueSchema = new mongoose.Schema({
   notes: { type: String, default: '' },
 }, { timestamps: true });
 
+tenantCatalogueSchema.index({ workspaceId: 1, isCustomInstitution: 1 });
 tenantCatalogueSchema.index({ tenantId: 1, masterCollegeId: 1 });
 tenantCatalogueSchema.index({ tenantId: 1, customCollegeName: 1 });
 tenantCatalogueSchema.index({ companyId: 1, updatedAt: -1 });

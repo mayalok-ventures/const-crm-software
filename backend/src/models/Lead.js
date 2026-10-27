@@ -39,39 +39,7 @@ const leadActivitySchema = new mongoose.Schema({
   action: {
     type: String,
     required: true,
-    enum: [
-      'lead_created',
-      'status_changed',
-      'assigned_agent',
-      'campus_visit_scheduled',
-      'campus_visit_completed',
-      'college_shortlisted',
-      'token_advance_recorded',
-      'admission_confirmed',
-      'note_added',
-      'message_sent',
-      'message_received',
-      'recording_added',
-      'lead_updated',
-      'call_initiated',
-      'followup_scheduled',
-      'followup_completed',
-      'followup_postponed',
-      'followup_rescheduled',
-      'followup_cancelled',
-      'followup_updated',
-      'plan_assigned',
-      'free_plan_assigned',
-      'deal_closed',
-      'lead_reassigned',
-      'deal_won',
-      'deal_lost',
-      'commission_calculated',
-      'service_updated',
-      'custom_price_applied',
-      'broadcast_sent',
-      'webhook_ingested',
-    ],
+    trim: true,
   },
   performedBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -133,6 +101,10 @@ const leadSchema = new mongoose.Schema({
   // Organization / Company Association
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 
+  // Campaign Inbound Routing & Attribution Linkage
+  campaignId: { type: mongoose.Schema.Types.ObjectId, ref: 'Campaign', default: null, index: true },
+  campaignName: { type: String, default: '', trim: true, index: true },
+
   // Single User Ownership
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   assignedToName: { type: String, default: '' },
@@ -157,9 +129,11 @@ const leadSchema = new mongoose.Schema({
 
   // Student Candidate Academic & Admission Profile
   targetStream: { type: String, default: '', trim: true }, // e.g. Engineering, Medical, MBA, Law, Pharmacy
+  targetDomain: { type: String, default: '', trim: true }, // Alias for targetStream
   targetCourse: { type: String, default: '', trim: true }, // e.g. B.Tech Computer Science, MBBS, MBA Finance
   targetState: { type: String, default: '', trim: true },
   targetCity: { type: String, default: '', trim: true },
+  academicScore: { type: String, default: '', trim: true }, // Formatted academic score (e.g. 55% or 82%)
   academicScore10th: { type: Number, default: null },
   academicScore12th: { type: Number, default: null },
   academicScoreGrad: { type: Number, default: null },
@@ -167,9 +141,10 @@ const leadSchema = new mongoose.Schema({
   entranceRank: { type: String, default: '', trim: true },
   quotaPreference: {
     type: String,
-    enum: ['Merit Quota', 'Management Quota', 'NRI Quota', 'State Quota', 'Any', null, ''],
-    default: 'Merit Quota'
+    default: '',
+    trim: true
   },
+  packageBudget: { type: String, default: '', trim: true }, // Candidate package budget range
   shortlistedColleges: [{
     collegeName: { type: String, trim: true },
     courseName: { type: String, trim: true },
@@ -179,6 +154,44 @@ const leadSchema = new mongoose.Schema({
   campusVisitDate: { type: Date, default: null },
   tokenAdvancePaid: { type: Number, default: 0, min: 0 },
   admissionFinalFee: { type: Number, default: 0, min: 0 },
+
+  // Personal & Guardian Details
+  alternatePhone: { type: String, default: '', trim: true },
+  dob: { type: Date, default: null },
+  gender: { type: String, default: '', trim: true },
+  category: { type: String, default: '', trim: true }, // e.g. General, OBC, SC, ST, EWS
+  city: { type: String, default: '', trim: true },
+  state: { type: String, default: '', trim: true },
+  address: { type: String, default: '', trim: true },
+  pincode: { type: String, default: '', trim: true },
+  fatherName: { type: String, default: '', trim: true },
+  fatherPhone: { type: String, default: '', trim: true },
+  fatherOccupation: { type: String, default: '', trim: true },
+  motherName: { type: String, default: '', trim: true },
+
+  // Detailed Academic Qualifications (10th / 12th / Grad)
+  tenthBoard: { type: String, default: '', trim: true },
+  tenthPercentage: { type: Number, default: null },
+  tenthYear: { type: String, default: '', trim: true },
+  twelfthBoard: { type: String, default: '', trim: true },
+  twelfthStream: { type: String, default: '', trim: true }, // PCM, PCB, PCMB, Commerce, Arts
+  twelfthPercentage: { type: Number, default: null },
+  twelfthGroupPercentage: { type: Number, default: null }, // PCM/PCB % for eligibility
+  twelfthYear: { type: String, default: '', trim: true },
+  gradDegree: { type: String, default: '', trim: true },
+  gradCollege: { type: String, default: '', trim: true },
+  gradPercentage: { type: Number, default: null },
+  gradYear: { type: String, default: '', trim: true },
+
+  // Entrance Exams & Competitive Scores
+  entranceExamRollNo: { type: String, default: '', trim: true },
+  entranceScore: { type: String, default: '', trim: true },
+  entrancePercentile: { type: String, default: '', trim: true },
+
+  // Consultation & College Preferences
+  degreeLevel: { type: String, default: '', trim: true }, // UG / PG / Diploma
+  preferredSpecialization: { type: String, default: '', trim: true },
+  preferredColleges: { type: String, default: '', trim: true },
 
   // Commercial / Subscription Packages
   service_required: {
@@ -347,6 +360,7 @@ const leadSchema = new mongoose.Schema({
       'custom', 'custom_webhook',
       'signup', 'agent_manual', 'manual', 'other', 'platform_registration',
       'auto-signup', 'meta_webhook', 'google_webhook', 'api', 'webhook',
+      'website_form', 'whatsapp_inbound', 'whatsapp',
       'Auto-Signup', 'Direct Call', 'Meta Ads', 'Google Ads', 'Organic Search', 'Referral'
     ],
     default: 'MANUAL',
@@ -463,6 +477,26 @@ leadSchema.virtual('dependents')
   .get(function() { return this.children; })
   .set(function(v) { this.children = v; });
 
+leadSchema.virtual('tenthScore')
+  .get(function() { return this.tenthPercentage ?? this.academicScore10th ?? null; })
+  .set(function(v) {
+    const num = v !== null && v !== '' && !isNaN(Number(v)) ? Number(v) : null;
+    this.tenthPercentage = num;
+    this.academicScore10th = num;
+  });
+
+leadSchema.virtual('twelfthScore')
+  .get(function() { return this.twelfthPercentage ?? this.academicScore12th ?? null; })
+  .set(function(v) {
+    const num = v !== null && v !== '' && !isNaN(Number(v)) ? Number(v) : null;
+    this.twelfthPercentage = num;
+    this.academicScore12th = num;
+  });
+
+leadSchema.virtual('stream')
+  .get(function() { return this.twelfthStream || this.targetStream || ''; })
+  .set(function(v) { this.twelfthStream = v; });
+
 // Indexes for fast queries
 leadSchema.index({ userId: 1 });
 leadSchema.index({ companyId: 1 });
@@ -577,11 +611,17 @@ leadSchema.pre('validate', function() {
 });
 
 leadSchema.index({ workspaceId: 1, status: 1 });
+leadSchema.index({ workspaceId: 1, status: 1, _id: -1 });
+leadSchema.index({ workspaceId: 1, assignedTo: 1, _id: -1 });
+leadSchema.index({ workspaceId: 1, pipelineId: 1, pipelineStage: 1, _id: -1 });
+leadSchema.index({ workspaceId: 1, score: -1, _id: -1 });
 leadSchema.index({ workspaceId: 1, createdAt: -1 });
 leadSchema.index({ workspaceId: 1, assignedTo: 1 });
 leadSchema.index({ workspaceId: 1, updatedAt: -1 });
 leadSchema.index({ workspaceId: 1, status: 1, updatedAt: -1 });
 leadSchema.index({ workspaceId: 1, assignedTo: 1, updatedAt: -1 });
+leadSchema.index({ userId: 1, status: 1, updatedAt: -1 });
+leadSchema.index({ workspaceId: 1, campaignId: 1, status: 1 });
 leadSchema.index({ workspaceId: 1, nameLower: 1 });
 leadSchema.index({ workspaceId: 1, phoneDigits: 1 });
 leadSchema.index({ workspaceId: 1, companyLower: 1 });

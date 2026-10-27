@@ -5,6 +5,7 @@ const User = require('../models/User');
 const TenantConfig = require('../models/TenantConfig');
 const Notification = require('../models/Notification');
 const waSession = require('./waSession');
+const AutomationEngine = require('./automationEngine');
 
 // Country-specific document checklist templates for Study Abroad
 const COUNTRY_DOCUMENT_CHECKLISTS = {
@@ -474,10 +475,38 @@ async function handleEventPassGeneration({ leadId, tenantUserId, companyId }) {
 // EVENT LISTENERS REGISTRATION
 // -------------------------------------------------------------
 
+// Listener: Lead Created (Triggers automated welcome messages / emails / assignments)
+crmEvents.on(CRM_EVENTS.LEAD_CREATED, async (payload) => {
+  const { lead, user } = payload || {};
+  if (!lead) return;
+  try {
+    await AutomationEngine.executeLeadCreatedAutomations({
+      lead,
+      user,
+      workspaceId: lead.workspaceId || user?.workspaceId,
+    });
+  } catch (err) {
+    console.error('[AutomationHandlers] LEAD_CREATED automation error:', err.message);
+  }
+});
+
 // Listener: Lead Stage Changed
 crmEvents.on(CRM_EVENTS.LEAD_STAGE_CHANGED, async (payload) => {
   const { lead, oldStage, newStage, user } = payload;
   if (!lead || !newStage) return;
+
+  // Execute dynamic pipeline stage automation rules
+  try {
+    await AutomationEngine.executeStageChangedAutomations({
+      lead,
+      oldStage,
+      newStage,
+      user,
+      workspaceId: lead.workspaceId || user?.workspaceId,
+    });
+  } catch (err) {
+    console.error('[AutomationHandlers] LEAD_STAGE_CHANGED automation error:', err.message);
+  }
 
   const normalizedStage = String(newStage).trim().toLowerCase();
 

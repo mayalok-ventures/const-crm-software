@@ -7,53 +7,65 @@ const {
 const path = require('path');
 const fs = require('fs');
 const WhatsAppAuth = require('../models/WhatsAppAuth');
+const WhatsAppSessionState = require('../models/WhatsAppSessionState');
 const User = require('../models/User');
 const { useMongoDBAuthState } = require('./mongoAuthState');
+const { notifyWhatsAppDisconnected, notifyWhatsAppReconnected } = require('./notificationService');
+
+// State Machine Constants
+const STATES = {
+  DISCONNECTED: 'disconnected',
+  CONNECTING: 'connecting',
+  CONNECTED: 'connected',
+  RECONNECTING: 'reconnecting',
+  AUTHENTICATION_REQUIRED: 'auth_required',
+  DEGRADED: 'degraded',
+  ERROR: 'error',
+};
 
 // In-memory sockets store
 const sessions = {};
-// Store connection status, pending pairing codes, and QR codes
+// In-memory session state metadata (mirrored and backed by WhatsAppSessionState in MongoDB)
 const sessionStates = {};
-// Track reconnect attempts to prevent infinite loops
+// Track reconnect attempts
 const reconnectAttempts = {};
 // Reconnect in-flight lock to prevent duplicate concurrent reconnect tasks
 const reconnectInProgress = {};
-// Track pairing-specific reconnect attempts (separate counter from general reconnects)
+// Track pairing-specific reconnect attempts
 const pairingReconnectAttempts = {};
-// Track which users are actively in the pairing window (waiting for user to enter code)
+// Track pairing in progress
 const pairingInProgress = {};
-// Global per-user lock to prevent duplicate concurrent requestPairingCode() calls
+// Global per-user lock for pairing code generation
 const pairingCodeLocks = {};
-// In-memory object for user cooldowns keyed by userId
-const userCooldowns = {};
-// Debounce cache for inbound WhatsApp message notifications (key: `${userId}_${leadId}`, val: timestamp)
+// In-memory debounce cache for inbound message notifications
 const leadNotificationThrottle = new Map();
 // Last active timestamp for tracking
 const lastActivityTimestamps = new Map();
 
-// Maximum reconnect attempts during the pairing window before giving up
-const MAX_PAIRING_RECONNECTS = 5;
+// Instance Identifier for distributed leasing
+const INSTANCE_ID = `proc_${process.pid}_${Math.random().toString(36).slice(2, 8)}`;
 
-// Cache the fetched WA version so we don't fetch it on every connection
+const MAX_PAIRING_RECONNECTS = 5;
+const MAX_CONSECUTIVE_RECONNECTS = 10;
+
+// Cache WA version
 let cachedWAVersion = null;
 let versionFetchedAt = 0;
-const VERSION_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
-
+const VERSION_CACHE_TTL_MS = 30 * 60 * 1000;
 const FALLBACK_WA_VERSION = [2, 3000, 1043857760];
 
 const getWAVersion = async (forceRefresh = false) => {
   const now = Date.now();
-  if (!forceRefresh && cachedWAVersion && (now - versionFetchedAt) < VERSION_CACHE_TTL_MS) {
+  if (!forceRefresh && cachedWAVersion && now - versionFetchedAt < VERSION_CACHE_TTL_MS) {
     return cachedWAVersion;
   }
   try {
     const { version, isLatest } = await fetchLatestBaileysVersion();
-    console.log(`[WA] Fetched WA version: ${version.join('.')} (isLatest: ${isLatest})`);
     cachedWAVersion = version;
     versionFetchedAt = now;
     return version;
   } catch (err) {
-    console.warn(`[WA] Failed to fetch latest WA version (${err.message}). Using fallback: ${FALLBACK_WA_VERSION.join('.')}`);
+    console.warn(`[WA] Fetch WA version notice (${err.message}). Using fallback.`);
     cachedWAVersion = FALLBACK_WA_VERSION;
     versionFetchedAt = now;
     return FALLBACK_WA_VERSION;
@@ -62,6 +74,56 @@ const getWAVersion = async (forceRefresh = false) => {
 
 const updateActivity = (userId) => {
   if (userId) lastActivityTimestamps.set(userId.toString(), Date.now());
+};
+
+/**
+ * Persist state transitions both in memory and MongoDB
+ */
+const persistStateTransition = async (userId, updateData) => {
+  const uIdStr = userId.toString();
+  const current = sessionStates[uIdStr] || {
+    status: STATES.DISCONNECTED,
+    phone: null,
+    pairingCode: null,
+    qrCode: null,
+  };
+
+  const nextState = {
+    ...current,
+    ...updateData,
+    updatedAt: new Date(),
+  };
+  sessionStates[uIdStr] = nextState;
+
+  try {
+    const dbUpdate = {
+      sessionId: uIdStr,
+      userId,
+      transport: 'baileys',
+      status: nextState.status.toUpperCase(),
+      phone: nextState.phone || null,
+      pairingCode: nextState.pairingCode || null,
+      qrCode: nextState.qrCode || null,
+      lastConfirmedAt: nextState.lastConfirmedAt || null,
+      lastDisconnectAt: nextState.lastDisconnectAt || null,
+      lastDisconnectReason: nextState.lastDisconnectReason || null,
+      reconnectAttempts: reconnectAttempts[uIdStr] || 0,
+      nextRetryAt: nextState.nextRetryAt || null,
+      requiresAction: !!nextState.requiresAction,
+      leaseOwner: INSTANCE_ID,
+      leaseExpiresAt: new Date(Date.now() + 60000), // 60s lease
+    };
+
+    await WhatsAppSessionState.findOneAndUpdate(
+      { sessionId: uIdStr },
+      { $set: dbUpdate },
+      { upsert: true, new: true }
+    );
+  } catch (err) {
+    console.warn(`[WA] State persistence notice for ${uIdStr}:`, err.message);
+  }
+
+  return nextState;
 };
 
 const normalizePhoneAndJid = (phone, defaultCountryCode = '91') => {
@@ -78,14 +140,17 @@ const normalizePhoneAndJid = (phone, defaultCountryCode = '91') => {
 
 const resolveMediaSource = (mediaPath) => {
   if (!mediaPath) return null;
-  const safePath = Array.isArray(mediaPath) ? mediaPath[0] : (typeof mediaPath === 'object' ? (mediaPath.url || mediaPath.image || mediaPath.video || mediaPath.document || '') : mediaPath);
+  const safePath = Array.isArray(mediaPath)
+    ? mediaPath[0]
+    : typeof mediaPath === 'object'
+    ? mediaPath.url || mediaPath.image || mediaPath.video || mediaPath.document || ''
+    : mediaPath;
   if (!safePath || typeof safePath !== 'string') return null;
 
   if (safePath.startsWith('http://') || safePath.startsWith('https://')) {
     return { url: safePath };
   }
 
-  // Local file
   let localPath = safePath;
   if (localPath.startsWith('/uploads/')) {
     localPath = path.join(__dirname, '../../', localPath.replace(/^\//, ''));
@@ -94,7 +159,7 @@ const resolveMediaSource = (mediaPath) => {
   }
 
   if (fs.existsSync(localPath)) {
-    return fs.readFileSync(localPath); // Buffer for Baileys
+    return fs.readFileSync(localPath);
   }
   return { url: safePath };
 };
@@ -130,7 +195,7 @@ const recordOutboundMessage = async (userId, to, text, mediaUrl = null, mediaTyp
       await lead.save();
     }
   } catch (e) {
-    console.warn('[WA] Could not record outbound chat message:', e.message);
+    console.warn('[WA] Outbound chat logging notice:', e.message);
   }
 };
 
@@ -158,7 +223,6 @@ const buildSocketOptions = async (state) => {
       error: () => {},
       fatal: () => {},
     },
-    // Standard pairing-compatible browser identifier for WhatsApp Mobile
     browser: Browsers.ubuntu('Chrome'),
     connectTimeoutMs: 60000,
     keepAliveIntervalMs: 25000,
@@ -172,11 +236,13 @@ const buildSocketOptions = async (state) => {
 };
 
 const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
+  const uIdStr = userId.toString();
+
   sock.ev.on('creds.update', saveCreds);
 
-  // Inbound messages & chat synchronization
+  // Inbound messages handler
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    updateActivity(userId);
+    updateActivity(uIdStr);
     if (type !== 'notify') return;
 
     for (const msg of messages) {
@@ -185,7 +251,8 @@ const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
       if (!remoteJid || remoteJid.endsWith('@g.us') || remoteJid === 'status@broadcast') continue;
 
       const senderPhone = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
-      const text = msg.message?.conversation ||
+      const text =
+        msg.message?.conversation ||
         msg.message?.extendedTextMessage?.text ||
         msg.message?.imageMessage?.caption ||
         msg.message?.videoMessage?.caption ||
@@ -212,8 +279,8 @@ const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
         const mongoose = require('mongoose');
         const Lead = mongoose.model('Lead');
         const ChatMessage = mongoose.model('ChatMessage');
-        const Notification = mongoose.model('Notification');
         const { broadcastNotification, broadcastChatMessage } = require('../utils/realtime');
+        const { dispatchNotification } = require('./notificationService');
 
         const tenDigit = senderPhone.slice(-10);
         const user = await User.findById(userId).select('companyId workStatus companyRole localization').lean();
@@ -223,15 +290,10 @@ const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
         const isOwner = user?.workStatus === 'company_owner' || user?.companyRole === 'owner';
         const companyId = isOwner ? userId : user?.companyId;
 
-        const leadQuery = {
+        const lead = await Lead.findOne({
           phone: { $in: phoneVariants },
-          $or: [
-            { userId },
-            ...(companyId ? [{ companyId }, { userId: companyId }] : [])
-          ]
-        };
-
-        const lead = await Lead.findOne(leadQuery);
+          $or: [{ userId }, ...(companyId ? [{ companyId }, { userId: companyId }] : [])],
+        });
         if (!lead) return;
 
         const chatMsg = await ChatMessage.create({
@@ -245,16 +307,31 @@ const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
           mediaType,
           status: 'received',
           waMessageId: msg.key.id || null,
-          timestamp: new Date(Number(msg.messageTimestamp) * 1000 || Date.now())
+          timestamp: new Date(Number(msg.messageTimestamp) * 1000 || Date.now()),
         });
 
         broadcastChatMessage(userId, {
           message: chatMsg,
           phone: senderPhone,
-          leadId: lead._id
+          leadId: lead._id,
         });
 
-        const throttleKey = `${userId}_${lead._id}`;
+        // Trigger Inbound WhatsApp Chatbot & Automation Workflow
+        try {
+          const AutomationEngine = require('./automationEngine');
+          AutomationEngine.handleInboundWhatsAppMessage({
+            userId,
+            workspaceId: lead.workspaceId || userId,
+            lead,
+            phone: senderPhone,
+            text,
+            channel: 'baileys',
+          }).catch(err => console.error('[WA] Inbound automation trigger error:', err.message));
+        } catch (autoErr) {
+          console.error('[WA] AutomationEngine dispatch error:', autoErr.message);
+        }
+
+        const throttleKey = `${uIdStr}_${lead._id}`;
         const lastNotified = leadNotificationThrottle.get(throttleKey) || 0;
         const now = Date.now();
         const THREE_MINUTES = 3 * 60 * 1000;
@@ -262,23 +339,27 @@ const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
         if (now - lastNotified > THREE_MINUTES) {
           leadNotificationThrottle.set(throttleKey, now);
 
-          const notifTitle = `💬 New reply from ${lead.name}`;
-          const notifMessage = text ? (text.length > 80 ? text.substring(0, 80) + '...' : text) : `Sent an attachment [${mediaType}]`;
+          const notifTitle = `💬 New WhatsApp from ${lead.name}`;
+          const notifMessage = text
+            ? text.length > 80
+              ? text.substring(0, 80) + '...'
+              : text
+            : `Sent an attachment [${mediaType || 'document'}]`;
 
           const sendNotif = async (recipientId) => {
-            const notif = await Notification.create({
+            await dispatchNotification({
               userId: recipientId,
-              type: 'wa_reply',
-              title: notifTitle,
-              message: notifMessage,
               leadId: lead._id,
               leadName: lead.name,
-              isRead: false
-            });
-            broadcastNotification(recipientId, {
+              title: notifTitle,
+              message: notifMessage,
               type: 'wa_reply',
-              notification: notif,
-              lead: { _id: lead._id, name: lead.name, phone: lead.phone }
+              priority: 'high',
+              category: 'communication',
+              entityType: 'Lead',
+              entityId: lead._id,
+              channels: ['in_app', 'push', 'sse'],
+              pushPayload: { url: `/leads/${lead._id}` },
             });
           };
 
@@ -289,145 +370,217 @@ const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
             }
           } else {
             await sendNotif(userId);
-            const poolAgents = await User.find({ companyId: userId }).select('_id').lean();
-            for (const ag of poolAgents) {
-              await sendNotif(ag._id);
-            }
           }
         }
       } catch (e) {
-        console.error('[WA] Failed to process inbound message:', e.message);
+        console.error('[WA] Inbound message handling error:', e.message);
       }
     }
   });
 
+  // Connection Update Event
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
-    if (qr && sessionStates[userId]) {
-      sessionStates[userId] = { ...sessionStates[userId], qrCode: qr };
-      console.log(`[WA] QR code updated for user ${userId}`);
+    if (qr) {
+      await persistStateTransition(userId, {
+        status: STATES.CONNECTING,
+        qrCode: qr,
+        phone: cleanPhone,
+      });
+      console.log(`[WA] QR code refreshed for user ${uIdStr}`);
     }
 
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const isLoggedOut = statusCode === DisconnectReason.loggedOut;
       const shouldReconnect = !isLoggedOut;
-      console.log(`[WA] Connection closed for user ${userId}. Status: ${statusCode}. Should Reconnect? ${shouldReconnect}`);
 
-      // Case 1: Explicit remote logout from phone
+      const normalizedReason = isLoggedOut
+        ? 'device_logged_out'
+        : statusCode === 515
+        ? 'restart_required'
+        : statusCode === 428
+        ? 'connection_closed'
+        : statusCode === 408
+        ? 'timed_out'
+        : 'network_drop';
+
+      console.log(`[WA] Connection closed for ${uIdStr}. Status: ${statusCode} (${normalizedReason}). Should Reconnect? ${shouldReconnect}`);
+
+      // Case 1: Remote logout or revoked credentials
       if (isLoggedOut) {
-        console.log(`[WA] Remote logout detected for user ${userId}. Purging session credentials.`);
+        console.log(`[WA] Explicit remote logout detected for user ${uIdStr}. Requiring re-authentication.`);
+        await persistStateTransition(userId, {
+          status: STATES.AUTHENTICATION_REQUIRED,
+          lastDisconnectAt: new Date(),
+          lastDisconnectReason: 'logged_out',
+          requiresAction: true,
+          phone: cleanPhone,
+          pairingCode: null,
+          qrCode: null,
+        });
+        await notifyWhatsAppDisconnected(userId, cleanPhone, 'Session unlinked from phone. Please re-pair.').catch(() => {});
         await disconnect(userId, true, false);
         return;
       }
 
-      // Case 2: In pairing window
-      if (pairingInProgress[userId]) {
-        const pairingAttempt = (pairingReconnectAttempts[userId] || 0) + 1;
-        pairingReconnectAttempts[userId] = pairingAttempt;
+      // Case 2: During active pairing window
+      if (pairingInProgress[uIdStr]) {
+        const pairingAttempt = (pairingReconnectAttempts[uIdStr] || 0) + 1;
+        pairingReconnectAttempts[uIdStr] = pairingAttempt;
 
         if (pairingAttempt > MAX_PAIRING_RECONNECTS) {
-          console.error(`[WA] Pairing attempts exceeded for user ${userId}. Resetting.`);
-          pairingInProgress[userId] = false;
-          delete pairingReconnectAttempts[userId];
-          delete pairingCodeLocks[userId];
-          sessionStates[userId] = { status: 'disconnected', phone: null, pairingCode: null, qrCode: null };
+          console.warn(`[WA] Pairing attempts exceeded for user ${uIdStr}. Resetting to disconnected.`);
+          pairingInProgress[uIdStr] = false;
+          delete pairingReconnectAttempts[uIdStr];
+          delete pairingCodeLocks[uIdStr];
+          await persistStateTransition(userId, {
+            status: STATES.DISCONNECTED,
+            phone: null,
+            pairingCode: null,
+            qrCode: null,
+            requiresAction: true,
+            lastDisconnectReason: 'pairing_timeout',
+          });
           return;
         }
 
-        const delayMs = 2000 * pairingAttempt;
+        const delayMs = 2500 * pairingAttempt;
         setTimeout(() => {
-          if (!pairingInProgress[userId]) return;
+          if (!pairingInProgress[uIdStr]) return;
           restoreSession(userId, cleanPhone).catch(e => {
-            console.error(`[WA] Pairing reconnect failed for ${userId}:`, e.message);
+            console.error(`[WA] Pairing reconnect failed for ${uIdStr}:`, e.message);
           });
         }, delayMs);
         return;
       }
 
-      // Case 3: Standard connection dropped (network blip, server restart, keepalive drop)
-      // Keep reconnecting indefinitely with capped backoff (never abandon an authenticated user)
+      // Case 3: Standard active session dropped (Recoverable Network Failure)
+      // Immediately set state to RECONNECTING so UI NEVER shows false "Connected"
       if (shouldReconnect) {
-        if (reconnectInProgress[userId]) {
-          return; // A reconnect is already in-flight or scheduled for this user
+        const attempts = (reconnectAttempts[uIdStr] || 0) + 1;
+        reconnectAttempts[uIdStr] = attempts;
+
+        // Bounded exponential backoff with jitter (3s to max 60s)
+        const baseDelay = Math.min(3000 * Math.pow(1.5, Math.min(attempts, 8)), 60000);
+        const jitter = Math.floor(Math.random() * 2000);
+        const delayMs = baseDelay + jitter;
+        const nextRetryAt = new Date(Date.now() + delayMs);
+
+        if (attempts > MAX_CONSECUTIVE_RECONNECTS) {
+          console.warn(`[WA] Reconnect attempts exceeded (${attempts}) for user ${uIdStr}. Entering degraded cooldown.`);
+          await persistStateTransition(userId, {
+            status: STATES.DEGRADED,
+            lastDisconnectAt: new Date(),
+            lastDisconnectReason: normalizedReason,
+            nextRetryAt: new Date(Date.now() + 5 * 60 * 1000), // 5-minute cooldown
+            requiresAction: true,
+          });
+          await notifyWhatsAppDisconnected(userId, cleanPhone, 'Repeated reconnect attempts exhausted. Cooldown active.').catch(() => {});
+          return;
         }
-        reconnectInProgress[userId] = true;
-        const attempts = (reconnectAttempts[userId] || 0) + 1;
-        reconnectAttempts[userId] = attempts;
-        const delayMs = Math.min(3000 * Math.pow(1.4, Math.min(attempts, 8)), 30000); // 3s to max 30s
-        console.log(`[WA] Scheduling auto-reconnect attempt #${attempts} in ${Math.round(delayMs / 1000)}s for user ${userId}...`);
+
+        await persistStateTransition(userId, {
+          status: STATES.RECONNECTING,
+          lastDisconnectAt: new Date(),
+          lastDisconnectReason: normalizedReason,
+          nextRetryAt,
+          requiresAction: false,
+        });
+
+        if (reconnectInProgress[uIdStr]) {
+          return;
+        }
+        reconnectInProgress[uIdStr] = true;
+
+        console.log(`[WA] Scheduling auto-reconnect attempt #${attempts} in ${Math.round(delayMs / 1000)}s for user ${uIdStr}...`);
 
         setTimeout(async () => {
           try {
-            if (!pairingInProgress[userId] && (!sessions[userId] || getStatus(userId).status !== 'connected')) {
-              await restoreSession(userId, cleanPhone);
+            if (!pairingInProgress[uIdStr]) {
+              const liveStatus = getStatus(userId);
+              if (liveStatus.status !== STATES.CONNECTED) {
+                await restoreSession(userId, cleanPhone);
+              }
             }
           } catch (err) {
-            console.error(`[WA] Auto-reconnect failed for ${userId}:`, err.message);
+            console.error(`[WA] Auto-reconnect failed for ${uIdStr}:`, err.message);
           } finally {
-            reconnectInProgress[userId] = false;
+            reconnectInProgress[uIdStr] = false;
           }
         }, delayMs);
       }
     } else if (connection === 'open') {
-      console.log(`[WA] ✅ Connection opened successfully for user ${userId} (${cleanPhone})`);
-      sessionStates[userId] = { status: 'connected', phone: cleanPhone, pairingCode: null, qrCode: null };
-      pairingInProgress[userId] = false;
-      reconnectInProgress[userId] = false;
-      delete pairingReconnectAttempts[userId];
-      delete pairingCodeLocks[userId];
-      reconnectAttempts[userId] = 0;
-      updateActivity(userId);
+      console.log(`[WA] ✅ Connection confirmed live & authenticated for user ${uIdStr} (${cleanPhone})`);
+      const wasReconnecting = sessionStates[uIdStr]?.status === STATES.RECONNECTING || sessionStates[uIdStr]?.status === STATES.DEGRADED;
+
+      await persistStateTransition(userId, {
+        status: STATES.CONNECTED,
+        phone: cleanPhone,
+        pairingCode: null,
+        qrCode: null,
+        lastConfirmedAt: new Date(),
+        requiresAction: false,
+        lastDisconnectReason: null,
+      });
+
+      pairingInProgress[uIdStr] = false;
+      reconnectInProgress[uIdStr] = false;
+      delete pairingReconnectAttempts[uIdStr];
+      delete pairingCodeLocks[uIdStr];
+      reconnectAttempts[uIdStr] = 0;
+      updateActivity(uIdStr);
+
+      if (wasReconnecting) {
+        notifyWhatsAppReconnected(userId, cleanPhone).catch(() => {});
+      }
     }
   });
 };
 
 const restoreSession = async (userId, cleanPhone) => {
-  if (sessions[userId]) {
-    const old = sessions[userId];
+  const uIdStr = userId.toString();
+
+  if (sessions[uIdStr]) {
+    const old = sessions[uIdStr];
     try { old.end(); } catch (e) {}
-    delete sessions[userId];
+    delete sessions[uIdStr];
   }
 
-  const existingState = sessionStates[userId] || {};
-  sessionStates[userId] = {
-    status: 'connecting',
+  await persistStateTransition(userId, {
+    status: STATES.CONNECTING,
     phone: cleanPhone,
-    pairingCode: existingState.pairingCode || null,
-    qrCode: existingState.qrCode || null,
-  };
+  });
 
   const { state, saveCreds } = await useMongoDBAuthState(WhatsAppAuth, userId);
   const socketOptions = await buildSocketOptions(state);
 
   const sock = makeWASocket(socketOptions);
-  sessions[userId] = sock;
-  updateActivity(userId);
+  sessions[uIdStr] = sock;
+  updateActivity(uIdStr);
   setupSocketListeners(sock, userId, cleanPhone, saveCreds);
 };
 
 const connect = async (userId, phoneNumber) => {
+  const uIdStr = userId.toString();
   const user = await User.findById(userId).select('phone localization').lean();
   const countryCode = user?.localization?.countryPhoneCode || '91';
 
-  // ── STRICT E.164 PHONE NORMALIZATION ───────────────────────────────────────
   let cleanPhone = String(phoneNumber)
-    .replace(/[\s\-().+]/g, '')  // Remove spaces, dashes, parens, plus
-    .replace(/[^0-9]/g, '')      // Remove non-numeric
-    .replace(/^0+/, '');         // Strip leading zeros
+    .replace(/[\s\-().+]/g, '')
+    .replace(/[^0-9]/g, '')
+    .replace(/^0+/, '');
 
-  // Prefix country code for 10-digit local numbers
   if (cleanPhone.length === 10) {
     cleanPhone = countryCode + cleanPhone;
   }
 
-  // Validate ITU E.164 (7-15 digits)
   if (!cleanPhone || cleanPhone.length < 7 || cleanPhone.length > 15) {
-    throw new Error(`Invalid phone number "${phoneNumber}". Please provide your full mobile number with country code (e.g. 919876543210).`);
+    throw new Error(`Invalid phone number "${phoneNumber}". Please provide your full mobile number with country code.`);
   }
 
-  // ── ANTI-FRAUD: 90-DAY WHATSAPP NUMBER COOLDOWN CHECK ────────────────────
+  // Anti-Fraud check
   const WAFingerprint = require('../models/WAFingerprint');
   const bannedFingerprint = await WAFingerprint.findOne({
     phone: cleanPhone,
@@ -437,27 +590,30 @@ const connect = async (userId, phoneNumber) => {
 
   if (bannedFingerprint) {
     const unbanDate = new Date(bannedFingerprint.cooldownUntil).toLocaleDateString();
-    throw new Error(`Anti-Fraud Security Lock: WhatsApp number +${cleanPhone} is under a 90-day cooldown until ${unbanDate} due to ${bannedFingerprint.reason}.`);
+    throw new Error(`Anti-Fraud Lock: WhatsApp number +${cleanPhone} is under a cooldown until ${unbanDate} due to ${bannedFingerprint.reason}.`);
   }
 
-  // Guard: prevent concurrent pairing code requests for the same user
-  if (pairingCodeLocks[userId]) {
+  if (pairingCodeLocks[uIdStr]) {
     throw new Error('A pairing code request is already in progress. Please wait a few seconds.');
   }
 
-  if (sessions[userId]) {
-    const old = sessions[userId];
-    delete sessions[userId];
-    delete pairingInProgress[userId];
-    delete pairingReconnectAttempts[userId];
+  if (sessions[uIdStr]) {
+    const old = sessions[uIdStr];
+    delete sessions[uIdStr];
+    delete pairingInProgress[uIdStr];
+    delete pairingReconnectAttempts[uIdStr];
     try { old.end(); } catch (e) {}
   }
 
-  sessionStates[userId] = { status: 'connecting', phone: cleanPhone, pairingCode: null, qrCode: null };
-  pairingInProgress[userId] = false;
-  pairingReconnectAttempts[userId] = 0;
+  await persistStateTransition(userId, {
+    status: STATES.CONNECTING,
+    phone: cleanPhone,
+    pairingCode: null,
+    qrCode: null,
+  });
+  pairingInProgress[uIdStr] = false;
+  pairingReconnectAttempts[uIdStr] = 0;
 
-  // Fresh pairing attempt clears any stale/corrupted crypto credentials
   const mongoAuth = await useMongoDBAuthState(WhatsAppAuth, userId);
   await mongoAuth.clearAuth();
 
@@ -465,13 +621,12 @@ const connect = async (userId, phoneNumber) => {
   const socketOptions = await buildSocketOptions(state);
   const sock = makeWASocket(socketOptions);
 
-  sessions[userId] = sock;
-  updateActivity(userId);
+  sessions[uIdStr] = sock;
+  updateActivity(uIdStr);
   setupSocketListeners(sock, userId, cleanPhone, saveCreds);
 
-  pairingCodeLocks[userId] = true;
+  pairingCodeLocks[uIdStr] = true;
   try {
-    // Wait for the socket connection to stabilize before requesting pairing code
     let waitMs = 0;
     const maxWait = 7000;
     while (sock.ws?.readyState !== 1 && waitMs < maxWait) {
@@ -479,8 +634,8 @@ const connect = async (userId, phoneNumber) => {
       waitMs += 250;
     }
 
-    console.log(`[WA] Requesting 8-digit pairing code for ${cleanPhone} (socket ready in ${waitMs}ms)...`);
-    
+    console.log(`[WA] Requesting 8-digit pairing code for ${cleanPhone}...`);
+
     let pairingCode = null;
     try {
       pairingCode = await sock.requestPairingCode(cleanPhone);
@@ -494,46 +649,44 @@ const connect = async (userId, phoneNumber) => {
       throw new Error('WhatsApp server returned an empty pairing code. Please try again.');
     }
 
-    pairingInProgress[userId] = true;
-    sessionStates[userId] = {
-      ...sessionStates[userId],
-      status: 'connecting',
+    pairingInProgress[uIdStr] = true;
+    await persistStateTransition(userId, {
+      status: STATES.CONNECTING,
       phone: cleanPhone,
-      pairingCode: pairingCode,
-    };
-    console.log(`[WA] ✅ Pairing code generated for user ${userId}: ${pairingCode}`);
+      pairingCode,
+    });
 
-    // Pairing Safety Expiry (160 seconds):
-    // If the user does not enter the code on mobile within 160s, release the lock.
+    // Expiry timeout: 160s
     setTimeout(() => {
-      const currentState = sessionStates[userId];
-      if (currentState && currentState.pairingCode === pairingCode && currentState.status === 'connecting') {
-        console.log(`[WA] Pairing code ${pairingCode} window ended for user ${userId}.`);
-        pairingInProgress[userId] = false;
-        delete pairingCodeLocks[userId];
-        delete pairingReconnectAttempts[userId];
+      const currentState = sessionStates[uIdStr];
+      if (currentState && currentState.pairingCode === pairingCode && currentState.status === STATES.CONNECTING) {
+        console.log(`[WA] Pairing code ${pairingCode} window expired for user ${uIdStr}.`);
+        pairingInProgress[uIdStr] = false;
+        delete pairingCodeLocks[uIdStr];
+        delete pairingReconnectAttempts[uIdStr];
         disconnect(userId, true, false).catch(console.error);
       }
     }, 160000);
 
-    delete pairingCodeLocks[userId];
+    delete pairingCodeLocks[uIdStr];
     return { pairingCode };
   } catch (err) {
     console.error('[WA] Failed to get pairing code:', err.message);
-    pairingInProgress[userId] = false;
-    delete pairingCodeLocks[userId];
-    delete pairingReconnectAttempts[userId];
-    sessionStates[userId] = { status: 'disconnected', phone: null, pairingCode: null, qrCode: null };
+    pairingInProgress[uIdStr] = false;
+    delete pairingCodeLocks[uIdStr];
+    delete pairingReconnectAttempts[uIdStr];
+    await persistStateTransition(userId, {
+      status: STATES.DISCONNECTED,
+      phone: null,
+      pairingCode: null,
+      qrCode: null,
+      requiresAction: true,
+      lastDisconnectReason: err.message,
+    });
     throw new Error(`Failed to generate pairing code: ${err.message}`);
   }
 };
 
-/**
- * Disconnect WhatsApp session cleanly on both CRM and mobile device ends.
- * @param {string|ObjectId} userId
- * @param {boolean} clearSession - Whether to delete stored MongoDB auth credentials
- * @param {boolean} notifyRemote - Whether to send official logout signal to WhatsApp servers
- */
 const disconnect = async (userId, clearSession = true, notifyRemote = true) => {
   const uIdStr = userId.toString();
   const sock = sessions[uIdStr];
@@ -561,12 +714,14 @@ const disconnect = async (userId, clearSession = true, notifyRemote = true) => {
   delete pairingCodeLocks[uIdStr];
   lastActivityTimestamps.delete(uIdStr);
 
-  sessionStates[uIdStr] = {
-    status: 'disconnected',
+  await persistStateTransition(userId, {
+    status: STATES.DISCONNECTED,
     phone: null,
     pairingCode: null,
     qrCode: null,
-  };
+    requiresAction: true,
+    lastDisconnectReason: 'user_disconnected',
+  });
 
   if (clearSession) {
     try {
@@ -578,12 +733,49 @@ const disconnect = async (userId, clearSession = true, notifyRemote = true) => {
   }
 };
 
+/**
+ * TRUTHFUL STATUS PROBE:
+ * Never returns a stale database boolean or in-memory flag.
+ * Inspects real socket readyState and validates active transport.
+ */
 const getStatus = (userId) => {
-  return sessionStates[userId] || {
-    status: 'disconnected',
+  const uIdStr = userId ? userId.toString() : '';
+  const inMemory = sessionStates[uIdStr];
+  const sock = sessions[uIdStr];
+
+  // If in-memory says connected, verify that socket is actually OPEN (readyState === 1)
+  if (inMemory && inMemory.status === STATES.CONNECTED) {
+    const isSocketOpen = sock && sock.ws && sock.ws.readyState === 1;
+    if (!isSocketOpen) {
+      // Socket dropped or is dead! Transition to RECONNECTING or DEGRADED immediately
+      const attempts = reconnectAttempts[uIdStr] || 0;
+      const effectiveStatus = attempts > 0 ? STATES.RECONNECTING : STATES.DEGRADED;
+      return {
+        ...inMemory,
+        status: effectiveStatus,
+        isSocketLive: false,
+        requiresAction: attempts > MAX_CONSECUTIVE_RECONNECTS,
+      };
+    }
+    return {
+      ...inMemory,
+      status: STATES.CONNECTED,
+      isSocketLive: true,
+      requiresAction: false,
+    };
+  }
+
+  const base = inMemory || {
+    status: STATES.DISCONNECTED,
     phone: null,
     pairingCode: null,
     qrCode: null,
+    requiresAction: false,
+  };
+
+  return {
+    ...base,
+    isSocketLive: false,
   };
 };
 
@@ -591,12 +783,12 @@ const sendText = async (userId, to, text, callerUserId = null, callerName = null
   const user = await User.findById(userId).select('phone localization').lean();
   const countryCode = user?.localization?.countryPhoneCode || '91';
 
-  let sock = sessions[userId];
-  if (!sock) {
+  let sock = sessions[userId.toString()];
+  if (!sock || !sock.ws || sock.ws.readyState !== 1) {
     const authExists = await WhatsAppAuth.findOne({ sessionId: userId.toString(), key: 'creds' }).lean();
     if (authExists && user && user.phone) {
       await restoreSession(userId, user.phone);
-      sock = sessions[userId];
+      sock = sessions[userId.toString()];
     }
   }
 
@@ -643,12 +835,12 @@ const sendMedia = async (userId, to, mediaArg, callerUserId = null, callerName =
   const user = await User.findById(userId).select('phone localization').lean();
   const countryCode = user?.localization?.countryPhoneCode || '91';
 
-  let sock = sessions[userId];
-  if (!sock) {
+  let sock = sessions[userId.toString()];
+  if (!sock || !sock.ws || sock.ws.readyState !== 1) {
     const authExists = await WhatsAppAuth.findOne({ sessionId: userId.toString(), key: 'creds' }).lean();
     if (authExists && user && user.phone) {
       await restoreSession(userId, user.phone);
-      sock = sessions[userId];
+      sock = sessions[userId.toString()];
     }
   }
 
@@ -660,9 +852,7 @@ const sendMedia = async (userId, to, mediaArg, callerUserId = null, callerName =
   const mediaSource = resolveMediaSource(mediaPath);
   if (!mediaSource) throw new Error('Could not resolve media source file');
 
-  const captionText = (typeof caption === 'string' && caption.trim().length > 0)
-    ? caption.trim()
-    : undefined;
+  const captionText = typeof caption === 'string' && caption.trim().length > 0 ? caption.trim() : undefined;
 
   let payload = {};
   if (mediaType === 'image') {
@@ -672,9 +862,7 @@ const sendMedia = async (userId, to, mediaArg, callerUserId = null, callerName =
   } else if (mediaType === 'audio') {
     payload = { audio: mediaSource, mimetype: 'audio/mp4' };
   } else {
-    const fileName = (typeof mediaPath === 'string' && path.basename(mediaPath))
-      ? path.basename(mediaPath)
-      : 'document.pdf';
+    const fileName = typeof mediaPath === 'string' && path.basename(mediaPath) ? path.basename(mediaPath) : 'document.pdf';
     payload = { document: mediaSource, mimetype: 'application/pdf', fileName, caption: captionText };
   }
 
@@ -690,26 +878,23 @@ const sendMedia = async (userId, to, mediaArg, callerUserId = null, callerName =
   return result;
 };
 
-/**
- * Send text from any currently active connected session (used for automated admin alerts).
- */
 const sendFromAnyActiveSession = async (to, text) => {
   const activeUserIds = Object.keys(sessions);
   for (const uId of activeUserIds) {
     const st = getStatus(uId);
-    if (st.status === 'connected') {
+    if (st.status === STATES.CONNECTED) {
       try {
         await sendText(uId, to, text);
         return true;
       } catch (e) {
-        console.warn(`[WA] Could not send admin alert via session ${uId}:`, e.message);
+        console.warn(`[WA] Admin alert dispatch notice for session ${uId}:`, e.message);
       }
     }
   }
   return false;
 };
 
-// ── INIT SESSIONS ON STARTUP (FROM MONGODB) ──────────────────────────────────
+// Startup session restoration
 const initSessions = async () => {
   try {
     const sessionsWithCreds = await WhatsAppAuth.distinct('sessionId', { key: 'creds' });
@@ -730,30 +915,29 @@ const initSessions = async () => {
   }
 };
 
-// ── 7-DAY RESILIENT SESSION GUARANTEE & BACKGROUND HEARTBEAT ───────────────
-// Periodically checks all registered credentials in MongoDB every 45 seconds.
-// If any session dropped connection or server restarted, automatically restore it
-// with exponential cooldown backoff so persistent offline states do not create busy loops.
+// Background Heartbeat & Self-Healing Engine (Every 30 seconds)
 let isHeartbeatRunning = false;
 const healFailureCooldowns = new Map();
 
-setInterval(async () => {
+const heartbeatTimer = setInterval(async () => {
   if (isHeartbeatRunning) return;
   isHeartbeatRunning = true;
   try {
     const sessionsWithCreds = await WhatsAppAuth.distinct('sessionId', { key: 'creds' });
     const now = Date.now();
+
     for (const uId of sessionsWithCreds) {
-      if (pairingInProgress[uId]) continue; // Skip if actively in pairing window
-      
-      // Check cooldown window for repeatedly failing session restores
+      if (pairingInProgress[uId]) continue;
+
       const cooldown = healFailureCooldowns.get(String(uId));
       if (cooldown && now < cooldown.nextAllowedAt) {
         continue;
       }
 
       const st = getStatus(uId);
-      if (st.status !== 'connected' && st.status !== 'connecting') {
+      const isDeadSocket = !sessions[uId] || !sessions[uId].ws || sessions[uId].ws.readyState !== 1;
+
+      if (isDeadSocket || (st.status !== STATES.CONNECTED && st.status !== STATES.CONNECTING)) {
         const user = await User.findById(uId).select('phone').lean();
         console.log(`[WA-Heartbeat] Auto-healing offline WhatsApp session for user ${uId}...`);
         try {
@@ -761,22 +945,54 @@ setInterval(async () => {
           healFailureCooldowns.delete(String(uId));
         } catch (err) {
           const failCount = (cooldown?.failCount || 0) + 1;
-          const cooldownMs = Math.min(60000 * Math.pow(2, Math.min(failCount - 1, 4)), 600000); // 1m -> 2m -> 4m -> 8m -> max 10m
+          const cooldownMs = Math.min(60000 * Math.pow(2, Math.min(failCount - 1, 4)), 600000);
           healFailureCooldowns.set(String(uId), { nextAllowedAt: now + cooldownMs, failCount });
-          console.warn(`[WA-Heartbeat] Session heal retry notice for ${uId} (Next attempt in ${Math.round(cooldownMs / 1000)}s):`, err.message);
+          console.warn(`[WA-Heartbeat] Session heal retry notice for ${uId}:`, err.message);
         }
       } else {
         healFailureCooldowns.delete(String(uId));
       }
     }
   } catch (e) {
-    // Non-blocking background heartbeat
+    // Silent background recovery
   } finally {
     isHeartbeatRunning = false;
   }
-}, 45000);
+}, 30000);
+
+if (heartbeatTimer && heartbeatTimer.unref) {
+  heartbeatTimer.unref();
+}
+
+// Graceful Process Termination (does NOT treat server shutdown as user logout!)
+const handleGracefulShutdown = async (signal) => {
+  console.log(`\n[WA] Received ${signal}. Closing Baileys WebSockets cleanly without logging out...`);
+  const activeIds = Object.keys(sessions);
+  for (const uId of activeIds) {
+    try {
+      const sock = sessions[uId];
+      if (sock) {
+        sock.end();
+      }
+      await WhatsAppSessionState.updateOne(
+        { sessionId: uId },
+        {
+          $set: {
+            status: 'DISCONNECTED',
+            lastDisconnectAt: new Date(),
+            lastDisconnectReason: 'server_shutdown',
+          },
+        }
+      ).catch(() => {});
+    } catch {}
+  }
+};
+
+process.once('SIGINT', () => handleGracefulShutdown('SIGINT'));
+process.once('SIGTERM', () => handleGracefulShutdown('SIGTERM'));
 
 module.exports = {
+  STATES,
   connect,
   disconnect,
   getStatus,

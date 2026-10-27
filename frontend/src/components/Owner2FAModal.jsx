@@ -23,7 +23,7 @@ export default function Owner2FAModal() {
 
   const startSetup = useCallback(async () => {
     const user = getUser();
-    if (!user || !isOwner(user)) {
+    if (!user) {
       return;
     }
 
@@ -48,8 +48,8 @@ export default function Owner2FAModal() {
 
   const handleOpen = useCallback(() => {
     const user = getUser();
-    if (!user || !isOwner(user)) {
-      toast.error('2FA setup is available only for Organization Owners.');
+    if (!user) {
+      toast.error('Please log in to set up Two-Factor Authentication.');
       return;
     }
     setIsOpen(true);
@@ -172,7 +172,7 @@ export default function Owner2FAModal() {
                 Two-Factor Authentication Setup
               </h2>
               <p className="text-[11px] text-slate-400">
-                Protect your Owner account with TOTP authenticator
+                Protect your account with TOTP authenticator
               </p>
             </div>
           </div>

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
   :root {
@@ -1211,6 +1212,88 @@ svg.lucide {
   padding-bottom: 0.5rem;
 }
 
+.segmented-control {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  background-color: #f1f5f9;
+  padding: 0.375rem;
+  border-radius: 0.875rem;
+  border: 1px solid #e2e8f0;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+}
+
+.segmented-control::-webkit-scrollbar {
+  display: none;
+}
+
+.segmented-btn {
+  flex: 1 1 auto;
+  min-width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.625rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #64748b;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  touch-action: manipulation;
+}
+
+.segmented-btn:hover {
+  color: #0f172a;
+  background-color: rgba(255, 255, 255, 0.6);
+}
+
+.segmented-btn.active {
+  color: #4338ca;
+  background-color: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   DETAILS SPLIT-SCREEN WORKSPACE FOR LEADS PROFILE & DOSSIER
+   ───────────────────────────────────────────────────────────── */
+.details-split-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .details-split-grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) !important;
+    gap: 1.5rem !important;
+    align-items: start !important;
+  }
+}
+
+@media (min-width: 1440px) {
+  .details-split-grid {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) !important;
+    gap: 2rem !important;
+  }
+}
+
 @media (max-width: 767px) {
   .mobile-full-width {
     width: 100% !important;
@@ -1275,12 +1358,90 @@ body {
   pointer-events: none !important;
 }
 
-/* 3. Ultra-Narrow Viewports (<= 350px: JioPhone 2 240px, Galaxy Z Fold 5 cover 344px) */
-@media (max-width: 350px) {
+/* ─────────────────────────────────────────────────────────────
+   COMPREHENSIVE MULTI-DEVICE VIEWPORT ADAPTATION MATRIX
+   ───────────────────────────────────────────────────────────── */
 
+/* 1. Micro Viewports (<= 260px: JioPhone 2 240×320) */
+@media (max-width: 260px) {
   .page-container,
   .main-content {
-    padding: 10px 8px 24px 8px !important;
+    padding: 6px 4px 16px 4px !important;
+  }
+
+  .card {
+    padding: 8px 6px !important;
+    border-radius: 8px !important;
+  }
+
+  .modal-sheet {
+    padding: 10px 8px !important;
+    border-radius: 12px 12px 0 0 !important;
+    max-height: 94dvh !important;
+  }
+
+  .bottom-nav {
+    height: calc(2.85rem + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
+
+  .bottom-nav-label {
+    display: none !important;
+  }
+
+  .bottom-nav-link svg {
+    width: 17px !important;
+    height: 17px !important;
+  }
+
+  h1, .text-xl, .text-2xl {
+    font-size: 1.05rem !important;
+  }
+
+  h2 {
+    font-size: 0.95rem !important;
+  }
+
+  .btn {
+    padding: 5px 8px !important;
+    font-size: 11px !important;
+    min-height: 30px !important;
+  }
+
+  .btn-sm {
+    padding: 3px 6px !important;
+    font-size: 10px !important;
+    min-height: 26px !important;
+  }
+
+  .grid-cols-2,
+  .grid-cols-3,
+  .grid-cols-4,
+  .grid-cols-7,
+  .stage-kpi-grid,
+  .deals-kpi-grid,
+  .dashboard-kpi-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .header-actions,
+  .modal-actions {
+    flex-direction: column !important;
+    width: 100% !important;
+  }
+
+  .header-actions > *,
+  .modal-actions > button,
+  .modal-actions > a {
+    width: 100% !important;
+  }
+}
+
+/* 2. Ultra-Narrow Foldables & Compact Mobile (261px - 355px: Galaxy Z Fold 5 cover 344×882) */
+@media (min-width: 261px) and (max-width: 355px) {
+  .page-container,
+  .main-content {
+    padding: 10px 8px 22px 8px !important;
   }
 
   .card {
@@ -1291,22 +1452,11 @@ body {
   .modal-sheet {
     padding: 14px 10px !important;
     border-radius: 16px 16px 0 0 !important;
-    max-height: 94dvh !important;
+    max-height: 92dvh !important;
   }
 
-  /* Break multi-column KPI grids to 1 column on ultra-narrow so numbers never clip */
-  .grid-cols-2,
-  .grid-cols-3,
-  .grid-cols-4,
-  .stage-kpi-grid,
-  .deals-kpi-grid,
-  .dashboard-kpi-grid {
-    grid-template-columns: 1fr !important;
-  }
-
-  /* Bottom nav ultra-narrow */
   .bottom-nav {
-    height: calc(3.1rem + env(safe-area-inset-bottom, 0px)) !important;
+    height: calc(3.15rem + env(safe-area-inset-bottom, 0px)) !important;
     padding-bottom: env(safe-area-inset-bottom, 0px) !important;
   }
 
@@ -1315,59 +1465,54 @@ body {
     letter-spacing: -0.03em !important;
   }
 
-  /* Action buttons stack neatly */
-  .header-actions {
-    width: 100% !important;
-    flex-direction: column !important;
-    align-items: stretch !important;
+  .grid-cols-2,
+  .grid-cols-3,
+  .grid-cols-4,
+  .grid-cols-7,
+  .stage-kpi-grid,
+  .deals-kpi-grid,
+  .dashboard-kpi-grid {
+    grid-template-columns: 1fr !important;
   }
 
-  .header-actions>* {
-    width: 100% !important;
-  }
-
-  /* Modal actions stack vertically on ultra-narrow */
+  .header-actions,
   .modal-actions {
     flex-direction: column !important;
+    width: 100% !important;
   }
 
-  .modal-actions>button,
-  .modal-actions>a {
+  .header-actions > *,
+  .modal-actions > button,
+  .modal-actions > a {
     width: 100% !important;
   }
 }
 
-/* 4. Micro Viewports (<= 280px: JioPhone 2 240px) */
-@media (max-width: 280px) {
-
+/* 3. Small Mobile Devices (356px - 380px: Moto G4 360px, Samsung S8+ 360px, Galaxy A55 360px, iPhone SE 375px) */
+@media (min-width: 356px) and (max-width: 380px) {
   .page-container,
   .main-content {
-    padding: 8px 4px 18px 4px !important;
+    padding: 12px 10px 24px 10px !important;
   }
 
-  /* Hide bottom nav text on 240px JioPhone to prevent text collision, showing icon only */
+  .card {
+    padding: 12px 10px !important;
+  }
+
+  .modal-sheet {
+    padding: 16px 12px !important;
+    max-height: 90dvh !important;
+  }
+
   .bottom-nav-label {
-    display: none !important;
-  }
-
-  .bottom-nav-link svg {
-    width: 18px !important;
-    height: 18px !important;
-  }
-
-  h1 {
-    font-size: 1.15rem !important;
-  }
-
-  h2 {
-    font-size: 1.05rem !important;
+    font-size: 9px !important;
   }
 }
 
-/* 5. Wide Mobile & Foldables (540px to 767px: Surface Duo 540px, Galaxy Tab S4 712px) */
-@media (min-width: 540px) and (max-width: 767px) {
+/* 4. Wide Mobile & Foldables (481px to 767px: Surface Duo 540×720, Galaxy Tab S4 712×1138) */
+@media (min-width: 481px) and (max-width: 767px) {
   .bottom-nav {
-    max-width: 540px !important;
+    max-width: 520px !important;
     margin-left: auto !important;
     margin-right: auto !important;
     left: 0 !important;
@@ -1379,11 +1524,14 @@ body {
 
   .page-container,
   .main-content {
-    padding: 16px 20px 28px 20px !important;
+    padding: 16px 18px 28px 18px !important;
+    max-width: 720px !important;
+    margin: 0 auto !important;
+    width: 100% !important;
   }
 }
 
-/* 6. Tablet Auto-Rail Mode (768px to 1023px: iPad Mini 768px, Asus Zenbook Fold 853px, Surface Pro 7 912px, Surface Pro 10 960px) */
+/* 5. Tablet Auto-Rail Mode (768px to 1023px: iPad Mini 768px, Asus Zenbook Fold 853px, Surface Pro 7 912px, Surface Pro 10 960px) */
 @media (min-width: 768px) and (max-width: 1023px) {
   .sidebar-nav {
     width: 70px !important;
@@ -1413,6 +1561,24 @@ body {
   .page-container,
   .main-content {
     padding: 20px 20px 36px 20px !important;
+  }
+}
+
+/* 6. Smart Displays (Nest Hub Max 1280×800) & Short Height Displays */
+@media (min-width: 1024px) and (max-height: 850px) {
+  .modal-sheet {
+    max-height: calc(100dvh - 32px) !important;
+    margin: 16px auto !important;
+    padding: 18px 20px !important;
+  }
+
+  .modal-sheet form > div,
+  .modal-sheet .overflow-y-auto {
+    max-height: calc(100dvh - 150px) !important;
+  }
+
+  .sidebar-nav {
+    padding: 12px 10px !important;
   }
 }
 

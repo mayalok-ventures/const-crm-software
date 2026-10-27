@@ -20,7 +20,7 @@ export default function ProfilePage() {
       return;
     }
     if (user.role === 'superadmin') {
-      router.replace('/superadmin-dashboard');
+      router.replace('/admin');
       return;
     }
     setCurrentUser(user);

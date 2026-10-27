@@ -13,6 +13,7 @@ import { ContextMenuProvider } from '@/components/contextmenu/ContextMenuContext
 import ContextMenu from '@/components/contextmenu/ContextMenu';
 import AppShell from '@/components/AppShell';
 import Providers from '@/components/Providers';
+import PwaInstallPrompt from '@/components/common/PwaInstallPrompt';
 
 const inter = Inter({ subsets: ['latin'], display: 'swap' });
 
@@ -43,7 +44,9 @@ export const viewport = {
   themeColor: '#6366f1',
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({ children }) {
@@ -66,23 +69,35 @@ export default function RootLayout({ children }) {
           dangerouslySetInnerHTML={{
             __html: `
               if ('serviceWorker' in navigator) {
-                window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js').then(function(reg) {
-                    console.log('[PWA] ServiceWorker registered, scope:', reg.scope);
-                    reg.addEventListener('updatefound', function() {
-                      var newSW = reg.installing;
-                      if (newSW) {
-                        newSW.addEventListener('statechange', function() {
-                          if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-                            newSW.postMessage({ type: 'SKIP_WAITING' });
-                          }
-                        });
-                      }
-                    });
-                  }).catch(function(err) {
-                    console.warn('[PWA] ServiceWorker registration failed:', err);
+                var isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                if (isLocal) {
+                  // In local development, unregister any active service worker to prevent HMR / Fast Refresh reload loops
+                  navigator.serviceWorker.getRegistrations().then(function(regs) {
+                    for (var i = 0; i < regs.length; i++) {
+                      regs[i].unregister();
+                      console.log('[PWA] Development mode: Unregistered active ServiceWorker:', regs[i].scope);
+                    }
                   });
-                });
+                } else {
+                  // In production environments (Cloudflare Pages, mobile PWA), register Serwist ServiceWorker
+                  window.addEventListener('load', function() {
+                    navigator.serviceWorker.register('/sw.js').then(function(reg) {
+                      console.log('[PWA] ServiceWorker registered, scope:', reg.scope);
+                      reg.addEventListener('updatefound', function() {
+                        var newSW = reg.installing;
+                        if (newSW) {
+                          newSW.addEventListener('statechange', function() {
+                            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                              newSW.postMessage({ type: 'SKIP_WAITING' });
+                            }
+                          });
+                        }
+                      });
+                    }).catch(function(err) {
+                      console.warn('[PWA] ServiceWorker registration failed:', err);
+                    });
+                  });
+                }
               }
             `
           }}
@@ -100,6 +115,7 @@ export default function RootLayout({ children }) {
               <ContextMenu />
               <NotificationPoller />
               <FollowUpAlertManager />
+              <PwaInstallPrompt />
             </ContextMenuProvider>
             <Toaster
               position="top-center"

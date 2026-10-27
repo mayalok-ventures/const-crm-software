@@ -1196,9 +1196,32 @@ exports.getMe = async (req, res) => {
     }
 
     const { calculateSubscriptionLifecycle } = require('../middleware/auth');
+    const { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS } = require('../config/permissions');
     user.subscriptionLifecycle = await calculateSubscriptionLifecycle(user);
     user.showFollowUpOnCreate = user.showFollowUpOnCreate !== false;
     user.preferences = user.preferences || { showFollowUpOnCreate: user.showFollowUpOnCreate };
+
+    if (user.role === 'superadmin' || user.isAdmin || req.membership?.role === 'owner') {
+      user.workspaceRole = 'owner';
+      user.effectivePermissions = Object.keys(PERMISSIONS).map(key => ({ key, scope: 'workspace' }));
+    } else if (req.membership?.role === 'custom' && req.membership?.customRoleId) {
+      user.workspaceRole = 'custom';
+      const Role = mongoose.models.Role || require('../models/Role');
+      const customRole = await Role.findById(req.membership.customRoleId).lean();
+      user.effectivePermissions = (customRole && Array.isArray(customRole.permissions))
+        ? customRole.permissions
+        : DEFAULT_ROLE_PERMISSIONS.counsellor;
+    } else if (req.membership && typeof req.membership.getEffectivePermissions === 'function') {
+      user.workspaceRole = req.membership.role;
+      user.membership = req.membership;
+      user.effectivePermissions = await req.membership.getEffectivePermissions();
+    } else if (req.membership?.role && DEFAULT_ROLE_PERMISSIONS[req.membership.role]) {
+      user.workspaceRole = req.membership.role;
+      user.effectivePermissions = DEFAULT_ROLE_PERMISSIONS[req.membership.role];
+    } else {
+      user.workspaceRole = user.workspaceRole || 'counsellor';
+      user.effectivePermissions = DEFAULT_ROLE_PERMISSIONS.counsellor;
+    }
 
     res.json(user);
   } catch (error) {

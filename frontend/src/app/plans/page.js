@@ -1,23 +1,42 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Script from 'next/script';
 import { useRouter } from 'next/navigation';
+
+const ensureRazorpayScript = () => {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') return resolve(false);
+    if (window.Razorpay) return resolve(true);
+    const existing = document.getElementById('razorpay-checkout-script');
+    if (existing) {
+      if (window.Razorpay) return resolve(true);
+      existing.addEventListener('load', () => resolve(true));
+      existing.addEventListener('error', () => resolve(false));
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = 'razorpay-checkout-script';
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
 import {
   Zap,
   Shield,
   Star,
   Check,
-  Building2,
   User,
-  Users,
   Sparkles,
   ArrowRight,
   MessageCircle,
   QrCode,
   CheckCircle2,
   ChevronRight,
-  ShieldCheck,
   Layers,
+  GraduationCap,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -92,72 +111,11 @@ const SOLO_PLANS = [
 
 const INDIVIDUAL_PLANS = SOLO_PLANS;
 
-const ORG_PLANS = [
-  {
-    id: 'team_starter',
-    name: 'Team Starter',
-    subtitle: 'Boutique agencies with up to 3 agents',
-    seats: 3,
-    monthlyPrice: 1499,
-    yearlyPrice: 14999,
-    icon: Users,
-    color: '#06b6d4',
-    popular: false,
-    features: [
-      'Includes 3 Team Agent Seats',
-      'Up to 15,000 shared leads',
-      'Agency common pool & lead assignment',
-      'Agent performance & commission tracking',
-      '25 contact groups & 2,500 recipients',
-      'Centralized agency WhatsApp routing',
-    ],
-  },
-  {
-    id: 'business',
-    name: 'Business Agency',
-    subtitle: 'Growing organizations with up to 10 agents',
-    seats: 10,
-    monthlyPrice: 2499,
-    yearlyPrice: 24999,
-    icon: Building2,
-    color: '#6366f1',
-    popular: true,
-    features: [
-      'Includes 10 Team Agent Seats',
-      'Up to 50,000 organization leads',
-      'Advanced hierarchy & smart exit rules',
-      'Selective export permissions & audit logs',
-      '100 contact groups & 10k recipients',
-      'Master agency revenue analytics',
-    ],
-  },
-  {
-    id: 'enterprise',
-    name: 'Enterprise Command',
-    subtitle: 'Large multi-branch organizations',
-    seats: 25,
-    monthlyPrice: 4999,
-    yearlyPrice: 49999,
-    icon: ShieldCheck,
-    color: '#10b981',
-    popular: false,
-    features: [
-      'Includes 25 Team Agent Seats',
-      'Unlimited Organization Leads',
-      'Unlimited contact groups',
-      '25,000 recipients per broadcast job',
-      'Dedicated account manager & SLA',
-      'Custom form workflows & webhooks',
-    ],
-  },
-];
-
 export default function PlansPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const [billingCycle, setBillingCycle] = useState('monthly'); // 'monthly' | 'yearly'
-  const [planCategory, setPlanCategory] = useState('solo'); // 'solo' | 'org'
   const [loadingOrder, setLoadingOrder] = useState(null);
 
   // Coupon state
@@ -167,7 +125,6 @@ export default function PlansPage() {
 
   // Dynamic Plans from Database
   const [dynamicSoloPlans, setDynamicSoloPlans] = useState(SOLO_PLANS);
-  const [dynamicOrgPlans, setDynamicOrgPlans] = useState(ORG_PLANS);
 
   // Manual payment state
   const [showManualUpi, setShowManualUpi] = useState(false);
@@ -181,20 +138,8 @@ export default function PlansPage() {
     api.get('/auth/me')
       .then(res => {
         const u = res.data;
-        const isAuthorized = isOwner(u) || isSuperAdmin(u);
-        if (!isAuthorized) {
-          toast.error('Plan & billing management is restricted to Organization Owners.');
-          router.replace('/dashboard');
-          return;
-        }
-
         setUser(u);
         localStorage.setItem('user', JSON.stringify(u));
-        if (u.workStatus === 'company_owner' || u.companyRole === 'owner') {
-          setPlanCategory('org');
-        } else {
-          setPlanCategory('solo');
-        }
         if (u.billingCycle) {
           setBillingCycle(u.billingCycle);
         }
@@ -205,11 +150,6 @@ export default function PlansPage() {
           if (local) {
             const parsed = JSON.parse(local);
             setUser(parsed);
-            if (parsed.workStatus === 'company_owner' || parsed.companyRole === 'owner') {
-              setPlanCategory('org');
-            } else {
-              setPlanCategory('solo');
-            }
           }
         } catch {}
       })
@@ -226,13 +166,6 @@ export default function PlansPage() {
               ...p,
               icon: idx === 0 ? Zap : (idx === 1 ? Star : Shield),
               color: idx === 0 ? '#3b82f6' : (idx === 1 ? '#f59e0b' : '#8b5cf6'),
-            })));
-          }
-          if (Array.isArray(res.data.plans.organization) && res.data.plans.organization.length > 0) {
-            setDynamicOrgPlans(res.data.plans.organization.map((p, idx) => ({
-              ...p,
-              icon: idx === 0 ? Users : (idx === 1 ? Building2 : ShieldCheck),
-              color: idx === 0 ? '#06b6d4' : (idx === 1 ? '#6366f1' : '#10b981'),
             })));
           }
         }
@@ -306,6 +239,7 @@ export default function PlansPage() {
       }
 
       // 2. Open Razorpay Modal
+      await ensureRazorpayScript();
       if (typeof window !== 'undefined' && window.Razorpay) {
         const options = {
           key: orderData.keyId,
@@ -433,16 +367,9 @@ export default function PlansPage() {
   };
 
   const lifecycle = user?.subscriptionLifecycle;
-  const isSubAgent = lifecycle?.isSubAgent || (user?.companyRole === 'agent' && user?.companyId);
-  const isSoloUser = user?.workStatus === 'independent_agent';
-  const isOrgUser = user?.workStatus === 'company_owner' || user?.companyRole === 'owner';
 
-  // Strict Split Pricing Selection (Powered by MongoDB Dynamic Plan Catalog)
-  const activePlans = isSoloUser 
-    ? dynamicSoloPlans 
-    : isOrgUser 
-      ? dynamicOrgPlans 
-      : (planCategory === 'org' ? dynamicOrgPlans : dynamicSoloPlans);
+  // Single-user Consultant Plans
+  const activePlans = dynamicSoloPlans;
 
   if (loadingUser) {
     return (
@@ -471,17 +398,13 @@ export default function PlansPage() {
             marginBottom: 12,
             border: '1px solid var(--accent)'
           }}>
-            <Sparkles size={14} /> Enterprise Sales CRM Pricing
+            <Sparkles size={14} /> Admission Consultant CRM Plans
           </div>
           <h1 style={{ fontSize: 'clamp(24px, 4vw, 36px)', fontWeight: 800, margin: '0 0 10px', color: 'var(--text)' }}>
-            Power Your Sales Pipeline
+            Scale Your Admission Consulting Practice
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 14, maxWidth: 580, margin: '0 auto' }}>
-            {isSoloUser
-              ? 'Choose a high-impact plan tailored for solo sales professionals. Upgrade or cancel anytime.'
-              : isOrgUser
-                ? 'Choose a scalable multi-agent plan tailored for organizations & agencies. Upgrade or cancel anytime.'
-                : 'Choose a plan tailored for solo sales professionals or multi-agent organizations. Upgrade or cancel anytime.'}
+            Choose a high-impact plan tailored for your solo admission consulting practice. Upgrade or cancel anytime.
           </p>
         </div>
 
@@ -511,7 +434,7 @@ export default function PlansPage() {
                 alignItems: 'center',
                 justifyContent: 'center'
               }}>
-                {user.workStatus === 'company_owner' ? <Building2 size={22} /> : <User size={22} />}
+                <User size={22} />
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -545,14 +468,10 @@ export default function PlansPage() {
                 </div>
 
                 <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-                  {isSubAgent ? (
-                    <>Organization Roster Member (Managed by <strong>{lifecycle?.companyName || 'Organization Owner'}</strong>)</>
+                  {user.planEndDate ? (
+                    <>Renewal Date: <strong>{new Date(user.planEndDate).toLocaleDateString()}</strong> ({lifecycle?.daysLeft ?? 0} days remaining)</>
                   ) : (
-                    user.planEndDate ? (
-                      <>Renewal Date: <strong>{new Date(user.planEndDate).toLocaleDateString()}</strong> ({lifecycle?.daysLeft ?? 0} days remaining)</>
-                    ) : (
-                      <>Trial mode. 10 leads limit. Upgrade to unlock full pipeline scale.</>
-                    )
+                    <>Trial mode. 10 leads limit. Upgrade to unlock full candidate pipeline scale.</>
                   )}
                 </p>
               </div>
@@ -574,25 +493,6 @@ export default function PlansPage() {
           </div>
         )}
 
-        {/* Sub-Agent Banner */}
-        {isSubAgent && (
-          <div style={{
-            background: 'rgba(99,102,241,0.08)',
-            border: '1px solid rgba(99,102,241,0.3)',
-            borderRadius: 12,
-            padding: '14px 18px',
-            marginBottom: 24,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12
-          }}>
-            <Building2 size={20} color="var(--accent)" />
-            <div style={{ fontSize: 13, color: 'var(--text)' }}>
-              <strong>Organization Managed Account:</strong> Your subscription and limits are centrally managed and billed through your Organization Owner (<strong>{lifecycle?.companyName || 'Agency'}</strong>).
-            </div>
-          </div>
-        )}
-
         {/* Audience Indicator & Billing Cycle Toggle */}
         <div style={{
           display: 'flex',
@@ -602,86 +502,20 @@ export default function PlansPage() {
           marginBottom: 32
         }}>
           
-          {/* Strict Split Pricing Badge or Fallback Switcher */}
-          {isSoloUser ? (
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              background: 'rgba(59,130,246,0.12)',
-              border: '1px solid rgba(59,130,246,0.3)',
-              borderRadius: 12,
-              padding: '8px 20px',
-              color: '#3b82f6',
-              fontSize: 13,
-              fontWeight: 700
-            }}>
-              <User size={16} /> Solo Agent Plans (Tailored for Individual Professionals)
-            </div>
-          ) : isOrgUser ? (
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              background: 'rgba(99,102,241,0.12)',
-              border: '1px solid rgba(99,102,241,0.3)',
-              borderRadius: 12,
-              padding: '8px 20px',
-              color: '#818cf8',
-              fontSize: 13,
-              fontWeight: 700
-            }}>
-              <Building2 size={16} /> Organization & Agency Plans (Multi-Agent Team Command)
-            </div>
-          ) : (
-            <div style={{
-              display: 'inline-flex',
-              background: 'var(--card)',
-              border: '1px solid var(--border)',
-              borderRadius: 12,
-              padding: 4,
-              gap: 4
-            }}>
-              <button
-                onClick={() => setPlanCategory('solo')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '8px 20px',
-                  borderRadius: 8,
-                  fontSize: 13,
-                  fontWeight: 700,
-                  border: 'none',
-                  cursor: 'pointer',
-                  background: planCategory === 'solo' ? 'var(--accent)' : 'transparent',
-                  color: planCategory === 'solo' ? '#ffffff' : 'var(--text-muted)',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <User size={15} /> Solo Agent Plans
-              </button>
-              <button
-                onClick={() => setPlanCategory('org')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '8px 20px',
-                  borderRadius: 8,
-                  fontSize: 13,
-                  fontWeight: 700,
-                  border: 'none',
-                  cursor: 'pointer',
-                  background: planCategory === 'org' ? 'var(--accent)' : 'transparent',
-                  color: planCategory === 'org' ? '#ffffff' : 'var(--text-muted)',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <Building2 size={15} /> Organization & Agency Plans
-              </button>
-            </div>
-          )}
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            background: 'rgba(99,102,241,0.12)',
+            border: '1px solid rgba(99,102,241,0.3)',
+            borderRadius: 12,
+            padding: '8px 20px',
+            color: '#818cf8',
+            fontSize: 13,
+            fontWeight: 700
+          }}>
+            <GraduationCap size={16} /> Admission Consultant Subscription Plans
+          </div>
 
           {/* Monthly / Yearly Billing Toggle */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -879,7 +713,7 @@ export default function PlansPage() {
                 ) : (
                   <button
                     onClick={() => handleRazorpayCheckout(plan)}
-                    disabled={isLoading || isSubAgent}
+                    disabled={isLoading}
                     className="btn btn-primary btn-full"
                     style={{
                       justifyContent: 'center',
@@ -920,18 +754,18 @@ export default function PlansPage() {
         }}>
           <div style={{ maxWidth: 620 }}>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(99,102,241,0.3)', padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, color: '#a5b4fc', marginBottom: 10 }}>
-              <Layers size={14} /> High-Volume Custom Enterprise
+              <Layers size={14} /> High-Volume Custom Practice
             </div>
             <h2 style={{ margin: '0 0 8px', fontSize: 22, fontWeight: 800 }}>
-              Need 100+ Team Seats or Custom WhatsApp Gateways?
+              Need Unlimited Candidate Capacity or Custom WhatsApp Gateways?
             </h2>
             <p style={{ margin: 0, fontSize: 13, color: '#94a3b8', lineHeight: 1.5 }}>
-              We build custom enterprise solutions with dedicated multi-number WhatsApp routers, SLA support, tailored data connectors, and private cloud deployment.
+              We build custom high-capacity solutions with dedicated multi-number WhatsApp routers, SLA support, tailored college ERP webhooks, and private cloud deployment.
             </p>
           </div>
 
           <a
-            href={`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent('Hi SalesCRM Team, I want to inquire about the Custom Enterprise High-Volume Plan for my organization.')}`}
+            href={`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent('Hi AdmissionCRM Team, I want to inquire about the Custom High-Volume Plan for my admission consulting practice.')}`}
             target="_blank"
             rel="noopener noreferrer"
             style={{
@@ -1060,46 +894,16 @@ export default function PlansPage() {
                     className="input"
                     value={selectedManualPlan?.id || ''}
                     onChange={e => {
-                      const all = isSoloUser ? INDIVIDUAL_PLANS : isOrgUser ? ORG_PLANS : [...INDIVIDUAL_PLANS, ...ORG_PLANS];
-                      setSelectedManualPlan(all.find(p => p.id === e.target.value) || null);
+                      setSelectedManualPlan(activePlans.find(p => p.id === e.target.value) || null);
                     }}
                     required
                   >
                     <option value="">Choose plan...</option>
-                    {isSoloUser ? (
-                      <optgroup label="Solo Agent Plans">
-                        {INDIVIDUAL_PLANS.map(p => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} — ₹{calculatePrice(p).finalPrice}/{billingCycle}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ) : isOrgUser ? (
-                      <optgroup label="Organization & Agency Plans">
-                        {ORG_PLANS.map(p => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} — ₹{calculatePrice(p).finalPrice}/{billingCycle}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ) : (
-                      <>
-                        <optgroup label="Solo Agent Plans">
-                          {INDIVIDUAL_PLANS.map(p => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} — ₹{calculatePrice(p).finalPrice}/{billingCycle}
-                            </option>
-                          ))}
-                        </optgroup>
-                        <optgroup label="Organization Plans">
-                          {ORG_PLANS.map(p => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} — ₹{calculatePrice(p).finalPrice}/{billingCycle}
-                            </option>
-                          ))}
-                        </optgroup>
-                      </>
-                    )}
+                    {activePlans.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} — ₹{calculatePrice(p).finalPrice}/{billingCycle}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -1151,6 +955,7 @@ export default function PlansPage() {
 
       </div>
 
+      <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" id="razorpay-checkout-script" />
       <BottomNav active="plans" />
     </div>
   );

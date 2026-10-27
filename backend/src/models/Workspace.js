@@ -30,7 +30,6 @@ const workspaceSchema = new mongoose.Schema({
   },
   plan: {
     type: String,
-    enum: ['free', 'starter', 'pro', 'enterprise'],
     default: 'free',
   },
   planEndDate: {
@@ -45,6 +44,14 @@ const workspaceSchema = new mongoose.Schema({
     showFollowUpOnCreate: { type: Boolean, default: true },
     autoAdvanceStageOnNote: { type: Boolean, default: false }, // Explicit automation per spec
     maxSnoozeCount: { type: Number, default: 2 },
+  },
+  rolePermissions: {
+    type: Map,
+    of: [{
+      key: { type: String, required: true },
+      scope: { type: String, enum: ['own', 'team', 'workspace', 'restricted'], default: 'workspace' },
+    }],
+    default: {},
   },
   deletedAt: {
     type: Date,

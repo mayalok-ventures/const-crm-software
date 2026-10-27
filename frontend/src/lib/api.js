@@ -20,7 +20,7 @@ export const getBaseUrl = () => {
     if (hn === 'localhost' || hn === '127.0.0.1' || isPrivateLanIp(hn)) {
       return `http://${hn}:5000/api`;
     }
-    if (hn === 'crm.sahyak.com') {
+    if (hn === 'crm.sahyak.com' || hn === 'app.sahyak.com' || hn.endsWith('.pages.dev')) {
       return 'https://api.sahyak.com/api';
     }
     // Fallback for custom domains / proxy hosts

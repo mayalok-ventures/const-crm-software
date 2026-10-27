@@ -19,6 +19,7 @@ const {
   applyCoupon,
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
+const { resolveWorkspace } = require('../middleware/permission');
 const { authLimiter } = require('../middleware/rateLimiter');
 
 router.post('/register', authLimiter, register);
@@ -27,8 +28,8 @@ router.post('/login', authLimiter, login);
 router.post('/verify-2fa', authLimiter, verify2FA);
 router.post('/reset-2fa-emergency', authLimiter, reset2FAEmergency);
 
-router.get('/me', protect, getMe);
-router.get('/user', protect, getMe); // Alias route
+router.get('/me', protect, resolveWorkspace, getMe);
+router.get('/user', protect, resolveWorkspace, getMe); // Alias route
 router.put('/profile', protect, updateProfile);
 router.get('/2fa/status', protect, get2FAStatus);
 router.post('/2fa/setup', protect, setup2FA);

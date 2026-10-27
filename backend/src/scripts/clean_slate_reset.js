@@ -11,8 +11,6 @@ const PaymentRequest = require('../models/PaymentRequest');
 const Subscription = require('../models/Subscription');
 const Entitlement = require('../models/Entitlement');
 const Transaction = require('../models/Transaction');
-const Incentive = require('../models/Incentive');
-const Offer = require('../models/Offer');
 const Template = require('../models/Template');
 const ActivityLog = require('../models/ActivityLog');
 const AuditLog = require('../models/AuditLog');
@@ -21,7 +19,6 @@ const Notification = require('../models/Notification');
 const Campaign = require('../models/Campaign');
 const CampaignLog = require('../models/CampaignLog');
 const Group = require('../models/Group');
-const Project = require('../models/Project');
 const ChatMessage = require('../models/ChatMessage');
 const Recording = require('../models/Recording');
 const Integration = require('../models/Integration');
@@ -55,7 +52,6 @@ async function cleanSlateWipe() {
     entRes,
     txRes,
     incRes,
-    offRes,
     tplRes,
     actRes,
     audRes,
@@ -64,7 +60,6 @@ async function cleanSlateWipe() {
     cmpRes,
     cmplRes,
     grpRes,
-    prjRes,
     chatRes,
     recRes,
     intRes,
@@ -80,8 +75,6 @@ async function cleanSlateWipe() {
     Subscription.deleteMany({}),
     Entitlement.deleteMany({}),
     Transaction.deleteMany({}),
-    Incentive.deleteMany({}),
-    Offer.deleteMany({}),
     Template.deleteMany({}),
     ActivityLog.deleteMany({}),
     AuditLog.deleteMany({}),
@@ -90,7 +83,6 @@ async function cleanSlateWipe() {
     Campaign.deleteMany({}),
     CampaignLog.deleteMany({}),
     Group.deleteMany({}),
-    Project.deleteMany({}),
     ChatMessage.deleteMany({}),
     Recording.deleteMany({}),
     Integration.deleteMany({}),
@@ -128,7 +120,8 @@ async function cleanSlateWipe() {
       workStatus: 'company_owner',
       companyRole: 'owner',
       plan: 'pro',
-      industryType: 'Agency',
+      industryType: 'Education',
+      educationSubProfile: 'admission_consultants',
       twoFactorEnabled: false,
       twoFactorSecret: null,
       twoFactorRecoveryCodes: [],
@@ -136,16 +129,8 @@ async function cleanSlateWipe() {
       twoFactorOtpExpires: null,
       isActive: true,
       companyInfo: {
-        companyName: 'Universal Agency Cloud Central',
+        companyName: 'Universal Educational Consultancies Command',
       },
-      companySettings: {
-        leadSharingMode: 'common_pool',
-        allowAgentLeadCreation: true,
-        allowAgentExports: true,
-        allowAgentBulkDelete: false,
-        require2FAForAgents: false,
-        incentivePerConversion: 0,
-      }
     });
     await superAdmin.save();
     console.log('✓ Created fresh Super Admin account (email: admin@crm.com, username: ADMIN77, pass: Admin@123)');
@@ -162,24 +147,16 @@ async function cleanSlateWipe() {
     superAdmin.companyRole = 'owner';
     superAdmin.companyId = null;
     superAdmin.plan = 'pro';
-    superAdmin.industryType = 'Agency';
+    superAdmin.industryType = 'Education';
+    superAdmin.educationSubProfile = 'admission_consultants';
     superAdmin.twoFactorEnabled = false;
     superAdmin.twoFactorSecret = null;
     superAdmin.twoFactorRecoveryCodes = [];
     superAdmin.twoFactorOtp = null;
     superAdmin.twoFactorOtpExpires = null;
     superAdmin.isActive = true;
-    superAdmin.assignedAgents = [];
     superAdmin.companyInfo = {
-      companyName: 'Universal Agency Cloud Central',
-    };
-    superAdmin.companySettings = {
-      leadSharingMode: 'common_pool',
-      allowAgentLeadCreation: true,
-      allowAgentExports: true,
-      allowAgentBulkDelete: false,
-      require2FAForAgents: false,
-      incentivePerConversion: 0,
+      companyName: 'Universal Educational Consultancies Command',
     };
     await superAdmin.save();
     console.log('✓ Reset Super Admin account to pristine clean state (2FA disabled, ready to login).');

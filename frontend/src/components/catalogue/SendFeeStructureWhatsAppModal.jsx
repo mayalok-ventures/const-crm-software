@@ -35,6 +35,8 @@ export default function SendFeeStructureWhatsAppModal({
   // Remarks & Notes
   const [counselorRemark, setCounselorRemark] = useState('');
   const [sending, setSending] = useState(false);
+  const [customEditedMessage, setCustomEditedMessage] = useState('');
+  const [isManualEdit, setIsManualEdit] = useState(false);
 
   // Search debounce ref
   const debounceTimeout = useRef(null);
@@ -135,6 +137,12 @@ ${college?.website ? `🌐 *Website:* ${college.website}\n` : ''}
 Reply to this message for direct admission support.`;
   }, [effectiveRecipientName, collegeName, collegeLocation, degreeName, specialization, annualTuition, packageFee, hostelFee, oneTimeFee, counselorRemark, college?.website, currency, degree, course]);
 
+  useEffect(() => {
+    if (!isManualEdit) {
+      setCustomEditedMessage(previewMessage);
+    }
+  }, [previewMessage, isManualEdit]);
+
   const handleSendWhatsApp = async () => {
     if (!effectiveRecipientPhone || !effectiveRecipientPhone.trim()) {
       toast.error('Please select a lead or enter a valid mobile number');
@@ -158,6 +166,7 @@ Reply to this message for direct admission support.`;
         degreeName: degreeName,
         customNotes: counselorRemark,
         sender: sender,
+        message: (isManualEdit && customEditedMessage.trim()) ? customEditedMessage.trim() : previewMessage,
       };
 
       const res = await api.post('/catalogue/send-fee-structure-whatsapp', payload);
@@ -184,11 +193,21 @@ Reply to this message for direct admission support.`;
   return (
     <div className="modal-overlay" onClick={onClose} style={{ zIndex: 10050 }}>
       <div
-        className="modal-sheet max-w-2xl bg-white p-0 overflow-hidden rounded-2xl shadow-2xl border border-slate-200"
+        className="modal-sheet modal-sheet-dialog max-w-2xl bg-white shadow-2xl border border-slate-200"
         onClick={e => e.stopPropagation()}
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          maxHeight: 'min(92vh, 92dvh)',
+          padding: 0,
+          overflow: 'hidden',
+        }}
       >
-        {/* Modal Header */}
-        <div className="bg-gradient-to-r from-emerald-600 to-teal-700 p-4 sm:p-5 text-white flex items-center justify-between">
+        {/* Modal Header: Fixed / Non-shrinking */}
+        <div
+          className="bg-gradient-to-r from-emerald-600 to-teal-700 p-4 sm:p-5 text-white flex items-center justify-between shrink-0"
+          style={{ flexShrink: 0 }}
+        >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-xs flex items-center justify-center text-white border border-white/20 shadow-xs">
               <MessageCircle size={22} className="text-white" />
@@ -212,8 +231,17 @@ Reply to this message for direct admission support.`;
           </button>
         </div>
 
-        {/* Modal Body */}
-        <div className="p-4 sm:p-5 max-h-[80vh] overflow-y-auto space-y-4">
+        {/* Modal Body: Scrollable, Flex-1 with min-height 0 */}
+        <div
+          className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1 min-h-0"
+          style={{
+            flex: '1 1 auto',
+            minHeight: 0,
+            overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain',
+          }}
+        >
           
           {/* 1. College & Course Highlight Banner */}
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -464,36 +492,74 @@ Reply to this message for direct admission support.`;
             />
           </div>
 
-          {/* 5. Live Styled WhatsApp Preview Bubble */}
+          {/* 5. Live Styled WhatsApp Preview & Editable Textarea */}
           <div>
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5 flex items-center justify-between">
-              <span>📱 Live WhatsApp Preview</span>
-              <span className="text-[10px] text-emerald-600 font-bold">Auto-formatted Emojis & Bold</span>
-            </label>
-
-            <div className="bg-[#e5ddd5] p-3.5 rounded-xl border border-slate-300 font-sans shadow-inner max-h-56 overflow-y-auto">
-              <div className="bg-white rounded-lg p-3 text-xs text-slate-900 whitespace-pre-wrap leading-relaxed shadow-sm max-w-lg border border-slate-200/60 font-sans">
-                {previewMessage}
-                <div className="text-[10px] text-slate-400 text-right mt-1.5 flex items-center justify-end gap-1 font-mono">
-                  <span>Just now</span>
-                  <span className="text-emerald-500 font-bold">✓✓</span>
-                </div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles size={13} className="text-amber-500" />
+                <span>📱 Review & Edit WhatsApp Message (English)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                {isManualEdit && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsManualEdit(false);
+                      setCustomEditedMessage(previewMessage);
+                    }}
+                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline"
+                  >
+                    Reset to Default
+                  </button>
+                )}
+                <span className="text-[10px] text-slate-400 font-mono">
+                  {(isManualEdit ? customEditedMessage : previewMessage).length} chars
+                </span>
               </div>
             </div>
+
+            <textarea
+              rows={7}
+              value={isManualEdit ? customEditedMessage : previewMessage}
+              onChange={e => {
+                setCustomEditedMessage(e.target.value);
+                setIsManualEdit(true);
+              }}
+              className="w-full bg-white border border-slate-300 rounded-xl p-3 text-xs text-slate-900 font-mono leading-relaxed focus:outline-none focus:border-emerald-600 shadow-inner"
+              placeholder="Edit the English fee structure message before sending..."
+            />
+            <p className="text-[11px] text-slate-400 mt-1">
+              💡 <strong>Default in English & Editable:</strong> You can edit any sentence, add scholarship conditions, or change notes before dispatching.
+            </p>
           </div>
         </div>
 
-        {/* Modal Footer */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="text-xs text-slate-500">
-            Recipient: <strong className="text-slate-900">{effectiveRecipientName}</strong> {effectiveRecipientPhone ? `(${effectiveRecipientPhone})` : ''}
+        {/* Modal Footer: Fixed / Non-shrinking pinned at bottom */}
+        <div
+          className="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2.5 shrink-0"
+          style={{
+            flexShrink: 0,
+            background: '#f8fafc',
+            borderTop: '1px solid #e2e8f0',
+            zIndex: 20,
+            paddingBottom: 'max(14px, env(safe-area-inset-bottom, 0px))',
+          }}
+        >
+          <div className="text-xs text-slate-600 w-full sm:w-auto flex items-center justify-between sm:justify-start gap-1.5 truncate">
+            <span className="text-slate-400">Recipient:</span>
+            <strong className="text-slate-900 truncate">{effectiveRecipientName}</strong>
+            {effectiveRecipientPhone && (
+              <span className="font-mono text-[11px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                {effectiveRecipientPhone}
+              </span>
+            )}
           </div>
 
-          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="btn btn-secondary btn-sm flex-1 sm:flex-initial text-xs py-2 px-4 rounded-xl font-semibold"
+              className="btn btn-secondary btn-sm flex-1 sm:flex-initial text-xs py-2.5 px-4 rounded-xl font-semibold"
             >
               Cancel
             </button>
@@ -502,7 +568,7 @@ Reply to this message for direct admission support.`;
               type="button"
               onClick={handleSendWhatsApp}
               disabled={sending || !isConnected || !effectiveRecipientPhone}
-              className="btn btn-primary btn-sm flex-1 sm:flex-initial text-xs py-2 px-5 rounded-xl font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+              className="btn btn-primary btn-sm flex-2 sm:flex-initial text-xs py-2.5 px-5 rounded-xl font-bold bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-md flex items-center justify-center gap-2 disabled:opacity-50 transition"
             >
               {sending ? (
                 <>

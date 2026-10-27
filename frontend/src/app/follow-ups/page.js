@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
-import { waLink, getUser } from '@/lib/auth';
+import { waLink, getUser, hasPermission, canAccessRoute } from '@/lib/auth';
 import BottomNav from '@/components/BottomNav';
 import {
   Calendar, Clock, CheckCircle2, AlertTriangle, Phone,

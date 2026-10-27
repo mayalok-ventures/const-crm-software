@@ -8,11 +8,16 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 
 function getGoogleRedirectUri(req) {
   if (req && req.query && req.query.redirect_uri) return req.query.redirect_uri;
-  if (process.env.GOOGLE_REDIRECT_URI && !process.env.GOOGLE_REDIRECT_URI.includes('localhost')) {
-    return process.env.GOOGLE_REDIRECT_URI;
+  const isProd = process.env.NODE_ENV === 'production';
+  if (process.env.GOOGLE_REDIRECT_URI) {
+    if (!isProd || !process.env.GOOGLE_REDIRECT_URI.includes('localhost')) {
+      return process.env.GOOGLE_REDIRECT_URI;
+    }
   }
-  if (process.env.BACKEND_URL && !process.env.BACKEND_URL.includes('localhost')) {
-    return `${process.env.BACKEND_URL}/api/integrations/google/oauth/callback`;
+  if (process.env.BACKEND_URL) {
+    if (!isProd || !process.env.BACKEND_URL.includes('localhost')) {
+      return `${process.env.BACKEND_URL}/api/integrations/google/oauth/callback`;
+    }
   }
   return 'https://api.sahyak.com/api/integrations/google/oauth/callback';
 }
@@ -85,54 +90,11 @@ exports.startOAuth = exports.start = async (req, res) => {
 
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? req.user._id : null);
 
-    // Sandbox check
-    const isSandboxMode = req.query.sandbox === 'true' || !clientId || clientId.startsWith('dev_') || !clientId.includes('.apps.googleusercontent.com');
-
-    if (isSandboxMode) {
-      const encryptedRefreshToken = encrypt('google_sandbox_refresh_token_' + Date.now());
-      const query = companyId
-        ? { companyId, provider: 'google', accountId: 'google_sandbox_acc_01' }
-        : { userId: req.user._id, provider: 'google', accountId: 'google_sandbox_acc_01' };
-
-      await Integration.findOneAndUpdate(
-        query,
-        {
-          $set: {
-            userId: req.user._id,
-            companyId: companyId || null,
-            provider: 'google',
-            mode: 'client_managed',
-            status: 'connected',
-            accountId: 'google_sandbox_acc_01',
-            accountName: 'Google Ads (Sandbox / Test Account)',
-            customerId: '987-654-3210',
-            refreshTokenEncrypted: encryptedRefreshToken,
-            tokenExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-            connectedAt: new Date(),
-            metadata: {
-              googleUserId: 'google_sandbox_user',
-              googleUserName: 'Sandbox Google Marketer',
-              googleUserEmail: req.user.email,
-              isSandbox: true,
-            },
-            lastError: '',
-          },
-        },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
-
-      const redirectTarget = `${frontendUrl}/integrations?google=connected&account=${encodeURIComponent('Google Ads (Sandbox Mode)')}`;
-      if (req.query.json === 'true' || req.headers.accept?.includes('application/json')) {
-        return res.json({ success: true, sandbox: true, redirectUrl: redirectTarget });
-      }
-      return res.redirect(redirectTarget);
-    }
-
-    if (!clientSecret) {
-      return res.status(500).json({
+    if (!clientId || !clientSecret) {
+      return res.status(400).json({
         success: false,
-        message: 'Google OAuth client secret is not configured on server',
-        code: 'OAUTH_NOT_CONFIGURED',
+        message: 'Google OAuth Client ID or Client Secret is not configured on the server. Please configure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in your backend environment.',
+        code: 'GOOGLE_CREDENTIALS_MISSING',
       });
     }
 

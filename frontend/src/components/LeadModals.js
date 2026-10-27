@@ -6,7 +6,7 @@ import api from '@/lib/api';
 import { useAlarm } from '@/lib/AlarmContext';
 import {
   FileSpreadsheet, FileText, Download, Upload, X, ShieldAlert,
-  ArrowRight, Edit2, Calendar, CheckCircle2, Clock
+  ArrowRight, Edit2, Calendar, CheckCircle2, Clock, Ban
 } from 'lucide-react';
 import { getIndustryDefaults } from '@/lib/industryTemplates';
 import { isLostStage, LOST_REASON_OPTIONS } from '@/components/LostReasonModal';
@@ -14,27 +14,31 @@ import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateT
 import DynamicFormRenderer, { isFieldVisible as evaluateFieldVisible, isFieldRequired as evaluateFieldRequired } from '@/components/common/DynamicFormRenderer';
 
 export const STAGE_LABELS = {
-  new_lead: '🆕 New Lead',
-  contacted: '📞 Contacted',
-  not_interested: '❌ Not Interested',
-  converted: '🏆 Converted',
-  payment_done: '💳 Payment Done',
-  // Backward compatibility
-  new: '🆕 New Lead',
-  closed: '🏆 Converted',
-  lost: '❌ Not Interested',
+  new_lead: '🆕 1. New Lead',
+  new: '🆕 1. New Lead',
+  contacted: '📞 2. Tele-Counsel',
+  shortlisted: '📋 3. Shortlisted',
+  site_visit_scheduled: '🏛️ 4. Campus Visit',
+  negotiation: '💳 5. Quota Booking',
+  converted: '🎓 6. Confirmed Won',
+  closed: '🎓 6. Confirmed Won',
+  lost: '❌ Dropped / Lost',
+  not_interested: '❌ Dropped / Lost',
+  payment_done: '💳 5. Quota Booking',
 };
 
 export const STATUS_COLORS = {
   new_lead: 'badge-new',
-  contacted: 'badge-tag',
-  not_interested: 'badge-danger',
-  converted: 'badge-closed',
-  payment_done: 'badge-closed',
-  // Backward compatibility
   new: 'badge-new',
+  contacted: 'badge-tag',
+  shortlisted: 'badge-tag',
+  site_visit_scheduled: 'badge-primary',
+  negotiation: 'badge-warning',
+  converted: 'badge-closed',
   closed: 'badge-closed',
   lost: 'badge-danger',
+  not_interested: 'badge-danger',
+  payment_done: 'badge-closed',
 };
 
 export function UpgradeModal({ onClose }) {
@@ -546,7 +550,7 @@ export function AddLeadModal({ onClose, onCreated, onLimitReached, user }) {
   const [formErrors, setFormErrors] = useState({});
 
   useEffect(() => {
-    api.get('/projects').then(r => setProjects(r.data)).catch(() => {});
+    api.get('/catalogue').then(r => setProjects(r.data?.data || r.data?.colleges || [])).catch(() => {});
     api.get('/auth/form-schema?type=lead').then(r => {
       if (r.data?.schema && Array.isArray(r.data.schema) && r.data.schema.length > 0) {
         setSchema(r.data.schema);
@@ -814,7 +818,7 @@ export function EditLeadModal({ lead, onClose, onUpdated, user }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    api.get('/projects').then(r => setProjects(r.data)).catch(() => {});
+    api.get('/catalogue').then(r => setProjects(r.data?.data || r.data?.colleges || [])).catch(() => {});
   }, []);
 
   const setVal = (fieldId) => (e) => {
@@ -994,19 +998,21 @@ export function ScheduleFollowUpModal({ lead, onClose, onUpdated }) {
     setLoading(true);
     try {
       const isoDate = fromLocalDatetimeStringToISO(followUpDate);
-      const { data } = await api.put(`/leads/${lead._id}`, {
-        followUpDate: isoDate,
-        followUpNotified: false,
-      });
-
-      if (scheduleNote.trim()) {
-        await api.post(`/leads/${lead._id}/notes`, {
-          text: `📅 Follow-up scheduled for ${formatDisplayDateTime(isoDate)}: ${scheduleNote.trim()}`,
+      let res;
+      if (lead.followUpDate) {
+        res = await api.post(`/leads/${lead._id}/followups/reschedule`, {
+          scheduledAt: isoDate,
+          reason: scheduleNote.trim() || 'Appointment rescheduled',
+        });
+      } else {
+        res = await api.post(`/leads/${lead._id}/followups`, {
+          scheduledAt: isoDate,
+          note: scheduleNote.trim() || 'Scheduled follow-up',
         });
       }
 
-      toast.success('Follow-up scheduled successfully ⏰');
-      onUpdated(data);
+      toast.success(res.data?.message || 'Follow-up scheduled successfully ⏰');
+      onUpdated(res.data?.lead || { ...lead, followUpDate: isoDate });
       onClose();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to schedule follow-up');
@@ -1099,11 +1105,12 @@ export function CompleteFollowUpModal({ lead, onClose, onCompleted, onPromptSche
 
     setLoading(true);
     try {
-      await api.post(`/leads/${lead._id}/notes`, { text: cleanNote });
-      await api.put(`/leads/${lead._id}`, { followUpNotified: true });
+      const res = await api.post(`/leads/${lead._id}/followups/complete`, {
+        outcomeNote: cleanNote,
+      });
       dismissAlarm(lead._id);
-      toast.success('Follow-up resolved & outcome note recorded ✅');
-      onCompleted(lead);
+      toast.success(res.data?.message || 'Follow-up resolved & outcome note recorded ✅');
+      onCompleted(res.data?.lead || lead);
       onClose();
 
       if (window.confirm('Follow-up marked done! Would you like to schedule the next follow-up now?')) {
@@ -1164,6 +1171,120 @@ export function CompleteFollowUpModal({ lead, onClose, onCompleted, onPromptSche
               style={{ height: 40, background: '#10b981', borderColor: '#10b981' }}
             >
               {loading ? <div className="spinner" style={{ width: 16, height: 16 }} /> : 'Resolve Follow-Up ✅'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export function CancelFollowUpModal({ lead, onClose, onCancelled }) {
+  const [reason, setReason] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { dismissAlarm } = useAlarm();
+
+  const presets = [
+    'Candidate not interested',
+    'Joined another college / institution',
+    'Requested not to call / Do not disturb',
+    'Invalid or unreachable contact number',
+  ];
+
+  const handleCancel = async (e) => {
+    e.preventDefault();
+    const cleanReason = reason.trim();
+    if (!cleanReason) {
+      return toast.error('A cancellation reason or note is required to stop the follow-up.');
+    }
+
+    setLoading(true);
+    try {
+      const res = await api.post(`/leads/${lead._id}/follow-up/cancel`, {
+        reason: cleanReason,
+      });
+      dismissAlarm(lead._id);
+      toast.success(res.data?.message || 'Follow-up stopped & alarms silenced permanently ✅');
+      if (onCancelled) onCancelled(res.data?.lead || lead);
+      onClose();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to stop follow-up');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 460, width: '92vw' }}>
+        <div className="modal-header">
+          <div>
+            <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#e11d48' }}>
+              <Ban size={18} color="#e11d48" /> Stop Active Follow-Up
+            </h2>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+              Permanently stop alarms and reminders for <strong>{lead.name}</strong> ({lead.phone})
+            </p>
+          </div>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+
+        <form onSubmit={handleCancel} className="modal-form" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ padding: '10px 12px', background: 'rgba(225,29,72,0.06)', border: '1px solid rgba(225,29,72,0.2)', borderRadius: 10 }}>
+            <span style={{ fontSize: 11.5, color: '#e11d48', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+              🛑 Permanent Alarm & Schedule Cancellation
+            </span>
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+              Stopping this follow-up clears upcoming alarms, removes this prospect from due alerts, and logs a permanent cancellation note in the activity trail.
+            </p>
+          </div>
+
+          <div>
+            <label className="label" style={{ fontSize: 11.5, marginBottom: 4 }}>Quick Reasons:</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {presets.map((p, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setReason(p)}
+                  className="btn btn-ghost btn-sm"
+                  style={{
+                    fontSize: 11,
+                    padding: '4px 8px',
+                    height: 'auto',
+                    border: reason === p ? '1px solid #e11d48' : '1px solid var(--border)',
+                    background: reason === p ? 'rgba(225,29,72,0.08)' : 'var(--surface)',
+                    color: reason === p ? '#e11d48' : 'var(--text)',
+                    borderRadius: 8,
+                  }}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+
+            <label className="label">Cancellation Reason / Explanation Note *</label>
+            <textarea
+              className="input"
+              placeholder="e.g. Spoke with candidate, they took admission elsewhere and asked not to be contacted again..."
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              required
+              rows={3}
+              style={{ padding: '10px 12px', fontSize: 13, resize: 'vertical' }}
+              autoFocus
+            />
+          </div>
+
+          <div className="modal-actions" style={{ marginTop: 6 }}>
+            <button type="button" className="btn btn-ghost" onClick={onClose} style={{ height: 40 }}>Back</button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={loading || !reason.trim()}
+              style={{ height: 40, background: '#e11d48', borderColor: '#e11d48' }}
+            >
+              {loading ? <div className="spinner" style={{ width: 16, height: 16 }} /> : 'Confirm & Stop Follow-Up 🛑'}
             </button>
           </div>
         </form>

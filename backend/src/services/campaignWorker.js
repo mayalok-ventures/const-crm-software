@@ -102,23 +102,26 @@ const processCampaign = async (campaignId) => {
         return;
       }
 
-      // Check WhatsApp session is still alive
-      const waStatus = waSession.getStatus(campaign.userId);
-      if (waStatus.status !== 'connected') {
-        await Campaign.findByIdAndUpdate(campaignId, {
-          status: 'paused',
-          pausedAt: new Date(),
-          lastSentIndex: i - 1,
-        });
-        runningCampaigns.delete(campaignId.toString());
-        console.log(`[CampaignWorker] Campaign ${campaignId} paused — WhatsApp disconnected`);
-        return;
+      // Check WhatsApp session if using Baileys
+      const isMeta = campaign.channel === 'meta_cloud';
+      if (!isMeta) {
+        const waStatus = waSession.getStatus(campaign.userId);
+        if (waStatus.status !== 'connected') {
+          await Campaign.findByIdAndUpdate(campaignId, {
+            status: 'paused',
+            pausedAt: new Date(),
+            lastSentIndex: i - 1,
+          });
+          runningCampaigns.delete(campaignId.toString());
+          console.log(`[CampaignWorker] Campaign ${campaignId} paused — WhatsApp disconnected`);
+          return;
+        }
       }
 
       const lead = leads[i];
 
       // Personalize template
-      const text = campaign.template
+      const text = (campaign.template || '')
         .replace(/{name}/gi, lead.name || '')
         .replace(/{phone}/gi, lead.phone || '')
         .replace(/{company}/gi, lead.company || '')
@@ -131,8 +134,22 @@ const processCampaign = async (campaignId) => {
 
       while (!sent && attempts < MAX_RETRIES) {
         try {
-          await waSession.sendText(campaign.userId, lead.phone, text);
-          sent = true;
+          if (isMeta) {
+            const MetaWhatsAppService = require('./whatsapp/metaWhatsAppService');
+            await MetaWhatsAppService.sendTemplateMessage({
+              workspaceId: campaign.workspaceId,
+              userId: campaign.userId,
+              userName: 'Broadcast Campaign',
+              to: lead.phone,
+              templateName: campaign.templateName || campaign.template,
+              languageCode: campaign.languageCode || 'en',
+              leadId: lead._id,
+            });
+            sent = true;
+          } else {
+            await waSession.sendText(campaign.userId, lead.phone, text);
+            sent = true;
+          }
         } catch (err) {
           attempts++;
           lastError = err.message;

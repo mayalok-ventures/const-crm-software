@@ -77,7 +77,7 @@ export default function SuperAdminSidebar({
           </div>
           <div className="min-w-0">
             <h1 className="text-xs font-bold text-white tracking-wider flex items-center gap-1.5 truncate uppercase">
-              <span>CoreSetu OS</span>
+              <span>Sahyak OS</span>
             </h1>
             <span className="text-[10px] text-amber-400 font-semibold tracking-wider block uppercase">
               Super Admin Control
@@ -112,11 +112,10 @@ export default function SuperAdminSidebar({
                       onSelectTab(item.id);
                       if (onCloseMobile) onCloseMobile();
                     }}
-                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-medium transition-all ${
-                      isActive
+                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-medium transition-all ${isActive
                         ? 'bg-amber-500/15 text-amber-300 font-semibold border border-amber-500/30 shadow-sm shadow-amber-500/10'
                         : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 border border-transparent'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />

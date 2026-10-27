@@ -20,12 +20,15 @@ const testFiles = [
   'tests/integrations_phase3.test.js',
   'tests/auth_reliability_phase1.test.js',
   'tests/perf_and_speed_phase2.test.js',
+  'tests/fastify_and_redis_phase2.test.js',
+  'tests/email_module_comprehensive.test.js',
+  'tests/whatsapp_comprehensive_suite.test.js',
 ];
 
 async function isServerRunning() {
   try {
-    await axios.get('http://localhost:5000/api/admin/health', { timeout: 1500 });
-    return true;
+    const res = await axios.get('http://127.0.0.1:5000/health', { timeout: 1500 });
+    return Boolean(res.status);
   } catch (err) {
     if (err.response) return true; // Server replied with 401/404/etc, so it's running
     return false;
@@ -74,9 +77,13 @@ async function main() {
 
     serverProc.stdout.on('data', d => {
       const msg = d.toString();
-      if (msg.includes('Server running') || msg.includes('MongoDB Connected')) {
-        // console.log(`[server] ${msg.trim()}`);
+      if (msg.includes('Backend running') || msg.includes('MongoDB Connected')) {
+        console.log(`[server] ${msg.trim()}`);
       }
+    });
+
+    serverProc.stderr.on('data', d => {
+      console.error(`[server err] ${d.toString()}`);
     });
 
     const ready = await waitForServer();

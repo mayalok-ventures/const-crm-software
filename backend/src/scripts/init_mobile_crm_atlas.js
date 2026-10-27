@@ -107,7 +107,7 @@ async function initCleanProductionDb() {
       const hashedPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'Admin@123', salt);
 
       await usersCollection.insertOne({
-        name: 'CoreSetu Super Admin',
+        name: 'Sahyak Super Admin',
         email: adminEmail,
         password: hashedPassword,
         role: 'superadmin',

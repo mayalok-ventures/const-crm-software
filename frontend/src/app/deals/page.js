@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
-import { waLink, getUser } from '@/lib/auth';
+import { waLink, getUser, hasPermission, canPerformAction, canViewField } from '@/lib/auth';
 import BottomNav from '@/components/BottomNav';
 import {
   Award, TrendingUp, Search, Phone, MessageSquare, RefreshCw,
@@ -47,12 +47,12 @@ export default function DealsPage() {
   });
 
   useEffect(() => {
-    const u = getUser();
-    if (!u) {
-      router.replace('/login');
-      return;
-    }
-    setUser(u);
+    const handleUserUpdate = () => {
+      setUser(getUser());
+    };
+    handleUserUpdate();
+    window.addEventListener('user-updated', handleUserUpdate);
+    return () => window.removeEventListener('user-updated', handleUserUpdate);
   }, [router]);
 
   const handleRefresh = useCallback(() => {
@@ -146,14 +146,16 @@ export default function DealsPage() {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(true)}
-                className="btn btn-primary text-xs sm:text-sm flex items-center gap-1.5 shadow-md shadow-emerald-100 bg-emerald-600 hover:bg-emerald-700"
-              >
-                <Plus size={16} />
-                <span>Record Admission</span>
-              </button>
+              {hasPermission(user, 'deals.create') && (
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(true)}
+                  className="btn btn-primary text-xs sm:text-sm flex items-center gap-1.5 shadow-md shadow-emerald-100 bg-emerald-600 hover:bg-emerald-700"
+                >
+                  <Plus size={16} />
+                  <span>Record Admission</span>
+                </button>
+              )}
 
               <button
                 type="button"
@@ -176,29 +178,33 @@ export default function DealsPage() {
               <span className="text-[10px] text-slate-400 mt-0.5 block truncate">{confirmedDeals.length} Confirmed Seats</span>
             </div>
 
-            <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm min-w-0">
-              <span className="text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase block truncate">Expected Commission</span>
-              <h2 className="text-base sm:text-xl font-extrabold m-0 mt-1 text-indigo-600 truncate">
-                ₹{totalExpectedCommission.toLocaleString('en-IN')}
-              </h2>
-              <span className="text-[10px] text-indigo-500 mt-0.5 block truncate">University Payouts</span>
-            </div>
+            {canViewField(user, 'commission') && (
+              <>
+                <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm min-w-0">
+                  <span className="text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase block truncate">Expected Commission</span>
+                  <h2 className="text-base sm:text-xl font-extrabold m-0 mt-1 text-indigo-600 truncate">
+                    ₹{totalExpectedCommission.toLocaleString('en-IN')}
+                  </h2>
+                  <span className="text-[10px] text-indigo-500 mt-0.5 block truncate">University Payouts</span>
+                </div>
 
-            <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm min-w-0">
-              <span className="text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase block truncate">Received Commission</span>
-              <h2 className="text-base sm:text-xl font-extrabold m-0 mt-1 text-emerald-600 truncate">
-                ₹{totalReceivedCommission.toLocaleString('en-IN')}
-              </h2>
-              <span className="text-[10px] text-emerald-600 mt-0.5 block truncate">Settled to Bank</span>
-            </div>
+                <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm min-w-0">
+                  <span className="text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase block truncate">Received Commission</span>
+                  <h2 className="text-base sm:text-xl font-extrabold m-0 mt-1 text-emerald-600 truncate">
+                    ₹{totalReceivedCommission.toLocaleString('en-IN')}
+                  </h2>
+                  <span className="text-[10px] text-emerald-600 mt-0.5 block truncate">Settled to Bank</span>
+                </div>
 
-            <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm min-w-0">
-              <span className="text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase block truncate">Outstanding</span>
-              <h2 className="text-base sm:text-xl font-extrabold m-0 mt-1 text-amber-600 truncate">
-                ₹{outstandingCommission.toLocaleString('en-IN')}
-              </h2>
-              <span className="text-[10px] text-amber-600 mt-0.5 block truncate">Pending Invoices</span>
-            </div>
+                <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm min-w-0">
+                  <span className="text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase block truncate">Outstanding</span>
+                  <h2 className="text-base sm:text-xl font-extrabold m-0 mt-1 text-amber-600 truncate">
+                    ₹{outstandingCommission.toLocaleString('en-IN')}
+                  </h2>
+                  <span className="text-[10px] text-amber-600 mt-0.5 block truncate">Pending Invoices</span>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Sub-Tabs */}
@@ -323,28 +329,32 @@ export default function DealsPage() {
                   {/* Financial & Commission Status */}
                   <div className="flex flex-wrap items-center gap-2 sm:gap-4 border-t md:border-t-0 pt-3 md:pt-0 border-slate-100 justify-between md:justify-end">
                     <div className="text-left md:text-right min-w-[120px]">
-                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Tuition / Commission</span>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Tuition {canViewField(user, 'commission') ? '/ Commission' : 'Value'}</span>
                       <span className="text-xs font-bold text-slate-900">₹{(deal.tuitionValue || 0).toLocaleString('en-IN')}</span>
-                      <span className="text-[11px] text-indigo-600 block font-semibold">
-                        Est. ₹{(deal.commission?.expectedAmount || 0).toLocaleString('en-IN')} ({deal.commission?.ratePercent || 10}%)
-                      </span>
-                    </div>
-
-                    <div className="text-left md:text-right pl-2 border-l border-slate-100 min-w-[90px]">
-                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Payout Status</span>
-                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase mt-0.5 ${
-                        deal.commission?.payoutStatus === 'paid'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : deal.commission?.invoiceStatus === 'invoiced'
-                          ? 'bg-indigo-100 text-indigo-800'
-                          : 'bg-amber-50 text-amber-800 border border-amber-200'
-                      }`}>
-                        {deal.commission?.payoutStatus === 'paid' ? 'Paid' : deal.commission?.invoiceStatus === 'invoiced' ? 'Invoiced' : 'Unbilled'}
-                      </span>
-                      {deal.commission?.invoiceNumber && (
-                        <span className="text-[10px] text-slate-400 block font-mono">Inv #{deal.commission.invoiceNumber}</span>
+                      {canViewField(user, 'commission') && (
+                        <span className="text-[11px] text-indigo-600 block font-semibold">
+                          Est. ₹{(deal.commission?.expectedAmount || 0).toLocaleString('en-IN')} ({deal.commission?.ratePercent || 10}%)
+                        </span>
                       )}
                     </div>
+
+                    {canViewField(user, 'commission') && (
+                      <div className="text-left md:text-right pl-2 border-l border-slate-100 min-w-[90px]">
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Payout Status</span>
+                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase mt-0.5 ${
+                          deal.commission?.payoutStatus === 'paid'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : deal.commission?.invoiceStatus === 'invoiced'
+                            ? 'bg-indigo-100 text-indigo-800'
+                            : 'bg-amber-50 text-amber-800 border border-amber-200'
+                        }`}>
+                          {deal.commission?.payoutStatus === 'paid' ? 'Paid' : deal.commission?.invoiceStatus === 'invoiced' ? 'Invoiced' : 'Unbilled'}
+                        </span>
+                        {deal.commission?.invoiceNumber && (
+                          <span className="text-[10px] text-slate-400 block font-mono">Inv #{deal.commission.invoiceNumber}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -352,7 +362,7 @@ export default function DealsPage() {
           )}
 
           {/* Record Admission Deal Modal */}
-          {showCreateModal && (
+          {showCreateModal && hasPermission(user, 'deals.create') && (
             <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4">
               <div className="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-6 shadow-2xl animate-fade-in border border-slate-100 max-h-[92vh] overflow-y-auto">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">

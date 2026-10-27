@@ -120,6 +120,8 @@ exports.getMembers = async (req, res) => {
       customRole: m.customRoleId?.name || null,
       team: m.team || 'General',
       status: m.status,
+      permissionOverrides: m.permissionOverrides || [],
+      hasCustomPermissions: Boolean(m.permissionOverrides && m.permissionOverrides.length > 0),
       joinedAt: m.joinedAt,
       deactivatedAt: m.deactivatedAt,
     }));
@@ -142,7 +144,9 @@ exports.getMembers = async (req, res) => {
  */
 exports.inviteMember = async (req, res) => {
   try {
-    const { email, phone, role = 'counsellor', customRoleId, team = '' } = req.body;
+    const { email, phone, team = '' } = req.body;
+    const customRoleId = req.body.customRoleId;
+    const role = customRoleId ? 'custom' : (req.body.role || 'counsellor');
 
     if (!email || !email.trim()) {
       return res.status(400).json({ message: 'Invitee email address is required' });
@@ -153,6 +157,32 @@ exports.inviteMember = async (req, res) => {
     // Prevent inviting as owner (ownership must be transferred deliberately)
     if (role === 'owner') {
       return res.status(400).json({ message: 'Cannot invite with role "owner". Transfer ownership instead.' });
+    }
+
+    // Prevent non-owners from inviting with role "manager"
+    if (role === 'manager' && req.membership.role !== 'owner') {
+      return res.status(403).json({
+        code: 'PRIVILEGE_ESCALATION_PREVENTED',
+        message: 'Only an active workspace owner can invite users with manager role.',
+      });
+    }
+
+    // Privilege Escalation Guard: Non-owners cannot invite with a custom role possessing permissions they lack
+    if (role === 'custom' && customRoleId && req.membership.role !== 'owner') {
+      const targetRole = await Role.findOne({ _id: customRoleId, workspaceId: req.workspaceId });
+      if (!targetRole) {
+        return res.status(404).json({ message: 'Custom role not found in this workspace' });
+      }
+      const actorPerms = await req.membership.getEffectivePermissions();
+      const actorKeySet = new Set(actorPerms.map(p => p.key));
+      for (const p of targetRole.permissions || []) {
+        if (!actorKeySet.has(p.key)) {
+          return res.status(403).json({
+            code: 'PRIVILEGE_ESCALATION_PREVENTED',
+            message: `Cannot invite user with custom role containing permission '${p.key}' which you do not possess.`,
+          });
+        }
+      }
     }
 
     // Check if user is already an active member of this workspace
@@ -392,6 +422,12 @@ exports.acceptInvitation = async (req, res) => {
 
         const { generateUniqueUsername } = require('../utils/generateUsername');
         const { generateUniqueUsercode } = require('../utils/generateUsercode');
+        const wsDoc = await Workspace.findById(invitation.workspaceId).select('ownerId').lean();
+
+        const invRole = ['owner', 'manager', 'auditor', 'superadmin', 'counsellor'].includes(invitation.role)
+          ? invitation.role
+          : 'counsellor';
+        const invWorkStatus = invitation.role === 'manager' ? 'manager' : (invitation.role === 'auditor' ? 'auditor' : 'counsellor');
 
         targetUser = await User.create({
           name: name.trim(),
@@ -400,7 +436,10 @@ exports.acceptInvitation = async (req, res) => {
           password,
           username: await generateUniqueUsername(User),
           usercode: await generateUniqueUsercode(User, 'CNS'),
-          role: 'user',
+          role: invRole,
+          companyRole: invRole,
+          workStatus: invWorkStatus,
+          companyId: wsDoc?.ownerId || null,
           industryType: 'Education',
           educationSubProfile: 'admission_consultants',
         });
@@ -422,6 +461,17 @@ exports.acceptInvitation = async (req, res) => {
       },
       { upsert: true, new: true }
     );
+
+    // Evict cached workspace context and bootstrap cache for this user
+    try {
+      const { workspaceContextCache, invalidateUserAuthCache } = require('../utils/authCache');
+      const { invalidateBootstrapCache } = require('./bootstrapController');
+      invalidateUserAuthCache(targetUser._id);
+      invalidateBootstrapCache(targetUser._id, invitation.workspaceId);
+      if (workspaceContextCache && typeof workspaceContextCache.deleteMatching === 'function') {
+        workspaceContextCache.deleteMatching((key) => key.startsWith(String(targetUser._id)));
+      }
+    } catch (_) {}
 
     // Mark invitation as accepted and clear raw token
     invitation.status = 'accepted';
@@ -458,6 +508,21 @@ exports.updateMemberRole = async (req, res) => {
   try {
     const { role, customRoleId, team } = req.body;
 
+    // ─────────────────────────────────────────────────────────────
+    // PRIVILEGE ESCALATION GUARDS (Spec Section 6)
+    // ─────────────────────────────────────────────────────────────
+    // Prevent non-owners from granting owner or manager role
+    if (['owner', 'manager'].includes(role) && req.membership?.role !== 'owner') {
+      return res.status(403).json({
+        code: 'PRIVILEGE_ESCALATION_PREVENTED',
+        message: 'Only an active workspace owner can grant or assign manager or owner roles.',
+      });
+    }
+
+    if (!req.params.id || !mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'Invalid member ID format' });
+    }
+
     const membership = await WorkspaceMembership.findOne({
       _id: req.params.id,
       workspaceId: req.workspaceId,
@@ -467,22 +532,11 @@ exports.updateMemberRole = async (req, res) => {
       return res.status(404).json({ message: 'Member not found in this workspace' });
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // PRIVILEGE ESCALATION GUARDS (Spec Section 6)
-    // ─────────────────────────────────────────────────────────────
-    // Prevent non-owners from granting owner role
-    if (role === 'owner' && req.membership.role !== 'owner') {
-      return res.status(403).json({
-        code: 'PRIVILEGE_ESCALATION_PREVENTED',
-        message: 'Only an active workspace owner can grant or transfer ownership.',
-      });
-    }
-
-    // Prevent non-owners from modifying an existing owner's role
-    if (membership.role === 'owner' && req.membership.role !== 'owner') {
+    // Prevent non-owners from modifying an existing owner or manager's role
+    if (['owner', 'manager'].includes(membership.role) && req.membership.role !== 'owner') {
       return res.status(403).json({
         code: 'UNAUTHORIZED_TARGET',
-        message: 'Only an active owner can modify another owner\'s role.',
+        message: 'Only an active owner can modify an existing manager or owner\'s role.',
       });
     }
 
@@ -512,11 +566,52 @@ exports.updateMemberRole = async (req, res) => {
       }
     }
 
+    // Privilege Escalation Guard: Non-owners cannot assign a custom role with permissions or scopes they lack
+    if (customRoleId && req.membership.role !== 'owner') {
+      const targetRole = await Role.findOne({ _id: customRoleId, workspaceId: req.workspaceId });
+      if (!targetRole) {
+        return res.status(404).json({ message: 'Custom role not found in this workspace' });
+      }
+      const actorPerms = await req.membership.getEffectivePermissions();
+      const actorPermMap = new Map(actorPerms.map(p => [p.key, p.scope || 'workspace']));
+      const SCOPE_LEVELS = { workspace: 3, team: 2, own: 1, restricted: 0 };
+
+      for (const p of targetRole.permissions || []) {
+        if (!actorPermMap.has(p.key)) {
+          return res.status(403).json({
+            code: 'PRIVILEGE_ESCALATION_PREVENTED',
+            message: `Cannot assign role with permission '${p.key}' which you do not possess.`,
+          });
+        }
+        const grantedScopeLevel = SCOPE_LEVELS[p.scope || 'workspace'] || 0;
+        const actorScopeLevel = SCOPE_LEVELS[actorPermMap.get(p.key)] || 0;
+        if (grantedScopeLevel > actorScopeLevel) {
+          return res.status(403).json({
+            code: 'PRIVILEGE_ESCALATION_PREVENTED',
+            message: `Scope privilege escalation: Cannot assign custom role with scope '${p.scope || 'workspace'}' for '${p.key}' exceeding your own scope '${actorPermMap.get(p.key)}'.`,
+          });
+        }
+      }
+    }
+
     if (role) membership.role = role;
     if (customRoleId !== undefined) membership.customRoleId = customRoleId || null;
     if (team !== undefined) membership.team = team ? team.trim() : '';
 
     await membership.save();
+
+    // Evict cached workspace context and bootstrap cache for the modified member
+    try {
+      const { workspaceContextCache, invalidateUserAuthCache } = require('../utils/authCache');
+      const { invalidateBootstrapCache } = require('./bootstrapController');
+      if (membership.userId) {
+        invalidateUserAuthCache(membership.userId);
+        invalidateBootstrapCache(membership.userId, req.workspaceId);
+      }
+      if (workspaceContextCache && typeof workspaceContextCache.deleteMatching === 'function') {
+        workspaceContextCache.deleteMatching((key) => key.startsWith(String(membership.userId)));
+      }
+    } catch (_) {}
 
     res.json({
       success: true,
@@ -536,6 +631,10 @@ exports.updateMemberRole = async (req, res) => {
  */
 exports.deactivateMember = async (req, res) => {
   try {
+    if (!req.params.id || !mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'Invalid member ID format' });
+    }
+
     const membership = await WorkspaceMembership.findOne({
       _id: req.params.id,
       workspaceId: req.workspaceId,
@@ -543,6 +642,22 @@ exports.deactivateMember = async (req, res) => {
 
     if (!membership) {
       return res.status(404).json({ message: 'Member not found in this workspace' });
+    }
+
+    // Prevent non-owners from deactivating an owner or manager
+    if (['owner', 'manager'].includes(membership.role) && req.membership.role !== 'owner') {
+      return res.status(403).json({
+        code: 'UNAUTHORIZED_TARGET',
+        message: 'Only an active owner can deactivate another manager or owner.',
+      });
+    }
+
+    // Prevent non-owners from deactivating themselves
+    if (membership.userId?.toString() === req.user._id?.toString() && req.membership.role !== 'owner') {
+      return res.status(403).json({
+        code: 'SELF_DEACTIVATION_PREVENTED',
+        message: 'You cannot deactivate your own membership.',
+      });
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -567,6 +682,19 @@ exports.deactivateMember = async (req, res) => {
     membership.deactivatedAt = new Date();
     await membership.save();
 
+    // Evict cached context and bootstrap cache for deactivated member
+    try {
+      const { workspaceContextCache, invalidateUserAuthCache } = require('../utils/authCache');
+      const { invalidateBootstrapCache } = require('./bootstrapController');
+      if (membership.userId) {
+        invalidateUserAuthCache(membership.userId);
+        invalidateBootstrapCache(membership.userId, req.workspaceId);
+      }
+      if (workspaceContextCache && typeof workspaceContextCache.deleteMatching === 'function') {
+        workspaceContextCache.deleteMatching((key) => key.startsWith(String(membership.userId)));
+      }
+    } catch (_) {}
+
     res.json({
       success: true,
       message: 'Member has been deactivated from the workspace',
@@ -585,12 +713,14 @@ exports.deactivateMember = async (req, res) => {
 exports.getRoles = async (req, res) => {
   try {
     const customRoles = await Role.find({ workspaceId: req.workspaceId }).lean();
+    const ws = await Workspace.findById(req.workspaceId).select('rolePermissions').lean();
+    const dynamicPerms = ws?.rolePermissions || {};
 
     const systemRoles = [
       { name: 'owner', label: 'Owner', description: 'Complete workspace authority and billing control', isSystem: true, permissions: DEFAULT_ROLE_PERMISSIONS.owner },
-      { name: 'manager', label: 'Manager', description: 'Team lead operational control and assignment authority', isSystem: true, permissions: DEFAULT_ROLE_PERMISSIONS.manager },
-      { name: 'counsellor', label: 'Counsellor', description: 'Assigned student leads, tele-counseling, and follow-ups', isSystem: true, permissions: DEFAULT_ROLE_PERMISSIONS.counsellor },
-      { name: 'auditor', label: 'Auditor / Read-Only', description: 'Read-only access to leads, admissions, and audit logs', isSystem: true, permissions: DEFAULT_ROLE_PERMISSIONS.auditor },
+      { name: 'manager', label: 'Manager', description: 'Team lead operational control and assignment authority', isSystem: true, permissions: dynamicPerms['manager'] || DEFAULT_ROLE_PERMISSIONS.manager },
+      { name: 'counsellor', label: 'Counsellor', description: 'Assigned student leads, tele-counseling, and follow-ups', isSystem: true, permissions: dynamicPerms['counsellor'] || DEFAULT_ROLE_PERMISSIONS.counsellor },
+      { name: 'auditor', label: 'Auditor / Read-Only', description: 'Read-only access to leads, admissions, and audit logs', isSystem: true, permissions: dynamicPerms['auditor'] || DEFAULT_ROLE_PERMISSIONS.auditor },
     ];
 
     res.json({
@@ -602,6 +732,219 @@ exports.getRoles = async (req, res) => {
   } catch (error) {
     console.error('getRoles error:', error);
     res.status(500).json({ message: 'Server error retrieving roles' });
+  }
+};
+
+/**
+ * @desc Update permissions for a standard system role in current workspace
+ * @route PUT /api/workspace/roles/system/:roleName
+ * @access Private (Owner / roles.manage)
+ */
+exports.updateSystemRole = async (req, res) => {
+  try {
+    const { roleName } = req.params;
+    const { permissions } = req.body;
+
+    if (!['manager', 'counsellor', 'auditor'].includes(roleName)) {
+      return res.status(400).json({
+        code: 'INVALID_SYSTEM_ROLE',
+        message: 'Only manager, counsellor, and auditor system roles can be dynamically modified. Owner role is immutable.',
+      });
+    }
+
+    if (!Array.isArray(permissions)) {
+      return res.status(400).json({ message: 'Permissions array is required' });
+    }
+
+    // Validate that all permissions exist in the system catalogue with valid scope
+    const validScopes = new Set(['own', 'team', 'workspace']);
+    for (const p of permissions) {
+      if (!p || typeof p !== 'object' || !p.key || !PERMISSIONS[p.key]) {
+        return res.status(400).json({
+          code: 'INVALID_PERMISSION_KEY',
+          message: `Permission key '${p?.key}' is not recognized in the system catalogue.`,
+        });
+      }
+      const scope = p.scope || 'workspace';
+      if (!validScopes.has(scope)) {
+        return res.status(400).json({
+          code: 'INVALID_PERMISSION_SCOPE',
+          message: `Invalid scope '${scope}' for permission '${p.key}'. Allowed: own, team, workspace.`,
+        });
+      }
+    }
+
+    // Privilege Escalation Guard: Non-owners cannot grant permissions or scopes they lack
+    if (req.membership && req.membership.role !== 'owner') {
+      const actorPerms = await req.membership.getEffectivePermissions();
+      const actorPermMap = new Map(actorPerms.map(p => [p.key, p.scope || 'workspace']));
+      const SCOPE_LEVELS = { workspace: 3, team: 2, own: 1, restricted: 0 };
+
+      for (const p of permissions) {
+        if (!actorPermMap.has(p.key)) {
+          return res.status(403).json({
+            code: 'PRIVILEGE_ESCALATION_PREVENTED',
+            message: `Cannot grant permission '${p.key}' which you do not possess.`,
+          });
+        }
+        const grantedScopeLevel = SCOPE_LEVELS[p.scope || 'workspace'] || 0;
+        const actorScopeLevel = SCOPE_LEVELS[actorPermMap.get(p.key)] || 0;
+        if (grantedScopeLevel > actorScopeLevel) {
+          return res.status(403).json({
+            code: 'PRIVILEGE_ESCALATION_PREVENTED',
+            message: `Scope privilege escalation: Cannot grant permission '${p.key}' with scope '${p.scope || 'workspace'}' exceeding your own scope '${actorPermMap.get(p.key)}'.`,
+          });
+        }
+      }
+    }
+
+    const workspace = await Workspace.findById(req.workspaceId);
+    if (!workspace) {
+      return res.status(404).json({ message: 'Workspace not found' });
+    }
+
+    if (!workspace.rolePermissions) {
+      workspace.rolePermissions = new Map();
+    }
+    workspace.rolePermissions.set(roleName, permissions);
+    await workspace.save();
+
+    // Cache eviction across all members with this role
+    try {
+      const { workspaceContextCache, invalidateUserAuthCache } = require('../utils/authCache');
+      const { invalidateBootstrapCache } = require('./bootstrapController');
+      const affectedMembers = await WorkspaceMembership.find({
+        workspaceId: workspace._id,
+        role: roleName,
+      }).select('userId').lean();
+
+      for (const m of affectedMembers) {
+        if (m.userId) {
+          invalidateUserAuthCache(m.userId);
+          invalidateBootstrapCache(m.userId, workspace._id);
+        }
+      }
+
+      if (workspaceContextCache && typeof workspaceContextCache.clear === 'function') {
+        workspaceContextCache.clear();
+      }
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      message: `System role "${roleName}" permissions updated successfully`,
+      roleName,
+      permissions,
+    });
+  } catch (error) {
+    console.error('updateSystemRole error:', error);
+    res.status(500).json({ message: 'Server error updating system role permissions' });
+  }
+};
+
+/**
+ * @desc Update granular permission overrides for an individual member
+ * @route PUT /api/workspace/members/:id/permissions
+ * @access Private (Owner / roles.manage)
+ */
+exports.updateMemberPermissions = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { permissionOverrides } = req.body;
+
+    if (!Array.isArray(permissionOverrides)) {
+      return res.status(400).json({ message: 'permissionOverrides array is required' });
+    }
+
+    const membership = await WorkspaceMembership.findOne({
+      _id: id,
+      workspaceId: req.workspaceId,
+    });
+
+    if (!membership) {
+      return res.status(404).json({ message: 'Member not found in this workspace' });
+    }
+
+    // Owner cannot have their root privileges curtailed or overridden
+    if (membership.role === 'owner') {
+      return res.status(400).json({
+        code: 'OWNER_PERMISSIONS_IMMUTABLE',
+        message: 'Owner permissions are root-level and cannot have overrides applied.',
+      });
+    }
+
+    // Validate that all permissions exist in the system catalogue
+    const validScopes = new Set(['own', 'team', 'workspace']);
+    for (const p of permissionOverrides) {
+      if (!p || typeof p !== 'object' || !p.key || !PERMISSIONS[p.key]) {
+        return res.status(400).json({
+          code: 'INVALID_PERMISSION_KEY',
+          message: `Permission key '${p?.key}' is not recognized in the system catalogue.`,
+        });
+      }
+      const scope = p.scope || 'workspace';
+      if (!validScopes.has(scope)) {
+        return res.status(400).json({
+          code: 'INVALID_PERMISSION_SCOPE',
+          message: `Invalid scope '${scope}' for permission '${p.key}'. Allowed: own, team, workspace.`,
+        });
+      }
+    }
+
+    // Privilege Escalation Guard: Non-owners cannot grant permissions or scopes they lack
+    if (req.membership && req.membership.role !== 'owner') {
+      const actorPerms = await req.membership.getEffectivePermissions();
+      const actorPermMap = new Map(actorPerms.map(p => [p.key, p.scope || 'workspace']));
+      const SCOPE_LEVELS = { workspace: 3, team: 2, own: 1, restricted: 0 };
+
+      for (const p of permissionOverrides) {
+        if (p.granted !== false) {
+          if (!actorPermMap.has(p.key)) {
+            return res.status(403).json({
+              code: 'PRIVILEGE_ESCALATION_PREVENTED',
+              message: `Cannot grant permission '${p.key}' which you do not possess.`,
+            });
+          }
+          const grantedScopeLevel = SCOPE_LEVELS[p.scope || 'workspace'] || 0;
+          const actorScopeLevel = SCOPE_LEVELS[actorPermMap.get(p.key)] || 0;
+          if (grantedScopeLevel > actorScopeLevel) {
+            return res.status(403).json({
+              code: 'PRIVILEGE_ESCALATION_PREVENTED',
+              message: `Scope privilege escalation: Cannot grant permission '${p.key}' with scope '${p.scope || 'workspace'}' exceeding your own scope '${actorPermMap.get(p.key)}'.`,
+            });
+          }
+        }
+      }
+    }
+
+    membership.permissionOverrides = permissionOverrides;
+    await membership.save();
+
+    // Cache eviction
+    try {
+      const { workspaceContextCache, invalidateUserAuthCache } = require('../utils/authCache');
+      const { invalidateBootstrapCache } = require('./bootstrapController');
+      if (membership.userId) {
+        invalidateUserAuthCache(membership.userId);
+        invalidateBootstrapCache(membership.userId, req.workspaceId);
+      }
+      if (workspaceContextCache && typeof workspaceContextCache.deleteMatching === 'function') {
+        workspaceContextCache.deleteMatching((key) => key.startsWith(String(membership.userId)));
+      }
+    } catch (_) {}
+
+    const effectivePermissions = await membership.getEffectivePermissions();
+
+    res.json({
+      success: true,
+      message: 'Member permissions updated successfully',
+      permissionOverrides: membership.permissionOverrides,
+      hasCustomPermissions: Boolean(membership.permissionOverrides && membership.permissionOverrides.length > 0),
+      effectivePermissions,
+    });
+  } catch (error) {
+    console.error('updateMemberPermissions error:', error);
+    res.status(500).json({ message: 'Server error updating member permissions' });
   }
 };
 
@@ -622,15 +965,43 @@ exports.createCustomRole = async (req, res) => {
       return res.status(400).json({ message: 'Permissions array is required' });
     }
 
-    // Privilege Escalation Guard: Non-owners cannot grant permissions they do not possess
+    // Validate that all permissions exist in the system catalogue with valid scope
+    const validScopes = new Set(['own', 'team', 'workspace']);
+    for (const p of permissions) {
+      if (!p || typeof p !== 'object' || !p.key || !PERMISSIONS[p.key]) {
+        return res.status(400).json({
+          code: 'INVALID_PERMISSION_KEY',
+          message: `Permission key '${p?.key}' is not recognized in the system catalogue.`,
+        });
+      }
+      const scope = p.scope || 'workspace';
+      if (!validScopes.has(scope)) {
+        return res.status(400).json({
+          code: 'INVALID_PERMISSION_SCOPE',
+          message: `Invalid scope '${scope}' for permission '${p.key}'. Allowed: own, team, workspace.`,
+        });
+      }
+    }
+
+    // Privilege Escalation Guard: Non-owners cannot grant permissions or scopes they lack
     if (req.membership && req.membership.role !== 'owner') {
       const actorPerms = await req.membership.getEffectivePermissions();
-      const actorKeySet = new Set(actorPerms.map(p => p.key));
+      const actorPermMap = new Map(actorPerms.map(p => [p.key, p.scope || 'workspace']));
+      const SCOPE_LEVELS = { workspace: 3, team: 2, own: 1, restricted: 0 };
+
       for (const p of permissions) {
-        if (!actorKeySet.has(p.key)) {
+        if (!actorPermMap.has(p.key)) {
           return res.status(403).json({
             code: 'PRIVILEGE_ESCALATION_PREVENTED',
             message: `Cannot grant permission '${p.key}' which you do not possess.`,
+          });
+        }
+        const grantedScopeLevel = SCOPE_LEVELS[p.scope || 'workspace'] || 0;
+        const actorScopeLevel = SCOPE_LEVELS[actorPermMap.get(p.key)] || 0;
+        if (grantedScopeLevel > actorScopeLevel) {
+          return res.status(403).json({
+            code: 'PRIVILEGE_ESCALATION_PREVENTED',
+            message: `Scope privilege escalation: Cannot grant permission '${p.key}' with scope '${p.scope || 'workspace'}' exceeding your own scope '${actorPermMap.get(p.key)}'.`,
           });
         }
       }
@@ -677,16 +1048,46 @@ exports.updateCustomRole = async (req, res) => {
       return res.status(400).json({ success: false, message: 'System roles cannot be modified' });
     }
 
-    // Privilege Escalation Guard: Non-owners cannot grant permissions they do not possess
-    if (Array.isArray(permissions) && req.membership && req.membership.role !== 'owner') {
-      const actorPerms = await req.membership.getEffectivePermissions();
-      const actorKeySet = new Set(actorPerms.map(p => p.key));
+    // Validate permissions array if provided
+    if (Array.isArray(permissions)) {
+      const validScopes = new Set(['own', 'team', 'workspace']);
       for (const p of permissions) {
-        if (!actorKeySet.has(p.key)) {
-          return res.status(403).json({
-            code: 'PRIVILEGE_ESCALATION_PREVENTED',
-            message: `Cannot grant permission '${p.key}' which you do not possess.`,
+        if (!p || typeof p !== 'object' || !p.key || !PERMISSIONS[p.key]) {
+          return res.status(400).json({
+            code: 'INVALID_PERMISSION_KEY',
+            message: `Permission key '${p?.key}' is not recognized in the system catalogue.`,
           });
+        }
+        const scope = p.scope || 'workspace';
+        if (!validScopes.has(scope)) {
+          return res.status(400).json({
+            code: 'INVALID_PERMISSION_SCOPE',
+            message: `Invalid scope '${scope}' for permission '${p.key}'. Allowed: own, team, workspace.`,
+          });
+        }
+      }
+
+      // Privilege Escalation Guard: Non-owners cannot grant permissions or scopes they lack
+      if (req.membership && req.membership.role !== 'owner') {
+        const actorPerms = await req.membership.getEffectivePermissions();
+        const actorPermMap = new Map(actorPerms.map(p => [p.key, p.scope || 'workspace']));
+        const SCOPE_LEVELS = { workspace: 3, team: 2, own: 1, restricted: 0 };
+
+        for (const p of permissions) {
+          if (!actorPermMap.has(p.key)) {
+            return res.status(403).json({
+              code: 'PRIVILEGE_ESCALATION_PREVENTED',
+              message: `Cannot grant permission '${p.key}' which you do not possess.`,
+            });
+          }
+          const grantedScopeLevel = SCOPE_LEVELS[p.scope || 'workspace'] || 0;
+          const actorScopeLevel = SCOPE_LEVELS[actorPermMap.get(p.key)] || 0;
+          if (grantedScopeLevel > actorScopeLevel) {
+            return res.status(403).json({
+              code: 'PRIVILEGE_ESCALATION_PREVENTED',
+              message: `Scope privilege escalation: Cannot grant permission '${p.key}' with scope '${p.scope || 'workspace'}' exceeding your own scope '${actorPermMap.get(p.key)}'.`,
+            });
+          }
         }
       }
     }
@@ -696,6 +1097,22 @@ exports.updateCustomRole = async (req, res) => {
     if (Array.isArray(permissions)) role.permissions = permissions;
 
     await role.save();
+
+    // Invalidate caches for all members assigned to this custom role
+    try {
+      const { workspaceContextCache, invalidateUserAuthCache } = require('../utils/authCache');
+      const { invalidateBootstrapCache } = require('./bootstrapController');
+      const affectedMembers = await WorkspaceMembership.find({ customRoleId: role._id }).select('userId workspaceId').lean();
+      for (const m of affectedMembers) {
+        if (m.userId) {
+          invalidateUserAuthCache(m.userId);
+          invalidateBootstrapCache(m.userId, m.workspaceId);
+        }
+      }
+      if (workspaceContextCache && typeof workspaceContextCache.clear === 'function') {
+        workspaceContextCache.clear();
+      }
+    } catch (_) {}
 
     res.json({
       success: true,
@@ -744,6 +1161,13 @@ exports.deleteCustomRole = async (req, res) => {
     }
 
     await Role.deleteOne({ _id: role._id });
+
+    try {
+      const { workspaceContextCache } = require('../utils/authCache');
+      if (workspaceContextCache && typeof workspaceContextCache.clear === 'function') {
+        workspaceContextCache.clear();
+      }
+    } catch (_) {}
 
     res.json({
       success: true,

@@ -60,11 +60,42 @@ async function runHybridCatalogueTests() {
     // ─────────────────────────────────────────────────────────────
     console.log('\n▶️  Step 2: Testing Master College Repository (10,000+ Scalable Search)...');
 
-    // Seed master repository
+    // Negative Authorization Test: Ordinary user must be blocked (403) from seeding master catalogue
+    let blockedOrdinaryUser = false;
+    try {
+      await axios.post(
+        `${API_URL}/catalogue/seed-master`,
+        { force: true },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+    } catch (err) {
+      if (err.response?.status === 403) blockedOrdinaryUser = true;
+    }
+    assert(blockedOrdinaryUser, 'Ordinary admission consultant must receive 403 Forbidden for seed-master');
+
+    // Authenticate as SuperAdmin to legitimately seed master catalogue
+    let superAdminToken = null;
+    const adminCandidates = [(process.env.ADMIN_EMAIL || '').toLowerCase(), 'admin@yourapp.com', 'admin@crm.com'].filter(Boolean);
+    for (const adminEmail of adminCandidates) {
+      try {
+        const adminLoginRes = await axios.post(`${API_URL}/auth/login`, {
+          identifier: adminEmail,
+          email: adminEmail,
+          password: process.env.ADMIN_PASSWORD || 'Admin@123'
+        });
+        if (adminLoginRes.data?.token) {
+          superAdminToken = adminLoginRes.data.token;
+          break;
+        }
+      } catch (e) {}
+    }
+    assert(superAdminToken, 'SuperAdmin authentication must succeed');
+
+    // Seed master repository as SuperAdmin
     const seedRes = await axios.post(
       `${API_URL}/catalogue/seed-master`,
       { force: true },
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: { Authorization: `Bearer ${superAdminToken}` } }
     );
     assert(seedRes.data.success, `Master repository seeded: ${seedRes.data.message}`);
 

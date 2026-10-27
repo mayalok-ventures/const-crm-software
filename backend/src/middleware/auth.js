@@ -245,25 +245,44 @@ const protect = async (req, res, next) => {
   }
 };
 
-const isTenantAdminUser = (user) => {
+const isTenantAdminUser = (user, req = null) => {
   if (!user) return false;
+  // Platform superadmin bypass
+  if (user.role === 'superadmin' || user.isAdmin === true) {
+    return true;
+  }
+
+  // 1. If active workspace membership is resolved on the request
+  if (req?.membership) {
+    return req.membership.role === 'owner' && req.membership.status === 'active';
+  }
+
+  // 2. If user has an explicit active workspace role attached
+  if (user.workspaceRole) {
+    return user.workspaceRole === 'owner';
+  }
+
+  // 3. If user is an employee / member linked to another company, they are NOT tenant owner
+  if (user.companyId && String(user.companyId) !== String(user._id)) {
+    return false;
+  }
+
+  // 4. Standalone solo consultant / root company owner
   return (
-    user.role === 'superadmin' ||
-    user.role === 'admin' ||
-    user.companyRole === 'owner' ||
-    user.workStatus === 'company_owner'
+    user.workStatus === 'company_owner' ||
+    (user.companyRole === 'owner' && user.role !== 'counsellor' && user.companyRole !== 'counsellor' && user.companyRole !== 'member')
   );
 };
 
 const adminOnly = (req, res, next) => {
-  if (!req.user || !isTenantAdminUser(req.user)) {
+  if (!req.user || !isTenantAdminUser(req.user, req)) {
     securityTracker.recordEvent({
       type: 'PERMISSION_DENIED',
       req,
       userId: req.user?._id,
       userEmail: req.user?.email,
-      tenantId: req.user?.companyId,
-      metadata: { requiredRole: 'admin', currentRole: req.user?.role || 'anonymous' },
+      tenantId: req.user?.companyId || req.workspaceId,
+      metadata: { requiredRole: 'admin', currentRole: req.membership?.role || req.user?.workspaceRole || req.user?.role || 'anonymous' },
     });
     return res.status(403).json({ message: 'Admin access required' });
   }
@@ -271,10 +290,30 @@ const adminOnly = (req, res, next) => {
 };
 
 const managerOrAdminOnly = (req, res, next) => {
-  const role = req.user?.role;
-  const companyRole = req.user?.companyRole;
-  const isPrivileged = isTenantAdminUser(req.user) || role === 'manager' || companyRole === 'manager';
-  if (!req.user || !isPrivileged) {
+  if (!req.user) return res.status(401).json({ message: 'Not authorized' });
+  if (req.user.role === 'superadmin' || req.user.isAdmin === true) return next();
+
+  // If workspace membership context is resolved:
+  if (req.membership) {
+    if ((req.membership.role === 'owner' || req.membership.role === 'manager') && req.membership.status === 'active') {
+      return next();
+    }
+    securityTracker.recordEvent({
+      type: 'PERMISSION_DENIED',
+      req,
+      userId: req.user?._id,
+      userEmail: req.user?.email,
+      tenantId: req.workspaceId || req.user?.companyId,
+      metadata: { requiredRole: 'manager_or_admin', currentRole: req.membership.role },
+    });
+    return res.status(403).json({ message: 'Manager or Admin access required' });
+  }
+
+  // Fallback if no membership resolved on request
+  const isOwner = isTenantAdminUser(req.user, req);
+  const isManager = req.user.role === 'manager' || req.user.companyRole === 'manager' || req.user.workspaceRole === 'manager';
+
+  if (!isOwner && !isManager) {
     securityTracker.recordEvent({
       type: 'PERMISSION_DENIED',
       req,

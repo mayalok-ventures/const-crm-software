@@ -5,7 +5,7 @@ const Lead = require('../../models/Lead');
 const leadIngestionService = require('../../services/integrations/leadIngestionService');
 const { decrypt } = require('../../utils/encryption');
 
-const META_API_VERSION = process.env.META_API_VERSION || 'v26.0';
+const META_API_VERSION = process.env.META_API_VERSION || 'v21.0';
 
 function getTenantQuery(user) {
   if (!user) return { _id: null };
@@ -172,6 +172,58 @@ exports.configure = async (req, res) => {
 
     await integration.save();
 
+    // If formRouting is provided, configure dedicated LeadSourceSubscription per form
+    if (req.body.formRouting && typeof req.body.formRouting === 'object') {
+      try {
+        const LeadSourceSubscription = require('../../models/LeadSourceSubscription');
+        const Campaign = require('../../models/Campaign');
+        const wsId = req.workspaceId || req.user.workspaceId || null;
+        const companyId = req.user.companyId || (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? req.user._id : null);
+
+        for (const [fId, config] of Object.entries(req.body.formRouting)) {
+          if (!config || !config.campaignGroupId) continue;
+
+          // Verify target campaign belongs to tenant
+          const targetCampaign = await Campaign.findById(config.campaignGroupId);
+          if (!targetCampaign) continue;
+
+          await LeadSourceSubscription.findOneAndUpdate(
+            {
+              ...(companyId ? { companyId } : { userId: req.user._id }),
+              provider: 'meta',
+              externalFormId: String(fId).trim(),
+            },
+            {
+              $set: {
+                workspaceId: wsId,
+                companyId,
+                userId: req.user._id,
+                integrationId: integration._id,
+                provider: 'meta',
+                sourceName: (config.formName || `Meta Form ${fId}`).trim(),
+                externalAccountId: String(pageId).trim(),
+                externalAccountName: String(pageName || '').trim(),
+                externalFormId: String(fId).trim(),
+                externalFormName: (config.formName || '').trim(),
+                campaignGroupId: targetCampaign._id,
+                status: 'active',
+                healthStatus: 'healthy',
+                lastError: '',
+              },
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+          );
+
+          // Dual-compat: also add form ID to campaign routingRules
+          await Campaign.findByIdAndUpdate(targetCampaign._id, {
+            $addToSet: { 'routingRules.metaFormIds': String(fId).trim() },
+          }).catch(() => null);
+        }
+      } catch (subErr) {
+        console.warn('[Meta configure] Form subscription configuration warning:', subErr.message);
+      }
+    }
+
     return res.json({
       success: true,
       message: 'Meta page and lead forms configured successfully',
@@ -216,18 +268,10 @@ exports.testConnection = async (req, res) => {
       }
 
       if (!targetIntegration) {
-        // Create an active mock integration for tests/simulations if none exists
-        targetIntegration = await Integration.create({
-          userId: req.user._id,
-          companyId: req.user.companyId || (req.user.companyRole === 'owner' ? req.user._id : null),
-          provider: 'meta',
-          mode: 'client_managed',
-          status: 'connected',
-          accountId: 'act_simulated_meta_123',
-          accountName: 'Meta Ads Test Account',
-          pageId: 'page_simulated_456',
-          pageName: 'Company Facebook Page',
-          connectedAt: new Date(),
+        return res.status(404).json({
+          success: false,
+          connected: false,
+          message: 'No active Meta Ads integration found. Please connect your Meta account first.',
         });
       }
 
