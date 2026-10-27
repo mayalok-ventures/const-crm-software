@@ -22,6 +22,7 @@ function baseConfig(phase: string): NextConfig {
     experimental: {
       optimizePackageImports: ['lucide-react', 'recharts', 'date-fns', 'axios'],
     },
+    turbopack: {},
     // Apply static export for production builds targeted for Cloudflare Pages / Workers
     ...(!isDev ? {
       output: 'export',
