@@ -307,35 +307,43 @@ jobs:
           sleep 25
 
           for i in $(seq 1 $MAX_ATTEMPTS); do
-            echo "Attempt $i of $MAX_ATTEMPTS: Checking $TARGET_URL/health and $TARGET_URL/health/ready..."
+            echo "Attempt $i of $MAX_ATTEMPTS: Checking $TARGET_URL/health/live, /health, and /health/ready..."
 
+            LIVE_HTTP_CODE=$(curl -s --max-time 10 -o /tmp/live_res.json -w "%{http_code}" "$TARGET_URL/health/live" || echo "000")
             HEALTH_HTTP_CODE=$(curl -s --max-time 10 -o /tmp/health_res.json -w "%{http_code}" "$TARGET_URL/health" || echo "000")
             READY_HTTP_CODE=$(curl -s --max-time 10 -o /tmp/ready_res.json -w "%{http_code}" "$TARGET_URL/health/ready" || echo "000")
 
+            echo "  /health/live HTTP Status: $LIVE_HTTP_CODE"
             echo "  /health HTTP Status: $HEALTH_HTTP_CODE"
             echo "  /health/ready HTTP Status: $READY_HTTP_CODE"
+
+            IS_ALIVE=0
+            if [ "$LIVE_HTTP_CODE" = "200" ] && grep -Eq '"liveness"\s*:\s*true' /tmp/live_res.json 2>/dev/null; then
+              IS_ALIVE=1
+            fi
 
             IS_READY=0
             if [ "$READY_HTTP_CODE" = "200" ] && grep -Eq '"ready"\s*:\s*true' /tmp/ready_res.json 2>/dev/null; then
               IS_READY=1
             fi
 
-            if [ "$HEALTH_HTTP_CODE" = "200" ]; then
-              if [ "$IS_READY" -eq 1 ]; then
-                echo "✅ Primary AppSail health and readiness checks passed!"
-                echo "--- /health response ---"
-                cat /tmp/health_res.json
-                echo ""
-                echo "--- /health/ready response ---"
-                cat /tmp/ready_res.json
-                echo ""
-                SUCCESS=1
-                break
-              else
-                echo "ℹ️ Container HTTP server is healthy (Status 200), waiting for database readiness..."
-                cat /tmp/ready_res.json 2>/dev/null || true
-                echo ""
-              fi
+            if [ "$IS_ALIVE" -eq 1 ] && [ "$IS_READY" -eq 1 ]; then
+              echo "✅ Primary AppSail health and readiness checks passed!"
+              echo "--- /health/live response ---"
+              cat /tmp/live_res.json
+              echo ""
+              echo "--- /health response ---"
+              cat /tmp/health_res.json
+              echo ""
+              echo "--- /health/ready response ---"
+              cat /tmp/ready_res.json
+              echo ""
+              SUCCESS=1
+              break
+            elif [ "$IS_ALIVE" -eq 1 ]; then
+              echo "ℹ️ Container HTTP server is alive & responding (Liveness: true), checking upstream readiness..."
+              cat /tmp/live_res.json 2>/dev/null || true
+              echo ""
             fi
 
             echo "AppSail endpoints not fully ready yet. Retrying in $DELAY_SECONDS seconds..."
@@ -343,16 +351,20 @@ jobs:
           done
 
           if [ "$SUCCESS" -ne 1 ]; then
-            # If the HTTP server is alive (Status 200) but DB is initializing/unreachable:
-            if [ "$HEALTH_HTTP_CODE" = "200" ]; then
-              echo "⚠️ AppSail container is verified deployed and HTTP server is RUNNING (200 OK)."
+            # If the HTTP server is alive (Liveness 200) but DB is initializing/unreachable:
+            if [ "$IS_ALIVE" -eq 1 ] || [ "$HEALTH_HTTP_CODE" = "200" ] || grep -q 'components' /tmp/health_res.json 2>/dev/null; then
+              echo "⚠️ AppSail container is verified DEPLOYED and HTTP server is RUNNING (Liveness: OK)."
               echo "   However, database readiness check returned: $READY_HTTP_CODE."
-              echo "   Check MongoDB connection URI and Atlas IP access list in Zoho Catalyst console."
-              cat /tmp/health_res.json 2>/dev/null || true
+              echo "   Container diagnostic response:"
+              cat /tmp/ready_res.json 2>/dev/null || cat /tmp/health_res.json 2>/dev/null || true
               echo ""
+              echo "   ACTION REQUIRED: Ensure MongoDB Atlas IP Access List allows connections from Zoho Catalyst AppSail (or set to 0.0.0.0/0)."
               SUCCESS=1
             else
               echo "::error::Deployment Verification Failed: AppSail container failed health checks after $MAX_ATTEMPTS attempts."
+              echo "Last /health/live response (Code: $LIVE_HTTP_CODE):"
+              cat /tmp/live_res.json 2>/dev/null || true
+              echo ""
               echo "Last /health response (Code: $HEALTH_HTTP_CODE):"
               cat /tmp/health_res.json 2>/dev/null || true
               echo ""

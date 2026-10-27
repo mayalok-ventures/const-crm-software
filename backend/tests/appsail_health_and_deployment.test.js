@@ -279,6 +279,16 @@ async function runAll() {
       'server.js must verify readyState === 1 before running workers and migrations');
   });
 
+  // 17. Test that deploy-backend.yml includes /health/live liveness verification
+  it('ensures deploy-backend.yml incorporates /health/live liveness probe in AppSail verification loop', () => {
+    const wfPath = path.resolve(__dirname, '../../.github/workflows/deploy-backend.yml');
+    assert.ok(fs.existsSync(wfPath), 'deploy-backend.yml must exist');
+    const content = fs.readFileSync(wfPath, 'utf8');
+    assert.ok(content.includes('/health/live'), 'Workflow must check /health/live');
+    assert.ok(content.includes('IS_ALIVE'), 'Workflow must track IS_ALIVE state');
+    assert.ok(content.includes('liveness'), 'Workflow must check liveness json');
+  });
+
   console.log('\n========================================================');
   console.log(`TOTAL TESTS: ${passedTests + failedTests} | PASSED: ${passedTests} | FAILED: ${failedTests}`);
   console.log('========================================================\n');
