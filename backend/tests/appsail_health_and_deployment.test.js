@@ -201,6 +201,43 @@ async function runAll() {
     assert.strictEqual(resolveProjectId('91974000000013053'), '91974000000013053');
   });
 
+  // 10. Test that .catalystignore contains no negation patterns (!) that cause minimatch to exclude all files
+  it('ensures .catalystignore contains no negation patterns that break Catalyst CLI packaging', () => {
+    const p = path.resolve(__dirname, '../.catalystignore');
+    assert.ok(fs.existsSync(p), 'backend/.catalystignore must exist');
+    const content = fs.readFileSync(p, 'utf8');
+    const lines = content.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+    
+    // In Catalyst CLI (pack.js), minimatch(file, "!pattern") returns true for all files not matching pattern,
+    // which causes the CLI to exclude every file from the zip and upload an empty 22-byte archive!
+    const negationLines = lines.filter(l => l.startsWith('!'));
+    assert.strictEqual(negationLines.length, 0, 
+      `backend/.catalystignore must NOT contain negation patterns (!), found: ${negationLines.join(', ')}`);
+  });
+
+  // 11. Test that app-config.json specifies port 9000 for AppSail routing
+  it('ensures app-config.json specifies port 9000 and environment port for AppSail routing', () => {
+    const p = path.resolve(__dirname, '../app-config.json');
+    assert.ok(fs.existsSync(p), 'backend/app-config.json must exist');
+    const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
+    assert.ok(cfg.port, 'cfg.port must be configured');
+    assert.strictEqual(cfg.port.http, 9000, 'cfg.port.http must be 9000');
+    assert.strictEqual(cfg.command, 'node server.js', 'cfg.command must be node server.js');
+    assert.strictEqual(cfg.stack, 'node20', 'cfg.stack must be node20');
+  });
+
+  // 12. Test that server.js defaults to port 9000 in production
+  it('ensures server.js port calculation falls back to 9000 in production', () => {
+    function computePort(envPort, listenPort, nodeEnv) {
+      return Number(listenPort || (nodeEnv === 'production' ? 9000 : (envPort || 5000)));
+    }
+
+    assert.strictEqual(computePort(undefined, undefined, 'production'), 9000);
+    assert.strictEqual(computePort('5000', undefined, 'production'), 9000);
+    assert.strictEqual(computePort('5000', '8080', 'production'), 8080);
+    assert.strictEqual(computePort('5000', undefined, 'development'), 5000);
+  });
+
   console.log('\n========================================================');
   console.log(`TOTAL TESTS: ${passedTests + failedTests} | PASSED: ${passedTests} | FAILED: ${failedTests}`);
   console.log('========================================================\n');

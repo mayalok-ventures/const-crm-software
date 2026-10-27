@@ -313,14 +313,25 @@ const { seedSuperAdmin } = require('./src/utils/seedSuperAdmin');
 const { seedPlans } = require('./src/utils/seedPlans');
 
 // Bind HTTP listener immediately so AppSail container health checks succeed without delay
-const PORT = process.env.X_ZOHO_CATALYST_LISTEN_PORT || process.env.PORT || 5000;
+const PORT = Number(process.env.X_ZOHO_CATALYST_LISTEN_PORT || (process.env.NODE_ENV === 'production' ? 9000 : (process.env.PORT || 5000)));
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🚀 Admission Consultants CRM Backend running on http://localhost:${PORT}`);
+  console.log(`\n🚀 Admission Consultants CRM Backend running on http://0.0.0.0:${PORT}`);
   console.log(`📦 Environment: ${process.env.NODE_ENV || 'development'}\n`);
   
   // Start event loop & memory monitor if PERF_DEBUG=1
   startEventLoopMonitor();
 });
+
+// Dual-port safety listener for AppSail reverse proxy (guarantees port 9000 is always reachable in production)
+if (process.env.NODE_ENV === 'production' && PORT !== 9000) {
+  try {
+    app.listen(9000, '0.0.0.0', () => {
+      console.log('🚀 Dual-port safety listener active on http://0.0.0.0:9000 for AppSail routing');
+    });
+  } catch (e) {
+    console.warn('Could not bind dual-port 9000:', e.message);
+  }
+}
 
 let agent, heartbeat, statusEvaluator, aggregator;
 let databaseMonitorWorker, backupMonitorWorker, alertMonitorWorker;

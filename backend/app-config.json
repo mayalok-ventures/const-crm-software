@@ -5,7 +5,11 @@
   "build_path": ".",
   "buildPath": ".",
   "memory": 1024,
+  "port": {
+    "http": 9000
+  },
   "env_variables": {
-    "NODE_ENV": "production"
+    "NODE_ENV": "production",
+    "PORT": "9000"
   }
 }

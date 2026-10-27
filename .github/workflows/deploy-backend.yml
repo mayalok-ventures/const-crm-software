@@ -138,15 +138,20 @@ jobs:
           echo "Injecting production runtime environment configuration into app-config.json..."
           node -e '
             const fs = require("fs");
-            const cfg = JSON.parse(fs.readFileSync("app-config.json", "utf8"));
-            cfg.env_variables = cfg.env_variables || {};
-            cfg.env_variables.NODE_ENV = "production";
-            if (process.env.MONGO_URI) cfg.env_variables.MONGO_URI = process.env.MONGO_URI;
-            if (process.env.JWT_SECRET) cfg.env_variables.JWT_SECRET = process.env.JWT_SECRET;
-            if (process.env.INTEGRATION_ENCRYPTION_KEY) cfg.env_variables.INTEGRATION_ENCRYPTION_KEY = process.env.INTEGRATION_ENCRYPTION_KEY;
-            if (process.env.ALLOWED_ORIGINS) cfg.env_variables.ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS;
-            fs.writeFileSync("app-config.json", JSON.stringify(cfg, null, 2));
-            console.log("Configured AppSail environment variables count:", Object.keys(cfg.env_variables).length);
+            for (const p of ["app-config.json", "../app-config.json"]) {
+              if (!fs.existsSync(p)) continue;
+              const cfg = JSON.parse(fs.readFileSync(p, "utf8"));
+              cfg.port = { http: 9000 };
+              cfg.env_variables = cfg.env_variables || {};
+              cfg.env_variables.NODE_ENV = "production";
+              cfg.env_variables.PORT = "9000";
+              if (process.env.MONGO_URI) cfg.env_variables.MONGO_URI = process.env.MONGO_URI;
+              if (process.env.JWT_SECRET) cfg.env_variables.JWT_SECRET = process.env.JWT_SECRET;
+              if (process.env.INTEGRATION_ENCRYPTION_KEY) cfg.env_variables.INTEGRATION_ENCRYPTION_KEY = process.env.INTEGRATION_ENCRYPTION_KEY;
+              if (process.env.ALLOWED_ORIGINS) cfg.env_variables.ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS;
+              fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
+              console.log(`Configured ${p} with ${Object.keys(cfg.env_variables).length} environment variables and port 9000.`);
+            }
           '
 
       - name: Deploy to Zoho Catalyst AppSail
@@ -224,6 +229,11 @@ jobs:
           )
 
           catalyst "${DEPLOY_ARGS[@]}" 2>&1 | tee /tmp/catalyst_deploy.log
+
+          if grep -qi "No components deployed" /tmp/catalyst_deploy.log; then
+            echo "::error::Catalyst CLI reported: No components deployed. Check project configuration and .catalystignore."
+            exit 1
+          fi
 
           # Capture assigned AppSail URL if outputted by Catalyst CLI (strip ANSI color escape codes)
           ASSIGNED_URL=$(sed -r 's/\x1b\[[0-9;]*m//g' /tmp/catalyst_deploy.log | grep -oiE 'https://[a-zA-Z0-9.-]+\.catalystappsail\.[a-z]+' | head -n 1 | sed 's:/*$::' || true)
