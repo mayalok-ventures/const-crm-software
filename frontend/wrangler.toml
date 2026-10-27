@@ -1,4 +1,4 @@
-name = "mobile-crm-frontend"
+name = "const-crm-software"
 pages_build_output_dir = "out"
 compatibility_date = "2026-08-15"
 compatibility_flags = ["nodejs_compat"]
@@ -6,8 +6,3 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 NEXT_PUBLIC_APP_ENV = "production"
 NEXT_PUBLIC_APP_NAME = "Sahyak CRM"
-
-# Cloudflare Pages Edge Routes & Direct CDN Headers
-[[routes]]
-pattern = "/*"
-zone_name = "sahyak.com"
