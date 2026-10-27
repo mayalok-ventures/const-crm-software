@@ -1,0 +1,5 @@
+# Catalyst project root ignore rules
+frontend/**
+.git
+.github
+*.log

@@ -171,10 +171,9 @@ class IncidentManager {
      */
     async acknowledgeIncident(incidentId, user = 'ADMIN_OPERATOR') {
         const now = new Date();
-        const isHexId = typeof incidentId === 'string' && incidentId.length === 24 && /^[0-9a-fA-F]{24}$/.test(incidentId);
-        const incident = await Incident_1.Incident.findOne(
-            isHexId ? { $or: [{ incidentId }, { _id: incidentId }] } : { incidentId }
-        );
+        const incident = await Incident_1.Incident.findOne({
+            $or: [{ incidentId }, { _id: incidentId }],
+        });
         if (!incident)
             return null;
         incident.status = 'INVESTIGATING';
@@ -196,10 +195,9 @@ class IncidentManager {
      */
     async resolveIncident(incidentId, user = 'ADMIN_OPERATOR', resolutionNotes = 'Metric returned to nominal operating thresholds', rootCause = 'Transient workload spike resolved') {
         const now = new Date();
-        const isHexId = typeof incidentId === 'string' && incidentId.length === 24 && /^[0-9a-fA-F]{24}$/.test(incidentId);
-        const incident = await Incident_1.Incident.findOne(
-            isHexId ? { $or: [{ incidentId }, { _id: incidentId }] } : { incidentId }
-        );
+        const incident = await Incident_1.Incident.findOne({
+            $or: [{ incidentId }, { _id: incidentId }],
+        });
         if (!incident)
             return null;
         const durationMs = incident.startedAt ? now.getTime() - new Date(incident.startedAt).getTime() : 0;
@@ -241,10 +239,9 @@ class IncidentManager {
      */
     async escalateIncident(incidentId, reason = 'SLA response deadline exceeded') {
         const now = new Date();
-        const isHexId = typeof incidentId === 'string' && incidentId.length === 24 && /^[0-9a-fA-F]{24}$/.test(incidentId);
-        const incident = await Incident_1.Incident.findOne(
-            isHexId ? { $or: [{ incidentId }, { _id: incidentId }] } : { incidentId }
-        );
+        const incident = await Incident_1.Incident.findOne({
+            $or: [{ incidentId }, { _id: incidentId }],
+        });
         if (!incident || incident.status === 'RESOLVED')
             return null;
         incident.escalationLevel = (incident.escalationLevel || 1) + 1;

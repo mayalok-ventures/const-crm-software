@@ -1,0 +1,11 @@
+{
+  "name": "sahyak-backend",
+  "command": "node server.js",
+  "stack": "node20",
+  "build_path": "backend",
+  "buildPath": "backend",
+  "memory": 1024,
+  "env_variables": {
+    "NODE_ENV": "production"
+  }
+}

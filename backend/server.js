@@ -283,6 +283,9 @@ const databaseController = require('./src/monitoring/controllers/databaseControl
 app.get('/health/database', databaseController.getDatabaseHealthEndpoint);
 app.get('/api/health/database', databaseController.getDatabaseHealthEndpoint);
 
+// Root service status endpoint
+app.get('/', (req, res) => res.status(200).json({ status: 'OK', service: 'sahyak-backend', timestamp: new Date().toISOString() }));
+
 // 404
 app.use((req, res) => res.status(404).json({ message: 'Route not found' }));
 

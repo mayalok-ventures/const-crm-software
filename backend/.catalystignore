@@ -1,0 +1,18 @@
+# Catalyst deployment packaging ignore rules
+node_modules/.cache
+tests/**
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+*.md
+.git
+.github
+.gitignore
+.env*
+!.env.example
+*.log
+uploads/*
+!uploads/.gitkeep
+cloudflared*
+coverage

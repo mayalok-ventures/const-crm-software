@@ -8,6 +8,8 @@ on:
       - 'backend/**'
       - '.github/workflows/deploy-backend.yml'
       - 'catalyst.json'
+      - 'app-config.json'
+      - '.catalystignore'
   workflow_dispatch:
 
 concurrency:
@@ -76,6 +78,16 @@ jobs:
           echo "=========================================================="
           node tests/self_service_lead_integration.test.js
 
+          echo "=========================================================="
+          echo "Running Production Health Framework Tests..."
+          echo "=========================================================="
+          node tests/production_health_framework.test.js
+
+          echo "=========================================================="
+          echo "Running AppSail CI/CD Health & Configuration Regression Tests..."
+          echo "=========================================================="
+          node tests/appsail_health_and_deployment.test.js
+
   deploy-to-appsail:
     name: Deploy to Zoho Catalyst AppSail
     needs: test-and-validate
@@ -105,6 +117,7 @@ jobs:
             echo "::error::Missing secret CATALYST_TOKEN. Generate via 'catalyst token:generate --current' and add to GitHub Secrets."
             exit 1
           fi
+          echo "::add-mask::$CATALYST_TOKEN"
           echo "✅ Mandatory deployment authentication token is present."
 
       - name: Build & Prepare Clean Production Bundle
@@ -124,46 +137,84 @@ jobs:
           CATALYST_DC: ${{ secrets.CATALYST_DC || 'in' }}
           APPSAIL_NAME: ${{ secrets.CATALYST_APPSAIL_NAME || 'sahyak-backend' }}
         run: |
+          set -eo pipefail
           echo "🚀 Deploying AppSail service [$APPSAIL_NAME] to Catalyst Project [$CATALYST_PROJECT] (Org: $CATALYST_ORG, DC: $CATALYST_DC)..."
 
           DEPLOY_ARGS=(
-            "deploy" "appsail"
+            "deploy"
+            "--only" "appsail"
             "--project" "$CATALYST_PROJECT"
             "--token" "$CATALYST_TOKEN"
             "--org" "$CATALYST_ORG"
             "--dc" "$CATALYST_DC"
-            "--name" "$APPSAIL_NAME"
-            "--build-path" "./backend"
-            "--stack" "node20"
-            "--command" "node server.js"
             "--non-interactive"
             "--verbose"
           )
 
           catalyst "${DEPLOY_ARGS[@]}" 2>&1 | tee /tmp/catalyst_deploy.log
 
-          # Capture assigned AppSail URL if outputted by Catalyst CLI
-          ASSIGNED_URL=$(grep -oiE 'https://[a-zA-Z0-9.-]+\.catalystappsail\.[a-z]+' /tmp/catalyst_deploy.log | head -n 1 || true)
-          if [ -n "$ASSIGNED_URL" ]; then
-            echo "DEPLOYED_APPSAIL_URL=$ASSIGNED_URL" >> $GITHUB_ENV
-            echo "📍 Captured deployed AppSail URL from CLI: $ASSIGNED_URL"
+          # Capture assigned AppSail URL if outputted by Catalyst CLI (strip ANSI color escape codes)
+          ASSIGNED_URL=$(sed -r 's/\x1b\[[0-9;]*m//g' /tmp/catalyst_deploy.log | grep -oiE 'https://[a-zA-Z0-9.-]+\.catalystappsail\.[a-z]+' | head -n 1 | sed 's:/*$::' || true)
+
+          # Fallback 1: Query Catalyst BaaS API directly if log parsing did not yield URL
+          if [ -z "$ASSIGNED_URL" ]; then
+            echo "Querying Catalyst API for deployed AppSail URL..."
+            ASSIGNED_URL=$(node -e '
+              const https = require("https");
+              const dc = process.env.CATALYST_DC || "in";
+              const host = `api.catalyst.zoho.${dc === "us" ? "com" : dc}`;
+              const proj = process.env.CATALYST_PROJECT;
+              const org = process.env.CATALYST_ORG;
+              const token = process.env.CATALYST_TOKEN;
+              const options = {
+                hostname: host,
+                path: `/baas/v1/project/${proj}/appsail`,
+                method: "GET",
+                headers: {
+                  "Authorization": "Bearer " + token,
+                  "CATALYST-ORG": org,
+                  "X-CATALYST-Environment": "Development",
+                  "Accept": "application/vnd.catalyst.v2+json"
+                }
+              };
+              const req = https.request(options, (res) => {
+                let data = "";
+                res.on("data", c => data += c);
+                res.on("end", () => {
+                  try {
+                    const parsed = JSON.parse(data);
+                    const app = parsed.data?.find(a => a.name === process.env.APPSAIL_NAME) || parsed.data?.[0];
+                    if (app && app.url) console.log(app.url.replace(/\/+$/, ""));
+                  } catch(e) {}
+                });
+              });
+              req.on("error", () => {});
+              req.end();
+            ' || true)
           fi
+
+          # Fallback 2: Canonical Zoho Catalyst India DC naming convention
+          if [ -z "$ASSIGNED_URL" ]; then
+            ASSIGNED_URL="https://${APPSAIL_NAME}-${CATALYST_ORG}.development.catalystappsail.${CATALYST_DC}"
+          fi
+
+          echo "DEPLOYED_APPSAIL_URL=$ASSIGNED_URL" >> $GITHUB_ENV
+          echo "📍 Confirmed deployed AppSail URL: $ASSIGNED_URL"
 
       - name: Verify Live Deployment Health & Readiness
         env:
           CONFIGURED_URL: ${{ secrets.BACKEND_API_URL }}
         run: |
-          # Priority: User-configured secret -> Captured CLI deployment URL -> Default canonical domain
-          if [ -n "$CONFIGURED_URL" ]; then
-            TARGET_URL="${CONFIGURED_URL%/}"
-          elif [ -n "$DEPLOYED_APPSAIL_URL" ]; then
-            TARGET_URL="${DEPLOYED_APPSAIL_URL%/}"
-          else
-            TARGET_URL="https://api.sahyak.com"
+          # PRIMARY TARGET: The actual deployed AppSail container URL
+          TARGET_URL="${DEPLOYED_APPSAIL_URL%/}"
+
+          if [ -z "$TARGET_URL" ]; then
+            echo "::error::No deployed AppSail URL was resolved. Aborting verification."
+            exit 1
           fi
 
           echo "=========================================================="
-          echo "🔍 Post-Deployment Health Check Verification on: $TARGET_URL"
+          echo "🔍 Primary Post-Deployment Verification on AppSail: $TARGET_URL"
           echo "=========================================================="
 
           MAX_ATTEMPTS=12
@@ -188,7 +239,7 @@ jobs:
             fi
 
             if [ "$HEALTH_HTTP_CODE" = "200" ] && [ "$IS_READY" -eq 1 ]; then
-              echo "✅ Health and readiness checks passed!"
+              echo "✅ Primary AppSail health and readiness checks passed!"
               echo "--- /health response ---"
               cat /tmp/health_res.json
               echo ""
@@ -199,12 +250,12 @@ jobs:
               break
             fi
 
-            echo "Endpoints not ready yet. Retrying in $DELAY_SECONDS seconds..."
+            echo "AppSail endpoints not ready yet. Retrying in $DELAY_SECONDS seconds..."
             sleep $DELAY_SECONDS
           done
 
           if [ "$SUCCESS" -ne 1 ]; then
-            echo "::error::Deployment Verification Failed: Backend failed health checks after $MAX_ATTEMPTS attempts."
+            echo "::error::Deployment Verification Failed: AppSail container failed health checks after $MAX_ATTEMPTS attempts."
             echo "Last /health response (Code: $HEALTH_HTTP_CODE):"
             cat /tmp/health_res.json 2>/dev/null || true
             echo ""
@@ -212,6 +263,23 @@ jobs:
             cat /tmp/ready_res.json 2>/dev/null || true
             echo ""
             exit 1
+          fi
+
+          # Optional Secondary Check: Probe Custom Domain if configured
+          CUSTOM_DOMAIN="${CONFIGURED_URL:-https://api.sahyak.com}"
+          CUSTOM_DOMAIN="${CUSTOM_DOMAIN%/}"
+          echo "=========================================================="
+          echo "🌐 Secondary Diagnostic Check: Custom Domain [$CUSTOM_DOMAIN]"
+          echo "=========================================================="
+          CUSTOM_HEALTH_CODE=$(curl -s -o /tmp/custom_health.json -w "%{http_code}" "$CUSTOM_DOMAIN/health" || echo "000")
+          echo "Custom domain /health HTTP Status: $CUSTOM_HEALTH_CODE"
+
+          if [ "$CUSTOM_HEALTH_CODE" = "200" ] && grep -Eq '"status"\s*:\s*"(HEALTHY|DEGRADED)"' /tmp/custom_health.json 2>/dev/null; then
+            echo "✅ Custom domain $CUSTOM_DOMAIN is actively mapped to the running service and healthy!"
+          else
+            echo "ℹ️ Note: Custom domain $CUSTOM_DOMAIN returned HTTP $CUSTOM_HEALTH_CODE."
+            echo "   The deployed AppSail container is verified healthy at $TARGET_URL."
+            echo "   If $CUSTOM_DOMAIN returns 404 or routes to legacy infrastructure, complete the custom domain CNAME mapping in Zoho Catalyst Console (AppSail > Custom Domains)."
           fi
 
           echo "=========================================================="

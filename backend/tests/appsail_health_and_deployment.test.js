@@ -1,0 +1,184 @@
+/**
+ * AppSail CI/CD Health & Deployment Configuration Regression Tests
+ *
+ * Validates:
+ * 1. catalyst.json manifest points to correct AppSail service name & source directory
+ * 2. backend/app-config.json specifies valid Node.js stack, entry point, buildPath
+ * 3. Root app-config.json presence for standalone fallback
+ * 4. Health controller exports & contract verification
+ * 5. AppSail deployment URL regex parsing & ANSI escape removal
+ * 6. Express router audit for /health and /health/ready endpoints
+ */
+
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+
+let passedTests = 0;
+let failedTests = 0;
+
+function it(desc, fn) {
+  try {
+    fn();
+    console.log(`  ✅ [PASS] ${desc}`);
+    passedTests++;
+  } catch (err) {
+    console.error(`  ❌ [FAIL] ${desc}`);
+    console.error(`     Error: ${err.message}`);
+    failedTests++;
+  }
+}
+
+async function itAsync(desc, fn) {
+  try {
+    await fn();
+    console.log(`  ✅ [PASS] ${desc}`);
+    passedTests++;
+  } catch (err) {
+    console.error(`  ❌ [FAIL] ${desc}`);
+    console.error(`     Error: ${err.message}`);
+    failedTests++;
+  }
+}
+
+async function runAll() {
+  console.log('\n========================================================');
+  console.log('   APPSAIL CI/CD HEALTH & CONFIGURATION REGRESSION TESTS  ');
+  console.log('========================================================\n');
+
+  // 1. Audit catalyst.json
+  it('catalyst.json at project root defines sahyak-backend with source backend', () => {
+    const rootCatalystJsonPath = path.resolve(__dirname, '../../catalyst.json');
+    assert.ok(fs.existsSync(rootCatalystJsonPath), 'catalyst.json must exist at project root');
+
+    const content = JSON.parse(fs.readFileSync(rootCatalystJsonPath, 'utf8'));
+    assert.ok(Array.isArray(content.appsail), 'appsail must be an array in catalyst.json');
+    assert.strictEqual(content.appsail.length, 1, 'Exactly one AppSail target must be declared');
+    assert.strictEqual(content.appsail[0].name, 'sahyak-backend', 'AppSail name must be sahyak-backend');
+    assert.strictEqual(content.appsail[0].source, 'backend', 'AppSail source must be backend');
+  });
+
+  // 2. Audit backend/app-config.json
+  it('backend/app-config.json specifies node20, node server.js, and buildPath', () => {
+    const appConfigPath = path.resolve(__dirname, '../app-config.json');
+    assert.ok(fs.existsSync(appConfigPath), 'backend/app-config.json must exist');
+
+    const config = JSON.parse(fs.readFileSync(appConfigPath, 'utf8'));
+    assert.strictEqual(config.stack, 'node20', 'Stack must be node20');
+    assert.strictEqual(config.command, 'node server.js', 'Command must be node server.js');
+    assert.ok(config.buildPath === '.' || config.build_path === '.', 'buildPath must be "."');
+    assert.strictEqual(config.env_variables?.NODE_ENV, 'production', 'NODE_ENV must be production');
+  });
+
+  // 3. Audit root app-config.json
+  it('root app-config.json exists with backend buildPath for standalone fallback', () => {
+    const rootAppConfigPath = path.resolve(__dirname, '../../app-config.json');
+    assert.ok(fs.existsSync(rootAppConfigPath), 'root app-config.json must exist for CLI compatibility');
+
+    const config = JSON.parse(fs.readFileSync(rootAppConfigPath, 'utf8'));
+    assert.strictEqual(config.stack, 'node20');
+    assert.strictEqual(config.command, 'node server.js');
+    assert.ok(config.buildPath === 'backend' || config.build_path === 'backend');
+  });
+
+  // 4. Verify HealthController functions
+  it('healthController exports getHealth, getReady, getLive, getDetailed', () => {
+    const healthController =
+      require('../src/monitoring/controllers/healthController').default ||
+      require('../src/monitoring/controllers/healthController');
+
+    assert.strictEqual(typeof healthController.getHealth, 'function');
+    assert.strictEqual(typeof healthController.getReady, 'function');
+    assert.strictEqual(typeof healthController.getLive, 'function');
+    assert.strictEqual(typeof healthController.getDetailed, 'function');
+  });
+
+  // 5. Test URL regex extraction
+  it('regex extracts AppSail URL cleanly from ANSI-colored CLI deploy logs', () => {
+    const rawLog = `
+ >>>>>>>>>>>>>>> AppSail <<<<<<<<<<<<<
+
+  \u001b[1mDEPLOYMENT SUCCESSFUL\u001b[22m : sahyak-backend
+  \u001b[1mAPPSAIL URL          \u001b[22m : \u001b[4mhttps://sahyak-backend-60093521877.development.catalystappsail.in/\u001b[24m
+
+\u001b[32m✔\u001b[39m Catalyst deploy complete!
+`;
+
+    // Standard pipeline extraction used in GitHub Actions
+    const stripped = rawLog.replace(/\x1b\[[0-9;]*m/g, '');
+    const match = stripped.match(/https:\/\/[a-zA-Z0-9.-]+\.catalystappsail\.[a-z]+/i);
+    assert.ok(match, 'Must find matching URL in log');
+    const extractedUrl = match[0].replace(/\/+$/, '');
+
+    assert.strictEqual(
+      extractedUrl,
+      'https://sahyak-backend-60093521877.development.catalystappsail.in'
+    );
+  });
+
+  // 6. Test Express /health response structure
+  await itAsync('healthController.getHealth returns HTTP 200 or 503 with standard JSON contract', async () => {
+    const healthController =
+      require('../src/monitoring/controllers/healthController').default ||
+      require('../src/monitoring/controllers/healthController');
+
+    let statusCode = null;
+    let responseData = null;
+
+    const req = {};
+    const res = {
+      status(code) {
+        statusCode = code;
+        return this;
+      },
+      json(data) {
+        responseData = data;
+        return this;
+      },
+    };
+
+    await healthController.getHealth(req, res);
+    assert.ok(statusCode === 200 || statusCode === 503, `HTTP Status was ${statusCode}`);
+    assert.ok(responseData.status, 'Response must have status field');
+    assert.ok(typeof responseData.overallScore === 'number', 'overallScore must be a number');
+  });
+
+  // 7. Test Express /health/ready response structure
+  await itAsync('healthController.getReady returns ready boolean and component checks', async () => {
+    const healthController =
+      require('../src/monitoring/controllers/healthController').default ||
+      require('../src/monitoring/controllers/healthController');
+
+    let statusCode = null;
+    let responseData = null;
+
+    const req = {};
+    const res = {
+      status(code) {
+        statusCode = code;
+        return this;
+      },
+      json(data) {
+        responseData = data;
+        return this;
+      },
+    };
+
+    await healthController.getReady(req, res);
+    assert.ok(statusCode === 200 || statusCode === 503, `HTTP Status was ${statusCode}`);
+    assert.strictEqual(typeof responseData.ready, 'boolean', 'Response must have boolean ready field');
+  });
+
+  console.log('\n========================================================');
+  console.log(`TOTAL TESTS: ${passedTests + failedTests} | PASSED: ${passedTests} | FAILED: ${failedTests}`);
+  console.log('========================================================\n');
+
+  if (failedTests > 0) {
+    process.exit(1);
+  }
+}
+
+runAll().catch(err => {
+  console.error('Test runner failure:', err);
+  process.exit(1);
+});
