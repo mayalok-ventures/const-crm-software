@@ -100,17 +100,12 @@ jobs:
       - name: Validate Required Zoho Deployment Secrets
         env:
           CATALYST_TOKEN: ${{ secrets.CATALYST_TOKEN }}
-          CATALYST_PROJECT: ${{ secrets.CATALYST_PROJECT_NAME }}
         run: |
           if [ -z "$CATALYST_TOKEN" ]; then
-            echo "::error::Missing secret CATALYST_TOKEN. Generate via 'catalyst token:generate' and add to GitHub Secrets."
+            echo "::error::Missing secret CATALYST_TOKEN. Generate via 'catalyst token:generate --current' and add to GitHub Secrets."
             exit 1
           fi
-          if [ -z "$CATALYST_PROJECT" ]; then
-            echo "::error::Missing secret CATALYST_PROJECT_NAME. Add your Zoho Catalyst Project Name or ID to GitHub Secrets."
-            exit 1
-          fi
-          echo "✅ All mandatory deployment credentials are present."
+          echo "✅ Mandatory deployment authentication token is present."
 
       - name: Build & Prepare Clean Production Bundle
         working-directory: ./backend
@@ -124,17 +119,19 @@ jobs:
       - name: Deploy to Zoho Catalyst AppSail
         env:
           CATALYST_TOKEN: ${{ secrets.CATALYST_TOKEN }}
-          CATALYST_PROJECT: ${{ secrets.CATALYST_PROJECT_NAME }}
-          CATALYST_ORG: ${{ secrets.CATALYST_ORG }}
-          CATALYST_DC: ${{ secrets.CATALYST_DC }}
+          CATALYST_PROJECT: ${{ secrets.CATALYST_PROJECT_NAME || '91974000000013053' }}
+          CATALYST_ORG: ${{ secrets.CATALYST_ORG || '60093521877' }}
+          CATALYST_DC: ${{ secrets.CATALYST_DC || 'in' }}
           APPSAIL_NAME: ${{ secrets.CATALYST_APPSAIL_NAME || 'sahyak-backend' }}
         run: |
-          echo "🚀 Deploying $APPSAIL_NAME to Zoho Catalyst Project: $CATALYST_PROJECT..."
+          echo "🚀 Deploying AppSail service [$APPSAIL_NAME] to Catalyst Project [$CATALYST_PROJECT] (Org: $CATALYST_ORG, DC: $CATALYST_DC)..."
 
           DEPLOY_ARGS=(
             "deploy" "appsail"
             "--project" "$CATALYST_PROJECT"
             "--token" "$CATALYST_TOKEN"
+            "--org" "$CATALYST_ORG"
+            "--dc" "$CATALYST_DC"
             "--name" "$APPSAIL_NAME"
             "--build-path" "./backend"
             "--stack" "node20"
@@ -143,21 +140,28 @@ jobs:
             "--verbose"
           )
 
-          if [ -n "$CATALYST_ORG" ]; then
-            DEPLOY_ARGS+=("--org" "$CATALYST_ORG")
-          fi
+          catalyst "${DEPLOY_ARGS[@]}" 2>&1 | tee /tmp/catalyst_deploy.log
 
-          if [ -n "$CATALYST_DC" ]; then
-            DEPLOY_ARGS+=("--dc" "$CATALYST_DC")
+          # Capture assigned AppSail URL if outputted by Catalyst CLI
+          ASSIGNED_URL=$(grep -oiE 'https://[a-zA-Z0-9.-]+\.catalystappsail\.[a-z]+' /tmp/catalyst_deploy.log | head -n 1 || true)
+          if [ -n "$ASSIGNED_URL" ]; then
+            echo "DEPLOYED_APPSAIL_URL=$ASSIGNED_URL" >> $GITHUB_ENV
+            echo "📍 Captured deployed AppSail URL from CLI: $ASSIGNED_URL"
           fi
-
-          catalyst "${DEPLOY_ARGS[@]}"
 
       - name: Verify Live Deployment Health & Readiness
         env:
-          RAW_TARGET_URL: ${{ secrets.BACKEND_API_URL || 'https://api.sahyak.com' }}
+          CONFIGURED_URL: ${{ secrets.BACKEND_API_URL }}
         run: |
-          TARGET_URL="${RAW_TARGET_URL%/}"
+          # Priority: User-configured secret -> Captured CLI deployment URL -> Default canonical domain
+          if [ -n "$CONFIGURED_URL" ]; then
+            TARGET_URL="${CONFIGURED_URL%/}"
+          elif [ -n "$DEPLOYED_APPSAIL_URL" ]; then
+            TARGET_URL="${DEPLOYED_APPSAIL_URL%/}"
+          else
+            TARGET_URL="https://api.sahyak.com"
+          fi
+
           echo "=========================================================="
           echo "🔍 Post-Deployment Health Check Verification on: $TARGET_URL"
           echo "=========================================================="
@@ -166,8 +170,8 @@ jobs:
           DELAY_SECONDS=15
           SUCCESS=0
 
-          echo "Waiting 20 seconds for AppSail container cutover..."
-          sleep 20
+          echo "Waiting 25 seconds for AppSail container initialization and cutover..."
+          sleep 25
 
           for i in $(seq 1 $MAX_ATTEMPTS); do
             echo "Attempt $i of $MAX_ATTEMPTS: Checking $TARGET_URL/health and $TARGET_URL/health/ready..."
