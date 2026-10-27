@@ -98,22 +98,28 @@ jobs:
           catalyst -v
 
       - name: Validate Required Zoho Deployment Secrets
+        env:
+          CATALYST_TOKEN: ${{ secrets.CATALYST_TOKEN }}
+          CATALYST_PROJECT: ${{ secrets.CATALYST_PROJECT_NAME }}
         run: |
-          if [ -z "${{ secrets.CATALYST_TOKEN }}" ]; then
+          if [ -z "$CATALYST_TOKEN" ]; then
             echo "::error::Missing secret CATALYST_TOKEN. Generate via 'catalyst token:generate' and add to GitHub Secrets."
             exit 1
           fi
-          if [ -z "${{ secrets.CATALYST_PROJECT_NAME }}" ]; then
+          if [ -z "$CATALYST_PROJECT" ]; then
             echo "::error::Missing secret CATALYST_PROJECT_NAME. Add your Zoho Catalyst Project Name or ID to GitHub Secrets."
             exit 1
           fi
           echo "✅ All mandatory deployment credentials are present."
 
-      - name: Prepare Clean Production Deployment Bundle
+      - name: Build & Prepare Clean Production Bundle
         working-directory: ./backend
         run: |
-          echo "Installing production dependencies..."
-          npm ci --omit=dev
+          echo "Installing dependencies and compiling TypeScript..."
+          npm ci
+          npm run build
+          echo "Pruning devDependencies for clean container packaging..."
+          npm prune --omit=dev
 
       - name: Deploy to Zoho Catalyst AppSail
         env:
@@ -149,8 +155,9 @@ jobs:
 
       - name: Verify Live Deployment Health & Readiness
         env:
-          TARGET_URL: ${{ secrets.BACKEND_API_URL || 'https://api.sahyak.com' }}
+          RAW_TARGET_URL: ${{ secrets.BACKEND_API_URL || 'https://api.sahyak.com' }}
         run: |
+          TARGET_URL="${RAW_TARGET_URL%/}"
           echo "=========================================================="
           echo "🔍 Post-Deployment Health Check Verification on: $TARGET_URL"
           echo "=========================================================="
@@ -171,8 +178,13 @@ jobs:
             echo "  /health HTTP Status: $HEALTH_HTTP_CODE"
             echo "  /health/ready HTTP Status: $READY_HTTP_CODE"
 
-            if [ "$HEALTH_HTTP_CODE" = "200" ] && [ "$READY_HTTP_CODE" = "200" ]; then
-              echo "✅ Health check passed!"
+            IS_READY=0
+            if [ "$READY_HTTP_CODE" = "200" ] && grep -Eq '"ready"\s*:\s*true' /tmp/ready_res.json 2>/dev/null; then
+              IS_READY=1
+            fi
+
+            if [ "$HEALTH_HTTP_CODE" = "200" ] && [ "$IS_READY" -eq 1 ]; then
+              echo "✅ Health and readiness checks passed!"
               echo "--- /health response ---"
               cat /tmp/health_res.json
               echo ""
