@@ -1,6 +1,7 @@
 {
   "command": "node server.js",
   "stack": "node20",
+  "buildPath": ".",
   "memory": 1024,
   "env_variables": {
     "NODE_ENV": "production"

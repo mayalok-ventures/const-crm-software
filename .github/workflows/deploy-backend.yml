@@ -1,0 +1,203 @@
+name: Deploy Backend to Zoho Catalyst AppSail
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
+      - 'catalyst.json'
+  workflow_dispatch:
+
+concurrency:
+  group: production-zoho-backend-deployment
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-validate:
+    name: Backend Validation & Regression Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: TypeScript Compilation & Type Validation
+        working-directory: ./backend
+        run: npm run build
+
+      - name: Start MongoDB Service Container
+        uses: supercharge/mongodb-github-action@1.11.0
+        with:
+          mongodb-version: '7.0'
+
+      - name: Run Backend Regression & Security Test Suites
+        working-directory: ./backend
+        env:
+          NODE_ENV: test
+          PORT: 5001
+          MONGO_URI: mongodb://127.0.0.1:27017/test-crm-ci
+          JWT_SECRET: crm_jwt_secret_dev_key_2026_super_secure_32_chars_ci
+          INTEGRATION_ENCRYPTION_KEY: crm_default_integration_aes_key_32_bytes_2026
+        run: |
+          echo "=========================================================="
+          echo "Running Deployment Tracking Unit Tests..."
+          echo "=========================================================="
+          node tests/deployments_releases_tracking.test.js
+
+          echo "=========================================================="
+          echo "Running Database Monitoring & Diagnostic Tests..."
+          echo "=========================================================="
+          node tests/database_monitoring.test.js
+
+          echo "=========================================================="
+          echo "Running Integration Architecture & Security Audit..."
+          echo "=========================================================="
+          node tests/integration_architecture_audit.test.js
+
+          echo "=========================================================="
+          echo "Running Self-Service Lead Ingestion & Isolation Tests..."
+          echo "=========================================================="
+          node tests/self_service_lead_integration.test.js
+
+  deploy-to-appsail:
+    name: Deploy to Zoho Catalyst AppSail
+    needs: test-and-validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Zoho Catalyst CLI
+        run: |
+          npm install -g zcatalyst-cli@latest
+          echo "Zoho Catalyst CLI Version:"
+          catalyst -v
+
+      - name: Validate Required Zoho Deployment Secrets
+        run: |
+          if [ -z "${{ secrets.CATALYST_TOKEN }}" ]; then
+            echo "::error::Missing secret CATALYST_TOKEN. Generate via 'catalyst token:generate' and add to GitHub Secrets."
+            exit 1
+          fi
+          if [ -z "${{ secrets.CATALYST_PROJECT_NAME }}" ]; then
+            echo "::error::Missing secret CATALYST_PROJECT_NAME. Add your Zoho Catalyst Project Name or ID to GitHub Secrets."
+            exit 1
+          fi
+          echo "✅ All mandatory deployment credentials are present."
+
+      - name: Prepare Clean Production Deployment Bundle
+        working-directory: ./backend
+        run: |
+          echo "Installing production dependencies..."
+          npm ci --omit=dev
+
+      - name: Deploy to Zoho Catalyst AppSail
+        env:
+          CATALYST_TOKEN: ${{ secrets.CATALYST_TOKEN }}
+          CATALYST_PROJECT: ${{ secrets.CATALYST_PROJECT_NAME }}
+          CATALYST_ORG: ${{ secrets.CATALYST_ORG }}
+          CATALYST_DC: ${{ secrets.CATALYST_DC }}
+          APPSAIL_NAME: ${{ secrets.CATALYST_APPSAIL_NAME || 'sahyak-backend' }}
+        run: |
+          echo "🚀 Deploying $APPSAIL_NAME to Zoho Catalyst Project: $CATALYST_PROJECT..."
+
+          DEPLOY_ARGS=(
+            "deploy" "appsail"
+            "--project" "$CATALYST_PROJECT"
+            "--token" "$CATALYST_TOKEN"
+            "--name" "$APPSAIL_NAME"
+            "--build-path" "./backend"
+            "--stack" "node20"
+            "--command" "node server.js"
+            "--non-interactive"
+            "--verbose"
+          )
+
+          if [ -n "$CATALYST_ORG" ]; then
+            DEPLOY_ARGS+=("--org" "$CATALYST_ORG")
+          fi
+
+          if [ -n "$CATALYST_DC" ]; then
+            DEPLOY_ARGS+=("--dc" "$CATALYST_DC")
+          fi
+
+          catalyst "${DEPLOY_ARGS[@]}"
+
+      - name: Verify Live Deployment Health & Readiness
+        env:
+          TARGET_URL: ${{ secrets.BACKEND_API_URL || 'https://api.sahyak.com' }}
+        run: |
+          echo "=========================================================="
+          echo "🔍 Post-Deployment Health Check Verification on: $TARGET_URL"
+          echo "=========================================================="
+
+          MAX_ATTEMPTS=12
+          DELAY_SECONDS=15
+          SUCCESS=0
+
+          echo "Waiting 20 seconds for AppSail container cutover..."
+          sleep 20
+
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            echo "Attempt $i of $MAX_ATTEMPTS: Checking $TARGET_URL/health and $TARGET_URL/health/ready..."
+
+            HEALTH_HTTP_CODE=$(curl -s -o /tmp/health_res.json -w "%{http_code}" "$TARGET_URL/health" || echo "000")
+            READY_HTTP_CODE=$(curl -s -o /tmp/ready_res.json -w "%{http_code}" "$TARGET_URL/health/ready" || echo "000")
+
+            echo "  /health HTTP Status: $HEALTH_HTTP_CODE"
+            echo "  /health/ready HTTP Status: $READY_HTTP_CODE"
+
+            if [ "$HEALTH_HTTP_CODE" = "200" ] && [ "$READY_HTTP_CODE" = "200" ]; then
+              echo "✅ Health check passed!"
+              echo "--- /health response ---"
+              cat /tmp/health_res.json
+              echo ""
+              echo "--- /health/ready response ---"
+              cat /tmp/ready_res.json
+              echo ""
+              SUCCESS=1
+              break
+            fi
+
+            echo "Endpoints not ready yet. Retrying in $DELAY_SECONDS seconds..."
+            sleep $DELAY_SECONDS
+          done
+
+          if [ "$SUCCESS" -ne 1 ]; then
+            echo "::error::Deployment Verification Failed: Backend failed health checks after $MAX_ATTEMPTS attempts."
+            echo "Last /health response (Code: $HEALTH_HTTP_CODE):"
+            cat /tmp/health_res.json 2>/dev/null || true
+            echo ""
+            echo "Last /health/ready response (Code: $READY_HTTP_CODE):"
+            cat /tmp/ready_res.json 2>/dev/null || true
+            echo ""
+            exit 1
+          fi
+
+          echo "=========================================================="
+          echo "🎉 Automatic Backend Deployment & Verification SUCCESSFUL!"
+          echo "=========================================================="
