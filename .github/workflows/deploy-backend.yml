@@ -10,6 +10,7 @@ on:
       - 'catalyst.json'
       - 'app-config.json'
       - '.catalystignore'
+      - '.catalystrc'
   workflow_dispatch:
 
 concurrency:
@@ -138,6 +139,58 @@ jobs:
           APPSAIL_NAME: ${{ secrets.CATALYST_APPSAIL_NAME || 'sahyak-backend' }}
         run: |
           set -eo pipefail
+
+          # In CI mode, Zoho Catalyst CLI bypasses project name resolution and requires numeric Project ID.
+          # If CATALYST_PROJECT is a project name (e.g. 'sahyak-backend'), coerce or resolve to numeric Project ID.
+          if ! [[ "$CATALYST_PROJECT" =~ ^[0-9]+$ ]]; then
+            echo "⚠️ Non-numeric project identifier detected: [$CATALYST_PROJECT]"
+            if [ "$CATALYST_PROJECT" = "sahyak-backend" ] || [ -z "$CATALYST_PROJECT" ]; then
+              echo "Coercing known project name 'sahyak-backend' to numeric Project ID '91974000000013053'."
+              CATALYST_PROJECT="91974000000013053"
+            else
+              echo "Resolving numeric project ID from Catalyst API for project [$CATALYST_PROJECT]..."
+              RESOLVED_ID=$(node -e '
+                const https = require("https");
+                const dc = process.env.CATALYST_DC || "in";
+                const host = `api.catalyst.zoho.${dc === "us" ? "com" : dc}`;
+                const token = process.env.CATALYST_TOKEN;
+                const org = process.env.CATALYST_ORG;
+                const targetName = process.env.CATALYST_PROJECT;
+                const options = {
+                  hostname: host,
+                  path: "/baas/v1/projects",
+                  method: "GET",
+                  headers: {
+                    "Authorization": "Bearer " + token,
+                    "CATALYST-ORG": org,
+                    "Accept": "application/vnd.catalyst.v2+json"
+                  }
+                };
+                const req = https.request(options, (res) => {
+                  let d = "";
+                  res.on("data", c => d += c);
+                  res.on("end", () => {
+                    try {
+                      const parsed = JSON.parse(d);
+                      const p = parsed.data?.find(x => x.project_name === targetName || x.id == targetName);
+                      if (p && p.id) console.log(p.id);
+                    } catch (e) {}
+                  });
+                });
+                req.on("error", () => {});
+                req.end();
+              ' || true)
+              if [ -n "$RESOLVED_ID" ]; then
+                echo "Successfully resolved project [$CATALYST_PROJECT] to ID [$RESOLVED_ID]."
+                CATALYST_PROJECT="$RESOLVED_ID"
+              else
+                echo "Could not resolve project [$CATALYST_PROJECT] from API; defaulting to '91974000000013053'."
+                CATALYST_PROJECT="91974000000013053"
+              fi
+            fi
+          fi
+          echo "Verified Catalyst Project ID: $CATALYST_PROJECT"
+
           echo "🚀 Deploying AppSail service [$APPSAIL_NAME] to Catalyst Project [$CATALYST_PROJECT] (Org: $CATALYST_ORG, DC: $CATALYST_DC)..."
 
           DEPLOY_ARGS=(

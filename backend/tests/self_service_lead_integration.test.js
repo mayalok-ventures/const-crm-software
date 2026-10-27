@@ -1,5 +1,6 @@
 const assert = require('assert');
 const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
 const User = require('../src/models/User');
 const Integration = require('../src/models/Integration');
 const Campaign = require('../src/models/Campaign');
@@ -9,6 +10,7 @@ const leadIngestionService = require('../src/services/integrations/leadIngestion
 const subscriptionRoutingController = require('../src/controllers/integrations/subscriptionRoutingController');
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mobile-crm';
+let mongoServer = null;
 
 async function runSelfServiceSuite() {
   console.log('\n======================================================');
@@ -16,7 +18,14 @@ async function runSelfServiceSuite() {
   console.log('======================================================\n');
 
   if (mongoose.connection.readyState === 0) {
-    await mongoose.connect(MONGO_URI);
+    try {
+      await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 2000 });
+      console.log('📦 Test MongoDB Connected (Persistent Native Engine)');
+    } catch {
+      mongoServer = await MongoMemoryServer.create();
+      await mongoose.connect(mongoServer.getUri());
+      console.log('📦 Test In-Memory MongoDB Connected');
+    }
   }
 
   const timestamp = Date.now();
@@ -416,12 +425,19 @@ async function runSelfServiceSuite() {
     await Integration.deleteMany({ companyId: { $in: [companyA._id, companyB._id] } });
     await User.deleteMany({ _id: { $in: [companyA._id, companyB._id, counselorA1._id, counselorA2._id] } });
 
+    await mongoose.disconnect();
+    if (mongoServer) await mongoServer.stop();
+
     console.log('\n======================================================');
     console.log(`🎉 ALL ${passedCount} SELF-SERVICE INTEGRATION TESTS PASSED!`);
     console.log('======================================================\n');
     process.exit(0);
   } catch (error) {
     console.error('\n❌ TEST FAILED:', error);
+    try {
+      await mongoose.disconnect();
+      if (mongoServer) await mongoServer.stop();
+    } catch (_) {}
     process.exit(1);
   }
 }

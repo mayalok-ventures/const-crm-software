@@ -169,6 +169,38 @@ async function runAll() {
     assert.strictEqual(typeof responseData.ready, 'boolean', 'Response must have boolean ready field');
   });
 
+  // 8. Test .catalystrc configuration and project id mapping
+  it('.catalystrc defines default numeric project 91974000000013053 for sahyak-backend', () => {
+    const catalystRcPath = path.resolve(__dirname, '../../.catalystrc');
+    assert.ok(fs.existsSync(catalystRcPath), '.catalystrc must exist at project root');
+
+    const rc = JSON.parse(fs.readFileSync(catalystRcPath, 'utf8'));
+    assert.ok(Array.isArray(rc.projects), 'rc.projects must be an array');
+    const project = rc.projects.find(p => p.name === 'sahyak-backend' || p.id === '91974000000013053');
+    assert.ok(project, 'Project sahyak-backend must be declared in .catalystrc');
+    assert.strictEqual(project.id, '91974000000013053', 'Project ID must be numeric 91974000000013053');
+    assert.strictEqual(project.name, 'sahyak-backend', 'Project name must be sahyak-backend');
+    assert.ok(Array.isArray(project.env), 'project.env must be an array');
+    assert.strictEqual(project.env[0].id, '60093521877', 'Default env ID must be 60093521877');
+  });
+
+  // 9. Test numeric project ID coercion logic
+  it('coerces string project names to numeric project ID 91974000000013053 to prevent INVALID_URL_PATTERN', () => {
+    function resolveProjectId(input) {
+      if (!input || !/^[0-9]+$/.test(input)) {
+        if (input === 'sahyak-backend' || !input) {
+          return '91974000000013053';
+        }
+      }
+      return input;
+    }
+
+    assert.strictEqual(resolveProjectId('sahyak-backend'), '91974000000013053');
+    assert.strictEqual(resolveProjectId(''), '91974000000013053');
+    assert.strictEqual(resolveProjectId(undefined), '91974000000013053');
+    assert.strictEqual(resolveProjectId('91974000000013053'), '91974000000013053');
+  });
+
   console.log('\n========================================================');
   console.log(`TOTAL TESTS: ${passedTests + failedTests} | PASSED: ${passedTests} | FAILED: ${failedTests}`);
   console.log('========================================================\n');

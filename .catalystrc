@@ -1,0 +1,26 @@
+{
+  "projects": [
+    {
+      "idx": 0,
+      "id": "91974000000013053",
+      "name": "sahyak-backend",
+      "timezone": "Asia/Kolkata",
+      "env": [
+        {
+          "idx": 0,
+          "id": "60093521877",
+          "name": "Development",
+          "type": "development"
+        }
+      ]
+    }
+  ],
+  "defaults": {
+    "project": 0,
+    "env": 0
+  },
+  "actives": {
+    "project": 0,
+    "env": 0
+  }
+}
