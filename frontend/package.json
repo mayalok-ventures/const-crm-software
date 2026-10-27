@@ -6,17 +6,21 @@
     "clean": "node -e \"try { require('fs').rmSync('.next', { recursive: true, force: true }); } catch (e) {}\"",
     "dev": "next dev --webpack",
     "dev:turbo": "next dev --turbopack",
-    "build": "next build --webpack",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "test": "node tests/helpers.test.js && node tests/dexie_and_virtualization.test.js"
   },
   "dependencies": {
     "@serwist/next": "^9.5.13",
+    "@tailwindcss/postcss": "^4.0.0",
     "@tanstack/query-sync-storage-persister": "^5.104.5",
     "@tanstack/react-query": "^5.104.5",
     "@tanstack/react-query-persist-client": "^5.104.5",
     "@tanstack/react-virtual": "^3.14.22",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
     "axios": "^1.18.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -24,22 +28,18 @@
     "dexie": "^4.4.7",
     "lucide-react": "^1.24.0",
     "next": "16.2.10",
+    "qrcode": "^1.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-hot-toast": "^2.6.0",
     "recharts": "^3.9.2",
     "serwist": "^9.5.13",
-    "tailwind-merge": "^3.7.0"
+    "tailwind-merge": "^3.7.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.10",
-    "qrcode": "^1.5.4",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "eslint-config-next": "16.2.10"
   }
 }
