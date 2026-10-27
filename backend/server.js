@@ -312,7 +312,22 @@ app.use((err, req, res, next) => {
 const { seedSuperAdmin } = require('./src/utils/seedSuperAdmin');
 const { seedPlans } = require('./src/utils/seedPlans');
 
-// Start server after DB is ready
+// Bind HTTP listener immediately so AppSail container health checks succeed without delay
+const PORT = process.env.X_ZOHO_CATALYST_LISTEN_PORT || process.env.PORT || 5000;
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n🚀 Admission Consultants CRM Backend running on http://localhost:${PORT}`);
+  console.log(`📦 Environment: ${process.env.NODE_ENV || 'development'}\n`);
+  
+  // Start event loop & memory monitor if PERF_DEBUG=1
+  startEventLoopMonitor();
+});
+
+let agent, heartbeat, statusEvaluator, aggregator;
+let databaseMonitorWorker, backupMonitorWorker, alertMonitorWorker;
+let integrationMonitorWorker, usageMonitorWorker, apiKeySecurityWorker;
+let deploymentMonitorWorker, healthScoreWorker;
+
+// Asynchronously connect to database and initialize workers
 connectDB().then(async () => {
   // Attach Mongoose slow query interceptor
   try {
@@ -321,7 +336,6 @@ connectDB().then(async () => {
   } catch (sqErr) {
     console.warn('[SlowQueryInterceptor] Hook initialization notice:', sqErr.message);
   }
-
 
   // Run self-serve integrations migration (ensures per-integration keys and form keys)
   const { migrateIntegrations } = require('./src/migrations/migrateIntegrations');
@@ -334,152 +348,138 @@ connectDB().then(async () => {
   // Start cron jobs
   startFollowUpCron();
 
-  const PORT = process.env.X_ZOHO_CATALYST_LISTEN_PORT || process.env.PORT || 5000;
-  const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🚀 Admission Consultants CRM Backend running on http://localhost:${PORT}`);
-    console.log(`📦 Environment: ${process.env.NODE_ENV || 'development'}\n`);
-    
-    // Start event loop & memory monitor if PERF_DEBUG=1
-    startEventLoopMonitor();
+  const runBackgroundWorkers = process.env.RUN_BACKGROUND_WORKERS !== 'false';
 
-    const runBackgroundWorkers = process.env.RUN_BACKGROUND_WORKERS !== 'false';
+  if (runBackgroundWorkers) {
+    // Auto-restore saved WhatsApp sessions
+    waSession.initSessions().catch(console.error);
 
-    if (runBackgroundWorkers) {
-      // Auto-restore saved WhatsApp sessions
-      waSession.initSessions().catch(console.error);
+    // Start campaign background worker
+    campaignWorker.startWorker();
+  } else {
+    console.log('⚡ [crm-api] Process running in isolated HTTP API mode (workers delegated to crm-worker).');
+  }
 
-      // Start campaign background worker
-      campaignWorker.startWorker();
-    } else {
-      console.log('⚡ [crm-api] Process running in isolated HTTP API mode (workers delegated to crm-worker).');
-    }
+  // Start background monitoring agents and workers (except in testing or when delegated to dedicated worker)
+  if (process.env.NODE_ENV !== 'test' && runBackgroundWorkers) {
+    const MonitoringAgent = require('./src/monitoring/MonitoringAgent').default;
+    const ServerHeartbeat = require('./src/monitoring/ServerHeartbeat').default;
+    const StatusEvaluator = require('./src/monitoring/StatusEvaluator').default;
+    const MetricsAggregator = require('./src/monitoring/MetricsAggregator').default;
+    const dbWorkerMod = require('./src/monitoring/database/DatabaseMonitorWorker');
+    databaseMonitorWorker = dbWorkerMod.databaseMonitorWorker || (dbWorkerMod.DatabaseMonitorWorker && dbWorkerMod.DatabaseMonitorWorker.getInstance()) || dbWorkerMod.default;
 
-    let agent, heartbeat, statusEvaluator, aggregator;
-    let databaseMonitorWorker, backupMonitorWorker, alertMonitorWorker;
-    let integrationMonitorWorker, usageMonitorWorker, apiKeySecurityWorker;
-    let deploymentMonitorWorker, healthScoreWorker;
+    const bkWorkerMod = require('./src/monitoring/backup/BackupMonitorWorker');
+    backupMonitorWorker = bkWorkerMod.backupMonitorWorker || (bkWorkerMod.BackupMonitorWorker && bkWorkerMod.BackupMonitorWorker.getInstance()) || bkWorkerMod.default;
 
-    // Start background monitoring agents and workers (except in testing or when delegated to dedicated worker)
-    if (process.env.NODE_ENV !== 'test' && runBackgroundWorkers) {
-      const MonitoringAgent = require('./src/monitoring/MonitoringAgent').default;
-      const ServerHeartbeat = require('./src/monitoring/ServerHeartbeat').default;
-      const StatusEvaluator = require('./src/monitoring/StatusEvaluator').default;
-      const MetricsAggregator = require('./src/monitoring/MetricsAggregator').default;
-      const dbWorkerMod = require('./src/monitoring/database/DatabaseMonitorWorker');
-      databaseMonitorWorker = dbWorkerMod.databaseMonitorWorker || (dbWorkerMod.DatabaseMonitorWorker && dbWorkerMod.DatabaseMonitorWorker.getInstance()) || dbWorkerMod.default;
+    const alWorkerMod = require('./src/monitoring/alerts/AlertMonitorWorker');
+    alertMonitorWorker = alWorkerMod.alertMonitorWorker || (alWorkerMod.AlertMonitorWorker && alWorkerMod.AlertMonitorWorker.getInstance()) || alWorkerMod.default;
 
-      const bkWorkerMod = require('./src/monitoring/backup/BackupMonitorWorker');
-      backupMonitorWorker = bkWorkerMod.backupMonitorWorker || (bkWorkerMod.BackupMonitorWorker && bkWorkerMod.BackupMonitorWorker.getInstance()) || bkWorkerMod.default;
+    const intWorkerMod = require('./src/monitoring/integrations/IntegrationMonitorWorker');
+    integrationMonitorWorker = intWorkerMod.integrationMonitorWorker || (intWorkerMod.IntegrationMonitorWorker && intWorkerMod.IntegrationMonitorWorker.getInstance()) || intWorkerMod.default;
 
-      const alWorkerMod = require('./src/monitoring/alerts/AlertMonitorWorker');
-      alertMonitorWorker = alWorkerMod.alertMonitorWorker || (alWorkerMod.AlertMonitorWorker && alWorkerMod.AlertMonitorWorker.getInstance()) || alWorkerMod.default;
+    const usWorkerMod = require('./src/monitoring/usage/UsageMonitorWorker');
+    usageMonitorWorker = usWorkerMod.usageMonitorWorker || (usWorkerMod.UsageMonitorWorker && usWorkerMod.UsageMonitorWorker.getInstance()) || usWorkerMod.default;
 
-      const intWorkerMod = require('./src/monitoring/integrations/IntegrationMonitorWorker');
-      integrationMonitorWorker = intWorkerMod.integrationMonitorWorker || (intWorkerMod.IntegrationMonitorWorker && intWorkerMod.IntegrationMonitorWorker.getInstance()) || intWorkerMod.default;
+    const akWorkerMod = require('./src/monitoring/apikeys/ApiKeySecurityWorker');
+    apiKeySecurityWorker = akWorkerMod.apiKeySecurityWorker || (akWorkerMod.ApiKeySecurityWorker && akWorkerMod.ApiKeySecurityWorker.getInstance()) || akWorkerMod.default;
 
-      const usWorkerMod = require('./src/monitoring/usage/UsageMonitorWorker');
-      usageMonitorWorker = usWorkerMod.usageMonitorWorker || (usWorkerMod.UsageMonitorWorker && usWorkerMod.UsageMonitorWorker.getInstance()) || usWorkerMod.default;
+    const depWorkerMod = require('./src/monitoring/deployment/DeploymentMonitorWorker');
+    deploymentMonitorWorker = depWorkerMod.deploymentMonitorWorker || (depWorkerMod.DeploymentMonitorWorker && depWorkerMod.DeploymentMonitorWorker.getInstance()) || depWorkerMod.default;
 
-      const akWorkerMod = require('./src/monitoring/apikeys/ApiKeySecurityWorker');
-      apiKeySecurityWorker = akWorkerMod.apiKeySecurityWorker || (akWorkerMod.ApiKeySecurityWorker && akWorkerMod.ApiKeySecurityWorker.getInstance()) || akWorkerMod.default;
+    const hlthWorkerMod = require('./src/monitoring/health/HealthScoreWorker');
+    healthScoreWorker = hlthWorkerMod.healthScoreWorker || (hlthWorkerMod.HealthScoreWorker && hlthWorkerMod.HealthScoreWorker.getInstance()) || hlthWorkerMod.default;
 
-      const depWorkerMod = require('./src/monitoring/deployment/DeploymentMonitorWorker');
-      deploymentMonitorWorker = depWorkerMod.deploymentMonitorWorker || (depWorkerMod.DeploymentMonitorWorker && depWorkerMod.DeploymentMonitorWorker.getInstance()) || depWorkerMod.default;
+    agent = new MonitoringAgent();
+    heartbeat = new ServerHeartbeat();
+    statusEvaluator = new StatusEvaluator();
+    aggregator = new MetricsAggregator();
 
-      const hlthWorkerMod = require('./src/monitoring/health/HealthScoreWorker');
-      healthScoreWorker = hlthWorkerMod.healthScoreWorker || (hlthWorkerMod.HealthScoreWorker && hlthWorkerMod.HealthScoreWorker.getInstance()) || hlthWorkerMod.default;
+    agent.start();
+    heartbeat.start();
+    statusEvaluator.start();
+    aggregator.start();
+    if (databaseMonitorWorker && typeof databaseMonitorWorker.start === 'function') databaseMonitorWorker.start(30000);
+    if (backupMonitorWorker && typeof backupMonitorWorker.start === 'function') backupMonitorWorker.start(60000);
+    if (alertMonitorWorker && typeof alertMonitorWorker.start === 'function') alertMonitorWorker.start(30000);
+    if (integrationMonitorWorker && typeof integrationMonitorWorker.start === 'function') integrationMonitorWorker.start(60000);
+    if (usageMonitorWorker && typeof usageMonitorWorker.start === 'function') usageMonitorWorker.start(60000);
+    if (apiKeySecurityWorker && typeof apiKeySecurityWorker.start === 'function') apiKeySecurityWorker.start(60000);
+    if (deploymentMonitorWorker && typeof deploymentMonitorWorker.start === 'function') deploymentMonitorWorker.start(60000);
+    if (healthScoreWorker && typeof healthScoreWorker.start === 'function') healthScoreWorker.start(60000);
 
-      agent = new MonitoringAgent();
-      heartbeat = new ServerHeartbeat();
-      statusEvaluator = new StatusEvaluator();
-      aggregator = new MetricsAggregator();
-
-      agent.start();
-      heartbeat.start();
-      statusEvaluator.start();
-      aggregator.start();
-      if (databaseMonitorWorker && typeof databaseMonitorWorker.start === 'function') databaseMonitorWorker.start(30000);
-      if (backupMonitorWorker && typeof backupMonitorWorker.start === 'function') backupMonitorWorker.start(60000);
-      if (alertMonitorWorker && typeof alertMonitorWorker.start === 'function') alertMonitorWorker.start(30000);
-      if (integrationMonitorWorker && typeof integrationMonitorWorker.start === 'function') integrationMonitorWorker.start(60000);
-      if (usageMonitorWorker && typeof usageMonitorWorker.start === 'function') usageMonitorWorker.start(60000);
-      if (apiKeySecurityWorker && typeof apiKeySecurityWorker.start === 'function') apiKeySecurityWorker.start(60000);
-      if (deploymentMonitorWorker && typeof deploymentMonitorWorker.start === 'function') deploymentMonitorWorker.start(60000);
-      if (healthScoreWorker && typeof healthScoreWorker.start === 'function') healthScoreWorker.start(60000);
-
-      // Start Mode B Google Sheets background poller (every 5 minutes)
-      const googleSheetsPollingService = require('./src/services/integrations/googleSheetsPollingService');
-      const sheetsPollInterval = setInterval(() => {
-        googleSheetsPollingService.sweepAll().catch((err) => {
-          console.error('[Sheets Poller Interval Error]:', err.message);
-        });
-      }, 5 * 60 * 1000);
-      if (sheetsPollInterval.unref) sheetsPollInterval.unref();
-    }
-
-    let isShuttingDown = false;
-    const gracefulShutdown = async (signal) => {
-      if (isShuttingDown) return;
-      isShuttingDown = true;
-      console.log(`\n🛑 [Shutdown] Received ${signal}. Starting graceful shutdown...`);
-
-      const forceTimer = setTimeout(() => {
-        console.error('⚠️ [Shutdown] Timeout reached. Forcefully exiting.');
-        process.exit(1);
-      }, 10000);
-      forceTimer.unref();
-
-      try {
-        stopEventLoopMonitor();
-        if (agent) agent.stop();
-        if (heartbeat) heartbeat.stop();
-        if (statusEvaluator) statusEvaluator.stop();
-        if (aggregator) aggregator.stop();
-        if (databaseMonitorWorker && typeof databaseMonitorWorker.stop === 'function') databaseMonitorWorker.stop();
-        if (backupMonitorWorker && typeof backupMonitorWorker.stop === 'function') backupMonitorWorker.stop();
-        if (alertMonitorWorker && typeof alertMonitorWorker.stop === 'function') alertMonitorWorker.stop();
-        if (integrationMonitorWorker && typeof integrationMonitorWorker.stop === 'function') integrationMonitorWorker.stop();
-        if (usageMonitorWorker && typeof usageMonitorWorker.stop === 'function') usageMonitorWorker.stop();
-        if (apiKeySecurityWorker && typeof apiKeySecurityWorker.stop === 'function') apiKeySecurityWorker.stop();
-        if (deploymentMonitorWorker && typeof deploymentMonitorWorker.stop === 'function') deploymentMonitorWorker.stop();
-        if (healthScoreWorker && typeof healthScoreWorker.stop === 'function') healthScoreWorker.stop();
-
-        if (campaignWorker && typeof campaignWorker.stopWorker === 'function') {
-          campaignWorker.stopWorker();
-        }
-
-        if (server && typeof server.close === 'function') {
-          await new Promise((resolve) => server.close(resolve));
-          console.log('✅ [Shutdown] HTTP server closed.');
-        }
-
-        if (mongoose.connection.readyState !== 0) {
-          await mongoose.connection.close(false);
-          console.log('✅ [Shutdown] MongoDB connection closed.');
-        }
-
-        if (global.__mongodInstance && typeof global.__mongodInstance.stop === 'function') {
-          try {
-            await global.__mongodInstance.stop();
-            console.log('✅ [Shutdown] Embedded MongoDB instance stopped.');
-          } catch {}
-        }
-
-        console.log('✅ [Shutdown] Cleanup completed cleanly.');
-        process.exit(0);
-      } catch (err) {
-        console.error('❌ [Shutdown] Error during shutdown:', err.message);
-        process.exit(1);
-      }
-    };
-
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-    process.once('SIGUSR2', async () => {
-      await gracefulShutdown('SIGUSR2');
-      process.kill(process.pid, 'SIGUSR2');
-    });
-  });
+    // Start Mode B Google Sheets background poller (every 5 minutes)
+    const googleSheetsPollingService = require('./src/services/integrations/googleSheetsPollingService');
+    const sheetsPollInterval = setInterval(() => {
+      googleSheetsPollingService.sweepAll().catch((err) => {
+        console.error('[Sheets Poller Interval Error]:', err.message);
+      });
+    }, 5 * 60 * 1000);
+    if (sheetsPollInterval.unref) sheetsPollInterval.unref();
+  }
 }).catch(err => {
   console.error('Failed to initialize database:', err);
+});
+
+let isShuttingDown = false;
+const gracefulShutdown = async (signal) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`\n🛑 [Shutdown] Received ${signal}. Starting graceful shutdown...`);
+
+  const forceTimer = setTimeout(() => {
+    console.error('⚠️ [Shutdown] Timeout reached. Forcefully exiting.');
+    process.exit(1);
+  }, 10000);
+  forceTimer.unref();
+
+  try {
+    stopEventLoopMonitor();
+    if (agent) agent.stop();
+    if (heartbeat) heartbeat.stop();
+    if (statusEvaluator) statusEvaluator.stop();
+    if (aggregator) aggregator.stop();
+    if (databaseMonitorWorker && typeof databaseMonitorWorker.stop === 'function') databaseMonitorWorker.stop();
+    if (backupMonitorWorker && typeof backupMonitorWorker.stop === 'function') backupMonitorWorker.stop();
+    if (alertMonitorWorker && typeof alertMonitorWorker.stop === 'function') alertMonitorWorker.stop();
+    if (integrationMonitorWorker && typeof integrationMonitorWorker.stop === 'function') integrationMonitorWorker.stop();
+    if (usageMonitorWorker && typeof usageMonitorWorker.stop === 'function') usageMonitorWorker.stop();
+    if (apiKeySecurityWorker && typeof apiKeySecurityWorker.stop === 'function') apiKeySecurityWorker.stop();
+    if (deploymentMonitorWorker && typeof deploymentMonitorWorker.stop === 'function') deploymentMonitorWorker.stop();
+    if (healthScoreWorker && typeof healthScoreWorker.stop === 'function') healthScoreWorker.stop();
+
+    if (campaignWorker && typeof campaignWorker.stopWorker === 'function') {
+      campaignWorker.stopWorker();
+    }
+
+    if (server && typeof server.close === 'function') {
+      await new Promise((resolve) => server.close(resolve));
+      console.log('✅ [Shutdown] HTTP server closed.');
+    }
+
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.connection.close(false);
+      console.log('✅ [Shutdown] MongoDB connection closed.');
+    }
+
+    if (global.__mongodInstance && typeof global.__mongodInstance.stop === 'function') {
+      try {
+        await global.__mongodInstance.stop();
+        console.log('✅ [Shutdown] Embedded MongoDB instance stopped.');
+      } catch {}
+    }
+
+    console.log('✅ [Shutdown] Cleanup completed cleanly.');
+    process.exit(0);
+  } catch (err) {
+    console.error('❌ [Shutdown] Error during shutdown:', err.message);
+    process.exit(1);
+  }
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.once('SIGUSR2', async () => {
+  await gracefulShutdown('SIGUSR2');
+  process.kill(process.pid, 'SIGUSR2');
 });
