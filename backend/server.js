@@ -339,7 +339,11 @@ let integrationMonitorWorker, usageMonitorWorker, apiKeySecurityWorker;
 let deploymentMonitorWorker, healthScoreWorker;
 
 // Asynchronously connect to database and initialize workers
-connectDB().then(async () => {
+connectDB().then(async (conn) => {
+  if (!conn || mongoose.connection.readyState !== 1) {
+    console.warn('⚠️ [MongoDB] Database connection is pending or in recovery loop. Workers and migrations will initialize upon connection.');
+    return;
+  }
   // Attach Mongoose slow query interceptor
   try {
     const slowQueryInterceptor = require('./src/monitoring/database/slowQueryInterceptor').default || require('./src/monitoring/database/slowQueryInterceptor');

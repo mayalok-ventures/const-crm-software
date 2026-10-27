@@ -79,15 +79,19 @@ function createMockRes() {
 }
 
 async function setupDB() {
-  try {
-    await mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mobile-crm-test');
-    console.log('📦 Test MongoDB Connected (Persistent Native Engine)');
-  } catch {
-    mongoServer = await MongoMemoryServer.create();
-    const uri = mongoServer.getUri();
-    await mongoose.connect(uri);
-    console.log('📦 Test In-Memory MongoDB Connected');
+  if (process.env.CI || (process.env.MONGO_URI && !process.env.MONGO_URI.includes('127.0.0.1'))) {
+    try {
+      await mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mobile-crm-test', {
+        serverSelectionTimeoutMS: 2000,
+      });
+      console.log('📦 Test MongoDB Connected (Persistent Engine)');
+      return;
+    } catch (_) {}
   }
+  mongoServer = await MongoMemoryServer.create();
+  const uri = mongoServer.getUri();
+  await mongoose.connect(uri);
+  console.log('📦 Test In-Memory MongoDB Connected');
 }
 
 async function teardownDB() {

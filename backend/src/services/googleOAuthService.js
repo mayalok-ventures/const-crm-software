@@ -1,7 +1,12 @@
-const { google } = require('googleapis');
 const crypto = require('crypto');
 
 function getGoogleOAuthClient() {
+  let google;
+  try {
+    google = require('googleapis').google;
+  } catch (err) {
+    throw new Error('Google OAuth requires googleapis package: ' + err.message);
+  }
   return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,

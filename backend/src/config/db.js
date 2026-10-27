@@ -3,7 +3,6 @@ const path = require('path');
 const fs = require('fs');
 const net = require('net');
 const { getDbPath, cleanLockFiles } = require('./getDbPath');
-const { ensureLocalMongoRunning } = require('./embeddedMongo');
 
 let isReconnecting = false;
 let listenersAttached = false;
@@ -72,7 +71,12 @@ const connectDB = async () => {
       const portActive = await isPortActive(27017);
       if (!portActive) {
         console.log('[MongoDB] Port 27017 inactive. Automatically launching embedded MongoDB engine...');
-        await ensureLocalMongoRunning();
+        try {
+          const { ensureLocalMongoRunning } = require('./embeddedMongo');
+          await ensureLocalMongoRunning();
+        } catch (e) {
+          console.warn('[MongoDB] Embedded engine load notice:', e.message);
+        }
       }
     }
 
@@ -98,7 +102,12 @@ const connectDB = async () => {
       }
 
       console.warn(`[MongoDB] Initial connection attempt failed (${directErr.message}). Triggering auto-recovery...`);
-      await ensureLocalMongoRunning();
+      try {
+        const { ensureLocalMongoRunning } = require('./embeddedMongo');
+        await ensureLocalMongoRunning();
+      } catch (e) {
+        console.warn('[MongoDB] Embedded engine load notice:', e.message);
+      }
 
       const conn = await mongoose.connect(mongoUri, {
         maxPoolSize: 50,

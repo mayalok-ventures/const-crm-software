@@ -238,6 +238,47 @@ async function runAll() {
     assert.strictEqual(computePort('5000', undefined, 'development'), 5000);
   });
 
+  // 13. Test that embeddedMongo.js is safely guarded against missing mongodb-memory-server
+  it('ensures embeddedMongo.js does not crash when mongodb-memory-server is pruned in production', () => {
+    const embeddedMongoPath = path.resolve(__dirname, '../src/config/embeddedMongo.js');
+    assert.ok(fs.existsSync(embeddedMongoPath), 'embeddedMongo.js must exist');
+    const content = fs.readFileSync(embeddedMongoPath, 'utf8');
+    assert.ok(content.includes('try {') && content.includes("require('mongodb-memory-server')"),
+      'embeddedMongo.js must wrap mongodb-memory-server in a try/catch block');
+    assert.ok(!content.startsWith("const { MongoMemoryServer } = require('mongodb-memory-server');"),
+      'embeddedMongo.js must not statically require mongodb-memory-server at top level');
+  });
+
+  // 14. Test that db.js does not statically require embeddedMongo at top level
+  it('ensures db.js does not statically require embeddedMongo at top level', () => {
+    const dbPath = path.resolve(__dirname, '../src/config/db.js');
+    assert.ok(fs.existsSync(dbPath), 'db.js must exist');
+    const content = fs.readFileSync(dbPath, 'utf8');
+    const lines = content.split('\n').slice(0, 15);
+    const hasStaticRequire = lines.some(l => l.includes("require('./embeddedMongo')"));
+    assert.strictEqual(hasStaticRequire, false, 'db.js must not statically require embeddedMongo at top level');
+  });
+
+  // 15. Test that impersonationService uses native crypto.randomUUID without unlisted uuid package
+  it('ensures impersonationService uses native crypto without unlisted external dependencies', () => {
+    const impPath = path.resolve(__dirname, '../src/superadmin/services/impersonationService.js');
+    assert.ok(fs.existsSync(impPath), 'impersonationService.js must exist');
+    const content = fs.readFileSync(impPath, 'utf8');
+    assert.strictEqual(content.includes("require('uuid')"), false, 'impersonationService must not require uuid');
+    assert.ok(content.includes('randomUUID'), 'impersonationService must use randomUUID');
+  });
+
+  // 16. Test that server.js guards post-connection workers against pending database states
+  it('ensures server.js guards connectDB().then((conn) => ...) against pending database connection', () => {
+    const serverPath = path.resolve(__dirname, '../server.js');
+    assert.ok(fs.existsSync(serverPath), 'server.js must exist');
+    const content = fs.readFileSync(serverPath, 'utf8');
+    assert.ok(content.includes('connectDB().then(async (conn) => {'),
+      'server.js must accept conn parameter in connectDB().then');
+    assert.ok(content.includes('mongoose.connection.readyState !== 1'),
+      'server.js must verify readyState === 1 before running workers and migrations');
+  });
+
   console.log('\n========================================================');
   console.log(`TOTAL TESTS: ${passedTests + failedTests} | PASSED: ${passedTests} | FAILED: ${failedTests}`);
   console.log('========================================================\n');

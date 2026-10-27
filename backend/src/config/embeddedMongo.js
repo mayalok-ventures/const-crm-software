@@ -1,4 +1,9 @@
-const { MongoMemoryServer } = require('mongodb-memory-server');
+let MongoMemoryServer = null;
+try {
+  MongoMemoryServer = require('mongodb-memory-server').MongoMemoryServer;
+} catch (_) {
+  // Expected in production bundles where devDependencies are pruned
+}
 const net = require('net');
 const { getDbPath, cleanLockFiles } = require('./getDbPath');
 
@@ -32,6 +37,11 @@ async function ensureLocalMongoRunning() {
 
   if (mongodInstance) {
     return true;
+  }
+
+  if (!MongoMemoryServer) {
+    console.warn('[MongoDB] mongodb-memory-server not installed (pruned production container). Skipping local embedded MongoDB.');
+    return false;
   }
 
   const dbDir = getDbPath();

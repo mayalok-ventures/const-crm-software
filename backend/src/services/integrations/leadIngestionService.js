@@ -355,6 +355,19 @@ class LeadIngestionService {
       });
 
       if (existingPhoneLead) {
+        // If this exact external lead ID already exists on the contact, resolve as duplicate
+        if (
+          String(existingPhoneLead.leadSource?.externalLeadId) === String(externalLeadId) ||
+          (Array.isArray(existingPhoneLead.inquiries) && existingPhoneLead.inquiries.some(iq => String(iq.externalLeadId) === String(externalLeadId)))
+        ) {
+          return {
+            created: false,
+            duplicate: true,
+            reason: 'duplicate_external_lead_id',
+            lead: existingPhoneLead,
+          };
+        }
+
         const policy = integration.duplicatePolicy || 'create_inquiry';
 
         // Policy: SKIP
