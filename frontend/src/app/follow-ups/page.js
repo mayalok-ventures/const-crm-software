@@ -11,8 +11,12 @@ import {
   MessageSquare, ChevronRight, Search, RefreshCw, UserCheck,
   ArrowRight, ShieldAlert, Sparkles, Filter, Ban
 } from 'lucide-react';
-import { formatDisplayDateTime } from '@/lib/dateUtils';
-import { ScheduleFollowUpModal, CompleteFollowUpModal, CancelFollowUpModal, STAGE_LABELS } from '@/components/LeadModals';
+import dynamic from 'next/dynamic';
+import { STAGE_LABELS } from '@/components/LeadModals';
+
+const ScheduleFollowUpModal = dynamic(() => import('@/components/LeadModals').then(m => m.ScheduleFollowUpModal), { ssr: false });
+const CompleteFollowUpModal = dynamic(() => import('@/components/LeadModals').then(m => m.CompleteFollowUpModal), { ssr: false });
+const CancelFollowUpModal = dynamic(() => import('@/components/LeadModals').then(m => m.CancelFollowUpModal), { ssr: false });
 
 import { useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';

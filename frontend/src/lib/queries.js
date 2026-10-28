@@ -14,7 +14,7 @@ export function leadsListOptions(filters = {}) {
       return res.data;
     },
     placeholderData: (previousData) => previousData,
-    staleTime: 30000,
+    staleTime: 60000,
   });
 }
 
@@ -33,7 +33,7 @@ export function pipelineOptions(filters = {}) {
       };
     },
     placeholderData: (previousData) => previousData,
-    staleTime: 30000,
+    staleTime: 60000,
   });
 }
 
@@ -46,7 +46,8 @@ export function dashboardStatsOptions() {
       });
       return res.data;
     },
-    staleTime: 45000,
+    placeholderData: (previousData) => previousData,
+    staleTime: 60000,
   });
 }
 
@@ -105,7 +106,8 @@ export function todayFollowUpsOptions() {
       const res = await api.get('/leads/follow-ups/today', { signal });
       return Array.isArray(res.data) ? res.data : [];
     },
-    staleTime: 30000,
+    placeholderData: (previousData) => previousData,
+    staleTime: 60000,
   });
 }
 
@@ -149,7 +151,8 @@ export function dealsOptions(filters = {}) {
       const res = await api.get('/deals', { params: { limit: 100, ...filters }, signal });
       return res.data?.data || res.data || [];
     },
-    staleTime: 30000,
+    placeholderData: (previousData) => previousData,
+    staleTime: 60000,
   });
 }
 
@@ -160,7 +163,8 @@ export function dealsSummaryOptions() {
       const res = await api.get('/deals/summary/commission', { signal });
       return res.data?.data || null;
     },
-    staleTime: 30000,
+    placeholderData: (previousData) => previousData,
+    staleTime: 60000,
   });
 }
 

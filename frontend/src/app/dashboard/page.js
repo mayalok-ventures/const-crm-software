@@ -16,10 +16,13 @@ import {
 } from 'lucide-react';
 import { SourcePill } from '@/lib/sourceHelper';
 import { formatDisplayDateTime } from '@/lib/dateUtils';
-import {
-  STAGE_LABELS, STATUS_COLORS, AddLeadModal, UpgradeModal,
-  ScheduleFollowUpModal, CompleteFollowUpModal
-} from '@/components/LeadModals';
+import dynamic from 'next/dynamic';
+import { STAGE_LABELS, STATUS_COLORS } from '@/components/LeadModals';
+
+const AddLeadModal = dynamic(() => import('@/components/LeadModals').then(m => m.AddLeadModal), { ssr: false });
+const UpgradeModal = dynamic(() => import('@/components/LeadModals').then(m => m.UpgradeModal), { ssr: false });
+const ScheduleFollowUpModal = dynamic(() => import('@/components/LeadModals').then(m => m.ScheduleFollowUpModal), { ssr: false });
+const CompleteFollowUpModal = dynamic(() => import('@/components/LeadModals').then(m => m.CompleteFollowUpModal), { ssr: false });
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { leadsListOptions, todayFollowUpsOptions, dashboardStatsOptions } from '@/lib/queries';

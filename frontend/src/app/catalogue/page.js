@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import api, { cachedGet } from '@/lib/api';
+import api, { cachedGet, getCachedData } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
 import {
   GraduationCap, Search, Plus, Building2, MapPin, Globe,
@@ -32,11 +32,16 @@ export default function CataloguePage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('my_catalogue'); // 'my_catalogue' | 'master_explore'
-  const [loading, setLoading] = useState(true);
+
+  // Frame-0 Cache Initialization: instant render on tab switch
+  const initialCatalogue = typeof window !== 'undefined' ? getCachedData('/catalogue/my-catalogue') : null;
+  const initialItems = initialCatalogue?.catalogue || (Array.isArray(initialCatalogue) ? initialCatalogue : []);
+
+  const [loading, setLoading] = useState(() => initialItems.length === 0);
   const [importingId, setImportingId] = useState(null);
 
   // Data States
-  const [myCatalogue, setMyCatalogue] = useState([]);
+  const [myCatalogue, setMyCatalogue] = useState(() => initialItems);
   const [masterColleges, setMasterColleges] = useState([]);
   const [masterPagination, setMasterPagination] = useState({ page: 1, total: 0, pages: 1, hasMore: false });
   const [masterLoading, setMasterLoading] = useState(false);

@@ -14,10 +14,10 @@ export function getQueryClient() {
     globalQueryClient = new QueryClient({
       defaultOptions: {
         queries: {
-          staleTime: 30000, // 30 seconds stale-while-revalidate
+          staleTime: 60000, // 60 seconds stale-while-revalidate for seamless navigation
           gcTime: 1000 * 60 * 60 * 24 * 7, // 7 days retained in Dexie local cache
           retry: 1,
-          refetchOnWindowFocus: true,
+          refetchOnWindowFocus: false, // Prevent aggressive network requests on tab focus
           refetchOnReconnect: true,
         },
       },

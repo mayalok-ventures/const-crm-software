@@ -16,31 +16,38 @@ import {
   AlertTriangle, ShieldCheck
 } from 'lucide-react';
 import { SourcePill } from '@/lib/sourceHelper';
-import { STAGE_LABELS, STATUS_COLORS, AddLeadModal } from '@/components/LeadModals';
+import dynamic from 'next/dynamic';
+import { STAGE_LABELS, STATUS_COLORS } from '@/components/LeadModals';
 import { formatDisplayDateTime } from '@/lib/dateUtils';
+
+const AddLeadModal = dynamic(() => import('@/components/LeadModals').then(m => m.AddLeadModal), { ssr: false });
 
 function PipelineContent() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const rawTab = searchParams?.get('tab') || 'kanban';
 
   const [user, setUser] = useState(null);
 
-  // Frame-0 Cache Initialization: instant render on tab switch
+  // Frame-0 Cache Initialization: instant render on tab switch from TanStack Query / API cache
+  const initialData = queryClient?.getQueryData ? queryClient.getQueryData(pipelineOptions().queryKey) : null;
   const [leads, setLeads] = useState(() => {
+    if (initialData?.leads?.length > 0) return initialData.leads;
     const cached = getCachedData('/leads?limit=250') || getCachedData('/leads', { limit: 250 });
     return cached?.leads || [];
   });
   const [pipelines, setPipelines] = useState(() => {
+    if (initialData?.pipelines?.length > 0) return initialData.pipelines;
     const cached = getCachedData('/pipelines');
     return Array.isArray(cached?.data) ? cached.data : [];
   });
   const [activePipeline, setActivePipeline] = useState(() => {
-    const cached = getCachedData('/pipelines');
-    const pList = Array.isArray(cached?.data) ? cached.data : [];
+    const pList = initialData?.pipelines || (Array.isArray(getCachedData('/pipelines')?.data) ? getCachedData('/pipelines').data : []);
     return pList.find(p => p.isDefault) || pList[0] || null;
   });
   const [loading, setLoading] = useState(() => {
+    if (initialData?.leads?.length > 0) return false;
     const cached = getCachedData('/leads?limit=250') || getCachedData('/leads', { limit: 250 });
     return !cached || !cached.leads || cached.leads.length === 0;
   });
@@ -99,8 +106,6 @@ function PipelineContent() {
     return () => window.removeEventListener('user-updated', checkAuth);
   }, [router]);
 
-  const queryClient = useQueryClient();
-
   const {
     data: pipelineQueryData,
     isLoading: isPipelineLoading,
@@ -120,6 +125,7 @@ function PipelineContent() {
           return found || pipelineQueryData.pipelines[0];
         });
       }
+      setLoading(false);
     }
   }, [pipelineQueryData]);
 

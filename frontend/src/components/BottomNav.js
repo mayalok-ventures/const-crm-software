@@ -32,6 +32,9 @@ import {
   dashboardStatsOptions,
   membersOptions,
   integrationsOptions,
+  dealsOptions,
+  dealsSummaryOptions,
+  todayFollowUpsOptions,
 } from '@/lib/queries';
 
 function BottomNavContent({ active }) {
@@ -50,6 +53,11 @@ function BottomNavContent({ active }) {
   const [profileHref, setProfileHref] = useState('/profile');
   const [generalControlsExpanded, setGeneralControlsExpanded] = useState(false);
   const [leadsExpanded, setLeadsExpanded] = useState(false);
+  const [optimisticActive, setOptimisticActive] = useState(null);
+
+  useEffect(() => {
+    setOptimisticActive(null);
+  }, [pathname, active]);
 
   const handlePrefetch = (key, href) => {
     if (router?.prefetch && href) {
@@ -64,15 +72,19 @@ function BottomNavContent({ active }) {
         queryClient.prefetchQuery(pipelineOptions());
       } else if (key === 'dashboard') {
         queryClient.prefetchQuery(dashboardStatsOptions());
+        queryClient.prefetchQuery(leadsListOptions({ limit: 10 }));
+        queryClient.prefetchQuery(todayFollowUpsOptions());
       } else if (key === 'integrations') {
         queryClient.prefetchQuery(integrationsOptions());
       } else if (key === 'deals') {
-        cachedGet('/deals', { ttl: 60000 }).catch(() => {});
-        cachedGet('/commission/summary', { ttl: 60000 }).catch(() => {});
+        queryClient.prefetchQuery(dealsOptions({ limit: 100 }));
+        queryClient.prefetchQuery(dealsSummaryOptions());
       } else if (key === 'catalogue') {
-        cachedGet('/catalogue', { ttl: 60000 }).catch(() => {});
+        cachedGet('/catalogue/my-catalogue', { ttl: 60000 }).catch(() => {});
+        cachedGet('/catalogue/master-colleges?page=1&limit=50', { ttl: 60000 }).catch(() => {});
       } else if (key === 'follow_ups') {
-        cachedGet('/leads/follow-ups/today', { ttl: 30000 }).catch(() => {});
+        queryClient.prefetchQuery(leadsListOptions({ limit: 100 }));
+        queryClient.prefetchQuery(todayFollowUpsOptions());
       } else if (key === 'whatsapp') {
         cachedGet('/whatsapp/meta/account', { ttl: 60000 }).catch(() => {});
         cachedGet('/whatsapp/meta/templates', { ttl: 60000 }).catch(() => {});
@@ -92,17 +104,24 @@ function BottomNavContent({ active }) {
 
     const prefetchMainTabs = async () => {
       try {
-        await queryClient.prefetchQuery(leadsListOptions({ page: 1, limit: 25 }));
-        await queryClient.prefetchQuery(pipelineOptions());
-        await queryClient.prefetchQuery(dashboardStatsOptions());
+        await Promise.allSettled([
+          queryClient.prefetchQuery(leadsListOptions({ page: 1, limit: 25 })),
+          queryClient.prefetchQuery(pipelineOptions()),
+          queryClient.prefetchQuery(dashboardStatsOptions()),
+          queryClient.prefetchQuery(dealsOptions({ limit: 100 })),
+          queryClient.prefetchQuery(todayFollowUpsOptions()),
+          queryClient.prefetchQuery(leadsListOptions({ limit: 100 })),
+          queryClient.prefetchQuery(membersOptions()),
+          cachedGet('/catalogue/my-catalogue', { ttl: 60000 }),
+        ]);
       } catch (_) {}
     };
 
     if ('requestIdleCallback' in window) {
-      const handle = window.requestIdleCallback(() => prefetchMainTabs(), { timeout: 3000 });
+      const handle = window.requestIdleCallback(() => prefetchMainTabs(), { timeout: 2000 });
       return () => window.cancelIdleCallback(handle);
     } else {
-      const timeout = setTimeout(prefetchMainTabs, 1500);
+      const timeout = setTimeout(prefetchMainTabs, 1000);
       return () => clearTimeout(timeout);
     }
   }, [queryClient]);
@@ -219,6 +238,7 @@ function BottomNavContent({ active }) {
   const normalize = (p) => (p || '').replace(/\/$/, '').toLowerCase();
 
   const isLinkActive = (key, href) => {
+    if (optimisticActive) return optimisticActive === key;
     if (active === key) return true;
     if (!pathname) return false;
     const normPath = normalize(pathname);
@@ -303,7 +323,10 @@ function BottomNavContent({ active }) {
             onTouchStart={() => handlePrefetch(key, href)}
             onFocus={() => handlePrefetch(key, href)}
             className={`bottom-nav-link btn-touch ${isLinkActive(key, href) ? 'active' : ''}`}
-            onClick={() => setIsMoreDrawerOpen(false)}
+            onClick={() => {
+              setOptimisticActive(key);
+              setIsMoreDrawerOpen(false);
+            }}
             style={{
               minHeight: 48,
               minWidth: 0,
@@ -833,6 +856,7 @@ function BottomNavContent({ active }) {
                 onTouchStart={() => handlePrefetch(key, href)}
                 onFocus={() => handlePrefetch(key, href)}
                 className={`sidebar-nav-link ${activeState ? 'active' : ''}`}
+                onClick={() => setOptimisticActive(key)}
                 style={{
                   justifyContent: isCollapsed ? 'center' : 'space-between',
                   padding: isCollapsed ? '10px 0' : '10px 14px',

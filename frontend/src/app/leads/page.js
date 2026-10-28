@@ -22,12 +22,17 @@ import {
 } from 'lucide-react';
 import { SourcePill } from '@/lib/sourceHelper';
 import { formatDisplayDateTime } from '@/lib/dateUtils';
-import {
-  STAGE_LABELS, STATUS_COLORS, UpgradeModal, ImportLeadsModal,
-  ExportLeadsModal, AddLeadModal, EditLeadModal, ScheduleFollowUpModal,
-  CompleteFollowUpModal
-} from '@/components/LeadModals';
-import TransferLeadsModal from '@/components/leads/TransferLeadsModal';
+import dynamic from 'next/dynamic';
+import { STAGE_LABELS, STATUS_COLORS } from '@/components/LeadModals';
+
+const UpgradeModal = dynamic(() => import('@/components/LeadModals').then(m => m.UpgradeModal), { ssr: false });
+const ImportLeadsModal = dynamic(() => import('@/components/LeadModals').then(m => m.ImportLeadsModal), { ssr: false });
+const ExportLeadsModal = dynamic(() => import('@/components/LeadModals').then(m => m.ExportLeadsModal), { ssr: false });
+const AddLeadModal = dynamic(() => import('@/components/LeadModals').then(m => m.AddLeadModal), { ssr: false });
+const EditLeadModal = dynamic(() => import('@/components/LeadModals').then(m => m.EditLeadModal), { ssr: false });
+const ScheduleFollowUpModal = dynamic(() => import('@/components/LeadModals').then(m => m.ScheduleFollowUpModal), { ssr: false });
+const CompleteFollowUpModal = dynamic(() => import('@/components/LeadModals').then(m => m.CompleteFollowUpModal), { ssr: false });
+const TransferLeadsModal = dynamic(() => import('@/components/leads/TransferLeadsModal'), { ssr: false });
 
 function LeadsContent() {
   const router = useRouter();
@@ -224,10 +229,8 @@ function LeadsContent() {
   useEffect(() => {
     if (activeTab === 'followups') {
       fetchFollowUpsData();
-    } else {
-      fetchLeads();
     }
-  }, [activeTab, fetchLeads, fetchFollowUpsData]);
+  }, [activeTab, fetchFollowUpsData]);
 
   useEffect(() => {
     if (searchParams?.get('action') === 'create') {
