@@ -3,6 +3,7 @@ import { usePathname } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import BottomNav, { AppShellContext } from '@/components/BottomNav';
 import MobileTopHeader from '@/components/MobileTopHeader';
+import TopProgressBar from '@/components/common/TopProgressBar';
 import { bootstrapOptions } from '@/lib/queries';
 
 const STANDALONE_ROUTES = [
@@ -28,7 +29,12 @@ export default function AppShell({ children }) {
   });
 
   if (isStandalone) {
-    return children;
+    return (
+      <>
+        <TopProgressBar />
+        {children}
+      </>
+    );
   }
 
   // Derive active module from pathname
@@ -55,6 +61,7 @@ export default function AppShell({ children }) {
 
   return (
     <AppShellContext.Provider value={true}>
+      <TopProgressBar />
       <div className="app-container app-shell-root">
         <MobileTopHeader />
         <BottomNav active={activeModule} isRootShell={true} />

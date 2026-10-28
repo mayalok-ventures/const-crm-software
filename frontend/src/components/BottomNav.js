@@ -104,6 +104,14 @@ function BottomNavContent({ active }) {
 
     const prefetchMainTabs = async () => {
       try {
+        if (router?.prefetch) {
+          router.prefetch('/leads');
+          router.prefetch('/pipeline');
+          router.prefetch('/deals');
+          router.prefetch('/follow-ups');
+          router.prefetch('/catalogue');
+          router.prefetch('/whatsapp');
+        }
         await Promise.allSettled([
           queryClient.prefetchQuery(leadsListOptions({ page: 1, limit: 25 })),
           queryClient.prefetchQuery(pipelineOptions()),
