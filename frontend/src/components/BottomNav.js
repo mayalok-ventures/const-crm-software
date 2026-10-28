@@ -59,37 +59,20 @@ function BottomNavContent({ active }) {
     setOptimisticActive(null);
   }, [pathname, active]);
 
+  useEffect(() => {
+    const handlePopState = () => {
+      setOptimisticActive(null);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const handlePrefetch = (key, href) => {
     if (router?.prefetch && href) {
-      router.prefetch(href);
+      try {
+        router.prefetch(href);
+      } catch (_) {}
     }
-    if (!queryClient) return;
-    try {
-      if (key === 'leads') {
-        queryClient.prefetchQuery(leadsListOptions({ page: 1, limit: 25 }));
-        queryClient.prefetchQuery(membersOptions());
-      } else if (key === 'pipeline') {
-        queryClient.prefetchQuery(pipelineOptions());
-      } else if (key === 'dashboard') {
-        queryClient.prefetchQuery(dashboardStatsOptions());
-        queryClient.prefetchQuery(leadsListOptions({ limit: 10 }));
-        queryClient.prefetchQuery(todayFollowUpsOptions());
-      } else if (key === 'integrations') {
-        queryClient.prefetchQuery(integrationsOptions());
-      } else if (key === 'deals') {
-        queryClient.prefetchQuery(dealsOptions({ limit: 100 }));
-        queryClient.prefetchQuery(dealsSummaryOptions());
-      } else if (key === 'catalogue') {
-        cachedGet('/catalogue/my-catalogue', { ttl: 60000 }).catch(() => {});
-        cachedGet('/catalogue/master-colleges?page=1&limit=50', { ttl: 60000 }).catch(() => {});
-      } else if (key === 'follow_ups') {
-        queryClient.prefetchQuery(leadsListOptions({ limit: 100 }));
-        queryClient.prefetchQuery(todayFollowUpsOptions());
-      } else if (key === 'whatsapp') {
-        cachedGet('/whatsapp/meta/account', { ttl: 60000 }).catch(() => {});
-        cachedGet('/whatsapp/meta/templates', { ttl: 60000 }).catch(() => {});
-      }
-    } catch (_) {}
   };
 
   useEffect(() => {
@@ -332,11 +315,16 @@ function BottomNavContent({ active }) {
             onFocus={() => handlePrefetch(key, href)}
             className={`bottom-nav-link btn-touch ${isLinkActive(key, href) ? 'active' : ''}`}
             onClick={() => {
-              setOptimisticActive(key);
-              setIsMoreDrawerOpen(false);
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('persistent-tab-switch', { detail: key }));
+              if (key === 'leads' || key === 'pipeline') {
+                setOptimisticActive(key);
+                if (typeof window !== 'undefined' && window.location.pathname !== href) {
+                  window.history.pushState(null, '', href);
+                }
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('persistent-tab-switch', { detail: key }));
+                }
               }
+              setIsMoreDrawerOpen(false);
             }}
             style={{
               minHeight: 48,
@@ -868,9 +856,14 @@ function BottomNavContent({ active }) {
                 onFocus={() => handlePrefetch(key, href)}
                 className={`sidebar-nav-link ${activeState ? 'active' : ''}`}
                 onClick={() => {
-                  setOptimisticActive(key);
-                  if (typeof window !== 'undefined') {
-                    window.dispatchEvent(new CustomEvent('persistent-tab-switch', { detail: key }));
+                  if (key === 'leads' || key === 'pipeline') {
+                    setOptimisticActive(key);
+                    if (typeof window !== 'undefined' && window.location.pathname !== href) {
+                      window.history.pushState(null, '', href);
+                    }
+                    if (typeof window !== 'undefined') {
+                      window.dispatchEvent(new CustomEvent('persistent-tab-switch', { detail: key }));
+                    }
                   }
                 }}
                 style={{

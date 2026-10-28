@@ -9,8 +9,8 @@ function TopProgressBarInner() {
   const [progress, setProgress] = useState(0);
   const timerRef = useRef(null);
   const finishTimerRef = useRef(null);
-
   const safetyTimeoutRef = useRef(null);
+  const delayTimerRef = useRef(null);
 
   const startProgress = () => {
     if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
@@ -38,7 +38,15 @@ function TopProgressBarInner() {
     }, 450);
   };
 
+  const scheduleProgress = () => {
+    if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
+    delayTimerRef.current = setTimeout(() => {
+      startProgress();
+    }, 120);
+  };
+
   const completeProgress = () => {
+    if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
     if (timerRef.current) clearInterval(timerRef.current);
     if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
     setProgress(100);
@@ -54,7 +62,7 @@ function TopProgressBarInner() {
     completeProgress();
   }, [pathname]);
 
-  // Intercept all internal navigation clicks for instantaneous (0ms) feedback
+  // Intercept all internal navigation clicks for smooth feedback without blinking
   useEffect(() => {
     const handleGlobalClick = (e) => {
       const anchor = e.target.closest('a');
@@ -84,10 +92,17 @@ function TopProgressBarInner() {
         return;
       }
 
-      startProgress();
+      // Never show progress bar when switching between instant warm persistent tabs
+      const isPersistentSource = cleanCurrent === '/leads' || cleanCurrent === '/pipeline';
+      const isPersistentTarget = cleanHref === '/leads' || cleanHref === '/pipeline';
+      if (isPersistentSource && isPersistentTarget) {
+        return;
+      }
+
+      scheduleProgress();
     };
 
-    const handleCustomStart = () => startProgress();
+    const handleCustomStart = () => scheduleProgress();
     const handleCustomDone = () => completeProgress();
 
     window.addEventListener('click', handleGlobalClick, { capture: true });
@@ -98,6 +113,7 @@ function TopProgressBarInner() {
       window.removeEventListener('click', handleGlobalClick, { capture: true });
       window.removeEventListener('crm-nav-start', handleCustomStart);
       window.removeEventListener('crm-nav-done', handleCustomDone);
+      if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
       if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
       if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);

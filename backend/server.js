@@ -1,4 +1,12 @@
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
+
+// Fallback load .env.production if key integration variables are not present in current env
+if (fs.existsSync(path.join(__dirname, '.env.production'))) {
+  require('dotenv').config({ path: path.join(__dirname, '.env.production'), override: false });
+}
+
 const { validateEnvironment } = require('./src/config/envValidator');
 validateEnvironment();
 

@@ -134,6 +134,11 @@ jobs:
           INTEGRATION_ENCRYPTION_KEY: ${{ secrets.INTEGRATION_ENCRYPTION_KEY }}
           ALLOWED_ORIGINS: ${{ secrets.ALLOWED_ORIGINS || 'https://app.sahyak.com,https://crm.sahyak.com' }}
           GIT_COMMIT: ${{ github.sha }}
+          META_APP_ID: ${{ secrets.META_APP_ID || '884443194715709' }}
+          META_APP_SECRET: ${{ secrets.META_APP_SECRET || 'b08b667fc706cc9d83b255b2b3c73bb7' }}
+          META_VERIFY_TOKEN: ${{ secrets.META_VERIFY_TOKEN || '6198a65b3e11c0969bd3321a405ffa473908c5ae' }}
+          META_API_VERSION: ${{ secrets.META_API_VERSION || 'v22.0' }}
+          META_REDIRECT_URI: ${{ secrets.META_REDIRECT_URI || 'https://api-app.sahyak.com/api/integrations/meta/oauth/callback' }}
         run: |
           echo "Installing dependencies and compiling TypeScript..."
           npm ci
@@ -181,6 +186,19 @@ jobs:
               if (encKey) cfg.env_variables.INTEGRATION_ENCRYPTION_KEY = encKey;
               const origins = (process.env.ALLOWED_ORIGINS || "").trim();
               cfg.env_variables.ALLOWED_ORIGINS = origins || "https://app.sahyak.com,https://crm.sahyak.com";
+              const metaAppId = (process.env.META_APP_ID || "").trim();
+              if (metaAppId) cfg.env_variables.META_APP_ID = metaAppId;
+              const metaAppSecret = (process.env.META_APP_SECRET || "").trim();
+              if (metaAppSecret) cfg.env_variables.META_APP_SECRET = metaAppSecret;
+              const metaVerifyToken = (process.env.META_VERIFY_TOKEN || "").trim();
+              if (metaVerifyToken) {
+                cfg.env_variables.META_VERIFY_TOKEN = metaVerifyToken;
+                cfg.env_variables.META_WEBHOOK_VERIFY_TOKEN = metaVerifyToken;
+              }
+              const metaApiVer = (process.env.META_API_VERSION || "").trim();
+              if (metaApiVer) cfg.env_variables.META_API_VERSION = metaApiVer;
+              const metaRedirect = (process.env.META_REDIRECT_URI || "").trim();
+              if (metaRedirect) cfg.env_variables.META_REDIRECT_URI = metaRedirect;
               fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
               console.log(`Configured ${p} with ${Object.keys(cfg.env_variables).length} environment variables and port 9000.`);
             }

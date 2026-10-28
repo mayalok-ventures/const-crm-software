@@ -156,11 +156,11 @@ export default function DataDeletionInstructionsPage() {
                 Send an email with the subject line <strong>&ldquo;Data Deletion Request - Sahyak CRM&rdquo;</strong> to our data compliance desk:
               </p>
               <a
-                href="mailto:connect4adm@gmail.com?subject=Data%20Deletion%20Request%20-%20Sahyak%20CRM"
+                href="mailto:support@sahyak.com?subject=Data%20Deletion%20Request%20-%20Sahyak%20CRM"
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white border border-rose-200 text-rose-700 font-bold text-sm hover:bg-rose-50 transition-colors shadow-sm"
               >
                 <Mail className="w-4 h-4" />
-                <span>connect4adm@gmail.com</span>
+                <span>support@sahyak.com</span>
               </a>
             </div>
 

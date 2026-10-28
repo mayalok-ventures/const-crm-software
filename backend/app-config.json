@@ -10,6 +10,12 @@
   },
   "env_variables": {
     "NODE_ENV": "production",
-    "PORT": "9000"
+    "PORT": "9000",
+    "META_APP_ID": "884443194715709",
+    "META_APP_SECRET": "b08b667fc706cc9d83b255b2b3c73bb7",
+    "META_API_VERSION": "v22.0",
+    "META_VERIFY_TOKEN": "6198a65b3e11c0969bd3321a405ffa473908c5ae",
+    "META_WEBHOOK_VERIFY_TOKEN": "6198a65b3e11c0969bd3321a405ffa473908c5ae",
+    "META_REDIRECT_URI": "https://api-app.sahyak.com/api/integrations/meta/oauth/callback"
   }
 }

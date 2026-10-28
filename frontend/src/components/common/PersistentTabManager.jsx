@@ -40,6 +40,24 @@ export default function PersistentTabManager({ children }) {
     setOptimisticTab(null);
   }, [cleanPath]);
 
+  // Support instant 0ms back/forward navigation between warm tabs
+  useEffect(() => {
+    const handlePopState = () => {
+      const current = (typeof window !== 'undefined' ? window.location.pathname : '').replace(/\/$/, '') || '/';
+      if (current === '/leads') {
+        setOptimisticTab('leads');
+        setVisitedTabs((prev) => (prev.has('leads') ? prev : new Set(prev).add('leads')));
+      } else if (current === '/pipeline') {
+        setOptimisticTab('pipeline');
+        setVisitedTabs((prev) => (prev.has('pipeline') ? prev : new Set(prev).add('pipeline')));
+      } else {
+        setOptimisticTab(null);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   // Listen to custom tab switch event dispatched from BottomNav or router links
   useEffect(() => {
     const handleTabSwitch = (e) => {
