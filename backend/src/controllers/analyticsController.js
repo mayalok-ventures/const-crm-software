@@ -37,6 +37,8 @@ const getScopedLeadFilter = (req) => {
     };
   }
   return baseFilter;
+};
+
 // 60-second in-memory cache for getAnalytics per workspace/user
 const analyticsCache = new Map();
 const ANALYTICS_CACHE_TTL = 60 * 1000;
