@@ -386,6 +386,20 @@ async function runAll() {
       'db.js must sanitize URI to redact database credentials in logs');
   });
 
+  // 25. Test that deployment workflow configures dedicated new CRM domains (api-app.sahyak.com / app.sahyak.com)
+  it('deploy-backend.yml isolates new CRM domain to api-app.sahyak.com and app.sahyak.com', () => {
+    const workflowPath = path.resolve(__dirname, '../../.github/workflows/deploy-backend.yml');
+    assert.ok(fs.existsSync(workflowPath), 'Workflow file must exist');
+    const content = fs.readFileSync(workflowPath, 'utf8');
+
+    assert.ok(content.includes('cfg.env_variables.BACKEND_URL = "https://api-app.sahyak.com"'),
+      'Workflow must configure dedicated BACKEND_URL for new CRM');
+    assert.ok(content.includes('cfg.env_variables.FRONTEND_URL = "https://app.sahyak.com"'),
+      'Workflow must configure dedicated FRONTEND_URL for new CRM');
+    assert.ok(content.includes('CUSTOM_DOMAIN="${CONFIGURED_URL:-https://api-app.sahyak.com}"'),
+      'Workflow diagnostic check must target api-app.sahyak.com without touching existing CRM api.sahyak.com');
+  });
+
   console.log('\n========================================================');
   console.log(`TOTAL TESTS: ${passedTests + failedTests} | PASSED: ${passedTests} | FAILED: ${failedTests}`);
   console.log('========================================================\n');

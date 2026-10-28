@@ -20,13 +20,18 @@ export const getBaseUrl = () => {
     if (hn === 'localhost' || hn === '127.0.0.1' || isPrivateLanIp(hn)) {
       return `http://${hn}:5000/api`;
     }
-    if (hn === 'crm.sahyak.com' || hn === 'app.sahyak.com' || hn.endsWith('.pages.dev')) {
+    // Existing CRM legacy domain guard: if ever loaded under crm.sahyak.com, route to existing AWS api.sahyak.com
+    if (hn === 'crm.sahyak.com') {
       return 'https://api.sahyak.com/api';
+    }
+    // New CRM domain (app.sahyak.com) and Cloudflare Pages previews
+    if (hn === 'app.sahyak.com' || hn.endsWith('.pages.dev')) {
+      return 'https://api-app.sahyak.com/api';
     }
     // Fallback for custom domains / proxy hosts
     return `${window.location.protocol}//${window.location.host}/api`;
   }
-  return process.env.NODE_ENV === 'production' ? 'https://api.sahyak.com/api' : 'http://localhost:5000/api';
+  return process.env.NODE_ENV === 'production' ? 'https://api-app.sahyak.com/api' : 'http://localhost:5000/api';
 };
 
 export const API_URL = getBaseUrl();

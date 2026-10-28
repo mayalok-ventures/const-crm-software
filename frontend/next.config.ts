@@ -38,6 +38,16 @@ function baseConfig(phase: string): NextConfig {
         },
         {
           protocol: 'https',
+          hostname: 'api-app.sahyak.com',
+          pathname: '/**',
+        },
+        {
+          protocol: 'https',
+          hostname: 'app.sahyak.com',
+          pathname: '/**',
+        },
+        {
+          protocol: 'https',
           hostname: 'api.sahyak.com',
           pathname: '/**',
         },

@@ -26,7 +26,13 @@ function getMockBaseUrl(hostname) {
   if (hostname === 'localhost' || hostname === '127.0.0.1' || isPrivateLanIp(hostname)) {
     return `http://${hostname}:5000/api`;
   }
-  return 'https://api.sahyak.com/api';
+  if (hostname === 'crm.sahyak.com') {
+    return 'https://api.sahyak.com/api';
+  }
+  if (hostname === 'app.sahyak.com' || (hostname && hostname.endsWith('.pages.dev'))) {
+    return 'https://api-app.sahyak.com/api';
+  }
+  return 'https://api-app.sahyak.com/api';
 }
 
 console.log('🧪 Testing Frontend Helpers...');
@@ -44,6 +50,7 @@ assert.strictEqual(isPrivateLanIp('10.0.0.5'), true);
 assert.strictEqual(isPrivateLanIp('172.20.10.4'), true);
 assert.strictEqual(isPrivateLanIp('8.8.8.8'), false);
 assert.strictEqual(isPrivateLanIp('crm.sahyak.com'), false);
+assert.strictEqual(isPrivateLanIp('app.sahyak.com'), false);
 console.log('  ✅ isPrivateLanIp correctly identifies LAN vs public IPs');
 
 // Test Base URL resolution
@@ -51,6 +58,8 @@ assert.strictEqual(getMockBaseUrl('localhost'), 'http://localhost:5000/api');
 assert.strictEqual(getMockBaseUrl('127.0.0.1'), 'http://127.0.0.1:5000/api');
 assert.strictEqual(getMockBaseUrl('192.168.1.42'), 'http://192.168.1.42:5000/api');
 assert.strictEqual(getMockBaseUrl('crm.sahyak.com'), 'https://api.sahyak.com/api');
-console.log('  ✅ getBaseUrl routes LAN devices to port 5000 and production to api.sahyak.com');
+assert.strictEqual(getMockBaseUrl('app.sahyak.com'), 'https://api-app.sahyak.com/api');
+assert.strictEqual(getMockBaseUrl('const-crm-software.pages.dev'), 'https://api-app.sahyak.com/api');
+console.log('  ✅ getBaseUrl routes LAN devices to port 5000, legacy crm.sahyak.com to api.sahyak.com, and app.sahyak.com to api-app.sahyak.com');
 
 console.log('\n🎉 ALL FRONTEND HELPER TESTS PASSED!\n');

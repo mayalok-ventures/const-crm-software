@@ -169,7 +169,7 @@ function RecordingSection({ leadId }) {
 
   const formatDuration = s => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
   const BASE = process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, '') ||
-    (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : 'https://api.sahyak.com');
+    (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : 'https://api-app.sahyak.com');
 
   return (
     <div>
@@ -351,7 +351,7 @@ function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, onOpenShareFee, 
   };
 
   const BASE = process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, '') ||
-    (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : 'https://api.sahyak.com');
+    (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : 'https://api-app.sahyak.com');
 
   return (
     <div className="card" style={{ marginBottom: 16, padding: '16px 16px' }}>

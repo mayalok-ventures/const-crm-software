@@ -19,7 +19,7 @@ function getGoogleRedirectUri(req) {
       return `${process.env.BACKEND_URL}/api/integrations/google/oauth/callback`;
     }
   }
-  return 'https://api.sahyak.com/api/integrations/google/oauth/callback';
+  return 'https://api-app.sahyak.com/api/integrations/google/oauth/callback';
 }
 
 const GOOGLE_SCOPES = [
@@ -33,7 +33,7 @@ function generateOAuthState(userId, companyId, frontendUrl) {
   const payload = {
     userId: String(userId),
     companyId: companyId ? String(companyId) : null,
-    frontendUrl: frontendUrl || process.env.FRONTEND_URL || 'https://crm.sahyak.com',
+    frontendUrl: frontendUrl || process.env.FRONTEND_URL || 'https://app.sahyak.com',
     timestamp: Date.now(),
   };
   const data = Buffer.from(JSON.stringify(payload)).toString('base64url');

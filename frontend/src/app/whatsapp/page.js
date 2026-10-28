@@ -1702,7 +1702,7 @@ export default function WhatsAppWorkspacePage() {
                 <p className="break-all text-slate-700 select-all font-semibold">
                   {typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
                     ? 'http://localhost:5000/api/whatsapp/meta/webhook'
-                    : 'https://api.sahyak.com/api/whatsapp/meta/webhook'}
+                    : 'https://api-app.sahyak.com/api/whatsapp/meta/webhook'}
                 </p>
               </div>
             </div>

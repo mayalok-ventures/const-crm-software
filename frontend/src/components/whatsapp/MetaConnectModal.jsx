@@ -45,7 +45,7 @@ export default function MetaConnectModal({ isOpen, onClose, onSuccess, initialDa
         return `http://${hn}:5000`;
       }
     }
-    return 'https://api.sahyak.com';
+    return 'https://api-app.sahyak.com';
   };
 
   const webhookCallbackUrl = `${getBackendBase()}/api/whatsapp/meta/webhook`;

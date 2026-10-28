@@ -168,6 +168,8 @@ jobs:
               cfg.env_variables.BUILD_TIMESTAMP = new Date().toISOString();
               cfg.env_variables.DB_NAME = "admission-consultant-crm";
               cfg.env_variables.RUN_BACKGROUND_WORKERS = "true";
+              cfg.env_variables.BACKEND_URL = "https://api-app.sahyak.com";
+              cfg.env_variables.FRONTEND_URL = "https://app.sahyak.com";
               const mongoUri = (process.env.MONGO_URI || "").trim();
               if (mongoUri) {
                 cfg.env_variables.MONGO_URI = mongoUri;
@@ -178,7 +180,7 @@ jobs:
               const encKey = (process.env.INTEGRATION_ENCRYPTION_KEY || "").trim();
               if (encKey) cfg.env_variables.INTEGRATION_ENCRYPTION_KEY = encKey;
               const origins = (process.env.ALLOWED_ORIGINS || "").trim();
-              if (origins) cfg.env_variables.ALLOWED_ORIGINS = origins;
+              cfg.env_variables.ALLOWED_ORIGINS = origins || "https://app.sahyak.com,https://crm.sahyak.com";
               fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
               console.log(`Configured ${p} with ${Object.keys(cfg.env_variables).length} environment variables and port 9000.`);
             }
@@ -406,7 +408,7 @@ jobs:
           fi
 
           # Optional Secondary Check: Probe Custom Domain if configured
-          CUSTOM_DOMAIN="${CONFIGURED_URL:-https://api.sahyak.com}"
+          CUSTOM_DOMAIN="${CONFIGURED_URL:-https://api-app.sahyak.com}"
           CUSTOM_DOMAIN="${CUSTOM_DOMAIN%/}"
           echo "=========================================================="
           echo "🌐 Secondary Diagnostic Check: Custom Domain [$CUSTOM_DOMAIN]"

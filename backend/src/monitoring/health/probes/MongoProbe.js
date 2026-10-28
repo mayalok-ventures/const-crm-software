@@ -33,7 +33,7 @@ class MongoProbe {
                     details: {
                         connectionState: stateStr,
                         readyState,
-                        databaseName: mongoose_1.default.connection.name || 'mobile-crm',
+                        databaseName: mongoose_1.default.connection.name || (process.env.DB_NAME || 'admission-consultant-crm'),
                         targetHost,
                         isOperational: false,
                     },
@@ -71,7 +71,7 @@ class MongoProbe {
                     connectionState: stateStr,
                     readyState,
                     pingLatencyMs,
-                    databaseName: mongoose_1.default.connection.name || 'mobile-crm',
+                    databaseName: mongoose_1.default.connection.name || (process.env.DB_NAME || 'admission-consultant-crm'),
                     host: mongoose_1.default.connection.host || 'mongodb-cluster',
                     isOperational: true,
                     pingOk: pingResult?.ok === 1,

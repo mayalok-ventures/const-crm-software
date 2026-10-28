@@ -53,8 +53,8 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
       <head>
-        <link rel="preconnect" href="https://api.sahyak.com" crossOrigin="anonymous" />
-        <link rel="dns-prefetch" href="https://api.sahyak.com" />
+        <link rel="preconnect" href="https://api-app.sahyak.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://api-app.sahyak.com" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
