@@ -614,6 +614,8 @@ leadSchema.index({ workspaceId: 1, status: 1 });
 leadSchema.index({ workspaceId: 1, status: 1, _id: -1 });
 leadSchema.index({ workspaceId: 1, assignedTo: 1, _id: -1 });
 leadSchema.index({ workspaceId: 1, pipelineId: 1, pipelineStage: 1, _id: -1 });
+leadSchema.index({ workspaceId: 1, pipelineId: 1, updatedAt: -1 });
+leadSchema.index({ workspaceId: 1, pipelineId: 1, status: 1 });
 leadSchema.index({ workspaceId: 1, score: -1, _id: -1 });
 leadSchema.index({ workspaceId: 1, createdAt: -1 });
 leadSchema.index({ workspaceId: 1, assignedTo: 1 });

@@ -11,17 +11,36 @@ import api from '@/lib/api';
  * Enables instantaneous first-frame renders on cold reloads,
  * eliminating empty white states, flashes, and loading spinners.
  */
-export function getLocalSnapshot(key) {
+export function getTenantScope() {
+  if (typeof window === 'undefined') return { wsId: 'solo', userId: 'anon' };
+  try {
+    const raw = localStorage.getItem('user');
+    if (!raw) return { wsId: 'solo', userId: 'anon' };
+    const u = JSON.parse(raw);
+    const userId = u._id || 'anon';
+    const wsId = u.currentWorkspace?._id || u.currentWorkspace || u.workspaceId || u.companyId || u._id || 'solo';
+    return { wsId, userId };
+  } catch (_) {
+    return { wsId: 'solo', userId: 'anon' };
+  }
+}
+
+export function getLocalSnapshotRecord(key) {
   if (typeof window === 'undefined') return undefined;
   try {
     const raw = localStorage.getItem(`crm_snap_${key}`);
     if (!raw) return undefined;
     const parsed = JSON.parse(raw);
     if (parsed && parsed.data && (Date.now() - parsed.ts < 1000 * 60 * 60 * 24)) {
-      return parsed.data;
+      return parsed;
     }
   } catch (_) {}
   return undefined;
+}
+
+export function getLocalSnapshot(key) {
+  const rec = getLocalSnapshotRecord(key);
+  return rec ? rec.data : undefined;
 }
 
 export function setLocalSnapshot(key, data) {
@@ -31,30 +50,53 @@ export function setLocalSnapshot(key, data) {
   } catch (_) {}
 }
 
-export function leadsListOptions(filters = {}) {
+export function invalidateAllLeadViews(queryClient, tenantId) {
+  if (!queryClient) return;
+  const wsId = tenantId || getTenantScope().wsId;
+  queryClient.invalidateQueries({ queryKey: ['leads', wsId] });
+  queryClient.invalidateQueries({ queryKey: ['pipeline', wsId] });
+  queryClient.invalidateQueries({ queryKey: ['dashboard', wsId] });
+  queryClient.invalidateQueries({ queryKey: ['follow-ups', wsId] });
+  queryClient.invalidateQueries({ queryKey: ['leads'] });
+  queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+  queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+}
+
+export function leadsListOptions(filters = {}, tenantId) {
+  const { wsId, userId } = getTenantScope();
+  const targetWs = tenantId || wsId;
   const isDefault = Object.keys(filters).length === 0 || (Object.keys(filters).length === 1 && filters.limit);
+  const snapKey = `${userId}_${targetWs}_leads_list_default`;
+  const snapshotRec = isDefault ? getLocalSnapshotRecord(snapKey) : null;
+
   return queryOptions({
-    queryKey: ['leads', 'list', filters],
+    queryKey: ['leads', targetWs, 'list', filters],
     queryFn: async ({ signal }) => {
       const res = await api.get('/leads', { params: filters, signal });
       if (isDefault && res.data) {
-        setLocalSnapshot('leads_list_default', res.data);
+        setLocalSnapshot(snapKey, res.data);
       }
       return res.data;
     },
-    initialData: isDefault ? () => getLocalSnapshot('leads_list_default') : undefined,
+    initialData: snapshotRec?.data,
+    initialDataUpdatedAt: snapshotRec?.ts || 0,
     placeholderData: (previousData) => previousData,
     staleTime: 1000 * 60 * 10,
   });
 }
 
-export function pipelineOptions(filters = {}) {
+export function pipelineOptions(filters = {}, tenantId) {
+  const { wsId, userId } = getTenantScope();
+  const targetWs = tenantId || wsId;
   const isDefault = Object.keys(filters).length === 0;
+  const snapKey = `${userId}_${targetWs}_pipeline_default`;
+  const snapshotRec = isDefault ? getLocalSnapshotRecord(snapKey) : null;
+
   return queryOptions({
-    queryKey: ['pipeline', 'leads', filters],
+    queryKey: ['pipeline', targetWs, 'leads', filters],
     queryFn: async ({ signal }) => {
       const [leadsRes, pipelinesRes] = await Promise.all([
-        api.get('/leads', { params: { limit: 250, ...filters }, signal }),
+        api.get('/leads', { params: { limit: 250, view: 'pipeline', ...filters }, signal }),
         api.get('/pipelines', { signal }).catch(() => ({ data: { success: false, data: [] } })),
       ]);
       const data = {
@@ -63,29 +105,32 @@ export function pipelineOptions(filters = {}) {
         total: leadsRes.data?.total || 0,
       };
       if (isDefault) {
-        setLocalSnapshot('pipeline_default', data);
+        setLocalSnapshot(snapKey, data);
       }
       return data;
     },
-    initialData: isDefault ? () => getLocalSnapshot('pipeline_default') : undefined,
+    initialData: snapshotRec?.data,
+    initialDataUpdatedAt: snapshotRec?.ts || 0,
     placeholderData: (previousData) => previousData,
     staleTime: 1000 * 60 * 10,
   });
 }
 
-export function dashboardStatsOptions() {
+export function dashboardStatsOptions(tenantId) {
+  const wsId = tenantId || getTenantScope().wsId;
+  const snapKey = `${wsId}_dashboard_stats`;
   return queryOptions({
-    queryKey: ['dashboard', 'stats'],
+    queryKey: ['dashboard', wsId, 'stats'],
     queryFn: async ({ signal }) => {
       const res = await api.get('/analytics', { signal }).catch(async () => {
         return await api.get('/leads?limit=1', { signal });
       });
       if (res.data) {
-        setLocalSnapshot('dashboard_stats', res.data);
+        setLocalSnapshot(snapKey, res.data);
       }
       return res.data;
     },
-    initialData: () => getLocalSnapshot('dashboard_stats'),
+    initialData: () => getLocalSnapshot(snapKey),
     placeholderData: (previousData) => previousData,
     staleTime: 1000 * 60 * 10,
   });
@@ -139,9 +184,10 @@ export function dueFollowUpsOptions() {
   });
 }
 
-export function todayFollowUpsOptions() {
+export function todayFollowUpsOptions(tenantId) {
+  const wsId = tenantId || getTenantScope().wsId;
   return queryOptions({
-    queryKey: ['leads', 'follow-ups', 'today'],
+    queryKey: ['leads', wsId, 'follow-ups', 'today'],
     queryFn: async ({ signal }) => {
       const res = await api.get('/leads/follow-ups/today', { signal });
       return Array.isArray(res.data) ? res.data : [];
@@ -184,9 +230,10 @@ export function workspaceMembersOptions() {
   });
 }
 
-export function dealsOptions(filters = {}) {
+export function dealsOptions(filters = {}, tenantId) {
+  const wsId = tenantId || getTenantScope().wsId;
   return queryOptions({
-    queryKey: ['deals', 'list', filters],
+    queryKey: ['deals', wsId, 'list', filters],
     queryFn: async ({ signal }) => {
       const res = await api.get('/deals', { params: { limit: 100, ...filters }, signal });
       return res.data?.data || res.data || [];
@@ -196,9 +243,10 @@ export function dealsOptions(filters = {}) {
   });
 }
 
-export function dealsSummaryOptions() {
+export function dealsSummaryOptions(tenantId) {
+  const wsId = tenantId || getTenantScope().wsId;
   return queryOptions({
-    queryKey: ['deals', 'summary'],
+    queryKey: ['deals', wsId, 'summary'],
     queryFn: async ({ signal }) => {
       const res = await api.get('/deals/summary/commission', { signal });
       return res.data?.data || null;

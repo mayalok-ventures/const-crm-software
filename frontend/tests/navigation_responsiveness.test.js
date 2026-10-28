@@ -53,8 +53,34 @@ assert.ok(
 assert.ok(queriesContent.includes('placeholderData: (previousData) => previousData'), 'Queries must use placeholderData to prevent skeleton flash');
 console.log('  ✅ Query cache settings prevent layout shift and unnecessary mount refetches');
 
-// 5. Verify static export output exists
-console.log('\n5️⃣ Verifying static export artifacts in out/ directory...');
+// 5. Verify PersistentTabManager and React 19 Activity integration
+console.log('\n5️⃣ Testing React 19 Activity Persistent Tab Manager...');
+const persistentManagerPath = path.join(__dirname, '../src/components/common/PersistentTabManager.jsx');
+assert.ok(fs.existsSync(persistentManagerPath), 'PersistentTabManager.jsx must exist');
+const managerContent = fs.readFileSync(persistentManagerPath, 'utf8');
+assert.ok(managerContent.includes('PersistentActivity'), 'PersistentTabManager must use PersistentActivity');
+assert.ok(managerContent.includes('tenantKey'), 'PersistentTabManager must scope state with tenantKey to prevent cross-tenant bleed');
+assert.ok(appShellContent.includes('<PersistentTabManager>'), 'AppShell must wrap content in PersistentTabManager');
+
+// 6. Verify Tenant-scoped Query Keys & Centralized Cross-View Invalidation
+console.log('\n6️⃣ Testing Tenant-Scoped TanStack Query Keys & Cross-View Invalidation...');
+assert.ok(queriesContent.includes('getTenantScope'), 'queries.js must implement getTenantScope() for tenant isolation');
+assert.ok(queriesContent.includes("['leads', wsId"), 'leadsListOptions must scope query key with wsId');
+assert.ok(queriesContent.includes("['pipeline', wsId"), 'pipelineOptions must scope query key with wsId');
+assert.ok(queriesContent.includes('invalidateAllLeadViews'), 'queries.js must export invalidateAllLeadViews()');
+console.log('  ✅ Tenant-scoped query keys and cross-view invalidation verified');
+
+// 7. Verify Serwist Service Worker RSC Flight Payload Caching
+console.log('\n7️⃣ Testing Serwist Service Worker flight payload caching...');
+const swPath = path.join(__dirname, '../src/app/sw.ts');
+assert.ok(fs.existsSync(swPath), 'sw.ts must exist');
+const swContent = fs.readFileSync(swPath, 'utf8');
+assert.ok(swContent.includes('rsc-flight-payloads'), 'sw.ts must define rsc-flight-payloads cache');
+assert.ok(swContent.includes('StaleWhileRevalidate'), 'sw.ts must use StaleWhileRevalidate for flight payloads');
+console.log('  ✅ Serwist PWA service worker configures StaleWhileRevalidate for instant flight payload loading');
+
+// 8. Verify static export output exists
+console.log('\n8️⃣ Verifying static export artifacts in out/ directory...');
 const outPath = path.join(__dirname, '../out');
 assert.ok(fs.existsSync(outPath), 'out directory must exist after build');
 assert.ok(fs.existsSync(path.join(outPath, 'leads/index.html')), 'out/leads/index.html must exist');
@@ -63,5 +89,5 @@ assert.ok(fs.existsSync(path.join(outPath, 'dashboard/index.html')), 'out/dashbo
 console.log('  ✅ All static routes prerendered and ready for instantaneous serving');
 
 console.log('\n======================================================');
-console.log('🎉 ALL 5 NAVIGATION RESPONSIVENESS REGRESSION TESTS PASSED!');
+console.log('🎉 ALL 8 NAVIGATION RESPONSIVENESS REGRESSION TESTS PASSED!');
 console.log('======================================================\n');

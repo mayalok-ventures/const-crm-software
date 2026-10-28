@@ -295,10 +295,21 @@ exports.getLeads = async (req, res) => {
     const countCacheKey = `${req.workspaceId || req.tenantId || req.user?._id}_${JSON.stringify(query)}`;
     const cachedTotal = getCachedCount(countCacheKey);
 
-    const leadsPromise = Lead.find(query)
-      .select('-leadActivities -editHistory -customWebhookPayloads -notes -details -rawPayload')
-      .populate('projectId', 'name location basePrice city')
-      .populate('assignedTo', 'name usercode email')
+    const isPipelineView = req.query.view === 'pipeline' || req.query.fields === 'pipeline';
+    let queryBuilder = Lead.find(query);
+
+    if (isPipelineView) {
+      queryBuilder = queryBuilder
+        .select('name phone email courseInterest pipelineStage pipeline_stage pipelineId status budget source primarySource targetCourse targetStream assignedTo createdAt updatedAt score temperature tags followUpDate customData')
+        .populate('assignedTo', 'name usercode email');
+    } else {
+      queryBuilder = queryBuilder
+        .select('-leadActivities -editHistory -customWebhookPayloads -notes -details -rawPayload')
+        .populate('projectId', 'name location basePrice city')
+        .populate('assignedTo', 'name usercode email');
+    }
+
+    const leadsPromise = queryBuilder
       .sort({ updatedAt: -1 })
       .skip(skip)
       .limit(cap)

@@ -61,6 +61,14 @@ export default function Providers({ children }) {
           },
         },
       });
+      const handleUserUpdate = (e) => {
+        const newUser = e?.detail;
+        if (!newUser) {
+          clearAllQueryCache();
+        }
+      };
+      window.addEventListener('user-updated', handleUserUpdate);
+      return () => window.removeEventListener('user-updated', handleUserUpdate);
     } catch (e) {
       console.warn('[Dexie Cache Persistence Notice]:', e.message);
     }

@@ -334,6 +334,9 @@ function BottomNavContent({ active }) {
             onClick={() => {
               setOptimisticActive(key);
               setIsMoreDrawerOpen(false);
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('persistent-tab-switch', { detail: key }));
+              }
             }}
             style={{
               minHeight: 48,
@@ -864,7 +867,12 @@ function BottomNavContent({ active }) {
                 onTouchStart={() => handlePrefetch(key, href)}
                 onFocus={() => handlePrefetch(key, href)}
                 className={`sidebar-nav-link ${activeState ? 'active' : ''}`}
-                onClick={() => setOptimisticActive(key)}
+                onClick={() => {
+                  setOptimisticActive(key);
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('persistent-tab-switch', { detail: key }));
+                  }
+                }}
                 style={{
                   justifyContent: isCollapsed ? 'center' : 'space-between',
                   padding: isCollapsed ? '10px 0' : '10px 14px',

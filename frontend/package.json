@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node tests/helpers.test.js && node tests/dexie_and_virtualization.test.js && node tests/navigation_responsiveness.test.js"
+    "test": "node tests/helpers.test.js && node tests/dexie_and_virtualization.test.js && node tests/navigation_responsiveness.test.js && node tests/performance_and_isolation.test.js"
   },
   "dependencies": {
     "@serwist/next": "^9.5.13",

@@ -18,7 +18,7 @@ exports.getPipelines = async (req, res) => {
     const pipelineIds = pipelines.map(p => p._id);
     const leadCounts = await Lead.aggregate([
       { $match: { workspaceId: workspaceId, pipelineId: { $in: pipelineIds } } },
-      { $group: { _id: { pipelineId: '$pipelineId', stage: '$pipeline_stage' }, count: { $sum: 1 } } }
+      { $group: { _id: { pipelineId: '$pipelineId', stage: { $ifNull: ['$pipeline_stage', '$pipelineStage'] } }, count: { $sum: 1 } } }
     ]);
 
     const leadCountsMap = {};

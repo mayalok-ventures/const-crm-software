@@ -34,14 +34,21 @@ export const clearAuth = () => {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('user');
     localStorage.removeItem('token');
+    try {
+      Object.keys(localStorage).forEach((k) => {
+        if (k.startsWith('crm_snap_')) {
+          localStorage.removeItem(k);
+        }
+      });
+    } catch (_) {}
     window.dispatchEvent(new CustomEvent('user-updated', { detail: null }));
     try {
       const { clearAllQueryCache } = require('@/components/Providers');
       if (clearAllQueryCache) clearAllQueryCache();
     } catch (_) {}
     try {
-      const { clearCache } = require('@/lib/api');
-      if (clearCache) clearCache();
+      const { clearAllQueryCache: clearApiCache } = require('@/lib/api');
+      if (clearApiCache) clearApiCache();
     } catch (_) {}
   }
 };
