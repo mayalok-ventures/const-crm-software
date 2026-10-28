@@ -12,9 +12,9 @@ const headersPath = path.join(__dirname, '../public/_headers');
 assert.ok(fs.existsSync(headersPath), '_headers file must exist in public directory');
 const headersContent = fs.readFileSync(headersPath, 'utf8');
 assert.ok(headersContent.includes('/*.txt'), '_headers must declare caching for /*.txt flight payloads');
-assert.ok(headersContent.includes('/*/*.txt'), '_headers must declare caching for nested /*/*.txt flight payloads');
-assert.ok(headersContent.includes('max-age=86400'), 'flight payloads must have at least 86400s (24h) cache TTL');
-console.log('  ✅ Cloudflare Pages _headers properly caches Next.js RSC flight text payloads (24h TTL, SWR 7d)');
+assert.ok(headersContent.includes('must-revalidate'), 'flight payloads must declare must-revalidate to prevent stale ChunkLoadErrors across deployments');
+assert.ok(headersContent.includes('immutable'), 'static assets must be immutable');
+console.log('  ✅ Cloudflare Pages _headers properly configures safe flight revalidation and immutable static assets');
 
 // 2. Verify TopProgressBar component exists and is mounted in AppShell
 console.log('\n2️⃣ Testing TopProgressBar component and AppShell integration...');

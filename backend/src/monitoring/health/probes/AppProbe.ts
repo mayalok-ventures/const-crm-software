@@ -1,3 +1,4 @@
+import v8 from 'v8';
 import { ComponentHealth } from '../healthTypes';
 
 export class AppProbe {
@@ -25,13 +26,17 @@ export class AppProbe {
       const uptime = process.uptime();
       const eventLoopLagMs = await AppProbe.measureEventLoopLag();
 
+      const v8Stats = v8.getHeapStatistics();
+      const heapLimitMb = Math.round((v8Stats.heap_size_limit / (1024 * 1024)) * 10) / 10;
       const heapUsedMb = Math.round((mem.heapUsed / (1024 * 1024)) * 10) / 10;
       const heapTotalMb = Math.round((mem.heapTotal / (1024 * 1024)) * 10) / 10;
       const rssMb = Math.round((mem.rss / (1024 * 1024)) * 10) / 10;
-      const heapUsagePercent = Math.round((mem.heapUsed / mem.heapTotal) * 100);
+      // Calculate usage against actual V8 heap limit to avoid false alerts when heapTotal is small
+      const heapUsagePercent = Math.round((mem.heapUsed / v8Stats.heap_size_limit) * 100);
+      const heapAllocatedPercent = Math.round((mem.heapUsed / mem.heapTotal) * 100);
 
       // Score evaluation:
-      // High event loop lag (>100ms) or high heap (>90%) degrades health
+      // High event loop lag (>100ms) or true memory pressure (>85% of heap limit) degrades health
       let score = 100;
       let status: 'HEALTHY' | 'DEGRADED' | 'UNHEALTHY' = 'HEALTHY';
       const issues: string[] = [];
@@ -44,12 +49,12 @@ export class AppProbe {
         issues.push(`Elevated event loop lag: ${eventLoopLagMs}ms`);
       }
 
-      if (heapUsagePercent > 92) {
+      if (heapUsagePercent > 85) {
         score -= 35;
-        issues.push(`Critical heap usage: ${heapUsagePercent}%`);
-      } else if (heapUsagePercent > 80) {
+        issues.push(`Critical heap usage: ${heapUsagePercent}% of limit`);
+      } else if (heapUsagePercent > 70) {
         score -= 15;
-        issues.push(`High heap usage: ${heapUsagePercent}%`);
+        issues.push(`High heap usage: ${heapUsagePercent}% of limit`);
       }
 
       score = Math.max(0, Math.min(100, score));
@@ -80,8 +85,10 @@ export class AppProbe {
           memory: {
             heapUsedMb,
             heapTotalMb,
+            heapLimitMb,
             rssMb,
             heapUsagePercent,
+            heapAllocatedPercent,
           },
           environment: process.env.NODE_ENV || 'development',
         },
