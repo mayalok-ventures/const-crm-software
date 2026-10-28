@@ -129,7 +129,7 @@ jobs:
       - name: Build & Prepare Clean Production Bundle
         working-directory: ./backend
         env:
-          MONGO_URI: ${{ secrets.MONGO_URI || secrets.MONGODB_URI }}
+          MONGO_URI: ${{ secrets.MONGO_URI || secrets.MONGODB_URI || secrets.DATABASE_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           INTEGRATION_ENCRYPTION_KEY: ${{ secrets.INTEGRATION_ENCRYPTION_KEY }}
           ALLOWED_ORIGINS: ${{ secrets.ALLOWED_ORIGINS || 'https://app.sahyak.com,https://crm.sahyak.com' }}
@@ -141,11 +141,17 @@ jobs:
           echo "Pruning devDependencies for clean container packaging..."
           npm prune --omit=dev
 
-          if [ -z "$MONGO_URI" ]; then
-            echo "::warning::Missing secret MONGO_URI (or MONGODB_URI) in GitHub repository secrets! AppSail container will boot without a MongoDB URI and default to localhost, causing database connection failures in production."
+          if [ -n "$MONGO_URI" ]; then
+            echo "::add-mask::$MONGO_URI"
+            echo "✅ Production MongoDB URI detected in repository secrets (masked)."
+          else
+            echo "::warning::Missing secret MONGO_URI (or MONGODB_URI) in GitHub repository secrets! AppSail container will boot without a MongoDB URI and reject connections (localhost fallback is disabled in production). Add MONGO_URI to GitHub Secrets."
           fi
-          if [ -z "$JWT_SECRET" ]; then
-            echo "::warning::Missing secret JWT_SECRET in GitHub repository secrets! AppSail will fall back to default JWT secret."
+          if [ -n "$JWT_SECRET" ]; then
+            echo "::add-mask::$JWT_SECRET"
+          fi
+          if [ -n "$INTEGRATION_ENCRYPTION_KEY" ]; then
+            echo "::add-mask::$INTEGRATION_ENCRYPTION_KEY"
           fi
 
           echo "Injecting production runtime environment configuration into app-config.json..."
@@ -160,10 +166,19 @@ jobs:
               cfg.env_variables.PORT = "9000";
               cfg.env_variables.GIT_COMMIT = process.env.GIT_COMMIT || "";
               cfg.env_variables.BUILD_TIMESTAMP = new Date().toISOString();
-              if (process.env.MONGO_URI) cfg.env_variables.MONGO_URI = process.env.MONGO_URI;
-              if (process.env.JWT_SECRET) cfg.env_variables.JWT_SECRET = process.env.JWT_SECRET;
-              if (process.env.INTEGRATION_ENCRYPTION_KEY) cfg.env_variables.INTEGRATION_ENCRYPTION_KEY = process.env.INTEGRATION_ENCRYPTION_KEY;
-              if (process.env.ALLOWED_ORIGINS) cfg.env_variables.ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS;
+              cfg.env_variables.DB_NAME = "admission-consultant-crm";
+              cfg.env_variables.RUN_BACKGROUND_WORKERS = "true";
+              const mongoUri = (process.env.MONGO_URI || "").trim();
+              if (mongoUri) {
+                cfg.env_variables.MONGO_URI = mongoUri;
+                cfg.env_variables.MONGODB_URI = mongoUri;
+              }
+              const jwtSecret = (process.env.JWT_SECRET || "").trim();
+              if (jwtSecret) cfg.env_variables.JWT_SECRET = jwtSecret;
+              const encKey = (process.env.INTEGRATION_ENCRYPTION_KEY || "").trim();
+              if (encKey) cfg.env_variables.INTEGRATION_ENCRYPTION_KEY = encKey;
+              const origins = (process.env.ALLOWED_ORIGINS || "").trim();
+              if (origins) cfg.env_variables.ALLOWED_ORIGINS = origins;
               fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
               console.log(`Configured ${p} with ${Object.keys(cfg.env_variables).length} environment variables and port 9000.`);
             }

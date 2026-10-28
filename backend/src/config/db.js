@@ -70,12 +70,35 @@ const connectDB = async () => {
   }
 
   try {
-    const hasConfiguredUri = Boolean(process.env.MONGO_URI || process.env.MONGODB_URI);
-    let mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/mobile-crm';
+    const rawUri = process.env.MONGO_URI || process.env.MONGODB_URI;
+    const hasConfiguredUri = Boolean(rawUri && rawUri.trim().length > 0);
+
+    // In production environments (such as Zoho AppSail), strictly require a valid remote MongoDB URI.
+    // Never fall back to localhost in production.
+    if (process.env.NODE_ENV === 'production' && !hasConfiguredUri) {
+      const configErrMsg = 'FATAL: Production database URI is missing. Neither MONGO_URI nor MONGODB_URI is configured in the environment. Localhost fallback is disabled in production.';
+      console.error(`❌ [Production MongoDB Configuration Error] ${configErrMsg}`);
+      // Schedule retry so that if runtime configuration or secrets are injected, connection can recover without restarting container
+      setTimeout(() => {
+        connectDB().catch(err => console.error('Background DB retry error:', err.message));
+      }, 10000);
+      return;
+    }
+
+    let mongoUri = rawUri;
+    if (!mongoUri) {
+      mongoUri = 'mongodb://127.0.0.1:27017/admission-consultant-crm';
+    }
+
     const isLocal = mongoUri.includes('127.0.0.1') || mongoUri.includes('localhost');
 
-    if (!hasConfiguredUri && process.env.NODE_ENV === 'production') {
-      console.warn('⚠️ [MongoDB Configuration Alert] Neither MONGO_URI nor MONGODB_URI is set in process.env. Falling back to localhost, which will fail in container environments like Zoho AppSail. Please add MONGO_URI to your environment variables or GitHub repository secrets.');
+    if (isLocal && process.env.NODE_ENV === 'production') {
+      const localhostProdErr = 'FATAL: A localhost MongoDB URI cannot be used in a production container environment. Please provide a valid remote MongoDB Atlas URI.';
+      console.error(`❌ [Production MongoDB Configuration Error] ${localhostProdErr}`);
+      setTimeout(() => {
+        connectDB().catch(err => console.error('Background DB retry error:', err.message));
+      }, 10000);
+      return;
     }
 
     // If targeting local MongoDB in non-production, ensure MongoDB is actively running
@@ -105,10 +128,14 @@ const connectDB = async () => {
       await seedAdminUser();
       return conn;
     } catch (directErr) {
+      const sanitizedMsg = (directErr.message || '').replace(/\/\/([^:]+):([^@]+)@/g, '//***:***@');
       if (process.env.NODE_ENV === 'production') {
-        console.warn('⚠️ [Production MongoDB] Direct connection failed. Scheduling background reconnection loop...', directErr.message);
+        console.warn('⚠️ [Production MongoDB] Direct connection failed. Scheduling background reconnection loop...', sanitizedMsg);
         setTimeout(() => {
-          connectDB().catch(err => console.error('Background DB retry error:', err.message));
+          connectDB().catch(err => {
+            const retryMsg = (err.message || '').replace(/\/\/([^:]+):([^@]+)@/g, '//***:***@');
+            console.error('Background DB retry error:', retryMsg);
+          });
         }, 5000);
         return;
       }

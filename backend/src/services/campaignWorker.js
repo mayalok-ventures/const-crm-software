@@ -28,6 +28,7 @@
  * DO NOT convert this to a synchronous loop. DO NOT move this to frontend.
  */
 
+const mongoose = require('mongoose');
 const Campaign = require('../models/Campaign');
 const CampaignLog = require('../models/CampaignLog');
 const Lead = require('../models/Lead');
@@ -209,6 +210,7 @@ const processCampaign = async (campaignId) => {
  * Without this, interrupted campaigns would never be picked up again.
  */
 const resetStaleCampaigns = async () => {
+  if (mongoose.connection.readyState !== 1) return;
   const result = await Campaign.updateMany(
     { status: 'running' },
     { status: 'queued' }
@@ -224,6 +226,11 @@ const resetStaleCampaigns = async () => {
  * Uses atomic findOneAndUpdate to prevent two workers from claiming the same campaign.
  */
 const startWorker = () => {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
+
   // Reset stale campaigns first
   resetStaleCampaigns().catch(err =>
     console.error('[CampaignWorker] Failed to reset stale campaigns:', err.message)
@@ -232,6 +239,7 @@ const startWorker = () => {
   let isPolling = false;
   pollInterval = setInterval(async () => {
     if (isPolling) return;
+    if (mongoose.connection.readyState !== 1) return;
     isPolling = true;
     try {
       // Find queued campaigns not already being processed

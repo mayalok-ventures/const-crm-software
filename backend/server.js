@@ -340,12 +340,15 @@ let databaseMonitorWorker, backupMonitorWorker, alertMonitorWorker;
 let integrationMonitorWorker, usageMonitorWorker, apiKeySecurityWorker;
 let deploymentMonitorWorker, healthScoreWorker;
 
-// Asynchronously connect to database and initialize workers
-connectDB().then(async (conn) => {
-  if (!conn || mongoose.connection.readyState !== 1) {
-    console.warn('⚠️ [MongoDB] Database connection is pending or in recovery loop. Workers and migrations will initialize upon connection.');
-    return;
-  }
+let isPostConnectInitialized = false;
+
+const initializePostConnectionServices = async () => {
+  if (isPostConnectInitialized) return;
+  if (mongoose.connection.readyState !== 1) return;
+  isPostConnectInitialized = true;
+
+  console.log('🚀 [MongoDB Post-Connect] Connection established. Initializing background workers and migrations...');
+
   // Attach Mongoose slow query interceptor
   try {
     const slowQueryInterceptor = require('./src/monitoring/database/slowQueryInterceptor').default || require('./src/monitoring/database/slowQueryInterceptor');
@@ -434,8 +437,22 @@ connectDB().then(async (conn) => {
     }, 5 * 60 * 1000);
     if (sheetsPollInterval.unref) sheetsPollInterval.unref();
   }
+};
+
+// Listen for Mongoose connected event so retry/reconnection loops automatically trigger initialization
+mongoose.connection.on('connected', () => {
+  initializePostConnectionServices().catch(err => console.error('[Post-Connect Init Error]:', err.message));
+});
+
+// Asynchronously connect to database and initialize workers
+connectDB().then(async (conn) => {
+  if (!conn || mongoose.connection.readyState !== 1) {
+    console.warn('⚠️ [MongoDB] Database connection is pending or in recovery loop. Workers and migrations will initialize upon connection.');
+    return;
+  }
+  await initializePostConnectionServices().catch(err => console.error('[Post-Connect Init Error]:', err.message));
 }).catch(err => {
-  console.error('Failed to initialize database:', err);
+  console.error('Failed to initialize database:', err.message);
 });
 
 let isShuttingDown = false;

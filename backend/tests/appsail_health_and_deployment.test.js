@@ -335,7 +335,7 @@ async function runAll() {
   it('ensures deploy-backend.yml supports MONGO_URI || MONGODB_URI and injects GIT_COMMIT into app-config.json', () => {
     const wfPath = path.resolve(__dirname, '../../.github/workflows/deploy-backend.yml');
     const content = fs.readFileSync(wfPath, 'utf8');
-    assert.ok(content.includes('MONGO_URI: ${{ secrets.MONGO_URI || secrets.MONGODB_URI }}'),
+    assert.ok(content.includes('MONGO_URI: ${{ secrets.MONGO_URI || secrets.MONGODB_URI'),
       'Workflow must support secrets.MONGO_URI || secrets.MONGODB_URI');
     assert.ok(content.includes('GIT_COMMIT: ${{ github.sha }}'),
       'Workflow must define GIT_COMMIT environment variable');
@@ -352,6 +352,38 @@ async function runAll() {
     assert.strictEqual(result.status, 'UNHEALTHY');
     assert.ok(result.details.driver.includes('MongoDB task queue (Redis optional)'));
     assert.strictEqual(result.details.queueReady, false);
+  });
+
+  // 23. Test that deploy-backend.yml properly injects and masks MONGO_URI and sets DB_NAME
+  it('deploy-backend.yml properly injects MONGO_URI, masks secrets, and configures production DB_NAME', () => {
+    const workflowPath = path.resolve(__dirname, '../../.github/workflows/deploy-backend.yml');
+    assert.ok(fs.existsSync(workflowPath), 'Workflow file must exist');
+    const content = fs.readFileSync(workflowPath, 'utf8');
+
+    assert.ok(content.includes('MONGO_URI: ${{ secrets.MONGO_URI || secrets.MONGODB_URI || secrets.DATABASE_URL }}'),
+      'Workflow must check MONGO_URI, MONGODB_URI, and DATABASE_URL');
+    assert.ok(content.includes('echo "::add-mask::$MONGO_URI"'),
+      'Workflow must mask MONGO_URI');
+    assert.ok(content.includes('cfg.env_variables.DB_NAME = "admission-consultant-crm"'),
+      'Workflow must set target production database name');
+    assert.ok(content.includes('cfg.env_variables.MONGO_URI = mongoUri'),
+      'Workflow must inject MONGO_URI into app-config.json');
+    assert.ok(content.includes('cfg.env_variables.MONGODB_URI = mongoUri'),
+      'Workflow must inject MONGODB_URI into app-config.json');
+  });
+
+  // 24. Test that db.js rejects localhost fallback in production and requires production URI
+  it('backend/src/config/db.js explicitly rejects localhost fallback in production', () => {
+    const dbPath = path.resolve(__dirname, '../src/config/db.js');
+    assert.ok(fs.existsSync(dbPath), 'src/config/db.js must exist');
+    const content = fs.readFileSync(dbPath, 'utf8');
+
+    assert.ok(content.includes('Localhost fallback is disabled in production'),
+      'db.js must explicitly forbid localhost fallback in production');
+    assert.ok(content.includes('admission-consultant-crm'),
+      'db.js must target admission-consultant-crm as default database name');
+    assert.ok(content.includes('safeUri = mongoUri.replace'),
+      'db.js must sanitize URI to redact database credentials in logs');
   });
 
   console.log('\n========================================================');
