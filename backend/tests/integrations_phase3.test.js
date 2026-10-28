@@ -16,12 +16,13 @@
  * 12. Migration of existing Google integrations to per-integration keys
  */
 
+require('dotenv').config();
 const axios = require('axios');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 
 const BASE_URL = 'http://localhost:5000';
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/mobile-crm';
+const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/mobile-crm';
 
 const Integration = require('../src/models/Integration');
 const WebhookEvent = require('../src/models/WebhookEvent');

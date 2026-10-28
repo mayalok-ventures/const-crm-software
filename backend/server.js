@@ -22,7 +22,6 @@ process.on('unhandledRejection', (reason) => {
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const path = require('path');
 const mongoose = require('mongoose');
 
 const connectDB = require('./src/config/db');
