@@ -89,6 +89,11 @@ jobs:
           echo "=========================================================="
           node tests/appsail_health_and_deployment.test.js
 
+          echo "=========================================================="
+          echo "Running Queue & Background Worker Architecture Tests..."
+          echo "=========================================================="
+          node tests/queue_processing.test.js
+
   deploy-to-appsail:
     name: Deploy to Zoho Catalyst AppSail
     needs: test-and-validate

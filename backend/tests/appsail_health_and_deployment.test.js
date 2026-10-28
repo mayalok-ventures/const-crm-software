@@ -343,6 +343,17 @@ async function runAll() {
       'Workflow must inject GIT_COMMIT into app-config.json');
   });
 
+  // 22. Test that QueueProbe reports MongoDB persistent task queue driver and offline state safely
+  await itAsync('ensures QueueProbe reports MongoDB task queue driver and handles offline state cleanly', async () => {
+    const { QueueProbe } = require('../src/monitoring/health/probes/QueueProbe');
+    const probe = new QueueProbe();
+    const result = await probe.probe();
+    assert.strictEqual(result.name, 'Queue & Background Workers');
+    assert.strictEqual(result.status, 'UNHEALTHY');
+    assert.ok(result.details.driver.includes('MongoDB task queue (Redis optional)'));
+    assert.strictEqual(result.details.queueReady, false);
+  });
+
   console.log('\n========================================================');
   console.log(`TOTAL TESTS: ${passedTests + failedTests} | PASSED: ${passedTests} | FAILED: ${failedTests}`);
   console.log('========================================================\n');

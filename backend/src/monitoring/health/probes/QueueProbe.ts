@@ -16,24 +16,37 @@ export class QueueProbe {
           score: 0,
           latencyMs: 1,
           isCritical: false,
-          message: 'Database disconnected, cannot inspect job queues',
+          message: 'Database disconnected, persistent MongoDB task queues offline',
+          details: {
+            driver: 'in-process / MongoDB task queue (Redis optional)',
+            queueReady: false,
+            databaseState: mongoose.connection.readyState === 2 ? 'connecting' : 'disconnected',
+          },
           timestamp: new Date(),
         };
       }
 
-      // 1. Inspect queued campaigns
+      // 1. Inspect queued campaigns (support both lowercase and uppercase statuses)
       const campaignsCollection = mongoose.connection.collection('campaigns');
       const [queuedCount, runningCount, failedCount] = await Promise.all([
-        campaignsCollection.countDocuments({ status: 'QUEUED' }),
-        campaignsCollection.countDocuments({ status: 'RUNNING' }),
-        campaignsCollection.countDocuments({ status: 'FAILED' }),
+        campaignsCollection.countDocuments({ status: { $in: ['queued', 'QUEUED'] } }),
+        campaignsCollection.countDocuments({ status: { $in: ['running', 'RUNNING'] } }),
+        campaignsCollection.countDocuments({ status: { $in: ['failed', 'FAILED'] } }),
+      ]);
+
+      // 2. Inspect durable inbound webhook event queue
+      const webhooksCollection = mongoose.connection.collection('webhookevents');
+      const [pendingWebhooks, processingWebhooks, deadLetterWebhooks] = await Promise.all([
+        webhooksCollection.countDocuments({ status: 'pending' }),
+        webhooksCollection.countDocuments({ status: 'processing' }),
+        webhooksCollection.countDocuments({ status: 'dead_letter' }),
       ]);
 
       let score = 100;
       let status: 'HEALTHY' | 'DEGRADED' | 'UNHEALTHY' = 'HEALTHY';
       const issues: string[] = [];
 
-      // If high number of queued campaigns (>50) or excessive failures (>20), degrade score
+      // Check campaign backlog
       if (queuedCount > 100) {
         score -= 30;
         status = 'DEGRADED';
@@ -42,7 +55,19 @@ export class QueueProbe {
       if (failedCount > 25) {
         score -= 25;
         status = 'DEGRADED';
-        issues.push(`Failed jobs count elevated: ${failedCount}`);
+        issues.push(`Failed campaign jobs elevated: ${failedCount}`);
+      }
+
+      // Check webhook queue backlog
+      if (pendingWebhooks > 100) {
+        score -= 20;
+        status = 'DEGRADED';
+        issues.push(`High pending webhook queue: ${pendingWebhooks}`);
+      }
+      if (deadLetterWebhooks > 10) {
+        score -= 25;
+        status = 'DEGRADED';
+        issues.push(`Dead-letter webhook events detected: ${deadLetterWebhooks}`);
       }
 
       const latencyMs = Math.max(1, Date.now() - startTime);
@@ -56,11 +81,19 @@ export class QueueProbe {
         isCritical: false,
         message: issues.length > 0 ? issues.join(', ') : 'Background workers operational and polling',
         details: {
-          driver: 'MongoDB Persistent Task Queue',
-          workersActive: ['CampaignWorker', 'SubscriptionWorker', 'AlertMonitorWorker', 'DatabaseMonitorWorker', 'BackupMonitorWorker'],
-          queuedJobs: queuedCount,
-          runningJobs: runningCount,
-          failedJobs: failedCount,
+          driver: 'in-process / MongoDB task queue (Redis optional)',
+          workersActive: ['CampaignWorker', 'FollowUpScheduler', 'WebhookQueueWorker', 'MonitoringAgent'],
+          campaigns: {
+            queued: queuedCount,
+            running: runningCount,
+            failed: failedCount,
+          },
+          webhooks: {
+            pending: pendingWebhooks,
+            processing: processingWebhooks,
+            deadLetter: deadLetterWebhooks,
+          },
+          totalPendingJobs: queuedCount + pendingWebhooks,
           pollIntervalMs: 5000,
         },
         timestamp: new Date(),
