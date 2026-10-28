@@ -17,6 +17,7 @@ export class MongoProbe {
       };
       const stateStr = stateMap[readyState] || 'unknown';
 
+      const targetHost = mongoose.connection.host || 'unresolved';
       if (readyState !== 1 || !mongoose.connection.db) {
         return {
           name: 'MongoDB',
@@ -25,11 +26,12 @@ export class MongoProbe {
           score: 0,
           latencyMs: Math.max(1, Date.now() - startTime),
           isCritical: true,
-          message: `MongoDB connection state is ${stateStr} (readyState: ${readyState})`,
+          message: `MongoDB connection state is ${stateStr} (readyState: ${readyState}, targetHost: ${targetHost})`,
           details: {
             connectionState: stateStr,
             readyState,
             databaseName: mongoose.connection.name || 'mobile-crm',
+            targetHost,
             isOperational: false,
           },
           error: 'Database disconnected or not ready',
@@ -89,6 +91,7 @@ export class MongoProbe {
         error: err.message || 'Database ping error',
         details: {
           readyState: mongoose.connection.readyState,
+          targetHost: mongoose.connection.host || 'unresolved',
           isOperational: false,
         },
         timestamp: new Date(),

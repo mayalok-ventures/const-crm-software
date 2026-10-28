@@ -31,6 +31,7 @@ export declare class HealthCheckService {
         status: 'HEALTHY' | 'DEGRADED' | 'UNHEALTHY';
         overallScore: number;
         uptimeSeconds: number;
+        gitCommit: string;
         timestamp: Date;
         components: Record<string, string>;
     }>;

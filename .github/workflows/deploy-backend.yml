@@ -124,16 +124,24 @@ jobs:
       - name: Build & Prepare Clean Production Bundle
         working-directory: ./backend
         env:
-          MONGO_URI: ${{ secrets.MONGO_URI }}
+          MONGO_URI: ${{ secrets.MONGO_URI || secrets.MONGODB_URI }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           INTEGRATION_ENCRYPTION_KEY: ${{ secrets.INTEGRATION_ENCRYPTION_KEY }}
           ALLOWED_ORIGINS: ${{ secrets.ALLOWED_ORIGINS || 'https://app.sahyak.com,https://crm.sahyak.com' }}
+          GIT_COMMIT: ${{ github.sha }}
         run: |
           echo "Installing dependencies and compiling TypeScript..."
           npm ci
           npm run build
           echo "Pruning devDependencies for clean container packaging..."
           npm prune --omit=dev
+
+          if [ -z "$MONGO_URI" ]; then
+            echo "::warning::Missing secret MONGO_URI (or MONGODB_URI) in GitHub repository secrets! AppSail container will boot without a MongoDB URI and default to localhost, causing database connection failures in production."
+          fi
+          if [ -z "$JWT_SECRET" ]; then
+            echo "::warning::Missing secret JWT_SECRET in GitHub repository secrets! AppSail will fall back to default JWT secret."
+          fi
 
           echo "Injecting production runtime environment configuration into app-config.json..."
           node -e '
@@ -145,6 +153,8 @@ jobs:
               cfg.env_variables = cfg.env_variables || {};
               cfg.env_variables.NODE_ENV = "production";
               cfg.env_variables.PORT = "9000";
+              cfg.env_variables.GIT_COMMIT = process.env.GIT_COMMIT || "";
+              cfg.env_variables.BUILD_TIMESTAMP = new Date().toISOString();
               if (process.env.MONGO_URI) cfg.env_variables.MONGO_URI = process.env.MONGO_URI;
               if (process.env.JWT_SECRET) cfg.env_variables.JWT_SECRET = process.env.JWT_SECRET;
               if (process.env.INTEGRATION_ENCRYPTION_KEY) cfg.env_variables.INTEGRATION_ENCRYPTION_KEY = process.env.INTEGRATION_ENCRYPTION_KEY;

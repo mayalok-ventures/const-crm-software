@@ -74,6 +74,8 @@ export class HealthCheckService {
         formattedRss: `${Math.round(mem.rss / (1024 * 1024))} MB`,
       },
       eventLoopLagMs,
+      gitCommit: process.env.GIT_COMMIT || process.env.COMMIT_SHA || 'unknown',
+      buildTimestamp: process.env.BUILD_TIMESTAMP || null,
       timestamp: new Date(),
     };
   }
@@ -121,6 +123,7 @@ export class HealthCheckService {
     return {
       status: isReady ? 'HEALTHY' : 'UNHEALTHY',
       ready: isReady,
+      gitCommit: process.env.GIT_COMMIT || process.env.COMMIT_SHA || 'unknown',
       checks: {
         mongodb: {
           status: mongoHealth.status,
@@ -288,6 +291,8 @@ export class HealthCheckService {
       uptimeSeconds: Math.round(process.uptime()),
       environment: process.env.NODE_ENV || 'development',
       version: '1.0.0',
+      gitCommit: process.env.GIT_COMMIT || process.env.COMMIT_SHA || 'unknown',
+      buildTimestamp: process.env.BUILD_TIMESTAMP || null,
       timestamp: new Date(),
       components: this.sanitizeOutput(components),
       scoreBreakdown: {
@@ -314,6 +319,7 @@ export class HealthCheckService {
     status: 'HEALTHY' | 'DEGRADED' | 'UNHEALTHY';
     overallScore: number;
     uptimeSeconds: number;
+    gitCommit: string;
     timestamp: Date;
     components: Record<string, string>;
   }> {
@@ -327,6 +333,7 @@ export class HealthCheckService {
       status: detailed.status,
       overallScore: detailed.overallScore,
       uptimeSeconds: detailed.uptimeSeconds,
+      gitCommit: detailed.gitCommit || 'unknown',
       timestamp: detailed.timestamp,
       components: componentSummaryMap,
     };

@@ -204,13 +204,15 @@ app.use('/api', apiPerformance);
 // Register public monitoring routes
 app.use('/api/monitoring', monitoringRoutes);
 
-// Request ID & Correlation middleware
+// Request ID, Version & Correlation middleware
 app.use((req, res, next) => {
   const incomingId = req.headers['x-request-id'];
   req.requestId = (typeof incomingId === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(incomingId))
     ? incomingId
     : `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   res.setHeader('X-Request-Id', req.requestId);
+  res.setHeader('X-Commit-SHA', process.env.GIT_COMMIT || process.env.COMMIT_SHA || 'unknown');
+  res.setHeader('X-App-Version', process.env.npm_package_version || '1.0.0');
   next();
 });
 

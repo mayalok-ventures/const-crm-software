@@ -26,15 +26,15 @@
         },
         {
           "name": "MONGO_URI",
-          "value": "mongodb+srv://mayalokventures:Mflica2026crm@cluster0.j988j68.mongodb.net/mobile-crm?retryWrites=true&w=majority&appName=Cluster0"
+          "value": "mongodb+srv://<DB_USER>:<DB_PASSWORD>@cluster0.j988j68.mongodb.net/mobile-crm?retryWrites=true&w=majority&appName=Cluster0"
         },
         {
           "name": "CLOUDINARY_URL",
-          "value": "cloudinary://152963426451515:xzxWxION8S3tfBtJE7a4L07KzLo@dm3wxhsj1"
+          "value": "cloudinary://<API_KEY>:<API_SECRET>@<CLOUD_NAME>"
         },
         {
           "name": "JWT_SECRET",
-          "value": "super_secure_random_string"
+          "value": "<STRONG_JWT_SECRET_MIN_32_CHARS>"
         },
         {
           "name": "JWT_EXPIRE",
@@ -50,11 +50,11 @@
         },
         {
           "name": "ADMIN_EMAIL",
-          "value": "admin@yourapp.com"
+          "value": "admin@sahyak.com"
         },
         {
           "name": "ADMIN_PASSWORD",
-          "value": "Admin@123"
+          "value": "<ADMIN_SECURE_PASSWORD>"
         },
         {
           "name": "WA_BUSINESS_NUMBER",

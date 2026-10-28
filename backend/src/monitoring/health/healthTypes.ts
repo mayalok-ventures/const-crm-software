@@ -31,12 +31,15 @@ export interface LivenessResult {
     formattedRss: string;
   };
   eventLoopLagMs: number;
+  gitCommit?: string;
+  buildTimestamp?: string | null;
   timestamp: Date;
 }
 
 export interface ReadinessResult {
   status: 'HEALTHY' | 'UNHEALTHY';
   ready: boolean;
+  gitCommit?: string;
   checks: {
     mongodb: {
       status: ComponentStatus;
@@ -59,6 +62,8 @@ export interface DetailedHealthResult {
   uptimeSeconds: number;
   environment: string;
   version: string;
+  gitCommit?: string;
+  buildTimestamp?: string | null;
   timestamp: Date;
   components: Record<string, ComponentHealth>;
   scoreBreakdown: {

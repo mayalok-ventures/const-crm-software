@@ -289,6 +289,60 @@ async function runAll() {
     assert.ok(content.includes('liveness'), 'Workflow must check liveness json');
   });
 
+  // 18. Test that backend/task-definition.json contains no plaintext production secrets
+  it('ensures backend/task-definition.json contains no plaintext passwords or sensitive credentials', () => {
+    const taskDefPath = path.resolve(__dirname, '../task-definition.json');
+    assert.ok(fs.existsSync(taskDefPath), 'backend/task-definition.json must exist');
+    const content = fs.readFileSync(taskDefPath, 'utf8');
+    assert.strictEqual(content.includes('cluster0.j988j68.mongodb.net/crm?'), false,
+      'task-definition.json must not contain hardcoded production MongoDB Atlas credentials');
+    assert.strictEqual(content.includes('dldf9gq5j'), false,
+      'task-definition.json must not contain hardcoded Cloudinary credentials');
+    assert.strictEqual(content.includes('864987747833:role'), false,
+      'task-definition.json must not contain hardcoded AWS account role ARN');
+  });
+
+  // 19. Test that MongoProbe reports targetHost when disconnected
+  await itAsync('ensures MongoProbe reports targetHost and connection state in disconnected inspection', async () => {
+    const { MongoProbe } = require('../src/monitoring/health/probes/MongoProbe');
+    const probe = new MongoProbe();
+    const result = await probe.probe();
+    assert.ok(result.name === 'MongoDB', 'Probe name must be MongoDB');
+    assert.ok('targetHost' in (result.details || {}), 'MongoProbe must include targetHost in details');
+    assert.ok(result.message.includes('targetHost'), 'MongoProbe message must include targetHost');
+  });
+
+  // 20. Test that HealthCheckService includes gitCommit and buildTimestamp
+  await itAsync('ensures HealthCheckService includes gitCommit and buildTimestamp in health outputs', async () => {
+    process.env.GIT_COMMIT = 'test-commit-sha-12345';
+    process.env.BUILD_TIMESTAMP = '2026-10-28T00:00:00.000Z';
+    const { HealthCheckService } = require('../src/monitoring/health/HealthCheckService');
+    const service = HealthCheckService.getInstance();
+    
+    const live = await service.getLiveness();
+    assert.strictEqual(live.gitCommit, 'test-commit-sha-12345');
+    assert.strictEqual(live.buildTimestamp, '2026-10-28T00:00:00.000Z');
+
+    const detailed = await service.getDetailed(true);
+    assert.strictEqual(detailed.gitCommit, 'test-commit-sha-12345');
+    assert.strictEqual(detailed.buildTimestamp, '2026-10-28T00:00:00.000Z');
+
+    const summary = await service.getSummary();
+    assert.strictEqual(summary.gitCommit, 'test-commit-sha-12345');
+  });
+
+  // 21. Test that deploy-backend.yml injects GIT_COMMIT and supports MONGO_URI || MONGODB_URI
+  it('ensures deploy-backend.yml supports MONGO_URI || MONGODB_URI and injects GIT_COMMIT into app-config.json', () => {
+    const wfPath = path.resolve(__dirname, '../../.github/workflows/deploy-backend.yml');
+    const content = fs.readFileSync(wfPath, 'utf8');
+    assert.ok(content.includes('MONGO_URI: ${{ secrets.MONGO_URI || secrets.MONGODB_URI }}'),
+      'Workflow must support secrets.MONGO_URI || secrets.MONGODB_URI');
+    assert.ok(content.includes('GIT_COMMIT: ${{ github.sha }}'),
+      'Workflow must define GIT_COMMIT environment variable');
+    assert.ok(content.includes('cfg.env_variables.GIT_COMMIT = process.env.GIT_COMMIT'),
+      'Workflow must inject GIT_COMMIT into app-config.json');
+  });
+
   console.log('\n========================================================');
   console.log(`TOTAL TESTS: ${passedTests + failedTests} | PASSED: ${passedTests} | FAILED: ${failedTests}`);
   console.log('========================================================\n');

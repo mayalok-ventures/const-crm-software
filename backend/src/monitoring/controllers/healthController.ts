@@ -14,6 +14,7 @@ export const getHealth = async (req: Request, res: Response) => {
       status: summary.status,
       overallScore: summary.overallScore,
       uptimeSeconds: summary.uptimeSeconds,
+      gitCommit: summary.gitCommit,
       timestamp: summary.timestamp,
       components: summary.components,
     });

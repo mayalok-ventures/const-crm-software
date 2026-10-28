@@ -62,9 +62,21 @@ const attachConnectionListeners = (activeUri) => {
 };
 
 const connectDB = async () => {
+  if (mongoose.connection.readyState === 1) {
+    return mongoose.connection;
+  }
+  if (mongoose.connection.readyState === 2 && isReconnecting) {
+    return mongoose.connection;
+  }
+
   try {
+    const hasConfiguredUri = Boolean(process.env.MONGO_URI || process.env.MONGODB_URI);
     let mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/mobile-crm';
     const isLocal = mongoUri.includes('127.0.0.1') || mongoUri.includes('localhost');
+
+    if (!hasConfiguredUri && process.env.NODE_ENV === 'production') {
+      console.warn('⚠️ [MongoDB Configuration Alert] Neither MONGO_URI nor MONGODB_URI is set in process.env. Falling back to localhost, which will fail in container environments like Zoho AppSail. Please add MONGO_URI to your environment variables or GitHub repository secrets.');
+    }
 
     // If targeting local MongoDB in non-production, ensure MongoDB is actively running
     if (isLocal && process.env.NODE_ENV !== 'production') {
