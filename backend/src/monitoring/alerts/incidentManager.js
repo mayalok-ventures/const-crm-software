@@ -5,12 +5,18 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.incidentManager = exports.IncidentManager = void 0;
 const crypto_1 = __importDefault(require("crypto"));
+const mongoose_1 = __importDefault(require("mongoose"));
 const Incident_1 = require("../models/Incident");
 const Alert_1 = require("../models/Alert");
 const ErrorGroup_1 = require("../models/ErrorGroup");
 const SystemLog_1 = require("../models/SystemLog");
 const alertDeduplicator_1 = require("./alertDeduplicator");
 const notificationEngine_1 = require("./notificationEngine");
+const getIncidentLookupQuery = (incidentId) => {
+    return mongoose_1.default.Types.ObjectId.isValid(incidentId)
+        ? { $or: [{ incidentId }, { _id: incidentId }] }
+        : { incidentId };
+};
 class IncidentManager {
     static instance;
     constructor() { }
@@ -171,9 +177,7 @@ class IncidentManager {
      */
     async acknowledgeIncident(incidentId, user = 'ADMIN_OPERATOR') {
         const now = new Date();
-        const incident = await Incident_1.Incident.findOne({
-            $or: [{ incidentId }, { _id: incidentId }],
-        });
+        const incident = await Incident_1.Incident.findOne(getIncidentLookupQuery(incidentId));
         if (!incident)
             return null;
         incident.status = 'INVESTIGATING';
@@ -195,9 +199,7 @@ class IncidentManager {
      */
     async resolveIncident(incidentId, user = 'ADMIN_OPERATOR', resolutionNotes = 'Metric returned to nominal operating thresholds', rootCause = 'Transient workload spike resolved') {
         const now = new Date();
-        const incident = await Incident_1.Incident.findOne({
-            $or: [{ incidentId }, { _id: incidentId }],
-        });
+        const incident = await Incident_1.Incident.findOne(getIncidentLookupQuery(incidentId));
         if (!incident)
             return null;
         const durationMs = incident.startedAt ? now.getTime() - new Date(incident.startedAt).getTime() : 0;
@@ -239,9 +241,7 @@ class IncidentManager {
      */
     async escalateIncident(incidentId, reason = 'SLA response deadline exceeded') {
         const now = new Date();
-        const incident = await Incident_1.Incident.findOne({
-            $or: [{ incidentId }, { _id: incidentId }],
-        });
+        const incident = await Incident_1.Incident.findOne(getIncidentLookupQuery(incidentId));
         if (!incident || incident.status === 'RESOLVED')
             return null;
         incident.escalationLevel = (incident.escalationLevel || 1) + 1;

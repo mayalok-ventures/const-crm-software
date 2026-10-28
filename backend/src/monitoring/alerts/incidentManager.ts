@@ -1,10 +1,17 @@
 import crypto from 'crypto';
+import mongoose from 'mongoose';
 import { Incident, IIncident, IncidentSeverity, IncidentStatus } from '../models/Incident';
 import { Alert, IAlert } from '../models/Alert';
 import { ErrorGroup } from '../models/ErrorGroup';
 import { SystemLog } from '../models/SystemLog';
 import { alertDeduplicator } from './alertDeduplicator';
 import { notificationEngine } from './notificationEngine';
+
+const getIncidentLookupQuery = (incidentId: string) => {
+  return mongoose.Types.ObjectId.isValid(incidentId)
+    ? { $or: [{ incidentId }, { _id: incidentId }] }
+    : { incidentId };
+};
 
 export class IncidentManager {
   private static instance: IncidentManager;
@@ -191,9 +198,7 @@ export class IncidentManager {
     user: string = 'ADMIN_OPERATOR'
   ): Promise<IIncident | null> {
     const now = new Date();
-    const incident = await Incident.findOne({
-      $or: [{ incidentId }, { _id: incidentId }],
-    });
+    const incident = await Incident.findOne(getIncidentLookupQuery(incidentId));
 
     if (!incident) return null;
 
@@ -228,9 +233,7 @@ export class IncidentManager {
     rootCause: string = 'Transient workload spike resolved'
   ): Promise<IIncident | null> {
     const now = new Date();
-    const incident = await Incident.findOne({
-      $or: [{ incidentId }, { _id: incidentId }],
-    });
+    const incident = await Incident.findOne(getIncidentLookupQuery(incidentId));
 
     if (!incident) return null;
 
@@ -286,9 +289,7 @@ export class IncidentManager {
     reason: string = 'SLA response deadline exceeded'
   ): Promise<IIncident | null> {
     const now = new Date();
-    const incident = await Incident.findOne({
-      $or: [{ incidentId }, { _id: incidentId }],
-    });
+    const incident = await Incident.findOne(getIncidentLookupQuery(incidentId));
 
     if (!incident || incident.status === 'RESOLVED') return null;
 

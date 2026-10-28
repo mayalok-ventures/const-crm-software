@@ -66,6 +66,16 @@ function BottomNavContent({ active }) {
         queryClient.prefetchQuery(dashboardStatsOptions());
       } else if (key === 'integrations') {
         queryClient.prefetchQuery(integrationsOptions());
+      } else if (key === 'deals') {
+        cachedGet('/deals', { ttl: 60000 }).catch(() => {});
+        cachedGet('/commission/summary', { ttl: 60000 }).catch(() => {});
+      } else if (key === 'catalogue') {
+        cachedGet('/catalogue', { ttl: 60000 }).catch(() => {});
+      } else if (key === 'follow_ups') {
+        cachedGet('/leads/follow-ups/today', { ttl: 30000 }).catch(() => {});
+      } else if (key === 'whatsapp') {
+        cachedGet('/whatsapp/meta/account', { ttl: 60000 }).catch(() => {});
+        cachedGet('/whatsapp/meta/templates', { ttl: 60000 }).catch(() => {});
       }
     } catch (_) {}
   };

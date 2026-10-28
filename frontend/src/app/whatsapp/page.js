@@ -3,16 +3,18 @@ import { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
+import dynamic from 'next/dynamic';
+import api, { cachedGet } from '@/lib/api';
 import { getUser, isOwner, isManager, isCounselor, hasPermission } from '@/lib/auth';
-import MetaConnectModal from '@/components/whatsapp/MetaConnectModal';
-import MetaTemplateModal from '@/components/whatsapp/MetaTemplateModal';
-import CapabilityMatrixModal from '@/components/whatsapp/CapabilityMatrixModal';
-import WhatsAppConnectionModal from '@/components/whatsapp/WhatsAppConnectionModal';
-import LocalTemplateModal from '@/components/whatsapp/LocalTemplateModal';
-import BroadcastLaunchModal from '@/components/whatsapp/BroadcastLaunchModal';
-import BroadcastLogsModal from '@/components/whatsapp/BroadcastLogsModal';
-import AutomationRuleModal from '@/components/automations/AutomationRuleModal';
+
+const MetaConnectModal = dynamic(() => import('@/components/whatsapp/MetaConnectModal'), { ssr: false });
+const MetaTemplateModal = dynamic(() => import('@/components/whatsapp/MetaTemplateModal'), { ssr: false });
+const CapabilityMatrixModal = dynamic(() => import('@/components/whatsapp/CapabilityMatrixModal'), { ssr: false });
+const WhatsAppConnectionModal = dynamic(() => import('@/components/whatsapp/WhatsAppConnectionModal'), { ssr: false });
+const LocalTemplateModal = dynamic(() => import('@/components/whatsapp/LocalTemplateModal'), { ssr: false });
+const BroadcastLaunchModal = dynamic(() => import('@/components/whatsapp/BroadcastLaunchModal'), { ssr: false });
+const BroadcastLogsModal = dynamic(() => import('@/components/whatsapp/BroadcastLogsModal'), { ssr: false });
+const AutomationRuleModal = dynamic(() => import('@/components/automations/AutomationRuleModal'), { ssr: false });
 import {
   MessageCircle, CheckCircle2, AlertCircle, RefreshCw, XCircle, Copy,
   HelpCircle, Smartphone, Monitor, Send, Search, User, CheckCheck, ArrowLeft,
@@ -236,8 +238,8 @@ export default function WhatsAppWorkspacePage() {
     setMetaLoading(true);
     try {
       const [accRes, cfgRes] = await Promise.all([
-        api.get('/whatsapp/meta/account').catch(() => ({ data: { account: null } })),
-        api.get('/whatsapp/meta/config-status').catch(() => ({ data: { configured: false } })),
+        cachedGet('/whatsapp/meta/account', { ttl: 60000, silentAuth: true }).catch(() => ({ data: { account: null } })),
+        cachedGet('/whatsapp/meta/config-status', { ttl: 60000, silentAuth: true }).catch(() => ({ data: { configured: false } })),
       ]);
       setMetaAccount(accRes.data?.account || null);
       setMetaConfigStatus(cfgRes.data || null);
@@ -261,8 +263,8 @@ export default function WhatsAppWorkspacePage() {
     setTemplatesLoading(true);
     try {
       const [metaRes, localRes] = await Promise.all([
-        api.get('/whatsapp/meta/templates').catch(() => ({ data: { templates: [] } })),
-        api.get('/templates?channel=whatsapp').catch(() => ({ data: [] })),
+        cachedGet('/whatsapp/meta/templates', { ttl: 60000, silentAuth: true }).catch(() => ({ data: { templates: [] } })),
+        cachedGet('/templates?channel=whatsapp', { ttl: 60000, silentAuth: true }).catch(() => ({ data: [] })),
       ]);
       setMetaTemplates(metaRes.data?.templates || []);
       setLocalTemplates(Array.isArray(localRes.data) ? localRes.data : localRes.data?.templates || []);
