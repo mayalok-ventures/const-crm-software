@@ -236,6 +236,7 @@ export default function EmailThreadView({
 
             <Link
               href={`/leads/${linkedLead._id || linkedLead}`}
+              prefetch={false}
               className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-800 transition underline"
             >
               <span>View CRM Profile</span>

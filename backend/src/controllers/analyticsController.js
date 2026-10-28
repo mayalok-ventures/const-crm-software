@@ -37,7 +37,9 @@ const getScopedLeadFilter = (req) => {
     };
   }
   return baseFilter;
-};
+// 60-second in-memory cache for getAnalytics per workspace/user
+const analyticsCache = new Map();
+const ANALYTICS_CACHE_TTL = 60 * 1000;
 
 // @desc  Analytics summary
 // @route GET /api/analytics
@@ -45,6 +47,15 @@ const getScopedLeadFilter = (req) => {
 exports.getAnalytics = async (req, res) => {
   try {
     const userId = req.user._id;
+    const wsId = req.workspaceId || req.tenantId || req.user?.workspaceId || 'personal';
+    const cacheKey = `${wsId}:${userId}`;
+    const cached = analyticsCache.get(cacheKey);
+    const now = Date.now();
+
+    if (cached && now - cached.timestamp < ANALYTICS_CACHE_TTL) {
+      return res.json(cached.data);
+    }
+
     const leadFilter = getScopedLeadFilter(req);
 
     const [
@@ -130,7 +141,7 @@ exports.getAnalytics = async (req, res) => {
       totalLeads > 0 ? Math.round((closedCount / totalLeads) * 100) : 0;
     const totalRevenue = revenueAgg[0]?.total || 0;
 
-    res.json({
+    const result = {
       totalLeads,
       byStatus,
       allStatusMap,
@@ -140,7 +151,12 @@ exports.getAnalytics = async (req, res) => {
       totalRecordings,
       todayFollowUps,
       recentLeads, // last 7 days by day
-    });
+    };
+
+    if (analyticsCache.size > 500) analyticsCache.clear();
+    analyticsCache.set(cacheKey, { data: result, timestamp: now });
+
+    res.json(result);
   } catch (error) {
     console.error('Analytics error:', error);
     res.status(500).json({ message: 'Server error' });

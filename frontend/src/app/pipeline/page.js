@@ -764,6 +764,7 @@ function PipelineContent() {
                             <div className="flex items-start justify-between gap-2 mb-1.5">
                               <Link
                                 href={`/leads/${lead._id}`}
+                                prefetch={false}
                                 style={{
                                   fontSize: 13,
                                   fontWeight: 700,
@@ -863,7 +864,7 @@ function PipelineContent() {
                     <div key={lead._id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/50 transition">
                       <div>
                         <div className="flex items-center gap-2">
-                          <Link href={`/leads/${lead._id}`} className="font-bold text-slate-900 text-sm hover:text-indigo-600">
+                          <Link href={`/leads/${lead._id}`} prefetch={false} className="font-bold text-slate-900 text-sm hover:text-indigo-600">
                             {lead.name}
                           </Link>
                           {lead.budget && (
@@ -894,6 +895,7 @@ function PipelineContent() {
 
                         <Link
                           href={`/leads/${lead._id}`}
+                          prefetch={false}
                           className="btn btn-outline text-xs px-3 py-1.5 flex items-center gap-1"
                         >
                           <span>Profile</span>

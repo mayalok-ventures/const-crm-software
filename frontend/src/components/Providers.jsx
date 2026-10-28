@@ -14,7 +14,7 @@ export function getQueryClient() {
     globalQueryClient = new QueryClient({
       defaultOptions: {
         queries: {
-          staleTime: 60000, // 60 seconds stale-while-revalidate for seamless navigation
+          staleTime: 1000 * 60 * 10, // 10 minutes SWR cache - seamless navigation even after long pauses
           gcTime: 1000 * 60 * 60 * 24 * 7, // 7 days retained in Dexie local cache
           retry: 1,
           refetchOnWindowFocus: false, // Prevent aggressive network requests on tab focus

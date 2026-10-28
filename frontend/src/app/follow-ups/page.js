@@ -259,6 +259,7 @@ export default function FollowUpsPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
                       <Link
                         href={`/leads/${item._id}`}
+                        prefetch={false}
                         style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', textDecoration: 'none' }}
                       >
                         {item.name || 'Unnamed Prospect'}

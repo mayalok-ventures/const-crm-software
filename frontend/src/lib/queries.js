@@ -6,19 +6,50 @@ import api from '@/lib/api';
  * All pages, components, and prefetchers consume these identical helpers.
  */
 
+/**
+ * Synchronous Frame-0 Local Snapshot Cache
+ * Enables instantaneous first-frame renders on cold reloads,
+ * eliminating empty white states, flashes, and loading spinners.
+ */
+export function getLocalSnapshot(key) {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    const raw = localStorage.getItem(`crm_snap_${key}`);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.data && (Date.now() - parsed.ts < 1000 * 60 * 60 * 24)) {
+      return parsed.data;
+    }
+  } catch (_) {}
+  return undefined;
+}
+
+export function setLocalSnapshot(key, data) {
+  if (typeof window === 'undefined' || !data) return;
+  try {
+    localStorage.setItem(`crm_snap_${key}`, JSON.stringify({ data, ts: Date.now() }));
+  } catch (_) {}
+}
+
 export function leadsListOptions(filters = {}) {
+  const isDefault = Object.keys(filters).length === 0 || (Object.keys(filters).length === 1 && filters.limit);
   return queryOptions({
     queryKey: ['leads', 'list', filters],
     queryFn: async ({ signal }) => {
       const res = await api.get('/leads', { params: filters, signal });
+      if (isDefault && res.data) {
+        setLocalSnapshot('leads_list_default', res.data);
+      }
       return res.data;
     },
+    initialData: isDefault ? () => getLocalSnapshot('leads_list_default') : undefined,
     placeholderData: (previousData) => previousData,
-    staleTime: 60000,
+    staleTime: 1000 * 60 * 10,
   });
 }
 
 export function pipelineOptions(filters = {}) {
+  const isDefault = Object.keys(filters).length === 0;
   return queryOptions({
     queryKey: ['pipeline', 'leads', filters],
     queryFn: async ({ signal }) => {
@@ -26,14 +57,19 @@ export function pipelineOptions(filters = {}) {
         api.get('/leads', { params: { limit: 250, ...filters }, signal }),
         api.get('/pipelines', { signal }).catch(() => ({ data: { success: false, data: [] } })),
       ]);
-      return {
+      const data = {
         leads: leadsRes.data?.leads || [],
         pipelines: pipelinesRes.data?.data || [],
         total: leadsRes.data?.total || 0,
       };
+      if (isDefault) {
+        setLocalSnapshot('pipeline_default', data);
+      }
+      return data;
     },
+    initialData: isDefault ? () => getLocalSnapshot('pipeline_default') : undefined,
     placeholderData: (previousData) => previousData,
-    staleTime: 60000,
+    staleTime: 1000 * 60 * 10,
   });
 }
 
@@ -44,10 +80,14 @@ export function dashboardStatsOptions() {
       const res = await api.get('/analytics', { signal }).catch(async () => {
         return await api.get('/leads?limit=1', { signal });
       });
+      if (res.data) {
+        setLocalSnapshot('dashboard_stats', res.data);
+      }
       return res.data;
     },
+    initialData: () => getLocalSnapshot('dashboard_stats'),
     placeholderData: (previousData) => previousData,
-    staleTime: 60000,
+    staleTime: 1000 * 60 * 10,
   });
 }
 
@@ -58,7 +98,7 @@ export function membersOptions() {
       const res = await api.get('/workspace/members', { signal });
       return res.data?.members || [];
     },
-    staleTime: 60000,
+    staleTime: 1000 * 60 * 30, // 30 minutes
   });
 }
 
@@ -69,7 +109,7 @@ export function inboundCampaignsOptions() {
       const res = await api.get('/campaigns/inbound', { signal });
       return res.data?.campaigns || [];
     },
-    staleTime: 60000,
+    staleTime: 1000 * 60 * 30, // 30 minutes
   });
 }
 
@@ -80,7 +120,7 @@ export function integrationsOptions() {
       const res = await api.get('/integrations', { signal });
       return res.data?.integrations || res.data?.data || (Array.isArray(res.data) ? res.data : []);
     },
-    staleTime: 60000,
+    staleTime: 1000 * 60 * 30, // 30 minutes
   });
 }
 
@@ -95,7 +135,7 @@ export function dueFollowUpsOptions() {
       });
       return Array.isArray(res.data) ? res.data : (res.data?.followUps || []);
     },
-    staleTime: 30000,
+    staleTime: 1000 * 60 * 3, // 3 minutes
   });
 }
 
@@ -107,7 +147,7 @@ export function todayFollowUpsOptions() {
       return Array.isArray(res.data) ? res.data : [];
     },
     placeholderData: (previousData) => previousData,
-    staleTime: 60000,
+    staleTime: 1000 * 60 * 10, // 10 minutes
   });
 }
 
@@ -118,7 +158,7 @@ export function authMeOptions() {
       const res = await api.get('/auth/me', { signal });
       return res.data;
     },
-    staleTime: 60000,
+    staleTime: 1000 * 60 * 30, // 30 minutes
   });
 }
 
@@ -129,7 +169,7 @@ export function workspaceCurrentOptions() {
       const res = await api.get('/workspace/current', { signal });
       return res.data?.data || res.data;
     },
-    staleTime: 60000,
+    staleTime: 1000 * 60 * 30, // 30 minutes
   });
 }
 
@@ -140,7 +180,7 @@ export function workspaceMembersOptions() {
       const res = await api.get('/workspace/members', { signal });
       return res.data?.data || [];
     },
-    staleTime: 60000,
+    staleTime: 1000 * 60 * 30, // 30 minutes
   });
 }
 
@@ -152,7 +192,7 @@ export function dealsOptions(filters = {}) {
       return res.data?.data || res.data || [];
     },
     placeholderData: (previousData) => previousData,
-    staleTime: 60000,
+    staleTime: 1000 * 60 * 10, // 10 minutes
   });
 }
 
@@ -164,7 +204,7 @@ export function dealsSummaryOptions() {
       return res.data?.data || null;
     },
     placeholderData: (previousData) => previousData,
-    staleTime: 60000,
+    staleTime: 1000 * 60 * 10, // 10 minutes
   });
 }
 
@@ -178,7 +218,7 @@ export function notificationsOptions() {
         unreadCount: res.data?.unreadCount || 0,
       };
     },
-    staleTime: 20000,
+    staleTime: 1000 * 60 * 1, // 1 minute
   });
 }
 
@@ -219,6 +259,6 @@ export function bootstrapOptions(queryClient) {
       }
       return data;
     },
-    staleTime: 60000,
+    staleTime: 1000 * 60 * 30, // 30 minutes
   });
 }

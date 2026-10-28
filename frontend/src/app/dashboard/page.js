@@ -299,7 +299,7 @@ export default function DashboardPage() {
                             }}
                           >
                             <div>
-                              <Link href={`/leads/${fu._id}`} style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', textDecoration: 'none' }}>
+                              <Link href={`/leads/${fu._id}`} prefetch={false} style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', textDecoration: 'none' }}>
                                 {fu.name || 'Prospect'}
                               </Link>
                               <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', gap: 8, marginTop: 2 }}>
@@ -371,7 +371,7 @@ export default function DashboardPage() {
                           >
                             <div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <Link href={`/leads/${lead._id}`} style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', textDecoration: 'none' }}>
+                                <Link href={`/leads/${lead._id}`} prefetch={false} style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', textDecoration: 'none' }}>
                                   {lead.name || 'Prospect'}
                                 </Link>
                                 <SourcePill source={lead.source} />

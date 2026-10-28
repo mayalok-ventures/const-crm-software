@@ -338,6 +338,7 @@ export default function NotificationsPage() {
                     {leadId && (
                       <Link
                         href={`/leads/${leadId}`}
+                        prefetch={false}
                         className="px-3 py-1 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs flex items-center gap-1.5 transition"
                       >
                         <ExternalLink className="w-3 h-3" />

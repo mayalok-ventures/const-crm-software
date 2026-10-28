@@ -933,6 +933,7 @@ export default function WhatsAppWorkspacePage() {
                           {selectedChatData?.lead && (
                             <Link
                               href={`/leads/${selectedChatData.lead._id}`}
+                              prefetch={false}
                               className="text-[10px] text-indigo-600 hover:underline font-normal"
                             >
                               (View Lead Record)

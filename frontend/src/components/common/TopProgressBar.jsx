@@ -10,12 +10,15 @@ function TopProgressBarInner() {
   const timerRef = useRef(null);
   const finishTimerRef = useRef(null);
 
+  const safetyTimeoutRef = useRef(null);
+
   const startProgress = () => {
     if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
     if (timerRef.current) clearInterval(timerRef.current);
+    if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
 
     setVisible(true);
-    setProgress(30);
+    setProgress(35);
 
     timerRef.current = setInterval(() => {
       setProgress((prev) => {
@@ -23,20 +26,27 @@ function TopProgressBarInner() {
           clearInterval(timerRef.current);
           return 85;
         }
-        const step = Math.max(1, (85 - prev) * 0.18);
+        const step = Math.max(1, (85 - prev) * 0.22);
         return prev + step;
       });
-    }, 100);
+    }, 80);
+
+    // Safety timeout: In a client-side / static app, navigation completes rapidly.
+    // Ensure the bar completes and smoothly dismisses within 450ms so it never hangs.
+    safetyTimeoutRef.current = setTimeout(() => {
+      completeProgress();
+    }, 450);
   };
 
   const completeProgress = () => {
     if (timerRef.current) clearInterval(timerRef.current);
+    if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
     setProgress(100);
 
     finishTimerRef.current = setTimeout(() => {
       setVisible(false);
       setProgress(0);
-    }, 250);
+    }, 200);
   };
 
   // Complete progress whenever the pathname updates (navigation finished)
@@ -67,9 +77,10 @@ function TopProgressBarInner() {
         return;
       }
 
-      // Check if clicking currently active pathname
-      const currentPath = window.location.pathname;
-      if (href === currentPath || href === currentPath + '/') {
+      // Check if clicking currently active pathname (ignoring query strings and hashes)
+      const cleanHref = href.split('?')[0].split('#')[0].replace(/\/+$/, '') || '/';
+      const cleanCurrent = window.location.pathname.replace(/\/+$/, '') || '/';
+      if (cleanHref === cleanCurrent) {
         return;
       }
 
@@ -89,6 +100,7 @@ function TopProgressBarInner() {
       window.removeEventListener('crm-nav-done', handleCustomDone);
       if (timerRef.current) clearInterval(timerRef.current);
       if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
+      if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
     };
   }, []);
 

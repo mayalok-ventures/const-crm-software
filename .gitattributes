@@ -1,0 +1,3 @@
+# Ensure Cloudflare Pages configuration files retain Unix LF line endings
+frontend/public/_redirects text eol=lf
+frontend/public/_headers text eol=lf

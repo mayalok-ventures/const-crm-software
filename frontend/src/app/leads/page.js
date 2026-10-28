@@ -964,6 +964,7 @@ function LeadsContent() {
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
                               <Link
                                 href={`/leads/${lead._id}`}
+                                prefetch={false}
                                 onClick={e => e.stopPropagation()}
                                 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', textDecoration: 'none' }}
                               >
@@ -1160,7 +1161,7 @@ function LeadsContent() {
                     >
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <Link href={`/leads/${lead._id}`} style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', textDecoration: 'none' }}>
+                          <Link href={`/leads/${lead._id}`} prefetch={false} style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', textDecoration: 'none' }}>
                             {lead.name}
                           </Link>
                           <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', fontWeight: 700 }}>

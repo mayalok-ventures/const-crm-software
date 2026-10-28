@@ -80,6 +80,7 @@ export default function VirtualizedKanbanColumn({
                   <div className="flex items-start justify-between gap-1 mb-1">
                     <Link
                       href={`/leads/${leadId}`}
+                      prefetch={false}
                       className="font-semibold text-slate-900 dark:text-slate-100 text-sm hover:text-indigo-600 dark:hover:text-indigo-400 line-clamp-1"
                     >
                       {lead.name || 'Unnamed Candidate'}

@@ -84,6 +84,7 @@ export default function VirtualizedLeadTable({
                   <div className="flex items-center gap-2">
                     <Link
                       href={`/leads/${leadId}`}
+                      prefetch={false}
                       className="font-semibold text-slate-900 dark:text-slate-100 text-sm hover:text-indigo-600 dark:hover:text-indigo-400 truncate"
                     >
                       {lead.name || 'Unnamed Candidate'}
@@ -147,6 +148,7 @@ export default function VirtualizedLeadTable({
 
                 <Link
                   href={`/leads/${leadId}`}
+                  prefetch={false}
                   className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg"
                 >
                   <ChevronRight className="w-4 h-4" />

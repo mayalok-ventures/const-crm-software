@@ -748,6 +748,7 @@ export default function CampaignsPage() {
                       >
                         <Link
                           href={`/campaigns/${c._id}`}
+                          prefetch={false}
                           className="btn btn-ghost btn-sm"
                           style={{ padding: '6px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
                         >

@@ -46,7 +46,10 @@ console.log('  ✅ BottomNav implements Frame-0 (0ms) active tab state and prefe
 console.log('\n4️⃣ Testing TanStack Query staleTime and placeholderData consistency...');
 const queriesPath = path.join(__dirname, '../src/lib/queries.js');
 const queriesContent = fs.readFileSync(queriesPath, 'utf8');
-assert.ok(queriesContent.includes('staleTime: 60000'), 'leadsListOptions and pipelineOptions must have staleTime >= 60000ms');
+assert.ok(
+  queriesContent.includes('staleTime: 1000 * 60 * 10') || queriesContent.includes('staleTime: 600000'),
+  'leadsListOptions and pipelineOptions must have staleTime >= 10m (600000ms)'
+);
 assert.ok(queriesContent.includes('placeholderData: (previousData) => previousData'), 'Queries must use placeholderData to prevent skeleton flash');
 console.log('  ✅ Query cache settings prevent layout shift and unnecessary mount refetches');
 
