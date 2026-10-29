@@ -20,6 +20,7 @@ import FollowUpCompleteModal from '@/components/FollowUpCompleteModal';
 import { SourcePill, getLeadSourceTag } from '@/lib/sourceHelper';
 import ShareCollegeFeeModal from '@/components/leads/ShareCollegeFeeModal';
 import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
+import { getResolvedRouteParam, isValidEntityId } from '@/lib/routeParams';
 
 const STATUS_OPTIONS = [
   'new_lead',
@@ -923,22 +924,15 @@ export default function LeadDetailPage() {
   const params = useParams();
   const router = useRouter();
 
-  const getActualId = () => {
-    if (params?.id && params.id !== 'placeholder' && params.id !== '[id]' && params.id !== 'undefined' && params.id !== 'null' && /^[0-9a-fA-F]{24}$/.test(params.id)) {
-      return params.id;
-    }
-    if (typeof window !== 'undefined') {
-      const parts = window.location.pathname.split('/').filter(Boolean);
-      const idx = parts.indexOf('leads');
-      if (idx !== -1 && parts[idx + 1] && parts[idx + 1] !== 'placeholder' && parts[idx + 1] !== '[id]' && parts[idx + 1] !== 'undefined' && parts[idx + 1] !== 'null' && /^[0-9a-fA-F]{24}$/.test(parts[idx + 1])) {
-        return parts[idx + 1];
-      }
-    }
-    return '';
-  };
+  const [leadId, setLeadId] = useState(() => getResolvedRouteParam(params, 'id', 'leads', isValidEntityId));
+  const id = leadId || getResolvedRouteParam(params, 'id', 'leads', isValidEntityId);
 
-  const [leadId, setLeadId] = useState(getActualId());
-  const id = leadId || getActualId();
+  useEffect(() => {
+    const resolved = getResolvedRouteParam(params, 'id', 'leads', isValidEntityId);
+    if (resolved && resolved !== leadId) {
+      setLeadId(resolved);
+    }
+  }, [params]);
 
   const [lead, setLead] = useState(null);
   const [projects, setProjects] = useState([]);

@@ -1,6 +1,6 @@
 import { defaultCache } from '@serwist/next/worker';
 import type { PrecacheEntry, SerwistGlobalConfig } from 'serwist';
-import { Serwist, StaleWhileRevalidate, ExpirationPlugin } from 'serwist';
+import { Serwist, NetworkFirst, ExpirationPlugin } from 'serwist';
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -20,12 +20,13 @@ const serwist = new Serwist({
         url.pathname.endsWith('.txt') &&
         !url.pathname.startsWith('/api') &&
         !url.pathname.includes('/api/'),
-      handler: new StaleWhileRevalidate({
+      handler: new NetworkFirst({
         cacheName: 'rsc-flight-payloads',
+        networkTimeoutSeconds: 5,
         plugins: [
           new ExpirationPlugin({
             maxEntries: 50,
-            maxAgeSeconds: 12 * 60 * 60, // 12 hours max cache age
+            maxAgeSeconds: 24 * 60 * 60,
           }),
         ],
       }),
@@ -35,6 +36,19 @@ const serwist = new Serwist({
 });
 
 serwist.addEventListeners();
+
+// Ensure clean cache boundaries on service worker activation
+self.addEventListener('activate', (event: any) => {
+  event.waitUntil(
+    caches.keys().then((keys: string[]) => {
+      return Promise.all(
+        keys
+          .filter((k) => k.startsWith('rsc-flight-') && k !== 'rsc-flight-payloads')
+          .map((k) => caches.delete(k))
+      );
+    })
+  );
+});
 
 // ─────────────────────────────────────────────────────────────
 // WEB PUSH NOTIFICATIONS & CRM FOLLOW-UP ALARM HANDLER

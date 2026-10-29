@@ -6,27 +6,21 @@ import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
 import { ChevronLeft, RefreshCw, AlertTriangle, CheckCircle, XCircle, ArrowLeft, Pause, Play, Trash } from 'lucide-react';
+import { getResolvedRouteParam } from '@/lib/routeParams';
 
 export default function CampaignDetailsPage() {
   const params = useParams();
   const router = useRouter();
 
-  const getActualId = () => {
-    if (params?.id && params.id !== 'placeholder' && params.id !== '[id]' && params.id !== 'undefined') {
-      return params.id;
-    }
-    if (typeof window !== 'undefined') {
-      const parts = window.location.pathname.split('/').filter(Boolean);
-      const idx = parts.indexOf('campaigns');
-      if (idx !== -1 && parts[idx + 1] && parts[idx + 1] !== 'placeholder') {
-        return parts[idx + 1];
-      }
-    }
-    return params?.id || '';
-  };
+  const [activeId, setActiveId] = useState(() => getResolvedRouteParam(params, 'id', 'campaigns'));
+  const campaignId = activeId || getResolvedRouteParam(params, 'id', 'campaigns');
 
-  const [activeId, setActiveId] = useState(getActualId());
-  const campaignId = activeId || getActualId();
+  useEffect(() => {
+    const resolved = getResolvedRouteParam(params, 'id', 'campaigns');
+    if (resolved && resolved !== activeId) {
+      setActiveId(resolved);
+    }
+  }, [params]);
 
   const [campaign, setCampaign] = useState(null);
   const [logs, setLogs] = useState([]);

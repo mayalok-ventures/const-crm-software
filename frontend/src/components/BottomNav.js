@@ -54,6 +54,7 @@ function BottomNavContent({ active }) {
   const [generalControlsExpanded, setGeneralControlsExpanded] = useState(false);
   const [leadsExpanded, setLeadsExpanded] = useState(false);
   const [optimisticActive, setOptimisticActive] = useState(null);
+  const isModifiedEvent = (e) => Boolean(e?.metaKey || e?.altKey || e?.ctrlKey || e?.shiftKey || (e?.button && e?.button !== 0));
 
   useEffect(() => {
     setOptimisticActive(null);
@@ -61,10 +62,25 @@ function BottomNavContent({ active }) {
 
   useEffect(() => {
     const handlePopState = () => {
-      setOptimisticActive(null);
+      const current = (typeof window !== 'undefined' ? window.location.pathname : '').replace(/\/$/, '') || '/';
+      if (current === '/leads') setOptimisticActive('leads');
+      else if (current === '/pipeline') setOptimisticActive('pipeline');
+      else setOptimisticActive(null);
+    };
+    const handleTabSwitch = (e) => {
+      const tab = e?.detail;
+      if (tab === 'leads' || tab === 'pipeline') {
+        setOptimisticActive(tab);
+      } else {
+        setOptimisticActive(null);
+      }
     };
     window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('persistent-tab-switch', handleTabSwitch);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('persistent-tab-switch', handleTabSwitch);
+    };
   }, []);
 
   const handlePrefetch = (key, href) => {
@@ -314,8 +330,9 @@ function BottomNavContent({ active }) {
             onTouchStart={() => handlePrefetch(key, href)}
             onFocus={() => handlePrefetch(key, href)}
             className={`bottom-nav-link btn-touch ${isLinkActive(key, href) ? 'active' : ''}`}
-            onClick={() => {
-              if (key === 'leads' || key === 'pipeline') {
+            onClick={(e) => {
+              if ((key === 'leads' || key === 'pipeline') && !isModifiedEvent(e)) {
+                e.preventDefault();
                 setOptimisticActive(key);
                 if (typeof window !== 'undefined' && window.location.pathname !== href) {
                   window.history.pushState(null, '', href);
@@ -452,7 +469,21 @@ function BottomNavContent({ active }) {
                     {canAccessRoute(user, '/pipeline') && (
                       <Link
                         href="/pipeline"
-                        onClick={() => setIsMoreDrawerOpen(false)}
+                        onClick={(e) => {
+                          if (!isModifiedEvent(e)) {
+                            e.preventDefault();
+                            setIsMoreDrawerOpen(false);
+                            setOptimisticActive('pipeline');
+                            if (typeof window !== 'undefined' && window.location.pathname !== '/pipeline') {
+                              window.history.pushState(null, '', '/pipeline');
+                            }
+                            if (typeof window !== 'undefined') {
+                              window.dispatchEvent(new CustomEvent('persistent-tab-switch', { detail: 'pipeline' }));
+                            }
+                          } else {
+                            setIsMoreDrawerOpen(false);
+                          }
+                        }}
                         className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
                       >
                         <TrendingUp size={16} className="text-indigo-600 shrink-0" />
@@ -855,8 +886,9 @@ function BottomNavContent({ active }) {
                 onTouchStart={() => handlePrefetch(key, href)}
                 onFocus={() => handlePrefetch(key, href)}
                 className={`sidebar-nav-link ${activeState ? 'active' : ''}`}
-                onClick={() => {
-                  if (key === 'leads' || key === 'pipeline') {
+                onClick={(e) => {
+                  if ((key === 'leads' || key === 'pipeline') && !isModifiedEvent(e)) {
+                    e.preventDefault();
                     setOptimisticActive(key);
                     if (typeof window !== 'undefined' && window.location.pathname !== href) {
                       window.history.pushState(null, '', href);

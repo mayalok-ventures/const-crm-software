@@ -4,37 +4,24 @@ import { useParams } from 'next/navigation';
 import api from '@/lib/api';
 import { Users, MessageCircle } from 'lucide-react';
 import { format } from 'date-fns';
+import { getResolvedRouteParam, isValidToken } from '@/lib/routeParams';
 
 const STATUS_LABELS = { new: 'New', contacted: 'Contacted', follow_up: 'Follow-up', closed: 'Closed' };
 
 export default function ShareDashboardPage() {
   const params = useParams();
 
-  const getActualToken = () => {
-    if (params?.token && params.token !== 'placeholder' && params.token !== '[token]' && params.token !== 'undefined') {
-      return params.token;
-    }
-    if (typeof window !== 'undefined') {
-      const parts = window.location.pathname.split('/').filter(Boolean);
-      const idx = parts.indexOf('share');
-      if (idx !== -1 && parts[idx + 1] && parts[idx + 1] !== 'placeholder') {
-        return parts[idx + 1];
-      }
-    }
-    return params?.token || '';
-  };
-
-  const [activeToken, setActiveToken] = useState(getActualToken());
-  const token = activeToken || getActualToken();
+  const [activeToken, setActiveToken] = useState(() => getResolvedRouteParam(params, 'token', 'share', isValidToken));
+  const token = activeToken || getResolvedRouteParam(params, 'token', 'share', isValidToken);
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!activeToken) {
-      const resolved = getActualToken();
-      if (resolved) setActiveToken(resolved);
+    const resolved = getResolvedRouteParam(params, 'token', 'share', isValidToken);
+    if (resolved && resolved !== activeToken) {
+      setActiveToken(resolved);
     }
   }, [params]);
 

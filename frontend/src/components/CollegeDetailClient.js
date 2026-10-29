@@ -16,6 +16,7 @@ import {
 import { COMMON_DEGREES, ACCREDITATION_TAGS, INSTITUTION_TYPES, getAccreditationBadgeStyle } from '@/lib/commonDegrees';
 import SendFeeStructureWhatsAppModal from '@/components/catalogue/SendFeeStructureWhatsAppModal';
 import { getUser, hasPermission, canViewField } from '@/lib/auth';
+import { getResolvedRouteParam } from '@/lib/routeParams';
 
 const ADMISSION_STATUS_LABELS = {
   admissions_open: { label: '🟢 Admissions Open', bg: '#ecfdf5', text: '#059669', border: '#a7f3d0' },
@@ -34,7 +35,16 @@ const MOU_STATUS_LABELS = {
 export default function CollegeDetailClient() {
   const params = useParams();
   const router = useRouter();
-  const collegeId = params?.id;
+  const [collegeId, setCollegeId] = useState(
+    () => getResolvedRouteParam(params, 'id', 'colleges') || getResolvedRouteParam(params, 'id', 'catalogue')
+  );
+
+  useEffect(() => {
+    const resolved = getResolvedRouteParam(params, 'id', 'colleges') || getResolvedRouteParam(params, 'id', 'catalogue');
+    if (resolved && resolved !== collegeId) {
+      setCollegeId(resolved);
+    }
+  }, [params]);
 
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);

@@ -26,7 +26,7 @@ function baseConfig(phase: string): NextConfig {
     // Apply static export for production builds targeted for Cloudflare Pages / Workers
     ...(!isDev ? {
       output: 'export',
-      trailingSlash: true,
+      trailingSlash: false,
     } : {}),
     images: {
       unoptimized: true,

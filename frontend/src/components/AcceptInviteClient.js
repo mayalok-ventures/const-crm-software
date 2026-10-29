@@ -14,14 +14,29 @@ import {
   AlertCircle,
   Building2,
 } from 'lucide-react';
+import { getResolvedRouteParam, isValidToken } from '@/lib/routeParams';
 
 export default function AcceptInviteClient() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const token = (params?.token && params.token !== 'placeholder')
-    ? params.token
-    : searchParams?.get('token');
+
+  const resolveToken = () => {
+    const fromParam = getResolvedRouteParam(params, 'token', 'invite', isValidToken);
+    if (fromParam) return fromParam;
+    const fromQuery = searchParams?.get('token');
+    if (fromQuery && isValidToken(fromQuery) && fromQuery !== 'placeholder') return fromQuery;
+    return '';
+  };
+
+  const [token, setToken] = useState(resolveToken);
+
+  useEffect(() => {
+    const resolved = resolveToken();
+    if (resolved && resolved !== token) {
+      setToken(resolved);
+    }
+  }, [params, searchParams]);
 
   const [verifying, setVerifying] = useState(true);
   const [inviteData, setInviteData] = useState(null);
