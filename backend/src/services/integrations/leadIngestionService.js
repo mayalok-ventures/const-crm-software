@@ -216,9 +216,11 @@ class LeadIngestionService {
       }).populate('assignmentRule.specificCounselorId assignmentRule.counselorPool.userId assignmentRule.fallbackUserId');
     }
 
+    const hasExplicitCampaign = Boolean(rawCampaignName && rawCampaignName.trim());
     const isUnmappedMetaForm = Boolean(
       platform === 'meta' &&
       !activeSubscription &&
+      !hasExplicitCampaign &&
       (!campaignRecord || !campaignRecord.routingRules?.metaFormIds?.includes(String(formId)))
     );
 
