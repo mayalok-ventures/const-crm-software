@@ -2,9 +2,12 @@ const crypto = require('crypto');
 const axios = require('axios');
 const Integration = require('../../models/Integration');
 const { encrypt } = require('../../utils/encryption');
+const { renderOAuthPopupBridge } = require('../../utils/oauthPopupBridge');
+
+const META_CONFIG = require('../../config/meta');
 
 function getMetaApiVersion() {
-  return process.env.META_API_VERSION || 'v21.0';
+  return META_CONFIG.GRAPH_API_VERSION;
 }
 
 function getMetaAppId() {
@@ -17,14 +20,20 @@ function getMetaAppSecret() {
 
 function getMetaRedirectUri(req) {
   if (req && req.query && req.query.redirect_uri) return req.query.redirect_uri;
+  const isLocal = !process.env.NODE_ENV || process.env.NODE_ENV === 'development' || (req && req.headers && req.headers.host && req.headers.host.includes('localhost'));
+  const port = process.env.PORT || 5000;
+
+  // When request originates from localhost in development, use the local callback URL
+  if (isLocal && req && req.headers && req.headers.host && req.headers.host.includes('localhost')) {
+    return `http://localhost:${port}/api/integrations/meta/oauth/callback`;
+  }
+
   if (process.env.META_REDIRECT_URI) return process.env.META_REDIRECT_URI;
 
   if (process.env.BACKEND_URL) {
     return `${process.env.BACKEND_URL}/api/integrations/meta/oauth/callback`;
   }
 
-  const isLocal = !process.env.NODE_ENV || process.env.NODE_ENV === 'development' || (req && req.headers && req.headers.host && req.headers.host.includes('localhost'));
-  const port = process.env.PORT || 5000;
   return isLocal
     ? `http://localhost:${port}/api/integrations/meta/oauth/callback`
     : `https://${req?.headers?.host || 'localhost'}/api/integrations/meta/oauth/callback`;
@@ -190,12 +199,30 @@ exports.callback = async (req, res) => {
 
     if (error) {
       console.warn('❌ [DEBUG ERROR] Meta OAuth denied by user:', error_description || error);
-      return res.redirect(`${resolvedFrontendUrl}/dashboard?integration=meta_error&message=${encodeURIComponent(error_description || 'Authorization denied')}`);
+      const wantsJson = req.query.json === 'true' || (req.headers && req.headers.accept && req.headers.accept.includes('application/json'));
+      if (wantsJson) {
+        return res.status(400).json({ success: false, code: 'OAUTH_DENIED', message: error_description || 'Authorization denied' });
+      }
+      return res.send(renderOAuthPopupBridge({
+        success: false,
+        provider: 'meta',
+        message: error_description || 'Authorization denied',
+        fallbackUrl: `${resolvedFrontendUrl}/integrations?meta=error&message=${encodeURIComponent(error_description || 'Authorization denied')}`,
+      }));
     }
 
     if (!code || !state) {
       console.warn('❌ [DEBUG ERROR] Missing OAuth code or state');
-      return res.redirect(`${resolvedFrontendUrl}/dashboard?integration=meta_error&message=${encodeURIComponent('Missing OAuth authorization code or state')}`);
+      const wantsJson = req.query.json === 'true' || (req.headers && req.headers.accept && req.headers.accept.includes('application/json'));
+      if (wantsJson) {
+        return res.status(400).json({ success: false, code: 'MISSING_PARAMS', message: 'Missing OAuth authorization code or state' });
+      }
+      return res.send(renderOAuthPopupBridge({
+        success: false,
+        provider: 'meta',
+        message: 'Missing OAuth authorization code or state',
+        fallbackUrl: `${resolvedFrontendUrl}/integrations?meta=error&message=${encodeURIComponent('Missing OAuth authorization code or state')}`,
+      }));
     }
 
     const stateData = verifyOAuthState(state);
@@ -205,7 +232,12 @@ exports.callback = async (req, res) => {
       if (wantsJson) {
         return res.status(400).json({ success: false, code: 'INVALID_OAUTH_STATE', message: 'OAuth session expired or invalid. Please re-authenticate.' });
       }
-      return res.redirect(`${resolvedFrontendUrl}/dashboard?integration=meta_error&message=${encodeURIComponent('OAuth session expired or invalid. Please re-authenticate.')}`);
+      return res.send(renderOAuthPopupBridge({
+        success: false,
+        provider: 'meta',
+        message: 'OAuth session expired or invalid. Please re-authenticate.',
+        fallbackUrl: `${resolvedFrontendUrl}/integrations?meta=error&message=${encodeURIComponent('OAuth session expired or invalid. Please re-authenticate.')}`,
+      }));
     }
 
     // 1. Exchange authorization code for short-lived access token
@@ -467,8 +499,20 @@ exports.callback = async (req, res) => {
     console.log('[DEBUG 8] OAuth flow completed successfully, redirecting to frontend dashboard...');
     console.log('================== [META OAUTH CALLBACK DEBUG END] ==================\n');
 
-    // 302 Redirect user back to integrations page with success query param
-    return res.redirect(`${resolvedFrontendUrl}/integrations?meta=connected`);
+    const wantsJson = req.query.json === 'true' || (req.headers && req.headers.accept && req.headers.accept.includes('application/json'));
+    if (wantsJson) {
+      return res.json({ success: true, message: 'Meta connected successfully', meta: 'connected' });
+    }
+
+    return res.send(renderOAuthPopupBridge({
+      success: true,
+      provider: 'meta',
+      message: 'Meta Ads account connected successfully! 🔵',
+      data: {
+        meta: 'connected',
+      },
+      fallbackUrl: `${resolvedFrontendUrl}/integrations?meta=connected`,
+    }));
   } catch (error) {
     console.error('\n❌❌❌ [CRITICAL META OAUTH CALLBACK ERROR DETECTED] ❌❌❌');
     console.error('Error Message:', error.message);
@@ -478,6 +522,16 @@ exports.callback = async (req, res) => {
     console.error('Error Stack Trace:\n', error.stack);
     console.error('===================================================================\n');
 
-    return res.redirect(`${resolvedFrontendUrl}/integrations?meta=error&message=${encodeURIComponent(error.message || 'Meta connection failed')}`);
+    const wantsJson = req.query.json === 'true' || (req.headers && req.headers.accept && req.headers.accept.includes('application/json'));
+    if (wantsJson) {
+      return res.status(500).json({ success: false, message: error.message || 'Meta connection failed' });
+    }
+
+    return res.send(renderOAuthPopupBridge({
+      success: false,
+      provider: 'meta',
+      message: error.message || 'Meta connection failed',
+      fallbackUrl: `${resolvedFrontendUrl}/integrations?meta=error&message=${encodeURIComponent(error.message || 'Meta connection failed')}`,
+    }));
   }
 };

@@ -350,13 +350,103 @@ exports.syncNow = async (req, res) => {
 };
 
 /**
+ * Parse and verify Meta signed_request using HMAC-SHA256 with META_APP_SECRET
+ */
+function parseSignedRequest(signedRequest, appSecret) {
+  if (!signedRequest || typeof signedRequest !== 'string') return null;
+  const parts = signedRequest.split('.');
+  if (parts.length !== 2) return null;
+
+  const [encodedSig, payload] = parts;
+  if (!encodedSig || !payload) return null;
+
+  const secret = (appSecret || process.env.META_APP_SECRET || '').trim();
+  if (!secret) return null;
+
+  const expectedSig = crypto
+    .createHmac('sha256', secret)
+    .update(payload)
+    .digest('base64url');
+
+  if (encodedSig !== expectedSig) {
+    const altExpected = crypto
+      .createHmac('sha256', secret)
+      .update(payload)
+      .digest('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    if (encodedSig !== altExpected) {
+      return null;
+    }
+  }
+
+  try {
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (!data || String(data.algorithm).toUpperCase() !== 'HMAC-SHA256') {
+      return null;
+    }
+    return data;
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
  * Meta App Review Compliance: Deauthorize Callback
+ * Disconnects the specific user's Integration when removed from Facebook Settings
  */
 exports.deauthorizeCallback = async (req, res) => {
   try {
-    console.log('[Meta Deauthorize Callback Received]');
-    return res.status(200).json({ success: true });
+    const signedRequest = req.body?.signed_request || req.query?.signed_request;
+    const appSecret = (process.env.META_APP_SECRET || '').trim();
+
+    if (!signedRequest || !appSecret) {
+      console.warn('[Meta Deauthorize] Missing signed_request or META_APP_SECRET');
+      return res.status(200).json({ success: true, warning: 'Missing signed_request or secret' });
+    }
+
+    const data = parseSignedRequest(signedRequest, appSecret);
+    if (!data || !data.user_id) {
+      console.warn('[Meta Deauthorize] Unverifiable or missing user_id in payload');
+      return res.status(200).json({ success: true, warning: 'Invalid signed_request' });
+    }
+
+    const metaUserId = String(data.user_id);
+    console.log(`[Meta Deauthorize] Processing deauthorization for Meta User ID: ${metaUserId}`);
+
+    // Disconnect all integrations corresponding to this Meta User ID
+    const matchingIntegrations = await Integration.find({
+      provider: 'meta',
+      $or: [
+        { 'metadata.metaUserId': metaUserId },
+        { accountId: metaUserId },
+      ],
+      status: { $ne: 'disconnected' },
+    });
+
+    const LeadSourceSubscription = require('../../models/LeadSourceSubscription');
+
+    for (const integration of matchingIntegrations) {
+      integration.status = 'disconnected';
+      integration.accessTokenEncrypted = null;
+      integration.refreshTokenEncrypted = null;
+      integration.webhookSubscribed = false;
+      integration.lastError = 'Deauthorized by user in Facebook Settings';
+      await integration.save();
+
+      await LeadSourceSubscription.updateMany(
+        { integrationId: integration._id },
+        { $set: { status: 'paused', healthStatus: 'warning', lastError: 'Integration deauthorized by user' } }
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      disconnectedCount: matchingIntegrations.length,
+    });
   } catch (err) {
+    console.error('[Meta Deauthorize Callback Error]:', err.message);
     return res.status(500).json({ error: err.message });
   }
 };
@@ -366,6 +456,34 @@ exports.deauthorizeCallback = async (req, res) => {
  */
 exports.dataDeletionCallback = async (req, res) => {
   try {
+    const signedRequest = req.body?.signed_request || req.query?.signed_request;
+    const appSecret = (process.env.META_APP_SECRET || '').trim();
+
+    if (signedRequest && appSecret) {
+      const data = parseSignedRequest(signedRequest, appSecret);
+      if (data?.user_id) {
+        const metaUserId = String(data.user_id);
+        await Integration.updateMany(
+          {
+            provider: 'meta',
+            $or: [
+              { 'metadata.metaUserId': metaUserId },
+              { accountId: metaUserId },
+            ],
+          },
+          {
+            $set: {
+              status: 'disconnected',
+              accessTokenEncrypted: null,
+              refreshTokenEncrypted: null,
+              webhookSubscribed: false,
+              lastError: 'Data deletion requested by user via Facebook',
+            },
+          }
+        );
+      }
+    }
+
     const confirmationCode = `del_${crypto.randomBytes(12).toString('hex')}`;
     const frontendUrl = process.env.FRONTEND_URL || 'https://crm.sahyak.com';
 
@@ -408,3 +526,4 @@ function verifySignature(req) {
 
 exports.fetchMetaLeadDetails = fetchMetaLeadDetails;
 exports.reconcileMetaIntegration = reconcileMetaIntegration;
+exports.parseSignedRequest = parseSignedRequest;

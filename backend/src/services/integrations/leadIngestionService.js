@@ -216,14 +216,26 @@ class LeadIngestionService {
       }).populate('assignmentRule.specificCounselorId assignmentRule.counselorPool.userId assignmentRule.fallbackUserId');
     }
 
+    const isUnmappedMetaForm = Boolean(
+      platform === 'meta' &&
+      !activeSubscription &&
+      (!campaignRecord || !campaignRecord.routingRules?.metaFormIds?.includes(String(formId)))
+    );
+
     const resolvedCampaignId = String(
       rawCampaignId ||
       campaignRecord?.externalCampaignId ||
-      (normalizedCampaignName ? `cmp_${slugify(normalizedCampaignName)}` : 'default_campaign')
+      (isUnmappedMetaForm
+        ? `unmapped_meta_${slugify(connectionId || 'leads')}`
+        : (normalizedCampaignName ? `cmp_${slugify(normalizedCampaignName)}` : 'default_campaign'))
     );
 
     // If no explicit configured campaign matched, fallback to registry or auto-provision
     if (!campaignRecord) {
+      const fallbackCampaignName = isUnmappedMetaForm
+        ? `Unmapped Meta Leads (${connectionName})`
+        : normalizedCampaignName;
+
       campaignRecord = await Campaign.findOne({
         ...tenantQuery,
         platform,
@@ -240,9 +252,9 @@ class LeadIngestionService {
           connectionName,
           integrationId: integration._id,
           externalCampaignId: String(resolvedCampaignId),
-          campaignName: normalizedCampaignName,
-          name: normalizedCampaignName,
-          displayName: normalizedCampaignName,
+          campaignName: fallbackCampaignName,
+          name: fallbackCampaignName,
+          displayName: fallbackCampaignName,
           assignmentRule: integration.assignmentRule || { type: 'round_robin' },
           fieldMapping: integration.fieldMapping || [],
           leadCount: 0,
@@ -254,6 +266,20 @@ class LeadIngestionService {
     }
 
     const resolvedCampaignName = campaignRecord.displayName || campaignRecord.name || campaignRecord.campaignName || normalizedCampaignName;
+
+    // Send actionable notification if lead arrived from an unmapped Meta Form
+    if (isUnmappedMetaForm) {
+      try {
+        const Notification = require('../../models/Notification');
+        Notification.create({
+          userId: companyId || userId,
+          title: '⚠️ Unmapped Facebook Lead Form Received',
+          message: `A new lead arrived from Facebook Form "${formName || formId}" on Page "${connectionName}", but this form is not mapped to any CRM Campaign. Please map it in Integrations > Facebook to auto-route future leads.`,
+          type: 'integration_alert',
+          isRead: false,
+        }).catch(() => null);
+      } catch (_) {}
+    }
 
     // 5. Authoritative Campaign-Determined Lead Assignment
     // Check if subscription defines a custom assignment rule or inherits from target campaign
@@ -289,8 +315,9 @@ class LeadIngestionService {
     const normalizedEmail = this.normalizeEmail(mappedLead.email);
 
     // Requirement J.3: Leads with missing phone & email are saved with "needs_review", never dropped
+    // Also if Meta lead arrived from an unmapped form, mark "needs_review" with actionable warning
     const hasContact = Boolean(normalizedPhone || normalizedEmail);
-    const initialStatus = hasContact ? 'new_lead' : 'needs_review';
+    const initialStatus = (!hasContact || isUnmappedMetaForm) ? 'needs_review' : 'new_lead';
 
     // 8. Idempotency Check (A): Existing Lead by External Lead ID
     let existingLead = await Lead.findOne({
@@ -512,6 +539,8 @@ class LeadIngestionService {
         resolvedCampaignName ? `Campaign: ${resolvedCampaignName}` : null,
         isTest ? 'TEST LEAD' : null,
         !hasContact ? 'Needs Review' : null,
+        isUnmappedMetaForm ? 'Unmapped Meta Form' : null,
+        isUnmappedMetaForm ? 'Action Required: Map Form' : null,
       ].filter(Boolean),
 
       customData: mappedLead.customData || {},
