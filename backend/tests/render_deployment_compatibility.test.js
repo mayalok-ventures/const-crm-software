@@ -210,7 +210,7 @@ async function runTests() {
     const content = fs.readFileSync(renderYamlPath, 'utf8');
 
     assert.ok(content.includes('rootDir: backend'), 'render.yaml must specify rootDir: backend');
-    assert.ok(content.includes('buildCommand: npm ci && npm run build'), 'render.yaml must build with npm ci && npm run build');
+    assert.ok(/buildCommand:\s+npm ci.*&&\s*npm run build/.test(content), 'render.yaml must build with npm ci and npm run build');
     assert.ok(content.includes('startCommand: node server.js'), 'render.yaml must start with node server.js');
     assert.ok(content.includes('healthCheckPath: /health/live'), 'render.yaml must specify healthCheckPath: /health/live');
     assert.ok(content.includes('key: NODE_ENV'), 'render.yaml must define NODE_ENV');
