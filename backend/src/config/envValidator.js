@@ -38,7 +38,7 @@ function validateEnvironment() {
         console.error('\nServer startup aborted to prevent insecure execution (STRICT_ENV_EXIT=true).\n');
         process.exit(1);
       } else {
-        console.warn('\nContinuing startup to bind HTTP listener for AppSail container health checks and diagnostics.\n');
+        console.warn('\nContinuing startup to bind HTTP listener for container and platform health checks and diagnostics.\n');
       }
     } else {
       console.log('✅ [EnvValidator] Production environment configuration verified.');

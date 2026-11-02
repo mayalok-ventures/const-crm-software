@@ -33,6 +33,7 @@ class AppProbe {
             const heapUsedMb = Math.round((mem.heapUsed / (1024 * 1024)) * 10) / 10;
             const heapTotalMb = Math.round((mem.heapTotal / (1024 * 1024)) * 10) / 10;
             const rssMb = Math.round((mem.rss / (1024 * 1024)) * 10) / 10;
+            // Calculate usage against actual V8 heap limit to avoid false alerts when heapTotal is small
             const heapUsagePercent = Math.round((mem.heapUsed / v8Stats.heap_size_limit) * 100);
             const heapAllocatedPercent = Math.round((mem.heapUsed / mem.heapTotal) * 100);
             // Score evaluation:

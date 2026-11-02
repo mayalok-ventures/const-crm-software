@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
+import { openOAuthPopup } from '@/lib/oauthPopup';
 import {
   X, Mail, CheckCircle2, AlertTriangle, ShieldCheck, RefreshCw,
   Plus, Server, Key, ExternalLink, Trash2, Globe, HelpCircle, Check,
@@ -55,13 +56,31 @@ export default function EmailAccountsModal({ isOpen, onClose, onAccountUpdated }
   const handleGoogleConnect = async () => {
     try {
       setSubmitting(true);
-      const res = await api.get('/email/oauth/google/url');
-      if (res.data?.url) {
-        toast.loading('Redirecting to Google Account Authorization...');
-        window.location.href = res.data.url;
+      const result = await openOAuthPopup({
+        title: 'Connect Google Account',
+        provider: 'google_email',
+        fetchUrl: async () => {
+          const res = await api.get('/email/oauth/google/url');
+          if (!res.data?.url) {
+            throw new Error(res.data?.message || 'Unable to initialize Google OAuth session');
+          }
+          return res.data.url;
+        },
+      });
+
+      if (result.success) {
+        const email = result.data?.data?.email || result.data?.email || 'Gmail';
+        toast.success(`🎉 Google account connected successfully! (${email})`, { duration: 5000 });
+        await fetchData();
+        if (onAccountUpdated) onAccountUpdated();
+        setActiveTab('accounts');
+      } else if (result.cancelled) {
+        // User closed the popup window without completing
+      } else if (result.error) {
+        toast.error(`Google authorization notice: ${result.error}`, { duration: 5000 });
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Google OAuth not configured yet. Please check .env keys.');
+      toast.error(err.response?.data?.message || err.message || 'Google OAuth not configured yet. Please check .env keys.');
     } finally {
       setSubmitting(false);
     }

@@ -73,7 +73,7 @@ const connectDB = async () => {
     const rawUri = process.env.MONGO_URI || process.env.MONGODB_URI;
     const hasConfiguredUri = Boolean(rawUri && rawUri.trim().length > 0);
 
-    // In production environments (such as Zoho AppSail), strictly require a valid remote MongoDB URI.
+    // In production environments (such as Render / Cloud Container), strictly require a valid remote MongoDB URI.
     // Never fall back to localhost in production.
     if (process.env.NODE_ENV === 'production' && !hasConfiguredUri) {
       const configErrMsg = 'FATAL: Production database URI is missing. Neither MONGO_URI nor MONGODB_URI is configured in the environment. Localhost fallback is disabled in production.';

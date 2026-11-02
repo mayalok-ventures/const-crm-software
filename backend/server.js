@@ -26,7 +26,7 @@ const mongoose = require('mongoose');
 
 const connectDB = require('./src/config/db');
 const { apiLimiter } = require('./src/middleware/rateLimiter');
-const { startFollowUpCron } = require('./src/utils/cron');
+const { startFollowUpCron, stopFollowUpCron } = require('./src/utils/cron');
 
 // Route imports
 const authRoutes = require('./src/routes/auth');
@@ -103,6 +103,8 @@ const isOriginAllowed = (origin) => {
   if (/^https:\/\/([a-zA-Z0-9-]+\.)*sahyak\.com$/.test(origin)) return true;
   // Allow Cloudflare Pages deployments (e.g. const-crm-software.pages.dev and branch previews)
   if (/^https:\/\/([a-zA-Z0-9-]+\.)*pages\.dev$/.test(origin)) return true;
+  // Allow Render deployed frontends and preview URLs (e.g. *.onrender.com)
+  if (/^https:\/\/([a-zA-Z0-9-]+\.)*onrender\.com$/.test(origin)) return true;
   // Allow Catalyst AppSail container URLs
   if (/^https:\/\/([a-zA-Z0-9-]+\.)*catalystappsail\.[a-z]+$/.test(origin)) return true;
   if (process.env.NODE_ENV !== 'production') {
@@ -321,8 +323,8 @@ app.use((err, req, res, next) => {
 const { seedSuperAdmin } = require('./src/utils/seedSuperAdmin');
 const { seedPlans } = require('./src/utils/seedPlans');
 
-// Bind HTTP listener immediately so AppSail container health checks succeed without delay
-const PORT = Number(process.env.X_ZOHO_CATALYST_LISTEN_PORT || (process.env.NODE_ENV === 'production' ? 9000 : (process.env.PORT || 5000)));
+// Bind HTTP listener: Render injects process.env.PORT. Fallback to Catalyst port or local dev 5000
+const PORT = Number(process.env.PORT || process.env.X_ZOHO_CATALYST_LISTEN_PORT || 5000);
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 Admission Consultants CRM Backend running on http://0.0.0.0:${PORT}`);
   console.log(`📦 Environment: ${process.env.NODE_ENV || 'development'}\n`);
@@ -331,8 +333,14 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   startEventLoopMonitor();
 });
 
-// Dual-port safety listener for AppSail reverse proxy (guarantees port 9000 is always reachable in production)
-if (process.env.NODE_ENV === 'production' && PORT !== 9000) {
+// Log any unexpected server listening errors
+server.on('error', (err) => {
+  console.error('💥 [Fatal] HTTP Server listen error:', err.message);
+  process.exit(1);
+});
+
+// Dual-port safety listener: only active if explicitly running within Zoho Catalyst AppSail
+if (process.env.X_ZOHO_CATALYST_LISTEN_PORT && PORT !== 9000) {
   try {
     app.listen(9000, '0.0.0.0', () => {
       console.log('🚀 Dual-port safety listener active on http://0.0.0.0:9000 for AppSail routing');
@@ -346,6 +354,7 @@ let agent, heartbeat, statusEvaluator, aggregator;
 let databaseMonitorWorker, backupMonitorWorker, alertMonitorWorker;
 let integrationMonitorWorker, usageMonitorWorker, apiKeySecurityWorker;
 let deploymentMonitorWorker, healthScoreWorker;
+let sheetsPollInterval;
 
 let isPostConnectInitialized = false;
 
@@ -437,7 +446,7 @@ const initializePostConnectionServices = async () => {
 
     // Start Mode B Google Sheets background poller (every 5 minutes)
     const googleSheetsPollingService = require('./src/services/integrations/googleSheetsPollingService');
-    const sheetsPollInterval = setInterval(() => {
+    sheetsPollInterval = setInterval(() => {
       googleSheetsPollingService.sweepAll().catch((err) => {
         console.error('[Sheets Poller Interval Error]:', err.message);
       });
@@ -476,6 +485,9 @@ const gracefulShutdown = async (signal) => {
 
   try {
     stopEventLoopMonitor();
+    if (sheetsPollInterval) clearInterval(sheetsPollInterval);
+    stopFollowUpCron();
+
     if (agent) agent.stop();
     if (heartbeat) heartbeat.stop();
     if (statusEvaluator) statusEvaluator.stop();
@@ -491,6 +503,16 @@ const gracefulShutdown = async (signal) => {
 
     if (campaignWorker && typeof campaignWorker.stopWorker === 'function') {
       campaignWorker.stopWorker();
+    }
+
+    // Gracefully close active Baileys WhatsApp sockets and save disconnected state
+    if (waSession && typeof waSession.closeAllSessions === 'function') {
+      try {
+        await waSession.closeAllSessions();
+        console.log('✅ [Shutdown] WhatsApp Baileys sessions closed gracefully.');
+      } catch (waErr) {
+        console.warn('⚠️ [Shutdown] WhatsApp shutdown notice:', waErr.message);
+      }
     }
 
     if (server && typeof server.close === 'function') {

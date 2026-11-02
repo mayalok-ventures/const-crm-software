@@ -1,4 +1,5 @@
 const EmailService = require('../services/email/emailService');
+const { renderOAuthPopupBridge } = require('../utils/oauthPopupBridge');
 
 /**
  * Controller handling all incoming HTTP requests for the CRM Email module
@@ -307,18 +308,46 @@ exports.getGoogleAuthUrl = async (req, res) => {
 // @route   GET /api/email/oauth/google/callback
 // @access  Public (Google Redirect)
 exports.handleGoogleCallback = async (req, res) => {
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const isLocal = !process.env.NODE_ENV || process.env.NODE_ENV === 'development' || (req && req.headers && req.headers.host && req.headers.host.includes('localhost'));
+  const frontendUrl = isLocal ? 'http://localhost:3000' : (process.env.FRONTEND_URL || 'https://crm.sahyak.com');
   const { code, state, error } = req.query;
 
+  const wantsJson = req.query.json === 'true' || (req.headers && req.headers.accept && req.headers.accept.includes('application/json'));
+
   if (error) {
-    return res.redirect(`${frontendUrl}/email?error=google_denied&message=${encodeURIComponent(error)}`);
+    if (wantsJson) {
+      return res.status(400).json({ success: false, code: 'OAUTH_DENIED', message: error });
+    }
+    return res.send(renderOAuthPopupBridge({
+      success: false,
+      provider: 'google_email',
+      message: error === 'access_denied' ? 'Google access was cancelled or denied.' : error,
+      fallbackUrl: `${frontendUrl}/email?error=google_denied&message=${encodeURIComponent(error)}`,
+    }));
   }
 
   try {
     const { email } = await EmailService.handleGoogleOAuthCallback(code, state);
-    res.redirect(`${frontendUrl}/email?connected=google&email=${encodeURIComponent(email)}`);
+    if (wantsJson) {
+      return res.json({ success: true, email });
+    }
+    return res.send(renderOAuthPopupBridge({
+      success: true,
+      provider: 'google_email',
+      message: `Google account ${email} connected successfully!`,
+      data: { email },
+      fallbackUrl: `${frontendUrl}/email?connected=google&email=${encodeURIComponent(email)}`,
+    }));
   } catch (err) {
     console.error('[EmailController] Google OAuth callback error:', err.message);
-    res.redirect(`${frontendUrl}/email?error=google_failed&message=${encodeURIComponent(err.message)}`);
+    if (wantsJson) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    return res.send(renderOAuthPopupBridge({
+      success: false,
+      provider: 'google_email',
+      message: err.message || 'Failed to connect Google account',
+      fallbackUrl: `${frontendUrl}/email?error=google_failed&message=${encodeURIComponent(err.message)}`,
+    }));
   }
 };

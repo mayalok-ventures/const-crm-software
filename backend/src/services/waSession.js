@@ -1002,4 +1002,5 @@ module.exports = {
   initSessions,
   restoreSession,
   normalizePhoneAndJid,
+  closeAllSessions: handleGracefulShutdown,
 };

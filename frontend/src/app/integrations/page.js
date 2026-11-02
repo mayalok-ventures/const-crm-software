@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import api, { API_URL } from '@/lib/api';
 import { getUser, isSuperAdmin, isOwner, isManager, hasPermission } from '@/lib/auth';
+import { openOAuthPopup } from '@/lib/oauthPopup';
 import BottomNav from '@/components/BottomNav';
 import {
   Zap,
@@ -224,14 +225,31 @@ export default function IntegrationsPage() {
   const handleConnectMeta = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/integrations/meta/oauth');
-      if (res.data?.authorizationUrl) {
-        window.location.href = res.data.authorizationUrl;
-      } else {
-        toast.error('Unable to initialize Meta OAuth session');
+      const result = await openOAuthPopup({
+        title: 'Connect Meta Ads',
+        provider: 'meta',
+        fetchUrl: async () => {
+          const res = await api.get('/integrations/meta/oauth');
+          if (!res.data?.authorizationUrl) {
+            throw new Error(res.data?.message || 'Unable to initialize Meta OAuth session');
+          }
+          return res.data.authorizationUrl;
+        },
+      });
+
+      if (result.success) {
+        toast.success('Meta Ads account connected successfully! 🔵');
+        fetchIntegrations();
+        return result;
+      } else if (result.cancelled) {
+        // User closed popup without completing
+      } else if (result.error) {
+        toast.error(`Meta connection notice: ${result.error}`);
       }
+      return result;
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Meta OAuth initiation failed');
+      toast.error(err.response?.data?.message || err.message || 'Meta OAuth initiation failed');
+      return { success: false, error: err.message };
     } finally {
       setLoading(false);
     }

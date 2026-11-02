@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const axios = require('axios');
 const Integration = require('../../models/Integration');
 const { encrypt } = require('../../utils/encryption');
+const { renderOAuthPopupBridge } = require('../../utils/oauthPopupBridge');
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
@@ -148,7 +149,16 @@ exports.callback = async (req, res) => {
 
     if (error) {
       console.warn('Google OAuth authorization error:', error_description || error);
-      return res.redirect(`${resolvedFrontendUrl}/integrations?google=error&message=${encodeURIComponent(error_description || 'Authorization denied')}`);
+      const wantsJson = req.query.json === 'true' || (req.headers && req.headers.accept && req.headers.accept.includes('application/json'));
+      if (wantsJson) {
+        return res.status(400).json({ success: false, code: 'OAUTH_DENIED', message: error_description || error });
+      }
+      return res.send(renderOAuthPopupBridge({
+        success: false,
+        provider: 'google_ads',
+        message: error_description || 'Authorization denied',
+        fallbackUrl: `${resolvedFrontendUrl}/integrations?google=error&message=${encodeURIComponent(error_description || 'Authorization denied')}`,
+      }));
     }
 
     if (!code || !state) {
@@ -246,9 +256,28 @@ exports.callback = async (req, res) => {
       setDefaultsOnInsert: true,
     });
 
-    return res.redirect(`${resolvedFrontendUrl}/integrations?google=connected&account=${encodeURIComponent(googleUser.name || googleUser.id)}`);
+    const wantsJson = req.query.json === 'true' || (req.headers && req.headers.accept && req.headers.accept.includes('application/json'));
+    if (wantsJson) {
+      return res.json({ success: true, message: 'Google Ads connected successfully', account: googleUser.name || googleUser.id });
+    }
+    return res.send(renderOAuthPopupBridge({
+      success: true,
+      provider: 'google_ads',
+      message: 'Google Ads account connected successfully! 🔴',
+      data: { account: googleUser.name || googleUser.id },
+      fallbackUrl: `${resolvedFrontendUrl}/integrations?google=connected&account=${encodeURIComponent(googleUser.name || googleUser.id)}`,
+    }));
   } catch (error) {
     console.error('Google OAuth callback error:', error.response?.data || error.message);
-    return res.redirect(`${resolvedFrontendUrl}/integrations?google=error&message=${encodeURIComponent(error.message || 'Google connection failed')}`);
+    const wantsJson = req.query.json === 'true' || (req.headers && req.headers.accept && req.headers.accept.includes('application/json'));
+    if (wantsJson) {
+      return res.status(500).json({ success: false, message: error.message || 'Google connection failed' });
+    }
+    return res.send(renderOAuthPopupBridge({
+      success: false,
+      provider: 'google_ads',
+      message: error.message || 'Google connection failed',
+      fallbackUrl: `${resolvedFrontendUrl}/integrations?google=error&message=${encodeURIComponent(error.message || 'Google connection failed')}`,
+    }));
   }
 };
