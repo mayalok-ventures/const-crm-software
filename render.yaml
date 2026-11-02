@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: sahyak-crm-backend
+    name: sahyak-api
     runtime: node
     plan: starter
     region: singapore
@@ -25,7 +25,7 @@ services:
       - key: FRONTEND_URL
         value: https://app.sahyak.com
       - key: BACKEND_URL
-        value: https://api.sahyak.com
+        value: https://api-app.sahyak.com
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
