@@ -331,6 +331,17 @@ exports.configure = async (req, res) => {
           if (!config || !config.campaignGroupId) continue;
           const cleanFormId = String(fId).trim();
 
+          // Existing subscription lookup
+          const existingSub = await LeadSourceSubscription.findOne({
+            ...(companyId ? { companyId } : { userId: req.user._id }),
+            provider: 'meta',
+            externalFormId: cleanFormId,
+          });
+
+          const subFieldMapping = (config.fieldMapping && Array.isArray(config.fieldMapping) && config.fieldMapping.length > 0)
+            ? config.fieldMapping
+            : (Array.isArray(fieldMapping) && fieldMapping.length > 0 ? fieldMapping : (existingSub?.fieldMapping || []));
+
           // STRICT MULTI-TENANT VERIFICATION: Target campaign must belong to authenticated tenant
           let targetCampaign = null;
           if (config.campaignGroupId && config.campaignGroupId !== '__auto_create__') {
@@ -369,21 +380,11 @@ exports.configure = async (req, res) => {
           }
 
           // Clean up old campaign routing if destination changed
-          const existingSub = await LeadSourceSubscription.findOne({
-            ...(companyId ? { companyId } : { userId: req.user._id }),
-            provider: 'meta',
-            externalFormId: cleanFormId,
-          });
-
           if (existingSub?.campaignGroupId && String(existingSub.campaignGroupId) !== String(targetCampaign._id)) {
             await Campaign.findByIdAndUpdate(existingSub.campaignGroupId, {
               $pull: { 'routingRules.metaFormIds': cleanFormId },
             }).catch(() => null);
           }
-
-          const subFieldMapping = (config.fieldMapping && Array.isArray(config.fieldMapping) && config.fieldMapping.length > 0)
-            ? config.fieldMapping
-            : (Array.isArray(fieldMapping) && fieldMapping.length > 0 ? fieldMapping : (existingSub?.fieldMapping || []));
 
           const updatedSub = await LeadSourceSubscription.findOneAndUpdate(
             {
