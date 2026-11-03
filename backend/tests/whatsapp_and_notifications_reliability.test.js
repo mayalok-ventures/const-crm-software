@@ -11,6 +11,7 @@
  * 7. Web Push subscription management & VAPID key verification
  */
 
+require('dotenv').config();
 const assert = require('assert');
 const mongoose = require('mongoose');
 
@@ -59,7 +60,7 @@ function createMockRes() {
 async function runTests() {
   console.log('🧪 Starting WhatsApp Reliability Engine & Notification Platform Test Suite...\n');
 
-  const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mobile-crm';
+  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/mobile-crm';
   if (mongoose.connection.readyState !== 1) {
     await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 5000 });
   }

@@ -27,6 +27,8 @@ router.post('/webhook/:key', googleWebhookController.receive);
 
 router.get('/', protect, googleIntegrationController.getIntegrations);
 router.get('/accounts', protect, googleIntegrationController.getAccounts);
+router.post('/generate-webhook', protect, googleIntegrationController.generateWebhook);
+router.post('/complete-mapping', protect, googleIntegrationController.completeMapping);
 router.post('/configure', protect, googleIntegrationController.configure);
 router.post('/test', protect, googleIntegrationController.testConnection);
 router.delete('/:integrationId', protect, googleIntegrationController.disconnect);

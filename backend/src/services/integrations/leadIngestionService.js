@@ -412,132 +412,190 @@ class LeadIngestionService {
 
         const policy = integration.duplicatePolicy || 'create_inquiry';
 
-        // Policy: SKIP
-        if (policy === 'skip') {
-          return {
-            created: false,
-            duplicate: true,
-            reason: 'duplicate_phone_skipped',
-            lead: existingPhoneLead,
-          };
-        }
-
-        // Policy: MERGE ACTIVITY
-        if (policy === 'merge_activity') {
-          existingPhoneLead.leadActivities.push({
-            action: 'message_received',
-            performerName: `${platform.toUpperCase()} Ingestion`,
-            details: `Repeat inquiry submitted from Campaign: "${resolvedCampaignName}" (Form: "${formName || 'Lead Form'}")`,
-            timestamp: new Date(),
-          });
-          if (resolvedCampaignName) existingPhoneLead.leadSource.campaignName = resolvedCampaignName;
-          if (formName) existingPhoneLead.leadSource.formName = formName;
-          await existingPhoneLead.save();
-
-          return {
-            created: false,
-            duplicate: true,
-            reason: 'duplicate_phone_merged',
-            lead: existingPhoneLead,
-          };
-        }
-
-        // Policy: CREATE INQUIRY (Default)
-        const assignment = await assignmentService.resolveAssignment({
-          integration,
-          campaignOverride,
-          scopeKey,
-          isTest,
-        });
-
-        const newInquiry = {
-          inquiryId: new mongoose.Types.ObjectId().toString(),
-          source: platform,
-          platform,
-          connectionId: String(connectionId),
-          externalLeadId: String(externalLeadId),
-          integrationId: integration._id,
-          formId: formId ? String(formId) : '',
-          formName: formName || '',
-          campaignId: String(campaignRecord._id),
-          campaignName: resolvedCampaignName,
-          course: mappedLead.course || '',
-          city: mappedLead.city || '',
-          customQuestions: mappedLead.customData || {},
-          assignmentReason: assignment.assignmentReason,
-          assignedTo: assignment.assignedTo,
-          status: 'new_inquiry',
-          createdAt: createdAt ? new Date(createdAt) : new Date(),
-        };
-
-        const updateOps = {
-          $push: {
-            inquiries: {
-              $each: [newInquiry],
-              $slice: -50,
-            },
-            leadActivities: {
-              action: 'webhook_ingested',
-              performerName: `${platform.toUpperCase()} Ingestion`,
-              details: `New Inquiry attached from ${platform.toUpperCase()} [${connectionName}] - Campaign "${resolvedCampaignName}" [${assignment.assignmentReason}]`,
-              timestamp: new Date(),
-            },
-          },
-          $set: {
-            updatedAt: new Date(),
-          },
-        };
-
-        // Format custom form responses and append to notes idempotently if not already saved
-        const customNoteText = formatCustomQuestionsNote({
-          rawAnswers,
-          customData: mappedLead.customData || customData,
-          fieldMapping: campaignOverride?.fieldMapping || integration?.fieldMapping,
-          formName,
-        });
-
-        const hasMatchingNote = customNoteText && Array.isArray(existingPhoneLead.notes) && existingPhoneLead.notes.some(
-          (n) => n && n.text && n.text.trim() === customNoteText.trim()
-        );
-
-        if (customNoteText && !hasMatchingNote) {
-          updateOps.$push.notes = {
-            text: customNoteText,
-            authorName: formName ? `${formName} Form` : `${platform.toUpperCase()} Ingestion`,
-            createdAt: new Date(),
-          };
-        }
-
-        if (integration.reInquiryAssignmentPolicy === 'reassign_by_rule' && assignment.assignedTo) {
-          updateOps.$set.assignedTo = assignment.assignedTo;
-          updateOps.$set.assignedToName = assignment.assignedToName;
-          updateOps.$set.assignmentReason = assignment.assignmentReason;
-        }
-
-        await Lead.updateOne(
-          {
-            _id: existingPhoneLead._id,
-            'inquiries.externalLeadId': { $ne: String(externalLeadId) },
-          },
-          updateOps
-        );
-
-        await Campaign.updateOne(
-          { _id: campaignRecord._id },
-          {
-            $inc: { leadCount: 1, leadsGenerated: 1 },
-            $set: { lastLeadAt: createdAt ? new Date(createdAt) : new Date() },
+        // Policy: CREATE LEAD (Bypass deduplication and create brand new lead)
+        if (policy === 'create_lead') {
+          // Intentionally do not treat as duplicate inquiry; fall through to Step 10
+        } else {
+          // Policy: SKIP
+          if (policy === 'skip') {
+            return {
+              created: false,
+              duplicate: true,
+              reason: 'duplicate_phone_skipped',
+              lead: existingPhoneLead,
+            };
           }
-        ).catch(() => null);
 
-        const refreshedLead = await Lead.findById(existingPhoneLead._id);
+          // Policy: MERGE ACTIVITY
+          if (policy === 'merge_activity') {
+            existingPhoneLead.leadActivities.push({
+              action: 'message_received',
+              performerName: `${platform.toUpperCase()} Ingestion`,
+              details: `Repeat inquiry submitted from Campaign: "${resolvedCampaignName}" (Form: "${formName || 'Lead Form'}")`,
+              timestamp: new Date(),
+            });
+            if (resolvedCampaignName) existingPhoneLead.leadSource.campaignName = resolvedCampaignName;
+            if (formName) existingPhoneLead.leadSource.formName = formName;
+            await existingPhoneLead.save();
 
-        return {
-          created: false,
-          duplicate: false,
-          inquiryAdded: true,
-          lead: refreshedLead,
-        };
+            return {
+              created: false,
+              duplicate: true,
+              reason: 'duplicate_phone_merged',
+              lead: existingPhoneLead,
+            };
+          }
+
+          // Policy: CREATE INQUIRY (Default)
+          const assignment = await assignmentService.resolveAssignment({
+            integration,
+            campaignOverride,
+            scopeKey,
+            isTest,
+          });
+
+          const newInquiry = {
+            inquiryId: new mongoose.Types.ObjectId().toString(),
+            source: platform,
+            platform,
+            connectionId: String(connectionId),
+            externalLeadId: String(externalLeadId),
+            integrationId: integration._id,
+            formId: formId ? String(formId) : '',
+            formName: formName || '',
+            campaignId: String(campaignRecord._id),
+            campaignName: resolvedCampaignName,
+            course: mappedLead.course || '',
+            city: mappedLead.city || '',
+            customQuestions: mappedLead.customData || {},
+            assignmentReason: assignment.assignmentReason,
+            assignedTo: assignment.assignedTo,
+            status: 'new_inquiry',
+            createdAt: createdAt ? new Date(createdAt) : new Date(),
+          };
+
+          const updateOps = {
+            $push: {
+              inquiries: {
+                $each: [newInquiry],
+                $slice: -50,
+              },
+              leadActivities: {
+                action: 'webhook_ingested',
+                performerName: `${platform.toUpperCase()} Ingestion`,
+                details: `New Inquiry attached from ${platform.toUpperCase()} [${connectionName}] - Campaign "${resolvedCampaignName}" [${assignment.assignmentReason}]`,
+                timestamp: new Date(),
+              },
+            },
+            $set: {
+              updatedAt: new Date(),
+              lastActivityAt: new Date(),
+              temperature: 'HOT',
+              // Promote repeat form submissions directly into active inbound intake
+              status: initialStatus || 'Lead Received',
+              pipelineStage: 'Lead Received',
+              'leadSource.platform': platform,
+              'leadSource.provider': platform,
+              'leadSource.connectionId': String(connectionId),
+              'leadSource.connectionName': connectionName,
+              'leadSource.externalLeadId': String(externalLeadId),
+              'leadSource.integrationId': integration._id,
+              'leadSource.formId': formId ? String(formId) : '',
+              'leadSource.formName': formName || '',
+              'leadSource.campaignId': String(campaignRecord._id),
+              'leadSource.campaignName': resolvedCampaignName,
+              'leadSource.importedAt': new Date(),
+            },
+          };
+
+          // Enrich contact details if new submission has better / full info
+          const incomingName = cleanedName || mappedLead.name;
+          if (incomingName && incomingName !== 'Inbound Lead' && incomingName !== 'Unidentified Contact (Needs Review)') {
+            updateOps.$set.name = incomingName;
+            updateOps.$set.nameLower = incomingName.toLowerCase();
+          }
+
+          if (normalizedEmail) {
+            updateOps.$set.email = normalizedEmail;
+            updateOps.$set.emailLower = normalizedEmail.toLowerCase();
+          }
+
+          if (mappedLead.customData && Object.keys(mappedLead.customData).length > 0) {
+            updateOps.$set.customData = {
+              ...(existingPhoneLead.customData || {}),
+              ...mappedLead.customData,
+            };
+          }
+
+          // Format custom form responses and append to notes idempotently if not already saved
+          const customNoteText = formatCustomQuestionsNote({
+            rawAnswers,
+            customData: mappedLead.customData || customData,
+            fieldMapping: campaignOverride?.fieldMapping || integration?.fieldMapping,
+            formName,
+          });
+
+          const hasMatchingNote = customNoteText && Array.isArray(existingPhoneLead.notes) && existingPhoneLead.notes.some(
+            (n) => n && n.text && n.text.trim() === customNoteText.trim()
+          );
+
+          if (customNoteText && !hasMatchingNote) {
+            updateOps.$push.notes = {
+              text: customNoteText,
+              authorName: formName ? `${formName} Form` : `${platform.toUpperCase()} Ingestion`,
+              createdAt: new Date(),
+            };
+          }
+
+          if (integration.reInquiryAssignmentPolicy === 'reassign_by_rule' && assignment.assignedTo) {
+            updateOps.$set.assignedTo = assignment.assignedTo;
+            updateOps.$set.assignedToName = assignment.assignedToName;
+            updateOps.$set.assignmentReason = assignment.assignmentReason;
+          }
+
+          await Lead.updateOne(
+            {
+              _id: existingPhoneLead._id,
+              'inquiries.externalLeadId': { $ne: String(externalLeadId) },
+            },
+            updateOps
+          );
+
+          await Campaign.updateOne(
+            { _id: campaignRecord._id },
+            {
+              $inc: { leadCount: 1, leadsGenerated: 1 },
+              $set: { lastLeadAt: createdAt ? new Date(createdAt) : new Date() },
+            }
+          ).catch(() => null);
+
+          try {
+            const { invalidateLeadCountCache } = require('../../controllers/leadsController');
+            invalidateLeadCountCache(existingPhoneLead.workspaceId || existingPhoneLead.companyId);
+          } catch (_) {}
+
+          const refreshedLead = await Lead.findById(existingPhoneLead._id);
+
+          emitCRMEvent(CRM_EVENTS.LEAD_CREATED, {
+            lead: refreshedLead,
+            isRepeatInquiry: true,
+            platform,
+            campaignName: resolvedCampaignName,
+          });
+          emitCRMEvent(CRM_EVENTS.INQUIRY_CREATED, {
+            lead: refreshedLead,
+            inquiry: newInquiry,
+            platform,
+            campaignName: resolvedCampaignName,
+          });
+
+          return {
+            created: false,
+            duplicate: false,
+            inquiryAdded: true,
+            lead: refreshedLead,
+          };
+        }
       }
     }
 

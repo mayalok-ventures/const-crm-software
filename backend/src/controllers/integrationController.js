@@ -7,6 +7,7 @@ const webhookQueueService = require('../services/integrations/webhookQueueServic
 const { getAppsScriptCode } = require('./integrations/sheetsWebhookController');
 const { getEmbedSnippet } = require('./integrations/websiteFormController');
 const { encrypt } = require('../utils/encryption');
+const { notifyIntegrationDisconnected } = require('../utils/integrationNotifier');
 
 function getPublicBackendUrl(req) {
   if (process.env.BACKEND_URL) return process.env.BACKEND_URL.replace(/\/+$/, '');
@@ -165,7 +166,7 @@ exports.createIntegration = async (req, res) => {
       userId,
       companyId,
       provider,
-      status: 'connected',
+      status: provider === 'google' ? 'awaiting_test_lead' : 'connected',
       accountName: accountName || `${provider.toUpperCase()} Integration`,
       pageId,
       pageName,
@@ -414,6 +415,14 @@ exports.disconnectIntegration = async (req, res) => {
     if (!integration) {
       return res.status(404).json({ success: false, message: 'Integration not found' });
     }
+
+    await notifyIntegrationDisconnected({
+      userId: integration.userId,
+      companyId: integration.companyId,
+      provider: integration.provider,
+      integrationName: integration.accountName || integration.pageName || `${integration.provider} Integration`,
+      reason: req.body?.reason || `Explicitly disconnected by ${req.user.name || req.user.email || 'user'}`,
+    });
 
     return res.json({ success: true, message: 'Integration disconnected' });
   } catch (error) {

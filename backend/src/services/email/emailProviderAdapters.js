@@ -458,16 +458,14 @@ class GmailAdapter {
   static mapLabelsToFolder(labelIds = []) {
     const labels = new Set((labelIds || []).map((l) => l.toUpperCase()));
     let folder = 'inbox';
-    if (labels.has('TRASH')) {
-      folder = 'trash';
-    } else if (labels.has('SPAM')) {
+    if (labels.has('TRASH') || labels.has('SPAM')) {
       folder = 'trash';
     } else if (labels.has('DRAFT')) {
       folder = 'drafts';
-    } else if (labels.has('SENT')) {
-      folder = 'sent';
     } else if (labels.has('INBOX')) {
       folder = 'inbox';
+    } else if (labels.has('SENT')) {
+      folder = 'sent';
     } else {
       // Archived: not in INBOX, SENT, TRASH, DRAFT
       folder = 'archive';
@@ -713,6 +711,52 @@ class OutlookAdapter {
       providerMessageId: generatedId,
       threadId: options.threadId || generatedId,
     };
+  }
+
+  static async syncMessages(account, options = {}) {
+    const token = await this.getValidToken(account);
+    const maxResults = options.maxResults || 40;
+
+    const res = await axios.get('https://graph.microsoft.com/v1.0/me/messages', {
+      headers: { Authorization: `Bearer ${token}` },
+      params: {
+        $top: maxResults,
+        $select: 'id,conversationId,subject,bodyPreview,body,from,toRecipients,ccRecipients,bccRecipients,isRead,hasAttachments,receivedDateTime,sentDateTime,parentFolderId',
+      },
+      timeout: 15000,
+    });
+
+    const messages = res.data?.value || [];
+    return messages.map((m) => {
+      const fromObj = m.from?.emailAddress || {};
+      const toList = (m.toRecipients || []).map(r => ({ name: r.emailAddress?.name || '', email: (r.emailAddress?.address || '').toLowerCase() }));
+      const ccList = (m.ccRecipients || []).map(r => ({ name: r.emailAddress?.name || '', email: (r.emailAddress?.address || '').toLowerCase() }));
+      const bccList = (m.bccRecipients || []).map(r => ({ name: r.emailAddress?.name || '', email: (r.emailAddress?.address || '').toLowerCase() }));
+      const isSentByMe = fromObj.address && fromObj.address.toLowerCase() === account.email.toLowerCase();
+
+      return {
+        providerMessageId: m.id,
+        threadId: m.conversationId || m.id,
+        messageId: `<${m.id}@graph.microsoft.com>`,
+        folder: isSentByMe ? 'sent' : 'inbox',
+        status: isSentByMe ? 'sent' : 'received',
+        from: { name: fromObj.name || '', email: (fromObj.address || account.email).toLowerCase() },
+        to: toList.length > 0 ? toList : [{ name: '', email: account.email }],
+        cc: ccList,
+        bcc: bccList,
+        subject: m.subject || '(No Subject)',
+        snippet: m.bodyPreview || '',
+        bodyHtml: m.body?.contentType === 'html' ? m.body?.content : `<pre>${m.body?.content || ''}</pre>`,
+        bodyText: m.body?.content || '',
+        isRead: Boolean(m.isRead),
+        isStarred: false,
+        hasAttachments: Boolean(m.hasAttachments),
+        attachments: [],
+        date: new Date(m.receivedDateTime || m.sentDateTime || Date.now()),
+        receivedAt: !isSentByMe ? new Date(m.receivedDateTime || Date.now()) : null,
+        sentAt: isSentByMe ? new Date(m.sentDateTime || Date.now()) : null,
+      };
+    });
   }
 }
 

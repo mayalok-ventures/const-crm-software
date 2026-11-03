@@ -36,7 +36,7 @@ exports.receive = async (req, res) => {
     const integration = await Integration.findOne({
       provider: 'google',
       googleKeyHash: receivedHash,
-      status: 'connected',
+      status: { $ne: 'disconnected' },
     }).select('+googleKeyHash');
 
     // Requirement A.1: Reject unmatched key immediately. Never fallback to another tenant!
@@ -56,6 +56,40 @@ exports.receive = async (req, res) => {
     // 4. Requirement E.1: Test lead identification (ONLY when is_test === true or simulator)
     const isTest = payload.is_test === true || payload.isTest === true;
     const externalLeadId = String(payload.lead_id || payload.leadId || (isTest ? `google_test_${Date.now()}` : ''));
+
+    // Extract incoming columns for field mapping detection
+    const sampleFields = [];
+    if (Array.isArray(payload.user_column_data)) {
+      for (const col of payload.user_column_data) {
+        const key = col.column_id || col.column_name || '';
+        const label = col.column_name || col.column_id || '';
+        const sampleValue = col.string_value || '';
+        if (key) {
+          sampleFields.push({ key, label, sampleValue });
+        }
+      }
+    } else {
+      const ignored = new Set(['google_key', 'key', 'is_test', 'isTest', 'api_version', 'gcl_id', 'lead_id', 'leadId', 'form_id', 'campaign_id', 'adgroup_id', 'creative_id']);
+      for (const [k, v] of Object.entries(payload)) {
+        if (!ignored.has(k) && typeof v !== 'object') {
+          sampleFields.push({ key: k, label: k, sampleValue: String(v) });
+        }
+      }
+    }
+
+    // Record sample fields & timestamp in integration metadata
+    integration.metadata = {
+      ...(integration.metadata || {}),
+      lastTestReceivedAt: new Date(),
+      sampleFields: sampleFields.length > 0 ? sampleFields : (integration.metadata?.sampleFields || []),
+    };
+
+    // If awaiting test lead, immediately activate into needs_mapping state
+    if (integration.status === 'awaiting_test_lead' || integration.status === 'pending') {
+      integration.status = 'needs_mapping';
+    }
+
+    await integration.save();
 
     // 5. Persist into durable WebhookEvent queue first
     await webhookQueueService.enqueueEvent({

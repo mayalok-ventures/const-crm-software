@@ -11,7 +11,7 @@ import { getUser, hasPermission } from '@/lib/auth';
 import {
   Mail, Inbox, Send, FileText, Clock, Archive, Trash2,
   Search, Star, Paperclip, Plus, RefreshCw, Settings,
-  Filter, CheckCircle2, ChevronRight, User, AlertCircle
+  Filter, CheckCircle2, ChevronRight, User, AlertCircle, RotateCcw
 } from 'lucide-react';
 
 const FOLDERS = [
@@ -43,6 +43,8 @@ export default function EmailPage() {
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [unreadInboxCount, setUnreadInboxCount] = useState(0);
+  const [draftsCount, setDraftsCount] = useState(0);
+  const [scheduledCount, setScheduledCount] = useState(0);
   const [connectingGoogle, setConnectingGoogle] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -117,8 +119,9 @@ export default function EmailPage() {
       const res = await api.get('/email/accounts');
       const accList = res.data.accounts || [];
       setAccounts(accList);
-      if (accList.length > 0 && selectedAccountId === 'all') {
-        // Can stay 'all' or select first
+      if (accList.length > 0) {
+        // Trigger non-blocking initial sync for freshness
+        api.post('/email/sync').catch(() => {});
       }
     } catch {
       // Handled silently
@@ -139,6 +142,8 @@ export default function EmailPage() {
       const res = await api.get('/email/messages', { params });
       setMessages(res.data.messages || []);
       setUnreadInboxCount(res.data.unreadInboxCount || 0);
+      setDraftsCount(res.data.draftsCount || 0);
+      setScheduledCount(res.data.scheduledCount || 0);
 
       // If selected message is in current list, update it
       if (selectedMessage) {
@@ -194,8 +199,89 @@ export default function EmailPage() {
   }, [searchTerm]);
 
   const handleSelectMessage = (msg) => {
+    if (currentFolder === 'drafts' || msg.folder === 'drafts') {
+      setComposerInitialData({
+        draftId: msg._id,
+        _id: msg._id,
+        folder: 'drafts',
+        accountId: msg.accountId?._id || msg.accountId,
+        to: msg.to,
+        cc: msg.cc,
+        bcc: msg.bcc,
+        subject: msg.subject === '(Draft)' ? '' : msg.subject,
+        bodyHtml: msg.bodyHtml,
+        leadId: msg.leadId?._id || msg.leadId,
+        threadId: msg.threadId,
+        attachments: msg.attachments,
+      });
+      setShowComposer(true);
+      return;
+    }
     setSelectedMessage(msg);
     setMobileView('thread');
+  };
+
+  const handleRestoreItem = async (e, msg) => {
+    e.stopPropagation();
+    try {
+      await api.patch(`/email/messages/${msg._id}/folder`, { folder: 'inbox' });
+      toast.success('Restored to Inbox 📥');
+      fetchMessages(true);
+      if (selectedMessage?._id === msg._id) setSelectedMessage(null);
+    } catch {
+      toast.error('Failed to restore message');
+    }
+  };
+
+  const handleUnarchiveItem = async (e, msg) => {
+    e.stopPropagation();
+    try {
+      await api.patch(`/email/messages/${msg._id}/folder`, { folder: 'inbox' });
+      toast.success('Moved to Inbox 📥');
+      fetchMessages(true);
+      if (selectedMessage?._id === msg._id) setSelectedMessage(null);
+    } catch {
+      toast.error('Failed to move message to inbox');
+    }
+  };
+
+  const handleDeletePermanentItem = async (e, msg) => {
+    e.stopPropagation();
+    if (!confirm('Are you sure you want to permanently delete this email?')) return;
+    try {
+      await api.delete(`/email/messages/${msg._id}?permanent=true`);
+      toast.success('Deleted permanently 🗑️');
+      fetchMessages(true);
+      if (selectedMessage?._id === msg._id) setSelectedMessage(null);
+    } catch {
+      toast.error('Failed to delete message');
+    }
+  };
+
+  const handleSendScheduledItem = async (e, msg) => {
+    e.stopPropagation();
+    try {
+      await api.post(`/email/messages/${msg._id}/send-now`);
+      toast.success('Scheduled email dispatched immediately! 🚀');
+      fetchMessages(true);
+      if (selectedMessage?._id === msg._id) setSelectedMessage(null);
+    } catch {
+      toast.error('Failed to dispatch scheduled email');
+    }
+  };
+
+  const handleEmptyTrash = async () => {
+    if (!confirm('Are you sure you want to permanently delete all messages in trash? This cannot be undone.')) return;
+    try {
+      await api.delete('/email/trash', {
+        params: { accountId: selectedAccountId !== 'all' ? selectedAccountId : undefined }
+      });
+      toast.success('Trash emptied 🗑️');
+      fetchMessages(false);
+      if (selectedMessage?.folder === 'trash') setSelectedMessage(null);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to empty trash');
+    }
   };
 
   const handleToggleStar = async (e, msg) => {
@@ -322,6 +408,16 @@ export default function EmailPage() {
                     {f.key === 'inbox' && unreadInboxCount > 0 && (
                       <span className="px-1.5 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-extrabold">
                         {unreadInboxCount}
+                      </span>
+                    )}
+                    {f.key === 'drafts' && draftsCount > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-bold">
+                        {draftsCount}
+                      </span>
+                    )}
+                    {f.key === 'scheduled' && scheduledCount > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
+                        {scheduledCount}
                       </span>
                     )}
                   </button>
@@ -451,6 +547,19 @@ export default function EmailPage() {
 
               {/* Conversation Items List */}
               <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                {currentFolder === 'trash' && messages.length > 0 && (
+                  <div className="px-3.5 py-2 bg-rose-50 border-b border-rose-100 flex items-center justify-between text-xs">
+                    <span className="text-[11px] font-semibold text-rose-700">Items in Trash</span>
+                    <button
+                      type="button"
+                      onClick={handleEmptyTrash}
+                      className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <Trash2 size={11} /> Empty Trash
+                    </button>
+                  </div>
+                )}
+
                 {loading ? (
                   <div className="p-8 text-center text-slate-400">
                     <RefreshCw size={18} className="animate-spin mx-auto mb-2" />
@@ -523,13 +632,82 @@ export default function EmailPage() {
                         <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-slate-400">
                           {msg.hasAttachments && <Paperclip size={12} />}
                           <span>{format(new Date(msg.date || msg.createdAt), 'h:mm a')}</span>
-                          <button
-                            type="button"
-                            onClick={e => handleToggleStar(e, msg)}
-                            className="p-1 hover:text-amber-500 text-slate-300 transition"
-                          >
-                            <Star size={13} fill={msg.isStarred ? '#f59e0b' : 'none'} color={msg.isStarred ? '#f59e0b' : 'currentColor'} />
-                          </button>
+
+                          {/* Folder-specific quick item actions */}
+                          {currentFolder === 'trash' ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={e => handleRestoreItem(e, msg)}
+                                title="Restore to Inbox"
+                                className="p-1 hover:text-emerald-600 text-slate-400 transition"
+                              >
+                                <RotateCcw size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={e => handleDeletePermanentItem(e, msg)}
+                                title="Delete Forever"
+                                className="p-1 hover:text-rose-600 text-slate-400 transition"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </>
+                          ) : currentFolder === 'archive' ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={e => handleUnarchiveItem(e, msg)}
+                                title="Move to Inbox"
+                                className="p-1 hover:text-indigo-600 text-slate-400 transition"
+                              >
+                                <Inbox size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={e => handleToggleStar(e, msg)}
+                                className="p-1 hover:text-amber-500 text-slate-300 transition"
+                              >
+                                <Star size={13} fill={msg.isStarred ? '#f59e0b' : 'none'} color={msg.isStarred ? '#f59e0b' : 'currentColor'} />
+                              </button>
+                            </>
+                          ) : currentFolder === 'scheduled' ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={e => handleSendScheduledItem(e, msg)}
+                                title="Send Now"
+                                className="p-1 hover:text-emerald-600 text-slate-400 transition"
+                              >
+                                <Send size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={e => handleDeletePermanentItem(e, msg)}
+                                title="Cancel and Delete"
+                                className="p-1 hover:text-rose-600 text-slate-400 transition"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </>
+                          ) : currentFolder === 'drafts' ? (
+                            <button
+                              type="button"
+                              onClick={e => handleDeletePermanentItem(e, msg)}
+                              title="Discard Draft"
+                              className="p-1 hover:text-rose-600 text-slate-400 transition"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={e => handleToggleStar(e, msg)}
+                              className="p-1 hover:text-amber-500 text-slate-300 transition"
+                            >
+                              <Star size={13} fill={msg.isStarred ? '#f59e0b' : 'none'} color={msg.isStarred ? '#f59e0b' : 'currentColor'} />
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -542,6 +720,19 @@ export default function EmailPage() {
                       <p className="text-[11px] text-slate-500 line-clamp-1 m-0 font-normal">
                         {msg.snippet || 'No preview text'}
                       </p>
+
+                      {/* Scheduled / Draft Indicators */}
+                      {msg.scheduledAt && (
+                        <div className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 w-fit mt-1">
+                          <Clock size={11} />
+                          <span>Scheduled: {format(new Date(msg.scheduledAt), 'MMM d, h:mm a')}</span>
+                        </div>
+                      )}
+                      {msg.folder === 'drafts' && (
+                        <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 text-[9px] font-bold w-fit mt-0.5">
+                          Draft
+                        </span>
+                      )}
                     </div>
                   );
                 })

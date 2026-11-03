@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const axios = require('axios');
+const XLSX = require('xlsx');
 const { getTemplateHeaderDefinitions, matchHeaderToCrmField } = require('./leadFieldsRegistry');
 
 /**
@@ -170,7 +171,7 @@ class GoogleSheetsService {
   }) {
     // 1. Mock Mode (for deterministic unit/e2e testing without live Google credentials)
     if (mockDriver || process.env.GOOGLE_MOCK_MODE === 'true' || spreadsheetId.startsWith('mock_')) {
-      const driver = mockDriver || this._getMockSpreadsheet(spreadsheetId);
+      const driver = (mockDriver && typeof mockDriver === 'object') ? mockDriver : this._getMockSpreadsheet(spreadsheetId);
       return driver.inspect();
     }
 
@@ -255,7 +256,7 @@ class GoogleSheetsService {
     mockDriver = null,
   }) {
     if (mockDriver || process.env.GOOGLE_MOCK_MODE === 'true' || spreadsheetId.startsWith('mock_')) {
-      const driver = mockDriver || this._getMockSpreadsheet(spreadsheetId);
+      const driver = (mockDriver && typeof mockDriver === 'object') ? mockDriver : this._getMockSpreadsheet(spreadsheetId);
       return driver.readData(tabName, headerRowIndex, maxRows);
     }
 
@@ -270,6 +271,18 @@ class GoogleSheetsService {
       if (saToken) {
         authHeader = `Bearer ${saToken}`;
         accessMethod = 'service_account';
+      }
+    }
+
+    if (!authHeader && !apiKey) {
+      const publicData = await this.readPublicSheetData({
+        spreadsheetId,
+        tabName,
+        headerRowIndex,
+        maxRows,
+      });
+      if (publicData.success) {
+        return publicData;
       }
     }
 
@@ -350,6 +363,17 @@ class GoogleSheetsService {
         accessMethod,
       };
     } catch (err) {
+      if (!accessToken || err.response?.status === 401 || err.response?.status === 403) {
+        const publicFallback = await this.readPublicSheetData({
+          spreadsheetId,
+          tabName,
+          headerRowIndex,
+          maxRows,
+        });
+        if (publicFallback.success) {
+          return publicFallback;
+        }
+      }
       return {
         success: false,
         error: err.response?.data?.error?.message || err.message,
@@ -586,28 +610,198 @@ class GoogleSheetsService {
    * Fallback for public ("Anyone with the link") sheets via public gviz/csv export
    * (Marked as an undocumented / fallback approach)
    */
-  async _inspectPublicFallback(spreadsheetId) {
+  /**
+   * Reads public Google Sheet via direct CSV export endpoint
+   * Requires NO API keys or OAuth credentials when General Access is "Anyone with the link"
+   */
+  async readPublicSheetData({
+    spreadsheetId,
+    tabName = 'Sheet1',
+    headerRowIndex = 1,
+    maxRows = 500,
+  }) {
+    if (!spreadsheetId) {
+      return { success: false, isAccessible: false, isPublic: false, error: 'Spreadsheet ID is required' };
+    }
+
     try {
-      const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv`;
-      const res = await axios.get(url, { timeout: 7000 });
-      if (res.status === 200 && typeof res.data === 'string' && res.data.length > 0) {
+      const exportUrl = tabName && tabName !== 'Sheet1'
+        ? `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`
+        : `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv`;
+
+      const res = await axios.get(exportUrl, {
+        timeout: 10000,
+        responseType: 'text',
+        headers: {
+          Accept: 'text/csv,text/plain,*/*',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) MobileCRM/1.0',
+        },
+        maxRedirects: 5,
+        validateStatus: (status) => status < 500,
+      });
+
+      const rawText = typeof res.data === 'string' ? res.data : '';
+      const isHtmlResponse =
+        rawText.includes('<!DOCTYPE html>') ||
+        rawText.includes('<html') ||
+        rawText.includes('accounts.google.com') ||
+        rawText.includes('ServiceLogin') ||
+        rawText.includes('Google Drive - Access Denied');
+
+      if (res.status !== 200 || isHtmlResponse) {
         return {
-          success: true,
-          spreadsheetId,
-          title: 'Public Google Sheet',
-          sheets: [{ sheetId: 0, title: 'Sheet1', rowCount: 100, columnCount: 10 }],
-          accessMethod: 'public_export',
-          hasWriteAccess: false,
-          isPublicFallback: true,
+          success: false,
+          isAccessible: false,
+          isPublic: false,
+          status: 403,
+          error: 'The Google Sheet is currently private or restricted. Please set access to "Anyone with the link can view".',
+          needsShareWithServiceAccount: true,
+          serviceAccountEmail: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || 'crm-sheets-sync@crm-project-2026.iam.gserviceaccount.com',
         };
       }
-    } catch {}
-    return { success: false };
+
+      if (!rawText.trim()) {
+        return {
+          success: true,
+          isAccessible: true,
+          isPublic: true,
+          isEmpty: true,
+          headers: [],
+          sampleRows: [],
+          suggestedMappings: [],
+          totalRowsDetected: 0,
+          hasDataRows: false,
+          accessMethod: 'public_csv',
+        };
+      }
+
+      // Parse CSV with XLSX
+      const workbook = XLSX.read(rawText, { type: 'string' });
+      const firstSheetName = workbook.SheetNames[0] || 'Sheet1';
+      const worksheet = workbook.Sheets[firstSheetName];
+
+      if (!worksheet || !worksheet['!ref']) {
+        return {
+          success: true,
+          isAccessible: true,
+          isPublic: true,
+          isEmpty: true,
+          headers: [],
+          sampleRows: [],
+          suggestedMappings: [],
+          totalRowsDetected: 0,
+          hasDataRows: false,
+          accessMethod: 'public_csv',
+        };
+      }
+
+      const range = XLSX.utils.decode_range(worksheet['!ref']);
+      const targetHeaderRow = Math.max(0, (headerRowIndex || 1) - 1);
+
+      // Extract raw header cells from header row
+      const rawHeaders = [];
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const cell = worksheet[XLSX.utils.encode_cell({ r: targetHeaderRow, c })];
+        const val = cell && cell.v !== undefined ? String(cell.v).trim() : '';
+        rawHeaders.push(val);
+      }
+
+      // Clean and deduplicate headers
+      const cleanHeaders = [];
+      const headerCounts = {};
+      for (let i = 0; i < rawHeaders.length; i++) {
+        let h = rawHeaders[i];
+        if (!h) {
+          h = `Column_${i + 1}`;
+        }
+        if (headerCounts[h]) {
+          headerCounts[h]++;
+          h = `${h}_${headerCounts[h]}`;
+        } else {
+          headerCounts[h] = 1;
+        }
+        cleanHeaders.push({ header: h, index: i });
+      }
+
+      // Extract all data rows starting right after header row
+      const allRows = XLSX.utils.sheet_to_json(worksheet, {
+        range: targetHeaderRow,
+        raw: false,
+        defval: '',
+      });
+
+      // Filter out completely blank rows
+      const nonEmptyRows = allRows.filter((r) =>
+        Object.values(r).some((v) => String(v || '').trim() !== '')
+      );
+
+      const limitedRows = maxRows ? nonEmptyRows.slice(0, maxRows) : nonEmptyRows;
+      const sampleRows = limitedRows.slice(0, 5);
+
+      // Auto-suggest CRM mappings using tolerant matcher
+      const suggestedMappings = cleanHeaders.map(({ header, index }) => {
+        const match = matchHeaderToCrmField(header);
+        const sampleVal = sampleRows[0] ? sampleRows[0][header] || '' : '';
+        return {
+          sourceField: header,
+          columnIndex: index,
+          crmField: match.crmField,
+          displayLabel: match.displayLabel || header,
+          isCustom: match.isCustom,
+          isSystem: Boolean(match.isSystem),
+          sampleValue: sampleVal,
+        };
+      });
+
+      return {
+        success: true,
+        isAccessible: true,
+        isPublic: true,
+        isEmpty: cleanHeaders.length === 0,
+        headers: cleanHeaders.map((c) => c.header),
+        sampleRows: limitedRows,
+        suggestedMappings,
+        totalRowsDetected: nonEmptyRows.length,
+        hasDataRows: nonEmptyRows.length > 0,
+        accessMethod: 'public_csv',
+      };
+    } catch (err) {
+      return {
+        success: false,
+        isAccessible: false,
+        isPublic: false,
+        error: err.message || 'Failed to read public Google Sheet',
+        needsShareWithServiceAccount: true,
+        serviceAccountEmail: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || 'crm-sheets-sync@crm-project-2026.iam.gserviceaccount.com',
+      };
+    }
   }
 
   /**
-   * Helper: converts 0-indexed column integer to A1 notation ('A', 'B', ... 'AA')
+   * Fallback for public ("Anyone with the link") sheets via public gviz/csv export
    */
+  async _inspectPublicFallback(spreadsheetId) {
+    const pub = await this.readPublicSheetData({ spreadsheetId });
+    if (pub.success) {
+      return {
+        success: true,
+        spreadsheetId,
+        title: 'Google Sheet (Public Link)',
+        sheets: [{ sheetId: 0, title: 'Sheet1', rowCount: Math.max(100, (pub.totalRowsDetected || 0) + 10), columnCount: Math.max(10, (pub.headers || []).length) }],
+        accessMethod: 'public_csv',
+        hasWriteAccess: false,
+        isPublic: true,
+        isPublicFallback: true,
+        headers: pub.headers || [],
+        sampleRows: pub.sampleRows || [],
+        suggestedMappings: pub.suggestedMappings || [],
+        totalRowsDetected: pub.totalRowsDetected || 0,
+        hasDataRows: Boolean(pub.hasDataRows),
+      };
+    }
+    return pub;
+  }
+
   _indexToA1Column(index) {
     let col = '';
     let temp = index;

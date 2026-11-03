@@ -18,10 +18,12 @@ import {
   Sliders,
   Plus,
   Trash2,
-  Eye,
   Sparkles,
   HelpCircle,
-  CheckCircle
+  CheckCircle,
+  FolderOpen,
+  ArrowUpRight,
+  Tag
 } from 'lucide-react';
 
 const STANDARD_CRM_FIELDS = [
@@ -93,39 +95,45 @@ export default function MetaPageFormModal({
   onSuccess,
   onReconnect,
 }) {
-  // Step indicator: 1 = Select Page & Form, 2 = Map Questions, 3 = Routing & Save
+  // Navigation view: 'list' (manage integrated forms) | 'wizard' (add/edit a form)
+  const [view, setView] = useState('list');
+  // Wizard steps: 1 = Select Form & Destination Campaign, 2 = Map Questions
   const [step, setStep] = useState(1);
+
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [fetchingQuestions, setFetchingQuestions] = useState(false);
+  const [deletingFormId, setDeletingFormId] = useState(null);
 
   // Data states
   const [assets, setAssets] = useState([]);
   const [campaigns, setCampaigns] = useState([]);
-  const [existingSubscriptions, setExistingSubscriptions] = useState([]);
+  const [integratedForms, setIntegratedForms] = useState([]);
 
-  // Selections
+  // Editing / Configuring a specific form
   const [selectedPageId, setSelectedPageId] = useState('');
   const [selectedFormId, setSelectedFormId] = useState('');
+  const [selectedFormName, setSelectedFormName] = useState('');
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
+  const [mappings, setMappings] = useState([]);
+  const [isEditingExisting, setIsEditingExisting] = useState(false);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Field mappings for the currently selected form
-  const [mappings, setMappings] = useState([]);
-
-  // Fetch initial Meta Assets & CRM Campaigns
+  // Fetch initial Meta Assets, Campaigns & Existing Integrated Forms
   const fetchInitialData = useCallback(async () => {
     if (!integration?._id) return;
     setLoading(true);
     setErrorMsg('');
     try {
-      const [assetsRes, campaignsRes, subsRes] = await Promise.all([
+      const [assetsRes, campaignsRes, formsRes] = await Promise.all([
         api.get(`/integrations/meta/assets?integrationId=${integration._id}`),
         api.get('/campaigns', { params: { type: 'inbound' } }).catch(() => ({ data: { campaigns: [] } })),
-        api.get('/integrations/subscriptions', { params: { provider: 'meta' } }).catch(() => ({ data: { subscriptions: [] } })),
+        api.get(`/integrations/meta/forms?integrationId=${integration._id}`).catch(() => ({ data: { forms: [] } })),
       ]);
 
+      // 1. Process Campaigns
       let cmps = [];
       if (campaignsRes.data?.success) {
         cmps = campaignsRes.data.campaigns || [];
@@ -133,78 +141,71 @@ export default function MetaPageFormModal({
         cmps = campaignsRes.data;
       }
       setCampaigns(cmps);
-      if (cmps.length > 0 && !selectedCampaignId) {
-        setSelectedCampaignId(cmps[0]._id);
-      }
 
-      if (subsRes.data?.subscriptions) {
-        setExistingSubscriptions(subsRes.data.subscriptions);
-      }
+      // 2. Process Integrated Forms
+      const formsList = formsRes.data?.forms || [];
+      setIntegratedForms(formsList);
 
+      // 3. Process Assets
       if (assetsRes.data?.success) {
         const pageAssets = assetsRes.data.data || [];
         setAssets(pageAssets);
 
-        // Pre-select page
         const initialPageId = integration.pageId || (pageAssets.length > 0 ? pageAssets[0].pageId : '');
         setSelectedPageId(initialPageId);
 
-        // Find active page
-        const currentPage = pageAssets.find((a) => String(a.pageId) === String(initialPageId)) || pageAssets[0];
-        const pageForms = currentPage?.forms || [];
-
-        // Pre-select form
-        const initialFormId = (Array.isArray(integration.formIds) && integration.formIds.length > 0)
-          ? integration.formIds[0]
-          : (pageForms.length > 0 ? pageForms[0].formId : '');
-        setSelectedFormId(initialFormId);
-
-        // Pre-fill campaign for pre-selected form if previously mapped
-        const prevSub = subsRes.data?.subscriptions?.find((s) => String(s.externalFormId) === String(initialFormId));
-        if (prevSub?.campaignGroupId?._id) {
-          setSelectedCampaignId(prevSub.campaignGroupId._id);
+        // If user already has integrated forms, open in 'list' view; otherwise open in 'wizard'
+        if (formsList.length > 0) {
+          setView('list');
+        } else {
+          setView('wizard');
+          setStep(1);
+          // Auto pre-select first form if available
+          const currentPage = pageAssets.find((a) => String(a.pageId) === String(initialPageId)) || pageAssets[0];
+          const pageForms = currentPage?.forms || [];
+          if (pageForms.length > 0) {
+            setSelectedFormId(pageForms[0].formId);
+            setSelectedFormName(pageForms[0].formName);
+          }
         }
       } else {
         setErrorMsg(assetsRes.data?.message || 'Failed to retrieve Facebook Pages');
       }
     } catch (err) {
-      const msg = err.response?.data?.message || err.message || 'Could not fetch Meta assets';
+      const msg = err.response?.data?.message || err.message || 'Could not fetch Meta integration details';
       setErrorMsg(msg);
     } finally {
       setLoading(false);
     }
-  }, [integration?._id, integration?.pageId, integration?.formIds, selectedCampaignId]);
+  }, [integration?._id, integration?.pageId]);
 
   useEffect(() => {
     if (!isOpen || !integration?._id) return;
-    setStep(1);
     fetchInitialData();
   }, [isOpen, integration?._id, fetchInitialData]);
 
-  // Resolve current active page and its forms
+  // Active page & its available forms from Graph API
   const currentPage = useMemo(() => {
     return assets.find((a) => String(a.pageId) === String(selectedPageId)) || assets[0] || null;
   }, [assets, selectedPageId]);
 
-  const forms = useMemo(() => {
+  const availableForms = useMemo(() => {
     return currentPage?.forms || [];
   }, [currentPage]);
 
   const selectedForm = useMemo(() => {
-    return forms.find((f) => String(f.formId) === String(selectedFormId)) || null;
-  }, [forms, selectedFormId]);
+    return availableForms.find((f) => String(f.formId) === String(selectedFormId)) || null;
+  }, [availableForms, selectedFormId]);
 
   // Load questions for selected form into mapping state
-  const loadFormQuestions = useCallback(async (targetForm) => {
-    if (!targetForm) {
-      setMappings(DEFAULT_STANDARD_MAPPINGS);
+  const loadFormQuestions = useCallback(async (targetForm, existingMapping = null) => {
+    if (existingMapping && Array.isArray(existingMapping) && existingMapping.length > 0) {
+      setMappings(existingMapping);
       return;
     }
 
-    // Check if we have pre-existing subscription mappings
-    const prevSub = existingSubscriptions.find((s) => String(s.externalFormId) === String(targetForm.formId));
-    if (prevSub?.fieldMapping && Array.isArray(prevSub.fieldMapping) && prevSub.fieldMapping.length > 0) {
-      setMappings(prevSub.fieldMapping);
+    if (!targetForm) {
+      setMappings(DEFAULT_STANDARD_MAPPINGS);
       return;
     }
 
@@ -227,7 +228,7 @@ export default function MetaPageFormModal({
       return;
     }
 
-    // Otherwise, fetch on-demand from dedicated endpoint
+    // Fetch on-demand from dedicated endpoint
     setFetchingQuestions(true);
     try {
       const res = await api.get(`/integrations/meta/forms/${targetForm.formId}/questions?integrationId=${integration._id}`);
@@ -248,57 +249,88 @@ export default function MetaPageFormModal({
         });
         setMappings(generated);
       } else {
-        // Fallback to standard mappings
         setMappings(DEFAULT_STANDARD_MAPPINGS);
       }
     } catch (e) {
-      // Graceful fallback to standard mapping template
       setMappings(DEFAULT_STANDARD_MAPPINGS);
     } finally {
       setFetchingQuestions(false);
     }
-  }, [existingSubscriptions, integration?._id]);
+  }, [integration?._id]);
 
-  // Handle Form Selection and advance
-  const handleSelectForm = (formId) => {
-    setSelectedFormId(formId);
-    const chosenForm = forms.find((f) => String(f.formId) === String(formId));
-    loadFormQuestions(chosenForm);
+  // Start integrating a new form
+  const handleStartAddForm = () => {
+    setIsEditingExisting(false);
+    setSelectedFormId('');
+    setSelectedFormName('');
+    setSelectedCampaignId('__auto_create__');
+    setMappings(DEFAULT_STANDARD_MAPPINGS);
+    setStep(1);
+    setView('wizard');
+  };
 
-    const prevSub = existingSubscriptions.find((s) => String(s.externalFormId) === String(formId));
-    if (prevSub?.campaignGroupId?._id) {
-      setSelectedCampaignId(prevSub.campaignGroupId._id);
+  // Start editing an already-integrated form
+  const handleStartEditForm = (formItem) => {
+    setIsEditingExisting(true);
+    setSelectedPageId(formItem.pageId || integration.pageId || '');
+    setSelectedFormId(formItem.formId);
+    setSelectedFormName(formItem.formName);
+    setSelectedCampaignId(formItem.campaign?._id || '__auto_create__');
+
+    const targetFormObj = availableForms.find((f) => String(f.formId) === String(formItem.formId));
+    loadFormQuestions(targetFormObj, formItem.fieldMapping);
+
+    setStep(2); // Go directly to field mapping & campaign view
+    setView('wizard');
+  };
+
+  // Remove / Disconnect a single form
+  const handleDeleteForm = async (formItem) => {
+    if (!window.confirm(`Are you sure you want to disconnect form "${formItem.formName}"? Inbound leads from this form will no longer be captured into Campaign "${formItem.campaign?.name || 'CRM'}".`)) {
+      return;
+    }
+
+    setDeletingFormId(formItem.formId);
+    try {
+      const res = await api.delete(`/integrations/meta/forms/${formItem.formId}`, {
+        params: { integrationId: integration._id },
+      });
+      if (res.data?.success) {
+        toast.success(`Form "${formItem.formName}" disconnected successfully`);
+        setIntegratedForms((prev) => prev.filter((f) => f.formId !== formItem.formId));
+        onSuccess?.();
+      } else {
+        toast.error(res.data?.message || 'Failed to remove form');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to remove form');
+    } finally {
+      setDeletingFormId(null);
     }
   };
 
-  const handleProceedToMapping = () => {
+  // Select form in wizard step 1
+  const handleSelectFormInWizard = (formObj) => {
+    setSelectedFormId(formObj.formId);
+    setSelectedFormName(formObj.formName);
+
+    // If this form already has an integrated record, pre-select its campaign
+    const existing = integratedForms.find((f) => String(f.formId) === String(formObj.formId));
+    if (existing?.campaign?._id) {
+      setSelectedCampaignId(existing.campaign._id);
+    } else {
+      setSelectedCampaignId('__auto_create__');
+    }
+  };
+
+  // Proceed to Step 2 (Question Mapping)
+  const handleProceedToStep2 = () => {
     if (!selectedFormId) {
-      toast.error('Please select a Lead Generation Form to map');
+      toast.error('Please select a Meta Lead Form to integrate');
       return;
     }
     loadFormQuestions(selectedForm);
     setStep(2);
-  };
-
-  const handleProceedToRouting = () => {
-    // Validate mappings
-    if (!mappings || mappings.length === 0) {
-      toast.error('Please configure at least one form question mapping.');
-      return;
-    }
-    const invalid = mappings.some((m) => !m.sourceField.trim());
-    if (invalid) {
-      toast.error('All form question mappings must specify a Meta field key');
-      return;
-    }
-    const hasPhoneOrEmail = mappings.some(
-      (m) => (m.crmField === 'phone' || m.crmField === 'email') && !m.isCustom
-    );
-    if (!hasPhoneOrEmail) {
-      toast.error('You must map at least Phone Number OR Email Address so inbound leads can be contacted in CRM.');
-      return;
-    }
-    setStep(3);
   };
 
   // Field mapping manipulations
@@ -330,48 +362,73 @@ export default function MetaPageFormModal({
     });
   };
 
-  // Final Save & Configure
-  const handleSaveConfiguration = async () => {
-    if (!selectedPageId) {
-      toast.error('Please select a Facebook Page');
-      return;
-    }
+  // Final Save & Activate
+  const handleSaveForm = async () => {
     if (!selectedFormId) {
       toast.error('Please select a Meta Lead Form');
       return;
     }
 
+    // Validate mappings
+    if (!mappings || mappings.length === 0) {
+      toast.error('Please configure at least one form question mapping.');
+      return;
+    }
+    const invalid = mappings.some((m) => !m.sourceField.trim());
+    if (invalid) {
+      toast.error('All form question mappings must specify a Meta field key');
+      return;
+    }
+    const hasPhoneOrEmail = mappings.some(
+      (m) => (m.crmField === 'phone' || m.crmField === 'email') && !m.isCustom
+    );
+    if (!hasPhoneOrEmail) {
+      toast.error('You must map at least Phone Number OR Email Address so inbound leads can be contacted in CRM.');
+      return;
+    }
+
     const effectiveCampaignId = selectedCampaignId || '__auto_create__';
+    const formDisplayName = selectedFormName || selectedForm?.formName || `Meta Form ${selectedFormId}`;
 
     setSaving(true);
     try {
       const formRouting = {
         [selectedFormId]: {
           campaignGroupId: effectiveCampaignId,
-          formName: selectedForm?.formName || `Meta Form ${selectedFormId}`,
-          newCampaignName: `${selectedForm?.formName || 'Meta'} Leads`,
+          formName: formDisplayName,
+          newCampaignName: `${formDisplayName} Leads`,
           fieldMapping: mappings.filter((m) => m.crmField !== 'ignore'),
         },
       };
 
       const res = await api.post('/integrations/meta/configure', {
         integrationId: integration._id,
-        pageId: selectedPageId,
+        pageId: selectedPageId || integration.pageId,
         pageName: currentPage?.pageName || integration.pageName || 'Facebook Page',
         formIds: [selectedFormId],
         formRouting,
         fieldMapping: mappings.filter((m) => m.crmField !== 'ignore'),
+        replaceOtherForms: false, // CRITICAL: Never pause other active forms!
       });
 
       if (res.data?.success) {
-        toast.success('Meta Lead Form & CRM Field Mappings Connected Successfully! 🔵');
+        toast.success(
+          isEditingExisting
+            ? `Form "${formDisplayName}" updated successfully! 🔵`
+            : `Form "${formDisplayName}" connected successfully! 🔵`
+        );
         onSuccess?.();
-        onClose?.();
+        // Refresh integrated forms list and switch back to list view
+        const refreshRes = await api.get(`/integrations/meta/forms?integrationId=${integration._id}`).catch(() => null);
+        if (refreshRes?.data?.forms) {
+          setIntegratedForms(refreshRes.data.forms);
+        }
+        setView('list');
       } else {
         toast.error(res.data?.message || 'Configuration failed');
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save configuration');
+      toast.error(err.response?.data?.message || 'Failed to save form configuration');
     } finally {
       setSaving(false);
     }
@@ -388,7 +445,7 @@ export default function MetaPageFormModal({
 
   if (!isOpen) return null;
 
-  const filteredForms = forms.filter((f) => {
+  const filteredAvailableForms = availableForms.filter((f) => {
     if (!searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase().trim();
     return (f.formName || '').toLowerCase().includes(term) || String(f.formId).includes(term);
@@ -408,15 +465,19 @@ export default function MetaPageFormModal({
             </div>
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                Connect Meta Lead Form & Field Mapping
-                <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-semibold">
-                  Step {step} of 3
+                Meta Forms & Field Mapping
+                <span className="text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-semibold">
+                  {view === 'list'
+                    ? `${integratedForms.length} Form${integratedForms.length === 1 ? '' : 's'} Integrated`
+                    : isEditingExisting
+                    ? 'Editing Form'
+                    : `Step ${step} of 2`}
                 </span>
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                {step === 1 && 'Select the Facebook Page and Lead Generation Form to connect'}
-                {step === 2 && 'Map each question in your Meta Form directly to CRM fields'}
-                {step === 3 && 'Choose your destination Campaign and verify connection'}
+                {view === 'list' && 'Manage your integrated Meta Instant Forms and their campaign routing.'}
+                {view === 'wizard' && step === 1 && 'Select a Meta Form and destination Campaign.'}
+                {view === 'wizard' && step === 2 && 'Map questions from this Meta Form directly to CRM fields.'}
               </p>
             </div>
           </div>
@@ -428,35 +489,21 @@ export default function MetaPageFormModal({
           </button>
         </div>
 
-        {/* Wizard Stepper Progress Bar */}
-        <div className="flex items-center justify-between mb-6 px-2">
-          <div className={`flex items-center gap-2 text-xs font-semibold ${step >= 1 ? 'text-blue-400' : 'text-slate-500'}`}>
-            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] ${step >= 1 ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
-              1
-            </div>
-            <span>1. Select Form</span>
-          </div>
-          <div className={`h-0.5 flex-1 mx-3 ${step >= 2 ? 'bg-blue-600' : 'bg-slate-800'}`} />
-          <div className={`flex items-center gap-2 text-xs font-semibold ${step >= 2 ? 'text-blue-400' : 'text-slate-500'}`}>
-            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] ${step >= 2 ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
-              2
-            </div>
-            <span>2. Map Questions</span>
-          </div>
-          <div className={`h-0.5 flex-1 mx-3 ${step >= 3 ? 'bg-blue-600' : 'bg-slate-800'}`} />
-          <div className={`flex items-center gap-2 text-xs font-semibold ${step >= 3 ? 'text-blue-400' : 'text-slate-500'}`}>
-            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] ${step >= 3 ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
-              3
-            </div>
-            <span>3. Connect & Save</span>
+        {/* Section Boundary Guidance Callout */}
+        <div className="bg-blue-950/40 border border-blue-800/40 rounded-2xl px-4 py-2.5 mb-5 flex items-center justify-between text-xs text-blue-200">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-blue-400 shrink-0" />
+            <span>
+              <strong>Clear Separation:</strong> Meta forms route leads to your selected Campaign. Agent and counselor assignments are managed within each Campaign.
+            </span>
           </div>
         </div>
 
-        {/* Content Body */}
+        {/* Body Content */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
-            <p className="text-sm text-slate-400">Loading Facebook Pages and Lead Forms from Meta Graph API...</p>
+            <p className="text-sm text-slate-400">Loading Meta assets and integrated forms...</p>
           </div>
         ) : errorMsg ? (
           <div className="p-5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm flex flex-col gap-3">
@@ -482,423 +529,501 @@ export default function MetaPageFormModal({
               </button>
             </div>
           </div>
-        ) : assets.length === 0 ? (
-          <div className="p-8 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-sm flex flex-col gap-3 text-center items-center">
-            <AlertCircle className="w-10 h-10 text-amber-400" />
-            <div>
-              <p className="text-base font-semibold text-amber-200">No Facebook Pages Found</p>
-              <p className="text-xs text-slate-400 mt-1.5 max-w-md leading-relaxed">
-                Your authenticated Meta profile currently does not manage any Facebook Pages or lacks permission to view them. Click below to grant full Page permissions.
-              </p>
-            </div>
-            <button
-              onClick={handleReconnect}
-              className="mt-3 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition shadow-lg shadow-blue-600/20"
-            >
-              <ExternalLink className="w-4 h-4" /> Re-authorize Meta Permissions
-            </button>
-          </div>
         ) : (
-          <div className="space-y-6">
-
+          <div>
             {/* ══════════════════════════════════════════════════════════
-                STEP 1: SELECT PAGE & FORM
+                VIEW 1: INTEGRATED FORMS LIST (Overview of all forms)
                ══════════════════════════════════════════════════════════ */}
-            {step === 1 && (
-              <div className="space-y-5">
-                {/* 1. Page Selection */}
-                <div>
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                    1. Select Facebook Page
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {assets.map((page) => {
-                      const isSelected = String(page.pageId) === String(selectedPageId);
-                      return (
-                        <div
-                          key={page.pageId}
-                          onClick={() => {
-                            setSelectedPageId(page.pageId);
-                            const pForms = page.forms || [];
-                            if (pForms.length > 0) {
-                              handleSelectForm(pForms[0].formId);
-                            } else {
-                              setSelectedFormId('');
-                            }
-                          }}
-                          className={`p-3.5 rounded-2xl border cursor-pointer transition flex items-center justify-between ${
-                            isSelected
-                              ? 'bg-blue-600/15 border-blue-500/50 text-white ring-1 ring-blue-500/30'
-                              : 'bg-slate-800/40 border-slate-700/60 hover:border-slate-600 text-slate-300'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs ${
-                              isSelected ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'
-                            }`}>
-                              FB
-                            </div>
-                            <div>
-                              <p className="text-xs font-bold text-white leading-tight">{page.pageName}</p>
-                              <p className="text-[10px] text-slate-400 mt-0.5">ID: {page.pageId}</p>
-                            </div>
-                          </div>
-                          {isSelected && <Check className="w-4 h-4 text-blue-400 shrink-0" />}
-                        </div>
-                      );
-                    })}
+            {view === 'list' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      Active Integrated Forms ({integratedForms.length})
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Each form captures leads and routes them independently into its designated Campaign.
+                    </p>
                   </div>
+                  <button
+                    onClick={handleStartAddForm}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shadow-lg shadow-blue-600/20"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Integrate New Form
+                  </button>
                 </div>
 
-                {/* Permission Warning Notice (e.g. pages_manage_ads missing) */}
-                {currentPage?.formFetchError && (
-                  <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
-                      <div>
-                        <p className="font-semibold text-amber-200">Lead Form Permissions Notice</p>
-                        <p className="text-amber-300/80 text-[11px] mt-0.5">
-                          Meta requires <code className="text-amber-200">pages_manage_ads</code> to read Instant Forms. Click to grant this permission.
-                        </p>
-                      </div>
+                {integratedForms.length === 0 ? (
+                  <div className="p-8 rounded-2xl bg-slate-800/40 border border-slate-800 text-center space-y-3">
+                    <FileText className="w-10 h-10 text-slate-500 mx-auto" />
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">No Meta Forms Integrated Yet</h4>
+                      <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                        Connect your first Meta Instant Form to start capturing leads directly into your CRM campaigns with automated field mapping.
+                      </p>
                     </div>
                     <button
-                      type="button"
-                      onClick={handleReconnect}
-                      className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold whitespace-nowrap transition"
+                      onClick={handleStartAddForm}
+                      className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-2 transition"
                     >
-                      Grant Permission
+                      <Plus className="w-4 h-4" /> Connect Your First Lead Form
                     </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                    {integratedForms.map((form) => (
+                      <div
+                        key={form.formId}
+                        className="p-4 rounded-2xl bg-slate-800/50 border border-slate-800 hover:border-slate-700 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      >
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-white">{form.formName}</span>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                              ID: {form.formId}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className="text-[11px] text-slate-400">Page:</span>
+                            <span className="text-white font-medium">{form.pageName || 'Facebook Page'}</span>
+                            <span className="text-slate-600">•</span>
+                            <span className="text-[11px] text-slate-400">Campaign:</span>
+                            <span className="px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 font-semibold border border-blue-500/30 flex items-center gap-1">
+                              <Tag className="w-3 h-3 text-blue-400" />
+                              {form.campaign?.name || 'CRM Campaign'}
+                            </span>
+                            <span className="text-slate-600">•</span>
+                            <span className="text-emerald-400 font-medium">
+                              {form.fieldMapping?.length || 0} fields mapped
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-4 text-[11px] text-slate-400 pt-0.5">
+                            <span>Leads captured: <strong className="text-white">{form.totalLeadsCount}</strong></span>
+                            {form.lastLeadAt && (
+                              <span>Last lead: {new Date(form.lastLeadAt).toLocaleDateString()}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-2 self-end sm:self-center">
+                          <button
+                            onClick={() => handleStartEditForm(form)}
+                            className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition"
+                          >
+                            <Sliders className="w-3 h-3 text-blue-400" /> Edit Fields & Campaign
+                          </button>
+                          <button
+                            onClick={() => handleDeleteForm(form)}
+                            disabled={deletingFormId === form.formId}
+                            className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition"
+                            title="Disconnect Form"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
 
-                {/* 2. Lead Forms Picker */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      2. Choose Meta Lead Generation Form ({forms.length})
-                    </label>
+                <div className="border-t border-slate-800 pt-4 flex items-center justify-between">
+                  <div className="text-[11px] text-slate-400">
+                    Showing {integratedForms.length} active Meta Lead form integrations.
                   </div>
+                  <button
+                    onClick={onClose}
+                    className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium transition"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
 
-                  {forms.length > 4 && (
-                    <div className="relative mb-3">
-                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        placeholder="Search forms by name or ID..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl pl-9 pr-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
-                      />
-                    </div>
-                  )}
+            {/* ══════════════════════════════════════════════════════════
+                VIEW 2: FORM INTEGRATION & FIELD MAPPING WIZARD
+               ══════════════════════════════════════════════════════════ */}
+            {view === 'wizard' && (
+              <div className="space-y-5">
+                {/* Wizard Navigation Header */}
+                <div className="flex items-center justify-between pb-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (integratedForms.length > 0) {
+                        setView('list');
+                      } else {
+                        onClose();
+                      }
+                    }}
+                    className="text-xs text-slate-400 hover:text-white flex items-center gap-1 transition"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" /> Back to Integrated Forms
+                  </button>
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className={step === 1 ? 'text-blue-400 font-bold' : 'text-slate-500'}>
+                      1. Select Form & Campaign
+                    </span>
+                    <span className="text-slate-600">/</span>
+                    <span className={step === 2 ? 'text-blue-400 font-bold' : 'text-slate-500'}>
+                      2. Map Fields
+                    </span>
+                  </div>
+                </div>
 
-                  {forms.length === 0 ? (
-                    <div className="p-6 rounded-2xl bg-slate-800/40 border border-slate-800 text-center space-y-2">
-                      <FileText className="w-8 h-8 text-slate-500 mx-auto" />
-                      <p className="text-xs font-medium text-slate-300">No Instant Lead Forms found on this Page</p>
-                      <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
-                        If you have active ads, ensure your form is published in Meta Ads Manager, or reconnect with updated permissions.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={handleReconnect}
-                        className="mt-2 px-3.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 rounded-lg text-xs font-medium transition inline-flex items-center gap-1.5"
-                      >
-                        <RefreshCw className="w-3 h-3" /> Reconnect & Refresh Forms
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                      {filteredForms.map((form) => {
-                        const isSelected = String(form.formId) === String(selectedFormId);
-                        const prevSub = existingSubscriptions.find((s) => String(s.externalFormId) === String(form.formId));
-
-                        return (
-                          <div
-                            key={form.formId}
-                            onClick={() => handleSelectForm(form.formId)}
-                            className={`p-3.5 rounded-xl border cursor-pointer transition flex items-center justify-between ${
-                              isSelected
-                                ? 'bg-blue-600/15 border-blue-500/50 text-white ring-1 ring-blue-500/30'
-                                : 'bg-slate-800/30 border-slate-800 text-slate-400 hover:border-slate-700'
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition ${
-                                isSelected ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-600 bg-slate-800'
-                              }`}>
-                                {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                {/* ══════════════════════════════════════════════════════
+                    STEP 1: SELECT PAGE, FORM & DESTINATION CAMPAIGN
+                   ══════════════════════════════════════════════════════ */}
+                {step === 1 && (
+                  <div className="space-y-5">
+                    {/* 1. Page Selection (if multiple pages) */}
+                    {assets.length > 1 && (
+                      <div>
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                          1. Select Facebook Page
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {assets.map((page) => {
+                            const isSelected = String(page.pageId) === String(selectedPageId);
+                            return (
+                              <div
+                                key={page.pageId}
+                                onClick={() => {
+                                  setSelectedPageId(page.pageId);
+                                  const pForms = page.forms || [];
+                                  if (pForms.length > 0) {
+                                    handleSelectFormInWizard(pForms[0]);
+                                  } else {
+                                    setSelectedFormId('');
+                                    setSelectedFormName('');
+                                  }
+                                }}
+                                className={`p-3 rounded-2xl border cursor-pointer transition flex items-center justify-between ${
+                                  isSelected
+                                    ? 'bg-blue-600/15 border-blue-500/50 text-white ring-1 ring-blue-500/30'
+                                    : 'bg-slate-800/40 border-slate-700/60 hover:border-slate-600 text-slate-300'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs ${
+                                    isSelected ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'
+                                  }`}>
+                                    FB
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-bold text-white leading-tight">{page.pageName}</p>
+                                    <p className="text-[10px] text-slate-400 mt-0.5">ID: {page.pageId}</p>
+                                  </div>
+                                </div>
+                                {isSelected && <Check className="w-4 h-4 text-blue-400 shrink-0" />}
                               </div>
-                              <div>
-                                <p className="text-xs font-semibold text-white">{form.formName || 'Untitled Lead Form'}</p>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  <span className="text-[10px] text-slate-500 font-mono">ID: {form.formId}</span>
-                                  {prevSub?.campaignGroupId && (
-                                    <span className="text-[10px] text-blue-400 bg-blue-500/15 px-1.5 py-0.2 rounded">
-                                      Routed to: {prevSub.campaignGroupId.displayName || prevSub.campaignGroupId.name}
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 2. Choose Lead Form from Meta */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                          Choose Meta Lead Form ({availableForms.length})
+                        </label>
+                      </div>
+
+                      {availableForms.length > 4 && (
+                        <div className="relative mb-3">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            placeholder="Search forms by name or ID..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl pl-9 pr-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+                          />
+                        </div>
+                      )}
+
+                      {availableForms.length === 0 ? (
+                        <div className="p-6 rounded-2xl bg-slate-800/40 border border-slate-800 text-center space-y-2">
+                          <FileText className="w-8 h-8 text-slate-500 mx-auto" />
+                          <p className="text-xs font-medium text-slate-300">No Instant Lead Forms found on this Page</p>
+                          <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                            Ensure your lead form is published in Meta Ads Manager.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleReconnect}
+                            className="mt-2 px-3.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 rounded-lg text-xs font-medium transition inline-flex items-center gap-1.5"
+                          >
+                            <RefreshCw className="w-3 h-3" /> Reconnect & Refresh Forms
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                          {filteredAvailableForms.map((form) => {
+                            const isSelected = String(form.formId) === String(selectedFormId);
+                            const alreadyIntegrated = integratedForms.find((f) => String(f.formId) === String(form.formId));
+
+                            return (
+                              <div
+                                key={form.formId}
+                                onClick={() => handleSelectFormInWizard(form)}
+                                className={`p-3 rounded-xl border cursor-pointer transition flex items-center justify-between ${
+                                  isSelected
+                                    ? 'bg-blue-600/15 border-blue-500/50 text-white ring-1 ring-blue-500/30'
+                                    : 'bg-slate-800/30 border-slate-800 text-slate-400 hover:border-slate-700'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition ${
+                                    isSelected ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-600 bg-slate-800'
+                                  }`}>
+                                    {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-semibold text-white">{form.formName || 'Untitled Lead Form'}</p>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      <span className="text-[10px] text-slate-500 font-mono">ID: {form.formId}</span>
+                                      {alreadyIntegrated && (
+                                        <span className="text-[10px] text-blue-300 bg-blue-500/15 px-1.5 py-0.2 rounded font-medium border border-blue-500/30">
+                                          Integrated in: {alreadyIntegrated.campaign?.name || 'Campaign'}
+                                        </span>
+                                      )}
+                                      {form.questions?.length > 0 && (
+                                        <span className="text-[10px] text-emerald-400 bg-emerald-500/15 px-1.5 py-0.2 rounded font-medium">
+                                          {form.questions.length} questions
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  {form.status === 'ACTIVE' ? (
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-semibold">
+                                      Active
                                     </span>
-                                  )}
-                                  {form.questions?.length > 0 && (
-                                    <span className="text-[10px] text-emerald-400 bg-emerald-500/15 px-1.5 py-0.2 rounded font-medium">
-                                      {form.questions.length} questions
+                                  ) : (
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-400 font-medium">
+                                      {form.status || 'Archived'}
                                     </span>
                                   )}
                                 </div>
                               </div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              {form.status === 'ACTIVE' ? (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-semibold">
-                                  Active
-                                </span>
-                              ) : (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-400 font-medium">
-                                  {form.status || 'Archived'}
-                                </span>
-                              )}
-                              {form.leadsCount !== undefined && (
-                                <span className="text-[10px] text-slate-400 font-medium">{form.leadsCount} leads</span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Step 1 Footer Actions */}
-                <div className="border-t border-slate-800 pt-4 flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="px-4 py-2 rounded-xl border border-slate-700 text-slate-400 hover:text-white text-xs font-medium transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!selectedFormId}
-                    onClick={handleProceedToMapping}
-                    className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-2 transition shadow-lg shadow-blue-600/20"
-                  >
-                    Continue to Question Mapping <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* ══════════════════════════════════════════════════════════
-                STEP 2: MAP FORM QUESTIONS TO CRM FIELDS
-               ══════════════════════════════════════════════════════════ */}
-            {step === 2 && (
-              <div className="space-y-5">
-                <div className="p-4 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-blue-400 tracking-wider">Mapping Active Form</span>
-                    <h3 className="text-sm font-bold text-white mt-0.5">{selectedForm?.formName || `Meta Form ${selectedFormId}`}</h3>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleAddMappingRule}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-lg font-semibold flex items-center gap-1.5 transition"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add Field
-                  </button>
-                </div>
-
-                {fetchingQuestions ? (
-                  <div className="flex flex-col items-center justify-center py-12 gap-2">
-                    <RefreshCw className="w-6 h-6 text-blue-400 animate-spin" />
-                    <p className="text-xs text-slate-400">Loading form questions from Meta...</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
-                      <span>Meta Form Question</span>
-                      <span>Target CRM Field</span>
-                    </div>
-
-                    <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-                      {mappings.map((m, idx) => (
-                        <div
-                          key={idx}
-                          className="p-3 rounded-xl bg-slate-800/40 border border-slate-800 flex items-center gap-3 text-xs"
-                        >
-                          <div className="flex-1 space-y-1">
-                            <input
-                              type="text"
-                              value={m.displayLabel || m.sourceField}
-                              onChange={(e) => handleMappingChange(idx, 'displayLabel', e.target.value)}
-                              placeholder="Question Label (e.g. Full Name)"
-                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs font-medium focus:outline-none focus:border-blue-500"
-                            />
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[10px] text-slate-500 font-mono">key:</span>
-                              <input
-                                type="text"
-                                value={m.sourceField}
-                                onChange={(e) => handleMappingChange(idx, 'sourceField', e.target.value)}
-                                placeholder="meta_key"
-                                className="bg-transparent text-[10px] text-slate-400 font-mono focus:outline-none border-b border-transparent focus:border-slate-500 px-0.5"
-                              />
-                            </div>
-                          </div>
-
-                          <ArrowRight className="w-4 h-4 text-slate-500 shrink-0" />
-
-                          <div className="flex-1">
-                            <select
-                              value={m.crmField}
-                              onChange={(e) => handleMappingChange(idx, 'crmField', e.target.value)}
-                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-white text-xs font-medium focus:outline-none focus:border-blue-500"
-                            >
-                              {STANDARD_CRM_FIELDS.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveMappingRule(idx)}
-                            className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                            );
+                          })}
                         </div>
-                      ))}
+                      )}
+                    </div>
+
+                    {/* 3. Destination Campaign Selection */}
+                    <div>
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                        Target CRM Campaign Destination
+                      </label>
+                      <select
+                        value={selectedCampaignId || '__auto_create__'}
+                        onChange={(e) => setSelectedCampaignId(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
+                      >
+                        <option value="__auto_create__">
+                          ✨ Auto-Create Dedicated Campaign ("{selectedFormName || selectedForm?.formName || 'Meta Leads'}")
+                        </option>
+                        {campaigns.map((c) => (
+                          <option key={c._id} value={c._id}>
+                            {c.displayName || c.name || c.campaignName} ({c.type || 'inbound'})
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[11px] text-slate-400 mt-1.5">
+                        Leads from this form will be deposited into this campaign. Agent assignment rules are configured directly within the Campaign section.
+                      </p>
+                    </div>
+
+                    {/* Step 1 Actions */}
+                    <div className="border-t border-slate-800 pt-4 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (integratedForms.length > 0) {
+                            setView('list');
+                          } else {
+                            onClose();
+                          }
+                        }}
+                        className="px-4 py-2 rounded-xl border border-slate-700 text-slate-400 hover:text-white text-xs font-medium transition"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!selectedFormId}
+                        onClick={handleProceedToStep2}
+                        className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-2 transition shadow-lg shadow-blue-600/20"
+                      >
+                        Continue to Question Mapping <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
                 )}
 
-                {/* Zero Data Loss Guarantee Card */}
-                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 leading-relaxed flex items-start gap-2.5">
-                  <Sparkles className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-                  <span>
-                    <strong>Zero Data Loss Guarantee:</strong> Any questions mapped to <em>Custom Question & Answer</em> are automatically stored on the applicant profile under <strong>Custom Questions & Answers</strong>. They are never dropped!
-                  </span>
-                </div>
-
-                {/* Step 2 Footer Actions */}
-                <div className="border-t border-slate-800 pt-4 flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="px-4 py-2 rounded-xl border border-slate-700 text-slate-400 hover:text-white text-xs font-medium flex items-center gap-1.5 transition"
-                  >
-                    <ArrowLeft className="w-3.5 h-3.5" /> Back to Forms
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleProceedToRouting}
-                    className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-2 transition shadow-lg shadow-blue-600/20"
-                  >
-                    Continue to Destination Campaign <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* ══════════════════════════════════════════════════════════
-                STEP 3: ROUTING & CONFIRMATION
-               ══════════════════════════════════════════════════════════ */}
-            {step === 3 && (
-              <div className="space-y-5">
-                <div>
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                    Target CRM Campaign Destination
-                  </label>
-                  {campaigns.length === 0 ? (
-                    <div className="p-4 rounded-xl bg-blue-600/10 border border-blue-500/30 text-xs text-blue-300 space-y-2">
-                      <div className="flex items-center gap-2 font-semibold text-white">
-                        <Sparkles className="w-4 h-4 text-blue-400" />
-                        Automatic Campaign Creation
+                {/* ══════════════════════════════════════════════════════
+                    STEP 2: MAP FORM QUESTIONS TO CRM FIELDS
+                   ══════════════════════════════════════════════════════ */}
+                {step === 2 && (
+                  <div className="space-y-5">
+                    {/* Header info bar */}
+                    <div className="p-4 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-blue-400 tracking-wider">Mapping Questions For Form</span>
+                        <h3 className="text-sm font-bold text-white mt-0.5">
+                          {selectedFormName || selectedForm?.formName || `Meta Form ${selectedFormId}`}
+                        </h3>
                       </div>
-                      <p className="text-slate-300 text-[11px] leading-relaxed">
-                        A dedicated inbound campaign named <strong className="text-blue-300">"{selectedForm?.formName ? `${selectedForm.formName} (Meta Leads)` : 'Meta Inbound Leads'}"</strong> will be automatically provisioned in your CRM to store and manage these applicants!
-                      </p>
+                      <div className="flex items-center gap-2">
+                        {/* Inline Campaign Selector to easily adjust destination while mapping */}
+                        <div className="flex items-center gap-1.5 bg-slate-900/80 border border-slate-700 rounded-xl px-2.5 py-1">
+                          <Tag className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                          <select
+                            value={selectedCampaignId || '__auto_create__'}
+                            onChange={(e) => setSelectedCampaignId(e.target.value)}
+                            className="bg-transparent text-xs text-white focus:outline-none"
+                          >
+                            <option value="__auto_create__">Auto-Create Campaign</option>
+                            {campaigns.map((c) => (
+                              <option key={c._id} value={c._id}>
+                                {c.displayName || c.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleAddMappingRule}
+                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-xl font-semibold flex items-center gap-1.5 transition shrink-0"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Add Field
+                        </button>
+                      </div>
                     </div>
-                  ) : (
-                    <select
-                      value={selectedCampaignId || '__auto_create__'}
-                      onChange={(e) => setSelectedCampaignId(e.target.value)}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
-                    >
-                      <option value="__auto_create__">
-                        ✨ Auto-Create Dedicated Campaign ("{selectedForm?.formName ? `${selectedForm.formName} (Meta Leads)` : 'Meta Inbound Leads'}")
-                      </option>
-                      {campaigns.map((c) => (
-                        <option key={c._id} value={c._id}>
-                          {c.displayName || c.name || c.campaignName} ({c.type || 'inbound'})
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
 
-                {/* Connection Summary Card */}
-                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-                  <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-emerald-400" /> Connection Overview
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div className="p-3 rounded-xl bg-slate-900 border border-slate-800/80 space-y-1">
-                      <span className="text-[10px] text-slate-400 block font-semibold uppercase">Facebook Page</span>
-                      <p className="text-white font-medium">{currentPage?.pageName || 'Facebook Page'}</p>
+                    {fetchingQuestions ? (
+                      <div className="flex flex-col items-center justify-center py-12 gap-2">
+                        <RefreshCw className="w-6 h-6 text-blue-400 animate-spin" />
+                        <p className="text-xs text-slate-400">Loading form questions from Meta Graph API...</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
+                          <span>Meta Form Question</span>
+                          <span>Target CRM Field</span>
+                        </div>
+
+                        <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                          {mappings.map((m, idx) => (
+                            <div
+                              key={idx}
+                              className="p-3 rounded-xl bg-slate-800/40 border border-slate-800 flex items-center gap-3 text-xs"
+                            >
+                              <div className="flex-1 space-y-1">
+                                <input
+                                  type="text"
+                                  value={m.displayLabel || m.sourceField}
+                                  onChange={(e) => handleMappingChange(idx, 'displayLabel', e.target.value)}
+                                  placeholder="Question Label (e.g. Full Name)"
+                                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs font-medium focus:outline-none focus:border-blue-500"
+                                />
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] text-slate-500 font-mono">key:</span>
+                                  <input
+                                    type="text"
+                                    value={m.sourceField}
+                                    onChange={(e) => handleMappingChange(idx, 'sourceField', e.target.value)}
+                                    placeholder="meta_key"
+                                    className="bg-transparent text-[10px] text-slate-400 font-mono focus:outline-none border-b border-transparent focus:border-slate-500 px-0.5"
+                                  />
+                                </div>
+                              </div>
+
+                              <ArrowRight className="w-4 h-4 text-slate-500 shrink-0" />
+
+                              <div className="flex-1">
+                                <select
+                                  value={m.crmField}
+                                  onChange={(e) => handleMappingChange(idx, 'crmField', e.target.value)}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-white text-xs font-medium focus:outline-none focus:border-blue-500"
+                                >
+                                  {STANDARD_CRM_FIELDS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMappingRule(idx)}
+                                className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Zero Data Loss Guarantee */}
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 leading-relaxed flex items-start gap-2.5">
+                      <Sparkles className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                      <span>
+                        <strong>Zero Data Loss Guarantee:</strong> Any questions mapped to <em>Custom Question & Answer</em> are automatically stored on the applicant profile under <strong>Custom Questions & Answers</strong>. They are never lost.
+                      </span>
                     </div>
-                    <div className="p-3 rounded-xl bg-slate-900 border border-slate-800/80 space-y-1">
-                      <span className="text-[10px] text-slate-400 block font-semibold uppercase">Selected Form</span>
-                      <p className="text-white font-medium">{selectedForm?.formName || `Meta Form ${selectedFormId}`}</p>
-                    </div>
-                    <div className="p-3 rounded-xl bg-slate-900 border border-slate-800/80 space-y-1">
-                      <span className="text-[10px] text-slate-400 block font-semibold uppercase">Destination Campaign</span>
-                      <p className="text-white font-medium">
-                        {campaigns.find((c) => String(c._id) === String(selectedCampaignId))?.displayName ||
-                          campaigns.find((c) => String(c._id) === String(selectedCampaignId))?.name ||
-                          `✨ ${selectedForm?.formName ? `${selectedForm.formName} (Meta Leads)` : 'Meta Inbound Leads'}`}
-                      </p>
-                    </div>
-                    <div className="p-3 rounded-xl bg-slate-900 border border-slate-800/80 space-y-1">
-                      <span className="text-[10px] text-slate-400 block font-semibold uppercase">Mapped Questions</span>
-                      <p className="text-emerald-400 font-medium">{mappings.filter((m) => m.crmField !== 'ignore').length} CRM Fields Mapped</p>
+
+                    {/* Step 2 Actions */}
+                    <div className="border-t border-slate-800 pt-4 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isEditingExisting) {
+                            setView('list');
+                          } else {
+                            setStep(1);
+                          }
+                        }}
+                        className="px-4 py-2 rounded-xl border border-slate-700 text-slate-400 hover:text-white text-xs font-medium flex items-center gap-1.5 transition"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5" />
+                        {isEditingExisting ? 'Cancel' : 'Back to Selection'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={handleSaveForm}
+                        className="px-7 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-2 transition shadow-lg shadow-blue-600/30"
+                      >
+                        {saving ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Saving Configuration...
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            {isEditingExisting ? 'Save Changes' : 'Save & Activate Form 🔵'}
+                          </>
+                        )}
+                      </button>
                     </div>
                   </div>
-                </div>
-
-                {/* Step 3 Footer Actions */}
-                <div className="border-t border-slate-800 pt-4 flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => setStep(2)}
-                    className="px-4 py-2 rounded-xl border border-slate-700 text-slate-400 hover:text-white text-xs font-medium flex items-center gap-1.5 transition"
-                  >
-                    <ArrowLeft className="w-3.5 h-3.5" /> Back to Mapping
-                  </button>
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={handleSaveConfiguration}
-                    className="px-7 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-2 transition shadow-lg shadow-blue-600/30"
-                  >
-                    {saving ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Saving Configuration...
-                      </>
-                    ) : (
-                      <>
-                        <Check className="w-3.5 h-3.5" /> Save & Activate Connection 🔵
-                      </>
-                    )}
-                  </button>
-                </div>
+                )}
               </div>
             )}
-
           </div>
         )}
 

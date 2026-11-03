@@ -493,11 +493,80 @@ export const waLink = (phone, text = '') => {
   return `https://wa.me/${num}?text=${encodeURIComponent(text)}`;
 };
 
-// Merge template text with lead data
-export const mergeTemplate = (text, lead) => {
-  return text
-    .replace(/\{name\}/gi, lead.name || '')
-    .replace(/\{phone\}/gi, lead.phone || '')
-    .replace(/\{company\}/gi, lead.company || '')
-    .replace(/\{status\}/gi, lead.status || '');
+// Canonical client-side merge template helper supporting both {{tag}} and {tag}
+export const mergeTemplate = (text, lead = {}, user = {}, custom = {}) => {
+  if (!text || typeof text !== 'string') return '';
+  const l = lead || {};
+  const u = user || {};
+  const c = custom || {};
+
+  const fullName = l.name || c.name || '';
+  const firstName = fullName.trim().split(/\s+/)[0] || '';
+  const lastName = fullName.trim().split(/\s+/).slice(1).join(' ') || '';
+  const course = l.targetCourse || l.course || l.customData?.course || l.customData?.programName || c.course || '';
+  const phone = l.phone || c.phone || '';
+  const email = l.email || c.email || '';
+  const city = l.targetCity || l.city || l.customData?.city || c.city || '';
+  const stage = l.status || c.stage || '';
+  const source = l.primarySource || l.source || c.source || '';
+  const amount = l.admissionFinalFee || l.dealValue || l.payable_amount || c.amount || '';
+  const counselorName = l.assignedToName || u.name || c.counselorName || 'Admissions Counselor';
+  const counselorPhone = u.phone || l.assignedToPhone || c.counselorPhone || '';
+  const counselorEmail = u.email || l.assignedToEmail || c.counselorEmail || '';
+  const companyName = u.companyName || u.workspaceName || c.companyName || 'Admissions Desk';
+  const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const year = String(new Date().getFullYear());
+
+  const dict = {
+    name: fullName,
+    leadname: fullName,
+    studentname: fullName,
+    fullname: fullName,
+    firstname: firstName,
+    lastname: lastName,
+    course,
+    program: course,
+    targetcourse: course,
+    phone,
+    leadphone: phone,
+    mobile: phone,
+    email,
+    leademail: email,
+    city,
+    stage,
+    status: stage,
+    source,
+    amount: String(amount),
+    fee: String(amount),
+    payable_amount: String(amount),
+    company: l.company || companyName,
+    companyname: companyName,
+    counselorname: counselorName,
+    counsellorname: counselorName,
+    counselorphone: counselorPhone,
+    counsellorphone: counselorPhone,
+    counseloremail: counselorEmail,
+    counselloremail: counselorEmail,
+    today,
+    date: today,
+    year,
+  };
+
+  // Replace {{ tag }}
+  let res = text.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (match, tag) => {
+    const k = tag.trim().toLowerCase();
+    if (dict[k] !== undefined) return dict[k];
+    if (l.customData && l.customData[tag] !== undefined) return String(l.customData[tag]);
+    if (l[tag] !== undefined) return String(l[tag]);
+    return '';
+  });
+
+  // Replace legacy single {tag}
+  res = res.replace(/\{([a-zA-Z0-9_]{2,30})\}/g, (match, tag) => {
+    const k = tag.trim().toLowerCase();
+    if (dict[k] !== undefined) return dict[k];
+    return match;
+  });
+
+  return res;
 };

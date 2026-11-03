@@ -1,5 +1,7 @@
 const crypto = require('crypto');
 const Integration = require('../../models/Integration');
+const Campaign = require('../../models/Campaign');
+const LeadSourceSubscription = require('../../models/LeadSourceSubscription');
 const googleSheetsService = require('../../services/integrations/googleSheetsService');
 const googleSheetsPollingService = require('../../services/integrations/googleSheetsPollingService');
 const { getStandardLeadFields, getTemplateHeaderDefinitions, matchHeaderToCrmField } = require('../../services/integrations/leadFieldsRegistry');
@@ -133,7 +135,9 @@ exports.inspectSheet = async (req, res) => {
       headerRowIndex: Number(headerRowIndex) || 1,
       accessMethod: metaResult.accessMethod,
       hasWriteAccess: metaResult.hasWriteAccess,
+      isPublic: Boolean(metaResult.isPublic || metaResult.isPublicFallback || metaResult.accessMethod === 'public_csv'),
       isPublicFallback: Boolean(metaResult.isPublicFallback),
+      hasDataRows: (dataResult.totalRowsDetected || 0) > 0,
       isEmpty: Boolean(dataResult.isEmpty),
       headers: dataResult.headers || [],
       sampleRows: dataResult.sampleRows || [],
@@ -228,21 +232,35 @@ exports.connectSheet = async (req, res) => {
       spreadsheetUrl,
       tabName = 'Sheet1',
       headerRowIndex = 1,
-      syncMode = 'polling', // 'polling' (Mode B) or 'push' (Mode A)
-      accessMethod = 'oauth',
-      hasWriteAccess = true,
-      importExistingRows = false,
-      defaultCampaignLabel = 'Google Sheets Inbound',
+      syncMode = 'polling',
+      accessMethod = 'public_csv',
+      hasWriteAccess = false,
+      importExistingRows = true,
+      campaignId,
+      campaignName,
       fieldMapping = [],
-      assignmentRule = { type: 'round_robin' },
       accessToken,
       refreshToken,
       storedHeaders = [],
     } = req.body;
 
-    if (!sheetName || !spreadsheetId) {
-      return res.status(400).json({ error: 'sheetName and spreadsheetId are required' });
+    if (!spreadsheetId) {
+      return res.status(400).json({ error: 'Spreadsheet ID is required' });
     }
+
+    if (!campaignId) {
+      return res.status(400).json({
+        error: 'A destination campaign is required. Please select or create a Campaign to capture leads from this sheet.',
+      });
+    }
+
+    // Verify Campaign exists
+    const campaign = await Campaign.findById(campaignId);
+    if (!campaign) {
+      return res.status(400).json({ error: 'Selected Campaign not found. Please choose an active campaign.' });
+    }
+
+    const finalSheetName = (sheetName || campaign.name || 'Google Sheet Leads').trim();
 
     // Validation: Phone OR Email must be mapped
     const hasPhoneOrEmail = fieldMapping.some(
@@ -258,21 +276,15 @@ exports.connectSheet = async (req, res) => {
       req.user.companyId ||
       (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? req.user._id : null);
 
-    // Generate revocable webhook secret for Mode A Apps Script
-    const rawSecret = `gsht_sec_${crypto.randomBytes(24).toString('hex')}`;
-    const secretHash = crypto.createHash('sha256').update(rawSecret).digest('hex');
-
+    // Initial status: awaiting_data (only upgraded to connected once data rows actually sync)
     const updateData = {
       userId: req.user._id,
       companyId: companyId || null,
       provider: 'sheets',
       mode: 'client_managed',
-      status: 'connected',
+      status: 'awaiting_data',
       accountId: spreadsheetId,
-      accountName: sheetName.trim(),
-      inboundSecret: rawSecret,
-      sheetsSecretHash: secretHash,
-      sheetsSecretPrefix: rawSecret.substring(0, 14),
+      accountName: finalSheetName,
       sheetsConfig: {
         spreadsheetId,
         sheetId: spreadsheetId,
@@ -280,18 +292,19 @@ exports.connectSheet = async (req, res) => {
         tabName,
         sheetName: tabName,
         headerRowIndex: Number(headerRowIndex) || 1,
-        syncMode: syncMode === 'push' ? 'push' : 'polling',
+        syncMode: 'polling',
         pollIntervalMinutes: 5,
         accessMethod,
         hasWriteAccess: Boolean(hasWriteAccess),
-        importExistingRows: Boolean(importExistingRows),
-        cutoffRowIndex: importExistingRows ? 0 : 10000,
+        importExistingRows: Boolean(importExistingRows !== false),
+        cutoffRowIndex: 0,
         lastSyncedRowIndex: 0,
         totalRowsSynced: 0,
         totalNeedsReview: 0,
         totalFailed: 0,
         needsRemapping: false,
         storedHeaders: storedHeaders.length > 0 ? storedHeaders : fieldMapping.map((m) => m.sourceField),
+        targetCampaignId: campaignId,
       },
       fieldMapping: fieldMapping.map((m) => ({
         sourceField: m.sourceField,
@@ -300,28 +313,22 @@ exports.connectSheet = async (req, res) => {
         displayLabel: m.displayLabel || m.sourceField,
         showOnProfile: true,
       })),
-      assignmentRule: {
-        type: assignmentRule.type || 'round_robin',
-        specificCounselorId: assignmentRule.specificCounselorId || null,
-        fallbackUserId: assignmentRule.fallbackUserId || null,
-        counselorPool: assignmentRule.counselorPool || [],
-        skipInactive: assignmentRule.skipInactive !== false,
-      },
       metadata: {
-        defaultCampaignLabel: defaultCampaignLabel.trim(),
-        importExistingRows: Boolean(importExistingRows),
+        targetCampaignId: campaignId,
+        targetCampaignName: campaign.name,
+        defaultCampaignLabel: campaign.name,
+        importExistingRows: Boolean(importExistingRows !== false),
         connectionFlow: accessMethod,
       },
       lastError: '',
       connectedAt: new Date(),
     };
 
-    // Store encrypted OAuth tokens if provided
     if (accessToken) {
-      updateData.accessToken = accessToken; // Encrypted via virtual
+      updateData.accessToken = accessToken;
     }
     if (refreshToken) {
-      updateData.refreshToken = refreshToken; // Encrypted via virtual
+      updateData.refreshToken = refreshToken;
       updateData.tokenExpiresAt = new Date(Date.now() + 3600 * 1000);
     }
 
@@ -333,22 +340,64 @@ exports.connectSheet = async (req, res) => {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
-    // If Mode B (Polling), trigger immediate initial sweep in background
+    // Link destination campaign routing rules
+    await Campaign.updateOne(
+      { _id: campaignId },
+      { $addToSet: { 'routingRules.sheetIds': String(spreadsheetId) } }
+    );
+
+    // Link subscription routing
+    await LeadSourceSubscription.findOneAndUpdate(
+      {
+        companyId: companyId || null,
+        integrationId: integration._id,
+        externalFormId: String(spreadsheetId),
+
+      },
+      {
+        $set: {
+          userId: req.user._id,
+          companyId: companyId || null,
+          integrationId: integration._id,
+          provider: 'sheets',
+          sourceName: `Google Sheets - ${finalSheetName}`,
+          externalAccountId: String(spreadsheetId),
+          externalAccountName: finalSheetName,
+          externalFormId: String(spreadsheetId),
+          externalFormName: tabName || 'Sheet1',
+          isActive: true,
+          campaignGroupId: campaignId,
+          metadata: {
+            spreadsheetId,
+            tabName,
+          },
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    // Trigger initial polling sweep
     let initialSyncResult = null;
-    if (syncMode === 'polling') {
-      try {
-        initialSyncResult = await googleSheetsPollingService.syncIntegration(integration._id);
-      } catch (pollErr) {
-        console.warn('[Initial Polling Sweep Warning]:', pollErr.message);
-      }
+    try {
+      initialSyncResult = await googleSheetsPollingService.syncIntegration(integration._id);
+    } catch (pollErr) {
+      console.warn('[Initial Sheets Sync Warning]:', pollErr.message);
+    }
+
+    // Crucial Status Rule: Only show as 'connected' once data has actually synced
+    if (initialSyncResult && initialSyncResult.rowsSynced > 0) {
+      integration.status = 'connected';
+      await integration.save();
     }
 
     return res.json({
       success: true,
+      status: integration.status,
+      rowsSynced: initialSyncResult?.rowsSynced || 0,
       integration,
-      plaintextSecretOnce: rawSecret,
-      initialSyncResult,
-      message: 'Google Sheet connected successfully',
+      message: integration.status === 'connected'
+        ? `Google Sheet connected! Synced ${initialSyncResult.rowsSynced} leads into campaign "${campaign.name}".`
+        : 'Google Sheet linked! Status is "Awaiting Data" - add rows to your Google Sheet and click "Sync Now" to complete connection.',
     });
   } catch (error) {
     console.error('[Sheets Connect Error]:', error.message);
@@ -370,7 +419,7 @@ function getTenantFilter(user) {
 
 /**
  * POST /api/integrations/sheets/sync/:id
- * On-demand manual trigger for Mode B polling sync
+ * On-demand manual trigger for Google Sheets sync
  */
 exports.syncNow = async (req, res) => {
   try {
@@ -382,9 +431,19 @@ exports.syncNow = async (req, res) => {
     }
 
     const result = await googleSheetsPollingService.syncIntegration(id);
+    const updated = await Integration.findById(id);
+
     return res.json({
       success: true,
       result,
+      status: updated?.status || integration.status,
+      rowsSynced: result?.rowsSynced || 0,
+      totalRowsSynced: updated?.sheetsConfig?.totalRowsSynced || 0,
+      message: result?.rowsSynced > 0
+        ? `Successfully synced ${result.rowsSynced} new lead(s)!`
+        : (updated?.status === 'connected'
+            ? 'Sync complete. No new leads found.'
+            : 'No leads found in sheet yet. Please add a candidate row to your Google Sheet and click Sync Now.'),
     });
   } catch (error) {
     console.error('[Sheets SyncNow Error]:', error.message);

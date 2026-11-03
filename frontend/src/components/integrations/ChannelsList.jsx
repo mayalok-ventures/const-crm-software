@@ -1,6 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
+import api from '@/lib/api';
+import toast from 'react-hot-toast';
 import {
   ExternalLink,
   RefreshCw,
@@ -21,7 +23,8 @@ import {
   FileSpreadsheet,
   Globe,
   Zap,
-  Terminal
+  Terminal,
+  Info
 } from 'lucide-react';
 import { API_URL } from '@/lib/api';
 
@@ -36,6 +39,7 @@ export default function ChannelsList({
   onTestGoogleLead,
   onRegenerateKey,
   onDisconnect,
+  onRefreshIntegrations,
   syncingMetaId,
   testingMetaId,
   testingGoogleId,
@@ -56,6 +60,28 @@ export default function ChannelsList({
   const metaList = integrations.filter((i) => i.provider === 'meta');
   const googleList = integrations.filter((i) => i.provider === 'google');
   const sheetsList = integrations.filter((i) => i.provider === 'sheets');
+  const [syncingSheetId, setSyncingSheetId] = useState(null);
+
+  const handleSyncSheet = async (sheetId) => {
+    setSyncingSheetId(sheetId);
+    try {
+      const res = await api.post(`/integrations/sheets/sync/${sheetId}`);
+      const data = res.data;
+      if (data.rowsSynced > 0) {
+        toast.success(`Synced ${data.rowsSynced} new lead(s)!`);
+      } else {
+        toast.success(data.message || 'Google Sheet is up to date.');
+      }
+      if (onRefreshIntegrations) {
+        onRefreshIntegrations();
+      }
+    } catch (err) {
+      console.error('Sheet sync error:', err);
+      toast.error(err.response?.data?.error || err.message || 'Failed to sync Google Sheet');
+    } finally {
+      setSyncingSheetId(null);
+    }
+  };
   const websiteList = integrations.filter((i) => i.provider === 'website');
   const customList = integrations.filter((i) => i.provider === 'custom');
 
@@ -185,8 +211,8 @@ export default function ChannelsList({
               </div>
               <div style={{ fontSize: 11, color: '#2563eb', fontWeight: 600, marginBottom: 4 }}>
                 {metaList[0].formIds?.length > 0
-                  ? `${metaList[0].formIds.length} Form${metaList[0].formIds.length === 1 ? '' : 's'} Configured • ${metaList[0].fieldMapping?.length || 0} Fields Mapped`
-                  : 'Needs Lead Form & Field Mapping'}
+                  ? `${metaList[0].formIds.length} Meta Form${metaList[0].formIds.length === 1 ? '' : 's'} Integrated & Routing Leads`
+                  : 'Ready to Integrate Meta Lead Forms'}
               </div>
               <div
                 style={{
@@ -277,47 +303,6 @@ export default function ChannelsList({
                 </button>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <button
-                  onClick={() => onOpenAssignment(metaList[0])}
-                  style={{
-                    background: 'var(--bg)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    padding: '8px 10px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <Users size={13} />
-                  Assignment
-                </button>
-                <button
-                  onClick={() => onOpenMetaPageForm?.(metaList[0])}
-                  style={{
-                    background: 'var(--bg)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    padding: '8px 10px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <Sliders size={13} />
-                  Field Map
-                </button>
-              </div>
-
               <button
                 onClick={() => onOpenMetaPageForm?.(metaList[0])}
                 style={{
@@ -333,10 +318,13 @@ export default function ChannelsList({
                   justifyContent: 'center',
                   gap: 6,
                   color: '#2563eb',
+                  transition: 'all 0.15s ease',
                 }}
               >
                 <Sliders size={13} />
-                Map Lead Forms & Questions
+                {metaList[0].formIds?.length > 0
+                  ? `Manage Integrated Forms & Fields (${metaList[0].formIds.length})`
+                  : 'Integrate Meta Lead Forms & Field Mapping'}
               </button>
 
               <button
@@ -410,15 +398,29 @@ export default function ChannelsList({
             {googleList.length > 0 && (
               <span
                 style={{
-                  background: 'rgba(16,185,129,0.12)',
-                  color: '#10b981',
+                  background:
+                    googleList[0].status === 'connected'
+                      ? 'rgba(16,185,129,0.12)'
+                      : googleList[0].status === 'needs_mapping'
+                      ? 'rgba(245,158,11,0.12)'
+                      : 'rgba(59,130,246,0.12)',
+                  color:
+                    googleList[0].status === 'connected'
+                      ? '#10b981'
+                      : googleList[0].status === 'needs_mapping'
+                      ? '#f59e0b'
+                      : '#3b82f6',
                   fontSize: 11,
                   fontWeight: 700,
                   padding: '3px 8px',
                   borderRadius: 9999,
                 }}
               >
-                Active
+                {googleList[0].status === 'connected'
+                  ? 'Connected'
+                  : googleList[0].status === 'needs_mapping'
+                  ? 'Needs Mapping'
+                  : 'Awaiting Test Lead'}
               </span>
             )}
           </div>
@@ -522,18 +524,33 @@ export default function ChannelsList({
           </div>
 
           {googleList.length > 0 && (
-            <div style={{ marginBottom: 14 }}>
-              {googleList[0].metadata?.lastTestReceivedAt ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#10b981', fontSize: 12, fontWeight: 600 }}>
-                  <CheckCircle2 size={14} />
-                  Test data verified ({new Date(googleList[0].metadata.lastTestReceivedAt).toLocaleDateString()})
-                </div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#f59e0b', fontSize: 12 }}>
-                  <Clock size={14} />
-                  Click "Send test data" in Google Ads asset editor to verify
-                </div>
-              )}
+            <div style={{ background: 'var(--bg)', borderRadius: 10, padding: 12, marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
+                Account: {googleList[0].accountName || 'Google Ads Lead Forms'}
+              </div>
+              <div style={{ fontSize: 11, color: '#ea4335', fontWeight: 600, marginBottom: 4 }}>
+                {googleList[0].status === 'connected'
+                  ? `Destination Campaign: ${googleList[0].metadata?.defaultCampaignLabel || 'Active Routing'}`
+                  : googleList[0].status === 'needs_mapping'
+                  ? '⚠️ Action Required: Complete Field Mapping'
+                  : '⏳ Awaiting first test lead from Google Ads'}
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: 'var(--text-muted)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <span>Leads captured: {googleList[0].totalLeadsCaptured || 0}</span>
+                <span>
+                  {googleList[0].metadata?.lastTestReceivedAt
+                    ? `Last test: ${new Date(googleList[0].metadata.lastTestReceivedAt).toLocaleDateString()}`
+                    : 'No test recorded'}
+                </span>
+              </div>
             </div>
           )}
         </div>
@@ -563,100 +580,138 @@ export default function ChannelsList({
             </button>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <button
-                  onClick={() => onTestGoogleLead(googleList[0]._id)}
-                  disabled={testingGoogleId === googleList[0]._id}
-                  style={{
-                    background: 'var(--bg)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    padding: '8px 10px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <Play size={13} /> Test Lead
-                </button>
-                <button
-                  onClick={() => onOpenAssignment(googleList[0])}
-                  style={{
-                    background: 'var(--bg)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    padding: '8px 10px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <Users size={13} /> Assignment
-                </button>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <button
-                  onClick={() => onOpenGoogleAdsModal?.(googleList[0])}
-                  style={{
-                    background: 'var(--bg)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    padding: '8px 10px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    color: '#ea4335',
-                  }}
-                >
-                  <Code2 size={13} /> Webhook Guide
-                </button>
-                <button
-                  onClick={() => onOpenFieldMapping(googleList[0])}
-                  style={{
-                    background: 'var(--bg)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    padding: '8px 10px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <Sliders size={13} /> Field Map
-                </button>
-              </div>
-
-              <button
-                onClick={() => onDisconnect(googleList[0]._id, 'Google Ads')}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--rose)',
-                  fontSize: 11,
-                  cursor: 'pointer',
-                  padding: 4,
-                  textAlign: 'center',
-                }}
-              >
-                Disconnect Channel
-              </button>
+              {googleList[0].status === 'connected' ? (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <button
+                      onClick={() => onTestGoogleLead(googleList[0]._id)}
+                      disabled={testingGoogleId === googleList[0]._id}
+                      style={{
+                        background: 'var(--bg)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 8,
+                        padding: '8px 10px',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <Play size={13} /> Test Lead
+                    </button>
+                    <button
+                      onClick={() => onOpenGoogleAdsModal?.(googleList[0])}
+                      style={{
+                        background: 'rgba(234,67,53,0.08)',
+                        border: '1px solid rgba(234,67,53,0.3)',
+                        borderRadius: 8,
+                        padding: '8px 10px',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        color: '#ea4335',
+                      }}
+                    >
+                      <Sliders size={13} /> Manage Forms & Fields
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => onDisconnect(googleList[0]._id, 'Google Ads')}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--rose)',
+                      fontSize: 11,
+                      cursor: 'pointer',
+                      padding: 4,
+                      textAlign: 'center',
+                    }}
+                  >
+                    Disconnect Channel
+                  </button>
+                </>
+              ) : googleList[0].status === 'needs_mapping' ? (
+                <>
+                  <button
+                    onClick={() => onOpenGoogleAdsModal?.(googleList[0])}
+                    style={{
+                      background: '#ea4335',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 8,
+                      padding: '10px 14px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      boxShadow: '0 2px 8px rgba(234,67,53,0.25)',
+                    }}
+                  >
+                    <Sliders size={14} /> Complete Field Mapping & Connect
+                  </button>
+                  <button
+                    onClick={() => onDisconnect(googleList[0]._id, 'Google Ads')}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--rose)',
+                      fontSize: 11,
+                      cursor: 'pointer',
+                      padding: 4,
+                      textAlign: 'center',
+                    }}
+                  >
+                    Cancel Setup
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => onOpenGoogleAdsModal?.(googleList[0])}
+                    style={{
+                      background: '#ea4335',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 8,
+                      padding: '10px 14px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      boxShadow: '0 2px 8px rgba(234,67,53,0.25)',
+                    }}
+                  >
+                    <Play size={14} /> Continue Setup (Send Test Lead)
+                  </button>
+                  <button
+                    onClick={() => onDisconnect(googleList[0]._id, 'Google Ads')}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--rose)',
+                      fontSize: 11,
+                      cursor: 'pointer',
+                      padding: 4,
+                      textAlign: 'center',
+                    }}
+                  >
+                    Cancel Setup
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -708,123 +763,160 @@ export default function ChannelsList({
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
                   Google Sheets Auto-Sync
                 </h3>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Apps Script Inbound Sweeper</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Automatic Lead Sync</span>
               </div>
             </div>
             <span
               style={{
-                background: 'rgba(16,185,129,0.12)',
-                color: '#10b981',
+                background: sheetsList.some((s) => s.status === 'connected')
+                  ? 'rgba(16,185,129,0.12)'
+                  : 'rgba(245,158,11,0.12)',
+                color: sheetsList.some((s) => s.status === 'connected') ? '#10b981' : '#f59e0b',
                 fontSize: 11,
                 fontWeight: 700,
                 padding: '3px 8px',
                 borderRadius: 9999,
               }}
             >
-              {sheetsList.length} Connected
+              {sheetsList.filter((s) => s.status === 'connected').length} Active
+              {sheetsList.some((s) => s.status === 'awaiting_data')
+                ? ` • ${sheetsList.filter((s) => s.status === 'awaiting_data').length} Awaiting Data`
+                : ''}
             </span>
           </div>
 
           <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 14px', lineHeight: 1.5 }}>
-            Seamlessly sync leads from Google Sheets into your pipeline. Includes Apps Script generator with pre-embedded secret key, synonym column matching, and row status stamps.
+            Capture candidate leads directly from public or shared Google Sheets into designated Campaigns. Automatically checks for new rows every 5 minutes.
           </p>
 
           {sheetsList.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-              {sheetsList.map((sheet) => (
-                <div
-                  key={sheet._id}
-                  style={{
-                    background: 'var(--bg)',
-                    borderRadius: 10,
-                    padding: '10px 12px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    border: '1px solid var(--border)',
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
-                      {sheet.accountName || 'Google Sheet'}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      Captured: <strong className="text-emerald-600">{sheet.totalLeadsCaptured || 0}</strong> leads
-                      {sheet.lastSyncAt && (
-                        <span> • {new Date(sheet.lastSyncAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+              {sheetsList.map((sheet) => {
+                const isConnected = sheet.status === 'connected';
+                const isAwaiting = sheet.status === 'awaiting_data';
+                const isSyncing = syncingSheetId === sheet._id;
+
+                return (
+                  <div
+                    key={sheet._id}
+                    style={{
+                      background: 'var(--bg)',
+                      borderRadius: 10,
+                      padding: '12px 14px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      border: isAwaiting ? '1px dashed #f59e0b' : '1px solid var(--border)',
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {sheet.accountName || 'Google Sheet'}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            padding: '2px 7px',
+                            borderRadius: 9999,
+                            background: isConnected
+                              ? 'rgba(16,185,129,0.12)'
+                              : isAwaiting
+                              ? 'rgba(245,158,11,0.15)'
+                              : 'rgba(239,68,68,0.12)',
+                            color: isConnected ? '#10b981' : isAwaiting ? '#b45309' : '#ef4444',
+                          }}
+                        >
+                          {isConnected ? '● Connected' : isAwaiting ? '⏳ Awaiting Data' : '● Disconnected'}
+                        </span>
+                      </div>
+
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        <span>
+                          Captured: <strong className="text-emerald-600">{sheet.sheetsConfig?.totalRowsSynced || sheet.totalLeadsCaptured || 0}</strong> leads
+                        </span>
+                        {sheet.metadata?.targetCampaignName && (
+                          <span>• Campaign: <strong>{sheet.metadata.targetCampaignName}</strong></span>
+                        )}
+                        {sheet.lastSyncAt && (
+                          <span>• Last synced {new Date(sheet.lastSyncAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        )}
+                      </div>
+
+                      {isAwaiting && (
+                        <div style={{ fontSize: 11, color: '#b45309', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Info size={11} /> Add candidate rows to your sheet & click "Sync Now" to activate connection.
+                        </div>
                       )}
                     </div>
-                  </div>
 
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <button
-                      onClick={() => onOpenSheetStatus(sheet)}
-                      style={{
-                        background: 'var(--card)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 6,
-                        padding: '5px 8px',
-                        fontSize: 11,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        color: '#10b981',
-                        fontWeight: 600,
-                      }}
-                      title="View Real-Time Sync Status"
-                    >
-                      <Activity size={12} /> Status
-                    </button>
-                    <button
-                      onClick={() => onOpenSheetSnippet(sheet)}
-                      style={{
-                        background: 'var(--card)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 6,
-                        padding: '5px 8px',
-                        fontSize: 11,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                      }}
-                      title="View Apps Script"
-                    >
-                      <Code2 size={12} /> Script
-                    </button>
-                    <button
-                      onClick={() => onOpenAssignment(sheet)}
-                      style={{
-                        background: 'var(--card)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 6,
-                        padding: '5px 8px',
-                        fontSize: 11,
-                        cursor: 'pointer',
-                      }}
-                      title="Assignment Rules"
-                    >
-                      <Users size={12} />
-                    </button>
-                    <button
-                      onClick={() => onDisconnect(sheet._id, 'Google Sheet')}
-                      style={{
-                        background: 'var(--card)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 6,
-                        padding: '5px 8px',
-                        fontSize: 11,
-                        color: 'var(--rose)',
-                        cursor: 'pointer',
-                      }}
-                      title="Disconnect Sheet"
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => handleSyncSheet(sheet._id)}
+                        disabled={isSyncing}
+                        style={{
+                          background: 'var(--card)',
+                          border: '1px solid #10b981',
+                          borderRadius: 6,
+                          padding: '6px 10px',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          cursor: isSyncing ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          color: '#10b981',
+                        }}
+                        title="Sync Google Sheet Leads Now"
+                      >
+                        <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} />
+                        {isSyncing ? 'Syncing...' : 'Sync Now'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => onOpenSheetWizard ? onOpenSheetWizard(sheet) : null}
+                        style={{
+                          background: 'var(--card)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 6,
+                          padding: '6px 10px',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          color: 'var(--text)',
+                        }}
+                        title="Manage Sheet & Mapping"
+                      >
+                        <Sliders size={12} /> Manage
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => onDisconnect(sheet._id, 'Google Sheet')}
+                        style={{
+                          background: 'var(--card)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 6,
+                          padding: '6px 8px',
+                          fontSize: 11,
+                          color: 'var(--rose)',
+                          cursor: 'pointer',
+                        }}
+                        title="Disconnect Sheet"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div
@@ -838,14 +930,14 @@ export default function ChannelsList({
                 fontSize: 12,
               }}
             >
-              No Google Sheets connected yet. Launch the step-by-step setup wizard below.
+              No Google Sheets connected yet. Connect your first Google Sheet below.
             </div>
           )}
         </div>
 
         <div>
           <button
-            onClick={onOpenSheetWizard}
+            onClick={() => onOpenSheetWizard ? onOpenSheetWizard(null) : null}
             style={{
               width: '100%',
               background: '#10b981',
@@ -863,7 +955,7 @@ export default function ChannelsList({
               boxShadow: '0 2px 8px rgba(16,185,129,0.25)',
             }}
           >
-            <Plus size={15} /> Launch Google Sheets Setup Wizard
+            <Plus size={15} /> Connect Google Sheet
           </button>
         </div>
       </div>

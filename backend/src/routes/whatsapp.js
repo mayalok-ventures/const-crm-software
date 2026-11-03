@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   connect,
+  reconnect,
   getStatus,
   disconnect,
   sendText,
@@ -28,6 +29,7 @@ router.put('/accounts/:id/assign', requirePermission(['whatsapp.manage_account',
 router.delete('/accounts/:id', requirePermission(['whatsapp.manage_account', 'whatsapp.manage_integrations']), deleteAccount);
 
 router.post('/connect', requirePermission(['whatsapp.manage_account', 'whatsapp.manage_integrations']), connect);
+router.post('/reconnect', requirePermission(['whatsapp.manage_account', 'whatsapp.manage_integrations']), reconnect);
 router.get('/status', requirePermission('whatsapp.view'), getStatus);
 router.post('/disconnect', requirePermission(['whatsapp.manage_account', 'whatsapp.manage_integrations']), disconnect);
 router.post('/send-text', requirePermission('whatsapp.send_one_to_one'), checkPlanExpiry, sendText);

@@ -77,6 +77,7 @@ exports.getStatus = async (req, res) => {
       pairingCode: personalStatus.pairingCode,
       qrCode: personalStatus.qrCode,
       isSocketLive: personalStatus.isSocketLive ?? (personalStatus.status === 'connected'),
+      hasStoredSession: Boolean(await require('../models/WhatsAppAuth').findOne({ sessionId: req.user._id.toString(), key: 'creds' }).lean()),
       lastConfirmedAt: personalStatus.lastConfirmedAt || null,
       lastDisconnectAt: personalStatus.lastDisconnectAt || null,
       lastDisconnectReason: personalStatus.lastDisconnectReason || null,
@@ -113,6 +114,24 @@ exports.connect = async (req, res) => {
 };
 
 // ── DISCONNECT ───────────────────────────────────────────────────────────────
+// ── RECONNECT EXISTING SAVED SESSION ──────────────────────────────────────────
+exports.reconnect = async (req, res) => {
+  try {
+    const WhatsAppAuth = require('../models/WhatsAppAuth');
+    const authExists = await WhatsAppAuth.findOne({ sessionId: req.user._id.toString(), key: 'creds' }).lean();
+    if (!authExists) {
+      return res.status(400).json({ message: 'No saved credentials found. Please connect via pairing code.' });
+    }
+    const user = await User.findById(req.user._id).select('phone localization').lean();
+    const phoneToUse = user?.phone || 'whatsapp';
+    await waSession.restoreSession(req.user._id, phoneToUse);
+    res.json({ message: 'Reconnection initiated. Waiting for WhatsApp socket confirmation.' });
+  } catch (err) {
+    console.error('reconnect error:', err);
+    res.status(500).json({ message: err.message || 'Failed to reconnect saved WhatsApp session' });
+  }
+};
+
 exports.disconnect = async (req, res) => {
   try {
     await waSession.disconnect(req.user._id);

@@ -209,7 +209,7 @@ const integrationSchema = new mongoose.Schema(
     // Duplicate & Re-Inquiry Policy
     duplicatePolicy: {
       type: String,
-      enum: ['merge_activity', 'create_inquiry', 'skip'],
+      enum: ['merge_activity', 'create_inquiry', 'skip', 'create_lead'],
       default: 'create_inquiry',
     },
     reInquiryAssignmentPolicy: {

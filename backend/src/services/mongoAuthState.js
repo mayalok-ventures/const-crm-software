@@ -1,8 +1,14 @@
-const { initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
+const { initAuthCreds, BufferJSON, proto } = require('@whiskeysockets/baileys');
 
 /**
- * Custom MongoDB Auth State Adapter for Baileys
- * Persists WhatsApp sessions and crypto keys to MongoDB, surviving server/container restarts.
+ * Custom High-Performance MongoDB Auth State Adapter for Baileys
+ * 
+ * Implements:
+ * 1. BufferJSON serialization & deserialization for cryptographic keys.
+ * 2. Protobuf app-state-sync-key object rehydration to prevent state sync crashes.
+ * 3. Batch find in keys.get to eliminate round-trip latency.
+ * 4. Atomic bulkWrite in keys.set for fast, non-blocking key persistence.
+ * 5. Corrupted document resilience with safe try/catch error boundaries.
  */
 const useMongoDBAuthState = async (modelOrCollection, sessionId) => {
   const WhatsAppAuth = modelOrCollection;
@@ -49,36 +55,88 @@ const useMongoDBAuthState = async (modelOrCollection, sessionId) => {
       keys: {
         get: async (type, ids) => {
           const data = {};
-          await Promise.all(
-            ids.map(async (id) => {
-              const key = `${type}-${id}`;
-              const val = await readData(key);
-              if (val) data[id] = val;
-            })
-          );
+          if (!ids || ids.length === 0) return data;
+
+          const keyMap = new Map();
+          const dbKeys = ids.map(id => {
+            const fullKey = `${type}-${id}`;
+            keyMap.set(fullKey, id);
+            return fullKey;
+          });
+
+          try {
+            const docs = await WhatsAppAuth.find({
+              sessionId: sId,
+              key: { $in: dbKeys },
+            }).lean();
+
+            for (const doc of docs) {
+              if (!doc || !doc.data) continue;
+              const id = keyMap.get(doc.key);
+              if (!id) continue;
+              try {
+                let val = JSON.parse(doc.data, BufferJSON.reviver);
+                if (type === 'app-state-sync-key' && val) {
+                  val = proto.Message.AppStateSyncKeyData.fromObject(val);
+                }
+                data[id] = val;
+              } catch (parseErr) {
+                console.warn(`[MongoAuth] Failed to parse key ${doc.key}:`, parseErr.message);
+              }
+            }
+          } catch (err) {
+            console.error(`[MongoAuth] Error batch reading keys for ${sId} (${type}):`, err.message);
+          }
+
           return data;
         },
         set: async (data) => {
-          const tasks = [];
+          const bulkOps = [];
           for (const category in data) {
             for (const id in data[category]) {
               const key = `${category}-${id}`;
               const val = data[category][id];
               if (val) {
-                tasks.push(writeData(key, val));
+                try {
+                  const serialized = JSON.stringify(val, BufferJSON.replacer);
+                  bulkOps.push({
+                    updateOne: {
+                      filter: { sessionId: sId, key },
+                      update: { $set: { data: serialized } },
+                      upsert: true,
+                    },
+                  });
+                } catch (serErr) {
+                  console.error(`[MongoAuth] Serialization error for ${key}:`, serErr.message);
+                }
               } else {
-                tasks.push(removeData(key));
+                bulkOps.push({
+                  deleteOne: {
+                    filter: { sessionId: sId, key },
+                  },
+                });
               }
             }
           }
-          await Promise.all(tasks);
-        }
-      }
+
+          if (bulkOps.length > 0) {
+            try {
+              await WhatsAppAuth.bulkWrite(bulkOps, { ordered: false });
+            } catch (err) {
+              console.error(`[MongoAuth] Error in bulkWrite for ${sId}:`, err.message);
+            }
+          }
+        },
+      },
     },
     saveCreds: () => writeData('creds', creds),
     clearAuth: async () => {
-      await WhatsAppAuth.deleteMany({ sessionId: sId });
-    }
+      try {
+        await WhatsAppAuth.deleteMany({ sessionId: sId });
+      } catch (err) {
+        console.error(`[MongoAuth] Error clearing auth for ${sId}:`, err.message);
+      }
+    },
   };
 };
 

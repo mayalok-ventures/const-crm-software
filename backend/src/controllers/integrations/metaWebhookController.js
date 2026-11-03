@@ -6,6 +6,7 @@ const Notification = require('../../models/Notification');
 const webhookQueueService = require('../../services/integrations/webhookQueueService');
 const META_CONFIG = require('../../config/meta');
 const { parseLosslessJson } = require('../../utils/losslessJson');
+const { notifyIntegrationDisconnected } = require('../../utils/integrationNotifier');
 
 // In-memory cache for campaign/adset/ad names to avoid excessive Graph API calls
 const metaNameCache = new Map();
@@ -108,7 +109,7 @@ exports.receive = async (req, res) => {
           if (!integration && formId) {
             const LeadSourceSubscription = require('../../models/LeadSourceSubscription');
             const sub = await LeadSourceSubscription.findOne({
-              platform: 'meta',
+              $or: [{ provider: 'meta' }, { platform: 'meta' }],
               externalFormId: formId,
               status: 'active',
             });
@@ -304,7 +305,19 @@ async function reconcileMetaIntegration(integrationId) {
   let totalEnqueued = 0;
   const formIds = integration.formIds || [];
 
-  for (const formId of formIds) {
+  // Gather active formIds from both integration and LeadSourceSubscription
+  const LeadSourceSubscription = require('../../models/LeadSourceSubscription');
+  const subs = await LeadSourceSubscription.find({
+    integrationId: integration._id,
+    $or: [{ provider: 'meta' }, { platform: 'meta' }],
+    status: 'active',
+  }).select('externalFormId');
+  const allFormIds = new Set((formIds || []).map((id) => String(id).trim()).filter(Boolean));
+  for (const s of subs) {
+    if (s.externalFormId) allFormIds.add(String(s.externalFormId).trim());
+  }
+
+  for (const formId of allFormIds) {
     try {
       let nextUrl = `${META_CONFIG.GRAPH_BASE_URL}/${META_CONFIG.GRAPH_API_VERSION}/${formId}/leads`;
       let params = {
@@ -482,6 +495,15 @@ exports.deauthorizeCallback = async (req, res) => {
         { integrationId: integration._id },
         { $set: { status: 'paused', healthStatus: 'warning', lastError: 'Integration deauthorized by user' } }
       );
+
+      // Immediate notification to tenant
+      await notifyIntegrationDisconnected({
+        userId: integration.userId,
+        companyId: integration.companyId,
+        provider: 'meta',
+        integrationName: integration.pageName || integration.pageId || 'Meta Page',
+        reason: 'The app was deauthorized from your Facebook Account / Page settings',
+      });
     }
 
     return res.status(200).json({
@@ -506,6 +528,14 @@ exports.dataDeletionCallback = async (req, res) => {
       const data = parseSignedRequest(signedRequest, appSecret);
       if (data?.user_id) {
         const metaUserId = String(data.user_id);
+        const affected = await Integration.find({
+          provider: 'meta',
+          $or: [
+            { 'metadata.metaUserId': metaUserId },
+            { accountId: metaUserId },
+          ],
+        });
+
         await Integration.updateMany(
           {
             provider: 'meta',
@@ -524,6 +554,16 @@ exports.dataDeletionCallback = async (req, res) => {
             },
           }
         );
+
+        for (const item of affected) {
+          await notifyIntegrationDisconnected({
+            userId: item.userId,
+            companyId: item.companyId,
+            provider: 'meta',
+            integrationName: item.pageName || item.pageId || 'Meta Page',
+            reason: 'Data deletion request received from Facebook',
+          });
+        }
       }
     }
 

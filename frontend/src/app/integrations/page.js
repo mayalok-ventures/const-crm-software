@@ -25,7 +25,7 @@ import {
 // Modular Subcomponents
 import ChannelsList from '@/components/integrations/ChannelsList';
 import SourcesCampaignReport from '@/components/integrations/SourcesCampaignReport';
-import GoogleSheetsWizard from '@/components/integrations/GoogleSheetsWizard';
+import GoogleSheetsModal from '@/components/integrations/GoogleSheetsModal';
 import SheetStatusDrawer from '@/components/integrations/SheetStatusDrawer';
 import CustomWebhookModal from '@/components/integrations/CustomWebhookModal';
 import WebsiteFormModal from '@/components/integrations/WebsiteFormModal';
@@ -40,17 +40,9 @@ export default function IntegrationsPage() {
   const router = useRouter();
 
   // Role & Authentication Guard States
-  const [authStatus, setAuthStatus] = useState(() => {
-    if (typeof window === 'undefined') return 'checking';
-    try {
-      const user = getUser();
-      if (!user) return 'checking';
-      const canManage = isSuperAdmin(user) || isOwner(user) || isManager(user) || hasPermission(user, 'integrations.manage');
-      return canManage ? 'authorized' : 'unauthorized';
-    } catch {
-      return 'checking';
-    }
-  });
+  // Initialize to 'checking' identically on both server (SSR) and client initial render
+  // to guarantee 100% hydration matching. checkAuth() in useEffect resolves user role on mount.
+  const [authStatus, setAuthStatus] = useState('checking');
   const [currentUser, setCurrentUser] = useState(null);
 
   // Primary data states
@@ -68,6 +60,7 @@ export default function IntegrationsPage() {
 
   // Modals & Drawers state
   const [sheetWizardOpen, setSheetWizardOpen] = useState(false);
+  const [sheetModalIntegration, setSheetModalIntegration] = useState(null);
   const [sheetStatusIntegration, setSheetStatusIntegration] = useState(null);
   const [customWebhookModalOpen, setCustomWebhookModalOpen] = useState(false);
   const [websiteFormModalOpen, setWebsiteFormModalOpen] = useState(false);
@@ -680,7 +673,11 @@ export default function IntegrationsPage() {
               setGoogleAdsModalIntegration(integration || null);
               setGoogleAdsModalOpen(true);
             }}
-            onOpenSheetWizard={() => setSheetWizardOpen(true)}
+            onOpenSheetWizard={(sheet) => {
+              setSheetModalIntegration(sheet || null);
+              setSheetWizardOpen(true);
+            }}
+            onRefreshIntegrations={fetchIntegrations}
             onOpenSheetStatus={(integration) => setSheetStatusIntegration(integration)}
             onOpenSheetSnippet={handleViewSheetSnippet}
             onOpenWebsiteFormModal={() => setWebsiteFormModalOpen(true)}
@@ -705,9 +702,12 @@ export default function IntegrationsPage() {
         {activeTab === 'audit_log' && (
           <AuditLogTable
             events={events}
+            loading={eventsLoading}
             eventsLoading={eventsLoading}
             eventFilter={eventFilter}
+            onFilterChange={setEventFilter}
             setEventFilter={setEventFilter}
+            onRefresh={fetchEvents}
             onRetryEvent={handleRetryEvent}
             retryingEventId={retryingEventId}
           />
@@ -720,10 +720,13 @@ export default function IntegrationsPage() {
 
       {/* 1. Google Sheets Step-by-Step Setup Wizard */}
       {sheetWizardOpen && (
-        <GoogleSheetsWizard
+        <GoogleSheetsModal
           isOpen={sheetWizardOpen}
-          members={members}
-          onClose={() => setSheetWizardOpen(false)}
+          editingIntegration={sheetModalIntegration}
+          onClose={() => {
+            setSheetWizardOpen(false);
+            setSheetModalIntegration(null);
+          }}
           onSuccess={() => {
             setSheetWizardOpen(false);
             fetchIntegrations();

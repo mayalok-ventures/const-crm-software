@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import {
   ArrowLeft, Star, Trash2, Archive, Reply, ReplyAll, Forward,
   Paperclip, User, RefreshCw, Send, Sparkles, ExternalLink, Mail,
-  ChevronDown, ChevronUp, CheckCheck
+  ChevronDown, ChevronUp, CheckCheck, Inbox, RotateCcw, Clock, Edit3, XCircle
 } from 'lucide-react';
 
 /**
@@ -82,11 +82,65 @@ export default function EmailThreadView({
   const handleMoveFolder = async (folder) => {
     try {
       await api.patch(`/email/messages/${selectedMessage._id}/folder`, { folder });
-      toast.success(`Moved to ${folder}`);
+      toast.success(folder === 'inbox' ? 'Moved to Inbox 📥' : `Moved to ${folder}`);
       if (onMessageUpdated) onMessageUpdated();
       if (onBack) onBack();
     } catch (err) {
       toast.error('Failed to move message');
+    }
+  };
+
+  const handleDeletePermanent = async () => {
+    if (!confirm('Are you sure you want to permanently delete this email? This cannot be undone.')) return;
+    try {
+      await api.delete(`/email/messages/${selectedMessage._id}?permanent=true`);
+      toast.success('Permanently deleted 🗑️');
+      if (onMessageUpdated) onMessageUpdated();
+      if (onBack) onBack();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete message');
+    }
+  };
+
+  const handleSendScheduledNow = async () => {
+    try {
+      await api.post(`/email/messages/${selectedMessage._id}/send-now`);
+      toast.success('Scheduled email dispatched immediately! 🚀');
+      if (onMessageUpdated) onMessageUpdated();
+      if (onBack) onBack();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to dispatch email');
+    }
+  };
+
+  const handleCancelSchedule = async () => {
+    try {
+      await api.post(`/email/messages/${selectedMessage._id}/cancel-schedule`);
+      toast.success('Schedule cancelled and moved to Drafts 📝');
+      if (onMessageUpdated) onMessageUpdated();
+      if (onBack) onBack();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to cancel schedule');
+    }
+  };
+
+  const handleEditDraftOrScheduled = () => {
+    if (onOpenReply) {
+      onOpenReply({
+        draftId: selectedMessage._id,
+        _id: selectedMessage._id,
+        folder: selectedMessage.folder,
+        accountId: selectedMessage.accountId?._id || selectedMessage.accountId,
+        to: selectedMessage.to,
+        cc: selectedMessage.cc,
+        bcc: selectedMessage.bcc,
+        subject: selectedMessage.subject === '(Draft)' ? '' : selectedMessage.subject,
+        bodyHtml: selectedMessage.bodyHtml,
+        leadId: selectedMessage.leadId?._id || selectedMessage.leadId,
+        threadId: selectedMessage.threadId,
+        attachments: selectedMessage.attachments,
+        scheduledAt: selectedMessage.scheduledAt,
+      });
     }
   };
 
@@ -172,43 +226,209 @@ export default function EmailThreadView({
               <Star size={16} fill={selectedMessage.isStarred ? 'currentColor' : 'none'} />
             </button>
 
-            <button
-              onClick={() => handleMoveFolder('archive')}
-              className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition"
-              title="Archive"
-            >
-              <Archive size={16} />
-            </button>
+            {/* Folder-specific action buttons */}
+            {selectedMessage.folder === 'trash' ? (
+              <>
+                <button
+                  onClick={() => handleMoveFolder('inbox')}
+                  className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
+                  title="Restore to Inbox"
+                >
+                  <RotateCcw size={14} /> Restore
+                </button>
+                <button
+                  onClick={handleDeletePermanent}
+                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
+                  title="Delete Forever"
+                >
+                  <Trash2 size={14} /> Delete Forever
+                </button>
+              </>
+            ) : selectedMessage.folder === 'archive' ? (
+              <>
+                <button
+                  onClick={() => handleMoveFolder('inbox')}
+                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
+                  title="Move to Inbox (Unarchive)"
+                >
+                  <Inbox size={14} /> Move to Inbox
+                </button>
+                <button
+                  onClick={() => handleMoveFolder('trash')}
+                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                  title="Move to Trash"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </>
+            ) : selectedMessage.folder === 'scheduled' ? (
+              <>
+                <button
+                  onClick={handleSendScheduledNow}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
+                  title="Send scheduled email immediately"
+                >
+                  <Send size={13} /> Send Now
+                </button>
+                <button
+                  onClick={handleEditDraftOrScheduled}
+                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Edit draft or change schedule time"
+                >
+                  <Edit3 size={13} /> Edit
+                </button>
+                <button
+                  onClick={handleCancelSchedule}
+                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
+                  title="Cancel scheduled send and move to drafts"
+                >
+                  <XCircle size={13} /> Cancel
+                </button>
+                <button
+                  onClick={handleDeletePermanent}
+                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                  title="Delete permanently"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </>
+            ) : selectedMessage.folder === 'drafts' ? (
+              <>
+                <button
+                  onClick={handleEditDraftOrScheduled}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
+                  title="Resume editing this draft"
+                >
+                  <Edit3 size={13} /> Edit Draft
+                </button>
+                <button
+                  onClick={handleDeletePermanent}
+                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Discard this draft"
+                >
+                  <Trash2 size={13} /> Discard
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => handleMoveFolder('archive')}
+                  className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition"
+                  title="Archive"
+                >
+                  <Archive size={16} />
+                </button>
 
-            <button
-              onClick={() => handleMoveFolder('trash')}
-              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-              title="Delete"
-            >
-              <Trash2 size={16} />
-            </button>
+                <button
+                  onClick={() => handleMoveFolder('trash')}
+                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                  title="Delete"
+                >
+                  <Trash2 size={16} />
+                </button>
 
-            <button
-              onClick={() => {
-                if (onOpenReply) {
-                  onOpenReply({
-                    to: selectedMessage.from?.email,
-                    subject: selectedMessage.subject.startsWith('Re:')
-                      ? selectedMessage.subject
-                      : `Re: ${selectedMessage.subject}`,
-                    inReplyTo: selectedMessage.messageId,
-                    threadId: selectedMessage.threadId,
-                    leadId: selectedMessage.leadId?._id || selectedMessage.leadId,
-                    accountId: selectedMessage.accountId?._id || selectedMessage.accountId,
-                  });
-                }
-              }}
-              className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-semibold flex items-center gap-1 transition"
-            >
-              <Reply size={14} /> Reply
-            </button>
+                <button
+                  onClick={() => {
+                    if (onOpenReply) {
+                      onOpenReply({
+                        to: selectedMessage.from?.email,
+                        subject: selectedMessage.subject.startsWith('Re:')
+                          ? selectedMessage.subject
+                          : `Re: ${selectedMessage.subject}`,
+                        inReplyTo: selectedMessage.messageId,
+                        threadId: selectedMessage.threadId,
+                        leadId: selectedMessage.leadId?._id || selectedMessage.leadId,
+                        accountId: selectedMessage.accountId?._id || selectedMessage.accountId,
+                      });
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-semibold flex items-center gap-1 transition"
+                >
+                  <Reply size={14} /> Reply
+                </button>
+              </>
+            )}
           </div>
         </div>
+
+        {/* Folder Alert / Status Banner */}
+        {selectedMessage.folder === 'scheduled' && (
+          <div className="flex items-center justify-between px-3.5 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
+            <div className="flex items-center gap-2">
+              <Clock size={16} className="text-amber-600 shrink-0" />
+              <div>
+                <span className="font-bold">Scheduled Email: </span>
+                <span>
+                  Queued for dispatch on{' '}
+                  <strong className="text-amber-950 font-bold">
+                    {selectedMessage.scheduledAt
+                      ? format(new Date(selectedMessage.scheduledAt), 'PPPP, h:mm a')
+                      : 'Scheduled Time'}
+                  </strong>
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleSendScheduledNow}
+                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] shadow-2xs transition cursor-pointer"
+              >
+                Send Now
+              </button>
+              <button
+                type="button"
+                onClick={handleEditDraftOrScheduled}
+                className="px-2.5 py-1 bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 rounded-lg font-semibold text-[11px] transition cursor-pointer"
+              >
+                Edit
+              </button>
+            </div>
+          </div>
+        )}
+
+        {selectedMessage.folder === 'drafts' && (
+          <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-800">
+            <div className="flex items-center gap-2">
+              <Edit3 size={15} className="text-slate-600 shrink-0" />
+              <span>
+                <strong>Unsent Draft:</strong> This email is saved in your drafts folder and has not been sent.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleEditDraftOrScheduled}
+              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-[11px] shadow-2xs transition cursor-pointer"
+            >
+              Resume Editing
+            </button>
+          </div>
+        )}
+
+        {selectedMessage.folder === 'trash' && (
+          <div className="flex items-center justify-between px-3.5 py-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900">
+            <div className="flex items-center gap-2">
+              <Trash2 size={15} className="text-rose-600 shrink-0" />
+              <span>This email is in your Trash folder.</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleMoveFolder('inbox')}
+                className="px-2.5 py-1 bg-white border border-rose-200 hover:bg-rose-100 text-rose-800 rounded-lg font-semibold text-[11px] transition cursor-pointer"
+              >
+                Restore to Inbox
+              </button>
+              <button
+                type="button"
+                onClick={handleDeletePermanent}
+                className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-[11px] transition cursor-pointer"
+              >
+                Delete Forever
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* CRM Lead Association Banner */}
         {linkedLead && (
@@ -345,34 +565,36 @@ export default function EmailThreadView({
         )}
       </div>
 
-      {/* Inline Quick Reply Box */}
-      <div className="p-4 border-t border-slate-200 bg-slate-50/70 shrink-0">
-        <form onSubmit={handleSendQuickReply} className="space-y-2">
-          <div className="relative">
-            <textarea
-              rows={3}
-              placeholder="Type your quick reply here..."
-              value={replyText}
-              onChange={e => setReplyText(e.target.value)}
-              className="w-full p-3 pr-24 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-            />
-            <div className="absolute right-3 bottom-3 flex items-center gap-2">
-              <button
-                type="submit"
-                disabled={sendingReply || !replyText.trim()}
-                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition disabled:opacity-50 flex items-center gap-1.5"
-              >
-                {sendingReply ? (
-                  <RefreshCw size={13} className="animate-spin" />
-                ) : (
-                  <Send size={13} />
-                )}
-                <span>Reply</span>
-              </button>
+      {/* Inline Quick Reply Box: Only show for actionable active threads */}
+      {!['drafts', 'scheduled', 'trash'].includes(selectedMessage.folder) && (
+        <div className="p-4 border-t border-slate-200 bg-slate-50/70 shrink-0">
+          <form onSubmit={handleSendQuickReply} className="space-y-2">
+            <div className="relative">
+              <textarea
+                rows={3}
+                placeholder="Type your quick reply here..."
+                value={replyText}
+                onChange={e => setReplyText(e.target.value)}
+                className="w-full p-3 pr-24 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              />
+              <div className="absolute right-3 bottom-3 flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={sendingReply || !replyText.trim()}
+                  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                >
+                  {sendingReply ? (
+                    <RefreshCw size={13} className="animate-spin" />
+                  ) : (
+                    <Send size={13} />
+                  )}
+                  <span>Reply</span>
+                </button>
+              </div>
             </div>
-          </div>
-        </form>
-      </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,13 +3,8 @@
 import { Suspense } from 'react';
 import { RefreshCw } from 'lucide-react';
 import PipelineContent from '@/components/pipeline/PipelineContent';
-import { usePersistentTab } from '@/components/common/PersistentTabContext';
 
 export default function PipelinePage() {
-  const { isPersistentTabsEnabled } = usePersistentTab();
-  if (isPersistentTabsEnabled) {
-    return null;
-  }
   return (
     <Suspense fallback={
       <div className="p-12 text-center text-slate-400">

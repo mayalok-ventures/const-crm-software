@@ -388,7 +388,8 @@ const initializePostConnectionServices = async () => {
 
   if (runBackgroundWorkers) {
     // Auto-restore saved WhatsApp sessions
-    waSession.initSessions().catch(console.error);
+    // Auto-reconnect on server launch is disabled per configuration (on-demand mode active)
+    console.log('⚡ [WhatsApp] Auto-reconnect on server launch is disabled (on-demand & manual connect mode active).');
 
     // Start campaign background worker
     campaignWorker.startWorker();

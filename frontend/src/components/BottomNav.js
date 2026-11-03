@@ -53,35 +53,6 @@ function BottomNavContent({ active }) {
   const [profileHref, setProfileHref] = useState('/profile');
   const [generalControlsExpanded, setGeneralControlsExpanded] = useState(false);
   const [leadsExpanded, setLeadsExpanded] = useState(false);
-  const [optimisticActive, setOptimisticActive] = useState(null);
-  const isModifiedEvent = (e) => Boolean(e?.metaKey || e?.altKey || e?.ctrlKey || e?.shiftKey || (e?.button && e?.button !== 0));
-
-  useEffect(() => {
-    setOptimisticActive(null);
-  }, [pathname, active]);
-
-  useEffect(() => {
-    const handlePopState = () => {
-      const current = (typeof window !== 'undefined' ? window.location.pathname : '').replace(/\/$/, '') || '/';
-      if (current === '/leads') setOptimisticActive('leads');
-      else if (current === '/pipeline') setOptimisticActive('pipeline');
-      else setOptimisticActive(null);
-    };
-    const handleTabSwitch = (e) => {
-      const tab = e?.detail;
-      if (tab === 'leads' || tab === 'pipeline') {
-        setOptimisticActive(tab);
-      } else {
-        setOptimisticActive(null);
-      }
-    };
-    window.addEventListener('popstate', handlePopState);
-    window.addEventListener('persistent-tab-switch', handleTabSwitch);
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-      window.removeEventListener('persistent-tab-switch', handleTabSwitch);
-    };
-  }, []);
 
   const handlePrefetch = (key, href) => {
     if (router?.prefetch && href) {
@@ -245,7 +216,6 @@ function BottomNavContent({ active }) {
   const normalize = (p) => (p || '').replace(/\/$/, '').toLowerCase();
 
   const isLinkActive = (key, href) => {
-    if (optimisticActive) return optimisticActive === key;
     if (active === key) return true;
     if (!pathname) return false;
     const normPath = normalize(pathname);
@@ -330,18 +300,7 @@ function BottomNavContent({ active }) {
             onTouchStart={() => handlePrefetch(key, href)}
             onFocus={() => handlePrefetch(key, href)}
             className={`bottom-nav-link btn-touch ${isLinkActive(key, href) ? 'active' : ''}`}
-            onClick={(e) => {
-              if ((key === 'leads' || key === 'pipeline') && !isModifiedEvent(e)) {
-                setOptimisticActive(key);
-                if (typeof window !== 'undefined') {
-                  window.dispatchEvent(new CustomEvent('persistent-tab-switch', { detail: key }));
-                }
-              } else if (!isModifiedEvent(e)) {
-                setOptimisticActive(null);
-                if (typeof window !== 'undefined') {
-                  window.dispatchEvent(new CustomEvent('persistent-tab-switch', { detail: null }));
-                }
-              }
+            onClick={() => {
               setIsMoreDrawerOpen(false);
             }}
             style={{
@@ -470,14 +429,8 @@ function BottomNavContent({ active }) {
                     {canAccessRoute(user, '/pipeline') && (
                       <Link
                         href="/pipeline"
-                        onClick={(e) => {
+                        onClick={() => {
                           setIsMoreDrawerOpen(false);
-                          if (!isModifiedEvent(e)) {
-                            setOptimisticActive('pipeline');
-                            if (typeof window !== 'undefined') {
-                              window.dispatchEvent(new CustomEvent('persistent-tab-switch', { detail: 'pipeline' }));
-                            }
-                          }
                         }}
                         className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
                       >
@@ -881,19 +834,7 @@ function BottomNavContent({ active }) {
                 onTouchStart={() => handlePrefetch(key, href)}
                 onFocus={() => handlePrefetch(key, href)}
                 className={`sidebar-nav-link ${activeState ? 'active' : ''}`}
-                onClick={(e) => {
-                  if ((key === 'leads' || key === 'pipeline') && !isModifiedEvent(e)) {
-                    setOptimisticActive(key);
-                    if (typeof window !== 'undefined') {
-                      window.dispatchEvent(new CustomEvent('persistent-tab-switch', { detail: key }));
-                    }
-                  } else if (!isModifiedEvent(e)) {
-                    setOptimisticActive(null);
-                    if (typeof window !== 'undefined') {
-                      window.dispatchEvent(new CustomEvent('persistent-tab-switch', { detail: null }));
-                    }
-                  }
-                }}
+
                 style={{
                   justifyContent: isCollapsed ? 'center' : 'space-between',
                   padding: isCollapsed ? '10px 0' : '10px 14px',

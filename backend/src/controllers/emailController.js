@@ -171,6 +171,8 @@ exports.sendEmail = async (req, res) => {
       threadId,
       leadId,
       templateId,
+      scheduledAt,
+      draftId,
     } = req.body;
 
     // Handle any uploaded attachments from multipart/form-data
@@ -203,6 +205,8 @@ exports.sendEmail = async (req, res) => {
       threadId,
       leadId,
       templateId,
+      scheduledAt,
+      draftId,
     });
 
     res.status(201).json({ success: true, message });
@@ -291,6 +295,46 @@ exports.deleteMessage = async (req, res) => {
   }
 };
 
+// @desc    Dispatch a scheduled email immediately
+// @route   POST /api/email/messages/:id/send-now
+// @access  Private
+exports.sendScheduledNow = async (req, res) => {
+  try {
+    const message = await EmailService.sendScheduledNow(req.workspaceId, req.params.id, req.user);
+    res.json({ success: true, message });
+  } catch (err) {
+    console.error('[EmailController] sendScheduledNow error:', err);
+    res.status(400).json({ message: err.message || 'Failed to dispatch scheduled email' });
+  }
+};
+
+// @desc    Cancel scheduled email and revert to drafts
+// @route   POST /api/email/messages/:id/cancel-schedule
+// @access  Private
+exports.cancelScheduled = async (req, res) => {
+  try {
+    const message = await EmailService.cancelScheduled(req.workspaceId, req.params.id, req.user);
+    res.json({ success: true, message });
+  } catch (err) {
+    console.error('[EmailController] cancelScheduled error:', err);
+    res.status(400).json({ message: err.message || 'Failed to cancel scheduled email' });
+  }
+};
+
+// @desc    Permanently delete all messages in trash
+// @route   DELETE /api/email/trash
+// @access  Private
+exports.emptyTrash = async (req, res) => {
+  try {
+    const { accountId } = req.query;
+    const result = await EmailService.emptyTrash(req.workspaceId, accountId, req.user);
+    res.json(result);
+  } catch (err) {
+    console.error('[EmailController] emptyTrash error:', err);
+    res.status(400).json({ message: err.message || 'Failed to empty trash' });
+  }
+};
+
 // @desc    Get email history for a specific lead
 // @route   GET /api/email/lead/:leadId
 // @access  Private
@@ -365,3 +409,18 @@ exports.handleGoogleCallback = async (req, res) => {
     }));
   }
 };
+
+// @desc    Get dynamic email placeholders registry (with optional live preview values for a lead)
+// @route   GET /api/email/placeholders
+// @access  Private
+exports.getPlaceholders = async (req, res) => {
+  try {
+    const { leadId } = req.query;
+    const placeholders = await EmailService.getPlaceholders(req.workspaceId, leadId, req.user?._id);
+    res.json({ success: true, placeholders });
+  } catch (err) {
+    console.error('[EmailController] getPlaceholders error:', err);
+    res.status(500).json({ message: err.message || 'Failed to fetch placeholders' });
+  }
+};
+

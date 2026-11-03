@@ -2,13 +2,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import { getUser } from '@/lib/auth';
+import { getUser, mergeTemplate } from '@/lib/auth';
 import {
   X, Send, Paperclip, FileText, User, ChevronDown, Trash2,
   Bold, Italic, Underline, Strikethrough, List, ListOrdered, Link2,
   Sparkles, RefreshCw, Check, Code, Eye, Palette, AlignLeft,
   AlignCenter, AlignRight, Quote, Minus, Plus, BookmarkPlus,
-  Smartphone, Monitor, Image as ImageIcon, MousePointerClick, ShieldCheck
+  Smartphone, Monitor, Image as ImageIcon, MousePointerClick, ShieldCheck,
+  Search, Copy, CheckCircle2, Info
 } from 'lucide-react';
 
 export default function EmailComposerModal({
@@ -58,6 +59,12 @@ export default function EmailComposerModal({
   const [showHighlightPicker, setShowHighlightPicker] = useState(false);
   const [showVariableMenu, setShowVariableMenu] = useState(false);
 
+  // Dynamic Placeholders Guide state
+  const [showPlaceholdersGuide, setShowPlaceholdersGuide] = useState(false);
+  const [placeholderSearch, setPlaceholderSearch] = useState('');
+  const [placeholderCategory, setPlaceholderCategory] = useState('all');
+  const [copiedTag, setCopiedTag] = useState(null);
+
   const [templates, setTemplates] = useState([]);
   const [leadsList, setLeadsList] = useState([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
@@ -89,13 +96,71 @@ export default function EmailComposerModal({
   ];
 
   const MERGE_VARIABLES = [
-    { tag: '{{name}}', label: 'Candidate Name' },
-    { tag: '{{course}}', label: 'Target Course' },
-    { tag: '{{phone}}', label: 'Candidate Phone' },
-    { tag: '{{email}}', label: 'Candidate Email' },
-    { tag: '{{counselorName}}', label: 'Counselor Name' },
-    { tag: '{{counselorPhone}}', label: 'Counselor Phone' },
+    { tag: '{{name}}', label: 'Candidate Full Name', category: 'Candidate', description: "Prospective student's full name from lead record", sample: 'Aarav Patel' },
+    { tag: '{{firstName}}', label: 'Candidate First Name', category: 'Candidate', description: "Candidate's first name only", sample: 'Aarav' },
+    { tag: '{{lastName}}', label: 'Candidate Last Name', category: 'Candidate', description: "Candidate's surname/last name", sample: 'Patel' },
+    { tag: '{{course}}', label: 'Target Program / Course', category: 'Academic', description: 'Degree, stream, or course of interest', sample: 'B.Tech AI & Data Science' },
+    { tag: '{{email}}', label: 'Candidate Email', category: 'Candidate', description: "Candidate's primary contact email address", sample: 'aarav.patel@example.com' },
+    { tag: '{{phone}}', label: 'Candidate Phone', category: 'Candidate', description: "Candidate's verified mobile phone number", sample: '+91 98765 43210' },
+    { tag: '{{city}}', label: 'Candidate City / Region', category: 'Candidate', description: 'Current residence city or location', sample: 'Pune' },
+    { tag: '{{stage}}', label: 'Pipeline Stage', category: 'Candidate', description: 'Current admissions or sales stage', sample: 'Counseling Scheduled' },
+    { tag: '{{source}}', label: 'Acquisition Source', category: 'Candidate', description: 'Lead generation channel (Meta, Google, Form)', sample: 'Meta Ads' },
+    { tag: '{{amount}}', label: 'Tuition Fee / Deal Amount', category: 'Academic', description: 'Payable fee amount or deal quote', sample: '₹1,50,000' },
+    { tag: '{{company}}', label: 'School / College / Org', category: 'Candidate', description: 'Previous school, college, or current employer', sample: 'Apex Senior Secondary' },
+    { tag: '{{counselorName}}', label: 'Assigned Counselor Name', category: 'Counselor', description: 'Full name of the counselor or current sender', sample: 'Dr. Ramesh Sharma' },
+    { tag: '{{counselorPhone}}', label: 'Counselor Phone', category: 'Counselor', description: 'Direct contact phone of counselor/sender', sample: '+91 91234 56789' },
+    { tag: '{{counselorEmail}}', label: 'Counselor Official Email', category: 'Counselor', description: 'Official email address of counselor or sender', sample: 'ramesh@sahyak.edu' },
+    { tag: '{{companyName}}', label: 'Organization / Institution', category: 'Organization', description: 'Institution, university, or workspace brand name', sample: 'Sahyak Education Group' },
+    { tag: '{{today}}', label: "Today's Date", category: 'System', description: 'Current dispatch date (formatted)', sample: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) },
+    { tag: '{{year}}', label: 'Current Year', category: 'System', description: 'Current calendar year (4 digits)', sample: String(new Date().getFullYear()) },
   ];
+
+  // Dynamically evaluate what a placeholder tag represents for current lead or sample
+  const getPlaceholderLiveValue = useCallback((item) => {
+    if (!linkedLead) return item.sample;
+    switch (item.tag) {
+      case '{{name}}':
+        return linkedLead.name || item.sample;
+      case '{{firstName}}':
+        return (linkedLead.name || '').trim().split(/\s+/)[0] || item.sample;
+      case '{{lastName}}': {
+        const parts = (linkedLead.name || '').trim().split(/\s+/);
+        return parts.length > 1 ? parts.slice(1).join(' ') : item.sample;
+      }
+      case '{{email}}':
+        return linkedLead.email || item.sample;
+      case '{{phone}}':
+        return linkedLead.phone || item.sample;
+      case '{{course}}':
+        return linkedLead.targetCourse || linkedLead.course || linkedLead.customData?.course || item.sample;
+      case '{{city}}':
+        return linkedLead.targetCity || linkedLead.city || item.sample;
+      case '{{stage}}':
+        return linkedLead.status || item.sample;
+      case '{{source}}':
+        return linkedLead.primarySource || linkedLead.source || item.sample;
+      case '{{amount}}': {
+        const amt = linkedLead.admissionFinalFee || linkedLead.dealValue || linkedLead.payable_amount || '';
+        return amt ? (String(amt).startsWith('₹') ? amt : `₹${amt}`) : item.sample;
+      }
+      case '{{company}}':
+        return linkedLead.company || item.sample;
+      case '{{counselorName}}':
+        return linkedLead.assignedToName || currentUser?.name || 'Dr. Ramesh Sharma';
+      case '{{counselorPhone}}':
+        return currentUser?.phone || linkedLead.assignedToPhone || '+91 91234 56789';
+      case '{{counselorEmail}}':
+        return currentUser?.email || 'admissions@sahyak.edu';
+      case '{{companyName}}':
+        return currentUser?.companyName || currentUser?.workspaceName || 'Sahyak Education Group';
+      case '{{today}}':
+        return new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      case '{{year}}':
+        return String(new Date().getFullYear());
+      default:
+        return item.sample;
+    }
+  }, [linkedLead, currentUser]);
 
   // Fetch templates for Email
   const fetchTemplates = useCallback(async () => {
@@ -938,34 +1003,67 @@ export default function EmailComposerModal({
                     + Footer
                   </button>
 
-                  {/* Dynamic Merge Variables Chips */}
-                  <div className="relative">
+                  {/* Dynamic Merge Variables & Guide */}
+                  <div className="flex items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={() => setShowVariableMenu(!showVariableMenu)}
-                      className="px-2 py-1 bg-violet-50 hover:bg-violet-100 text-violet-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
+                      onClick={() => setShowPlaceholdersGuide(true)}
+                      className="px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                      title="Open interactive dynamic placeholders and merge tags guide"
                     >
-                      <Sparkles size={12} /> Merge Tags <ChevronDown size={10} />
+                      <Sparkles size={12} /> Placeholders Guide
                     </button>
-                    {showVariableMenu && (
-                      <div className="absolute top-full right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-lg p-2 flex flex-col gap-1 w-48">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Dynamic Fields</span>
-                        {MERGE_VARIABLES.map(v => (
-                          <button
-                            key={v.tag}
-                            type="button"
-                            onClick={() => {
-                              insertHtmlAtCursor(`<strong>${v.tag}</strong>`);
-                              setShowVariableMenu(false);
-                            }}
-                            className="text-left px-2 py-1 rounded hover:bg-violet-50 text-slate-700 hover:text-violet-700 text-xs font-medium transition flex items-center justify-between"
-                          >
-                            <span>{v.label}</span>
-                            <code className="text-[10px] text-violet-600 bg-violet-50 px-1 rounded">{v.tag}</code>
-                          </button>
-                        ))}
-                      </div>
-                    )}
+
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setShowVariableMenu(!showVariableMenu)}
+                        className="px-2 py-1 bg-violet-50 hover:bg-violet-100 text-violet-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                        title="Quick insert tag"
+                      >
+                        Merge Tags <ChevronDown size={10} />
+                      </button>
+                      {showVariableMenu && (
+                        <div className="absolute top-full right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-xl p-2 flex flex-col gap-1 w-56 max-h-72 overflow-y-auto">
+                          <div className="flex items-center justify-between pb-1 border-b border-slate-100 px-1">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quick Merge Fields</span>
+                            {linkedLead && <span className="text-[9px] bg-emerald-100 text-emerald-700 font-bold px-1.5 py-0.2 rounded-full">Live Data</span>}
+                          </div>
+                          {MERGE_VARIABLES.slice(0, 10).map(v => (
+                            <button
+                              key={v.tag}
+                              type="button"
+                              onClick={() => {
+                                insertHtmlAtCursor(v.tag);
+                                setShowVariableMenu(false);
+                                toast.success(`Inserted ${v.tag}`);
+                              }}
+                              className="text-left px-2 py-1.5 rounded-lg hover:bg-violet-50 text-slate-700 hover:text-violet-700 text-xs font-medium transition flex items-center justify-between group cursor-pointer"
+                            >
+                              <div className="flex flex-col min-w-0 pr-2">
+                                <span className="truncate">{v.label}</span>
+                                <span className="text-[10px] text-slate-400 group-hover:text-violet-500 truncate">
+                                  {getPlaceholderLiveValue(v)}
+                                </span>
+                              </div>
+                              <code className="text-[10px] text-violet-600 bg-violet-50 px-1 rounded shrink-0">{v.tag}</code>
+                            </button>
+                          ))}
+                          <div className="pt-1.5 mt-1 border-t border-slate-100">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowVariableMenu(false);
+                                setShowPlaceholdersGuide(true);
+                              }}
+                              className="w-full text-center py-1.5 bg-violet-50 hover:bg-violet-100 text-violet-700 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                              <Sparkles size={11} /> View All Dynamic Placeholders Guide ↗
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1044,29 +1142,66 @@ export default function EmailComposerModal({
                     }}
                   >
                     {/* Simulated Mailbox Client Header */}
-                    <div className="p-4 border-b border-slate-100 bg-slate-50/70 text-xs space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-800 truncate">
-                          {activeAccount?.displayName || 'Advisor'} &lt;{activeAccount?.email || 'support@crm.com'}&gt;
-                        </span>
-                        <span className="text-[11px] text-slate-400">Just now</span>
-                      </div>
-                      <div className="text-slate-600 text-[11px]">
-                        To: <span className="font-medium text-slate-800">{to || 'candidate@example.com'}</span>
-                      </div>
-                      <div className="text-slate-900 font-semibold text-xs pt-1">
-                        Subject: {subject || '(No Subject)'}
-                      </div>
-                    </div>
+                    {(() => {
+                      const previewLead = linkedLead || {
+                        name: 'Aarav Patel',
+                        email: to || 'aarav.patel@example.com',
+                        phone: '+91 98765 43210',
+                        targetCourse: 'B.Tech AI & Data Science',
+                        city: 'Pune',
+                        status: 'Counseling Scheduled',
+                        admissionFinalFee: '150000',
+                      };
+                      const previewContext = {
+                        counselorName: linkedLead?.assignedToName || currentUser?.name || activeAccount?.displayName || 'Dr. Ramesh Sharma',
+                        counselorPhone: currentUser?.phone || linkedLead?.assignedToPhone || '+91 91234 56789',
+                        counselorEmail: activeAccount?.email || currentUser?.email || 'ramesh@sahyak.edu',
+                        companyName: currentUser?.companyName || currentUser?.workspaceName || 'Sahyak Education Group',
+                      };
+                      const previewSubject = mergeTemplate(subject || '(No Subject)', previewLead, currentUser, previewContext);
+                      const previewBodyHtml = mergeTemplate(bodyHtml || '<p class="text-slate-400 italic">No content yet.</p>', previewLead, currentUser, previewContext);
 
-                    {/* Email Content Container */}
-                    <div
-                      className="p-5 text-slate-900 text-[15px] leading-relaxed"
-                      style={{
-                        fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-                      }}
-                      dangerouslySetInnerHTML={{ __html: bodyHtml || '<p className="text-slate-400 italic">No content yet.</p>' }}
-                    />
+                      return (
+                        <>
+                          <div className="p-4 border-b border-slate-100 bg-slate-50/70 text-xs space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-800 truncate">
+                                  {activeAccount?.displayName || 'Advisor'} &lt;{activeAccount?.email || 'support@crm.com'}&gt;
+                                </span>
+                                {linkedLead ? (
+                                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                    Live: {linkedLead.name}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium" title="Link a candidate above to view their actual values">
+                                    Sample Preview
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[11px] text-slate-400">Just now</span>
+                            </div>
+                            <div className="text-slate-600 text-[11px]">
+                              To: <span className="font-medium text-slate-800">{to || previewLead.email}</span>
+                            </div>
+                            <div className="text-slate-900 font-semibold text-xs pt-1 flex items-center gap-1.5">
+                              <span className="text-slate-500 font-normal">Subject:</span>
+                              <span>{previewSubject}</span>
+                            </div>
+                          </div>
+
+                          {/* Email Content Container */}
+                          <div
+                            className="p-5 text-slate-900 text-[15px] leading-relaxed"
+                            style={{
+                              fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+                            }}
+                            dangerouslySetInnerHTML={{ __html: previewBodyHtml }}
+                          />
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
@@ -1444,6 +1579,197 @@ export default function EmailComposerModal({
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Dynamic Placeholders & Merge Tags Interactive Guide Modal */}
+        {showPlaceholdersGuide && (
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-60 flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-150">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[88vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+              {/* Header */}
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-violet-50/70 via-indigo-50/40 to-white">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-violet-600 text-white flex items-center justify-center shadow-xs">
+                    <Sparkles size={16} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                      Dynamic Placeholders & Merge Tags Guide
+                    </h3>
+                    <p className="text-slate-500 text-[11px]">
+                      Use double curly brackets (e.g. <code className="font-mono text-violet-700 bg-violet-100/70 px-1 py-0.5 rounded text-[10px]">&#123;&#123;name&#125;&#125;</code>) to automatically personalize emails.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPlaceholdersGuide(false)}
+                  className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Connected Lead Live Context Bar */}
+              <div className="px-5 py-2.5 bg-slate-50/80 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                {linkedLead ? (
+                  <div className="flex items-center gap-2 text-emerald-800 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>Live Recipient Connected:</span>
+                    <strong className="text-emerald-900 font-bold">{linkedLead.name || 'Unnamed Lead'}</strong>
+                    <span className="text-emerald-700/80 text-[11px]">({linkedLead.email || linkedLead.phone || 'No direct contact info'})</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-amber-800">
+                    <Info size={14} className="text-amber-600 shrink-0" />
+                    <span>Viewing sample values. Link a candidate in the composer to inspect their real live data.</span>
+                  </div>
+                )}
+                <span className="text-[11px] text-slate-400 font-medium">
+                  {MERGE_VARIABLES.length} Supported Placeholders
+                </span>
+              </div>
+
+              {/* Search & Category Filter Toolbar */}
+              <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white">
+                <div className="relative flex-1">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search placeholder tags, fields, or descriptions..."
+                    value={placeholderSearch}
+                    onChange={e => setPlaceholderSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-violet-500 focus:outline-none"
+                  />
+                  {placeholderSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setPlaceholderSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Category Pills */}
+                <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
+                  {['all', 'Candidate', 'Academic', 'Counselor', 'Organization', 'System'].map(cat => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setPlaceholderCategory(cat)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
+                        placeholderCategory === cat
+                          ? 'bg-violet-600 text-white shadow-2xs'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      {cat === 'all' ? 'All Tags' : cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Grid of Placeholders */}
+              <div className="p-4 overflow-y-auto flex-1 bg-slate-50/50">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {MERGE_VARIABLES
+                    .filter(v => {
+                      if (placeholderCategory !== 'all' && v.category !== placeholderCategory) return false;
+                      if (!placeholderSearch.trim()) return true;
+                      const q = placeholderSearch.toLowerCase();
+                      return (
+                        v.tag.toLowerCase().includes(q) ||
+                        v.label.toLowerCase().includes(q) ||
+                        v.description.toLowerCase().includes(q) ||
+                        v.category.toLowerCase().includes(q)
+                      );
+                    })
+                    .map(v => {
+                      const liveVal = getPlaceholderLiveValue(v);
+                      return (
+                        <div
+                          key={v.tag}
+                          className="bg-white border border-slate-200 hover:border-violet-300 rounded-xl p-3 shadow-2xs hover:shadow-xs transition flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between gap-2">
+                              <code className="font-mono text-xs font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded border border-violet-200/80">
+                                {v.tag}
+                              </code>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-100 px-1.5 py-0.5 rounded">
+                                {v.category}
+                              </span>
+                            </div>
+
+                            <div className="font-semibold text-slate-800 text-xs mt-1.5">
+                              {v.label}
+                            </div>
+                            <div className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                              {v.description}
+                            </div>
+
+                            <div className="mt-2.5 p-2 bg-slate-50 rounded-lg border border-slate-100 flex items-center justify-between text-xs">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                {linkedLead ? 'Live Value:' : 'Sample:'}
+                              </span>
+                              <span className="font-semibold text-slate-900 truncate max-w-[170px]" title={String(liveVal)}>
+                                {liveVal || <span className="text-slate-400 italic">None</span>}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard?.writeText(v.tag);
+                                setCopiedTag(v.tag);
+                                setTimeout(() => setCopiedTag(null), 2000);
+                                toast.success(`Copied ${v.tag}!`);
+                              }}
+                              className="px-2.5 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                            >
+                              {copiedTag === v.tag ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                              <span>{copiedTag === v.tag ? 'Copied' : 'Copy'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                insertHtmlAtCursor(v.tag);
+                                setShowPlaceholdersGuide(false);
+                                toast.success(`Inserted ${v.tag} into email! ✨`);
+                              }}
+                              className="px-3 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-semibold shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                            >
+                              <Plus size={12} /> Insert Tag
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* Footer Info Reassurance */}
+              <div className="px-5 py-3 border-t border-slate-200 bg-white flex items-center justify-between gap-3 text-xs text-slate-500">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                  <span className="text-[11px] leading-snug">
+                    Zero-leak guarantee: All placeholders are substituted automatically upon sending. Empty candidate fields resolve safely without leaving raw braces.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPlaceholdersGuide(false)}
+                  className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition shrink-0 cursor-pointer"
+                >
+                  Done
+                </button>
+              </div>
             </div>
           </div>
         )}

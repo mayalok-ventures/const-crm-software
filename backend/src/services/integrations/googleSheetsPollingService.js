@@ -29,7 +29,7 @@ class GoogleSheetsPollingService {
       throw new Error(`Integration not found: ${integrationId}`);
     }
 
-    if (integration.status !== 'connected' && integration.status !== 'needs_remapping') {
+    if (integration.status !== 'connected' && integration.status !== 'awaiting_data' && integration.status !== 'needs_remapping') {
       return { skipped: true, reason: `Integration is not active (status: ${integration.status})` };
     }
 
@@ -298,6 +298,9 @@ class GoogleSheetsPollingService {
     // 6. Update Integration Metrics
     integration.lastSyncAt = new Date();
     integration.lastError = '';
+    if (rowsSyncedCount > 0 && integration.status === 'awaiting_data') {
+      integration.status = 'connected';
+    }
     integration.sheetsConfig.lastSyncedAt = new Date();
     integration.sheetsConfig.totalRowsSynced = (sheetsConfig.totalRowsSynced || 0) + rowsSyncedCount;
     integration.sheetsConfig.totalNeedsReview = (sheetsConfig.totalNeedsReview || 0) + needsReviewCount;
@@ -322,7 +325,7 @@ class GoogleSheetsPollingService {
     try {
       const activeSheetsIntegrations = await Integration.find({
         provider: 'sheets',
-        status: 'connected',
+        status: { $in: ['connected', 'awaiting_data'] },
         'sheetsConfig.syncMode': { $ne: 'push' }, // Mode B default
       }).limit(50);
 

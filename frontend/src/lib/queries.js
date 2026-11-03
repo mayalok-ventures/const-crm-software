@@ -81,7 +81,7 @@ export function leadsListOptions(filters = {}, tenantId) {
     initialData: snapshotRec?.data,
     initialDataUpdatedAt: snapshotRec?.ts || 0,
     placeholderData: (previousData) => previousData,
-    staleTime: 1000 * 60 * 10,
+    staleTime: 1000 * 30, // 30 seconds
   });
 }
 
@@ -112,7 +112,7 @@ export function pipelineOptions(filters = {}, tenantId) {
     initialData: snapshotRec?.data,
     initialDataUpdatedAt: snapshotRec?.ts || 0,
     placeholderData: (previousData) => previousData,
-    staleTime: 1000 * 60 * 10,
+    staleTime: 1000 * 30, // 30 seconds
   });
 }
 
@@ -132,7 +132,7 @@ export function dashboardStatsOptions(tenantId) {
     },
     initialData: () => getLocalSnapshot(snapKey),
     placeholderData: (previousData) => previousData,
-    staleTime: 1000 * 60 * 10,
+    staleTime: 1000 * 30, // 30 seconds
   });
 }
 
@@ -193,7 +193,7 @@ export function todayFollowUpsOptions(tenantId) {
       return Array.isArray(res.data) ? res.data : [];
     },
     placeholderData: (previousData) => previousData,
-    staleTime: 1000 * 60 * 10, // 10 minutes
+    staleTime: 1000 * 60, // 1 minute
   });
 }
 

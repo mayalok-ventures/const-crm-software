@@ -57,13 +57,15 @@ class GoogleProvider extends BaseProvider {
         if (!email) email = colVal;
       } else {
         customData[col.column_name || col.column_id || 'field'] = colVal;
+        if (col.column_id) customData[col.column_id] = colVal;
+        if (col.column_name) customData[col.column_name] = colVal;
       }
     }
 
     const connectionId = String(payload.customer_id || integration?.customerId || integration?.accountId || integration?._id || '');
     const connectionName = integration?.adAccountName || integration?.accountName || 'Google Ads Account';
     const campaignName = payload.campaign_name || integration?.metadata?.defaultCampaignLabel || 'Google Ads Campaign';
-    const campaignId = payload.campaign_id ? String(payload.campaign_id) : (campaignName ? `cmp_${campaignName.toLowerCase().replace(/\s+/g, '_')}` : 'google_campaign_default');
+    const campaignId = payload.campaign_id ? String(payload.campaign_id) : (integration?.metadata?.targetCampaignId || (campaignName ? `cmp_${campaignName.toLowerCase().replace(/\s+/g, '_')}` : 'google_campaign_default'));
 
     return {
       provider: 'google',

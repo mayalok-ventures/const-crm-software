@@ -2,6 +2,9 @@ const EmailAccount = require('../../models/EmailAccount');
 const EmailMessage = require('../../models/EmailMessage');
 const Lead = require('../../models/Lead');
 const Template = require('../../models/Template');
+const User = require('../../models/User');
+const Workspace = require('../../models/Workspace');
+const { resolvePlaceholders, getPlaceholderRegistry } = require('../../utils/placeholderResolver');
 const { getProviderAdapter, formatEmailHtml, generatePlainText } = require('./emailProviderAdapters');
 const crypto = require('crypto');
 
@@ -260,6 +263,8 @@ class EmailService {
     threadId = null,
     leadId = null,
     templateId = null,
+    scheduledAt = null,
+    draftId = null,
   }) {
     if (!accountId) {
       throw new Error('Please select a connected email account to send from');
@@ -319,13 +324,94 @@ class EmailService {
       matchedLead = await this.resolveLeadByEmail(workspaceId, formattedTo[0].email);
     }
 
+    // Resolve sender user and workspace details for dynamic placeholder context
+    let senderUser = null;
+    if (userId) {
+      senderUser = await User.findById(userId).select('name email phone companyName workspaceName').lean().catch(() => null);
+    }
+    let workspaceObj = null;
+    if (workspaceId) {
+      workspaceObj = await Workspace.findById(workspaceId).select('name').lean().catch(() => null);
+    }
+
+    const placeholderContext = {
+      lead: matchedLead || (formattedTo[0]?.name ? { name: formattedTo[0].name, email: formattedTo[0].email } : null),
+      user: senderUser || { name: userName },
+      account,
+      workspace: workspaceObj,
+      custom: {
+        toName: formattedTo[0]?.name || '',
+      },
+    };
+
     // Generate RFC 5322 threadId if not provided
     const resolvedThreadId = threadId || inReplyTo || `thread_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
 
-    // Sanitize and format rich HTML email and plain text alternative
+    // Resolve dynamic placeholders on Subject, HTML body, and Plain Text
+    const resolvedSubject = resolvePlaceholders(subject || '(No Subject)', placeholderContext);
     const sanitizedHtml = sanitizeEmailHtml(bodyHtml || '');
-    const resolvedHtml = formatEmailHtml(sanitizedHtml || bodyText || '');
-    const resolvedText = bodyText || generatePlainText(resolvedHtml);
+    const formattedHtml = formatEmailHtml(sanitizedHtml || bodyText || '');
+    const resolvedHtml = resolvePlaceholders(formattedHtml, placeholderContext);
+    const rawText = bodyText || generatePlainText(resolvedHtml);
+    const resolvedText = resolvePlaceholders(rawText, placeholderContext);
+    const cleanSnippet = resolvedText.slice(0, 140).trim();
+
+    // Check if scheduling for later
+    if (scheduledAt) {
+      const scheduledDate = new Date(scheduledAt);
+      if (!isNaN(scheduledDate.getTime()) && scheduledDate > new Date()) {
+        let savedMessage = null;
+        if (draftId) {
+          savedMessage = await EmailMessage.findOne({
+            _id: draftId,
+            workspaceId,
+            folder: { $in: ['drafts', 'scheduled'] },
+          });
+        }
+
+        const scheduledData = {
+          workspaceId,
+          accountId: account._id,
+          userId,
+          leadId: matchedLead?._id || null,
+          folder: 'scheduled',
+          status: 'queued',
+          scheduledAt: scheduledDate,
+          threadId: resolvedThreadId,
+          inReplyTo,
+          references: inReplyTo ? [...(references || []), inReplyTo] : references,
+          from: {
+            name: account.displayName || account.email.split('@')[0],
+            email: account.email,
+          },
+          to: formattedTo,
+          cc: formattedCc,
+          bcc: formattedBcc,
+          subject: resolvedSubject,
+          snippet: cleanSnippet,
+          bodyHtml: resolvedHtml,
+          bodyText: resolvedText,
+          isRead: true,
+          hasAttachments: attachments && attachments.length > 0,
+          attachments: (attachments || []).map(att => ({
+            filename: att.filename,
+            contentType: att.contentType || 'application/octet-stream',
+            size: att.size || (att.content ? Buffer.byteLength(att.content) : 0),
+            url: att.url || '',
+          })),
+          date: scheduledDate,
+        };
+
+        if (savedMessage) {
+          Object.assign(savedMessage, scheduledData);
+          await savedMessage.save();
+        } else {
+          savedMessage = await EmailMessage.create(scheduledData);
+        }
+
+        return { ...savedMessage.toObject(), isScheduled: true };
+      }
+    }
 
     // Send via provider adapter
     const Adapter = getProviderAdapter(account.provider);
@@ -333,7 +419,7 @@ class EmailService {
       to: formattedTo,
       cc: formattedCc,
       bcc: formattedBcc,
-      subject: subject || '(No Subject)',
+      subject: resolvedSubject,
       bodyHtml: resolvedHtml,
       bodyText: resolvedText,
       attachments,
@@ -341,9 +427,6 @@ class EmailService {
       references: inReplyTo ? [...(references || []), inReplyTo] : references,
       threadId: resolvedThreadId,
     });
-
-    // Create snippet for inbox lists
-    const cleanSnippet = resolvedText.slice(0, 140).trim();
 
     // Persist in EmailMessage collection
     const savedMessage = await EmailMessage.create({
@@ -365,7 +448,7 @@ class EmailService {
       to: formattedTo,
       cc: formattedCc,
       bcc: formattedBcc,
-      subject: subject || '(No Subject)',
+      subject: resolvedSubject,
       snippet: cleanSnippet,
       bodyHtml: resolvedHtml,
       bodyText: resolvedText,
@@ -390,7 +473,7 @@ class EmailService {
         action: 'email_sent',
         performedBy: userId,
         performerName: userName,
-        details: `Sent email "${subject || '(No Subject)'}" to ${formattedTo.map(t => t.email).join(', ')}`,
+        details: `Sent email "${resolvedSubject}" to ${formattedTo.map(t => t.email).join(', ')}`,
         timestamp: new Date(),
       });
       await matchedLead.save();
@@ -406,6 +489,11 @@ class EmailService {
       $inc: { totalMessagesCount: 1 },
       lastSyncAt: new Date(),
     });
+
+    // If sent from an existing draft or scheduled item, clean up the prior item
+    if (draftId) {
+      await EmailMessage.deleteOne({ _id: draftId, workspaceId, folder: { $in: ['drafts', 'scheduled'] } }).catch(() => {});
+    }
 
     return savedMessage;
   }
@@ -448,6 +536,48 @@ class EmailService {
       draft = await EmailMessage.findOne({ _id: draftId, workspaceId, folder: 'drafts' });
     }
 
+    const formattedTo = (Array.isArray(to) ? to : (to ? [to] : []))
+      .map(item => {
+        if (!item) return null;
+        if (typeof item === 'string') {
+          const trimmed = item.trim().toLowerCase();
+          return trimmed ? { name: '', email: trimmed } : null;
+        }
+        if (item.email && item.email.trim()) {
+          return { name: item.name || '', email: item.email.trim().toLowerCase() };
+        }
+        return null;
+      })
+      .filter(Boolean);
+
+    const formattedCc = (Array.isArray(cc) ? cc : (cc ? [cc] : []))
+      .map(item => {
+        if (!item) return null;
+        if (typeof item === 'string') {
+          const trimmed = item.trim().toLowerCase();
+          return trimmed ? { name: '', email: trimmed } : null;
+        }
+        if (item.email && item.email.trim()) {
+          return { name: item.name || '', email: item.email.trim().toLowerCase() };
+        }
+        return null;
+      })
+      .filter(Boolean);
+
+    const formattedBcc = (Array.isArray(bcc) ? bcc : (bcc ? [bcc] : []))
+      .map(item => {
+        if (!item) return null;
+        if (typeof item === 'string') {
+          const trimmed = item.trim().toLowerCase();
+          return trimmed ? { name: '', email: trimmed } : null;
+        }
+        if (item.email && item.email.trim()) {
+          return { name: item.name || '', email: item.email.trim().toLowerCase() };
+        }
+        return null;
+      })
+      .filter(Boolean);
+
     const draftData = {
       workspaceId,
       accountId: account._id,
@@ -457,10 +587,10 @@ class EmailService {
       status: 'draft',
       threadId: resolvedThreadId,
       inReplyTo,
-      from: { name: account.displayName, email: account.email },
-      to: Array.isArray(to) ? to : [{ email: to }],
-      cc: Array.isArray(cc) ? cc : [],
-      bcc: Array.isArray(bcc) ? bcc : [],
+      from: { name: account.displayName || account.email.split('@')[0], email: account.email },
+      to: formattedTo,
+      cc: formattedCc,
+      bcc: formattedBcc,
       subject: subject || '(Draft)',
       snippet: cleanSnippet,
       bodyHtml: sanitizedHtml,
@@ -556,13 +686,25 @@ class EmailService {
       EmailMessage.countDocuments(query),
     ]);
 
-    // Calculate unread counts for folder badges
-    const unreadInboxCount = await EmailMessage.countDocuments({
-      workspaceId,
-      folder: 'inbox',
-      isRead: false,
-      ...(query.accountId ? { accountId: query.accountId } : {}),
-    });
+    // Calculate folder counts for sidebar navigation badges
+    const [unreadInboxCount, draftsCount, scheduledCount] = await Promise.all([
+      EmailMessage.countDocuments({
+        workspaceId,
+        folder: 'inbox',
+        isRead: false,
+        ...(query.accountId ? { accountId: query.accountId } : {}),
+      }),
+      EmailMessage.countDocuments({
+        workspaceId,
+        folder: 'drafts',
+        ...(query.accountId ? { accountId: query.accountId } : {}),
+      }),
+      EmailMessage.countDocuments({
+        workspaceId,
+        folder: 'scheduled',
+        ...(query.accountId ? { accountId: query.accountId } : {}),
+      }),
+    ]);
 
     return {
       messages,
@@ -571,6 +713,8 @@ class EmailService {
       limit: Number(limit),
       totalPages: Math.ceil(total / limit) || 1,
       unreadInboxCount,
+      draftsCount,
+      scheduledCount,
     };
   }
 
@@ -722,7 +866,10 @@ class EmailService {
     const account = await EmailAccount.findById(msg.accountId)
       .select('+accessTokenEncrypted +refreshTokenEncrypted');
 
-    if (permanent) {
+    // If already in trash or drafts, or explicit permanent flag, permanently delete
+    const isPermanent = permanent || msg.folder === 'trash' || msg.folder === 'drafts';
+
+    if (isPermanent) {
       if (account && account.provider === 'gmail' && msg.providerMessageId) {
         const { GmailAdapter } = require('./emailProviderAdapters');
         await GmailAdapter.deleteMessage(account, msg.providerMessageId).catch(() => {});
@@ -891,20 +1038,42 @@ class EmailService {
           .select('+accessTokenEncrypted +refreshTokenEncrypted +smtpPassEncrypted');
         if (!account) continue;
 
+        let finalSubject = msg.subject;
+        let finalHtml = msg.bodyHtml;
+        let finalText = msg.bodyText;
+
+        if (
+          (finalSubject && (finalSubject.includes('{{') || finalSubject.includes('{'))) ||
+          (finalHtml && (finalHtml.includes('{{') || finalHtml.includes('{'))) ||
+          (finalText && (finalText.includes('{{') || finalText.includes('{')))
+        ) {
+          const lead = msg.leadId ? await Lead.findById(msg.leadId).lean().catch(() => null) : null;
+          const user = msg.userId ? await User.findById(msg.userId).select('name email phone companyName workspaceName').lean().catch(() => null) : null;
+          const ws = msg.workspaceId ? await Workspace.findById(msg.workspaceId).select('name').lean().catch(() => null) : null;
+          const ctx = { lead, user, account, workspace: ws };
+          finalSubject = resolvePlaceholders(finalSubject, ctx);
+          finalHtml = resolvePlaceholders(finalHtml, ctx);
+          finalText = resolvePlaceholders(finalText, ctx);
+        }
+
         const Adapter = getProviderAdapter(account.provider);
         const sendResult = await Adapter.sendEmail(account, {
           to: msg.to,
           cc: msg.cc,
           bcc: msg.bcc,
-          subject: msg.subject,
-          bodyHtml: msg.bodyHtml,
-          bodyText: msg.bodyText,
+          subject: finalSubject,
+          bodyHtml: finalHtml,
+          bodyText: finalText,
           attachments: msg.attachments,
           inReplyTo: msg.inReplyTo,
           references: msg.references,
           threadId: msg.threadId,
         });
 
+        msg.subject = finalSubject;
+        msg.bodyHtml = finalHtml;
+        msg.bodyText = finalText;
+        msg.snippet = finalText.slice(0, 140).trim();
         msg.status = 'sent';
         msg.folder = 'sent';
         msg.sentAt = new Date();
@@ -932,6 +1101,146 @@ class EmailService {
         await msg.save();
       }
     }
+  }
+
+  /**
+   * Dispatch a specific scheduled email immediately
+   */
+  static async sendScheduledNow(workspaceId, messageId, user = null) {
+    const authorizedAccountIds = await this.getAuthorizedAccountIds(workspaceId, user);
+    const filter = { _id: messageId, workspaceId, folder: 'scheduled' };
+    if (authorizedAccountIds !== null) filter.accountId = { $in: authorizedAccountIds };
+
+    const msg = await EmailMessage.findOne(filter);
+    if (!msg) {
+      throw new Error('Scheduled email not found or already sent');
+    }
+
+    const account = await EmailAccount.findById(msg.accountId)
+      .select('+accessTokenEncrypted +refreshTokenEncrypted +smtpPassEncrypted');
+    if (!account) {
+      throw new Error('Connected email account not found');
+    }
+
+    let finalSubject = msg.subject;
+    let finalHtml = msg.bodyHtml;
+    let finalText = msg.bodyText;
+
+    if (
+      (finalSubject && (finalSubject.includes('{{') || finalSubject.includes('{'))) ||
+      (finalHtml && (finalHtml.includes('{{') || finalHtml.includes('{'))) ||
+      (finalText && (finalText.includes('{{') || finalText.includes('{')))
+    ) {
+      const lead = msg.leadId ? await Lead.findById(msg.leadId).lean().catch(() => null) : null;
+      const userDoc = msg.userId ? await User.findById(msg.userId).select('name email phone companyName workspaceName').lean().catch(() => null) : null;
+      const ws = msg.workspaceId ? await Workspace.findById(msg.workspaceId).select('name').lean().catch(() => null) : null;
+      const ctx = { lead, user: userDoc || user, account, workspace: ws };
+      finalSubject = resolvePlaceholders(finalSubject, ctx);
+      finalHtml = resolvePlaceholders(finalHtml, ctx);
+      finalText = resolvePlaceholders(finalText, ctx);
+    }
+
+    const Adapter = getProviderAdapter(account.provider);
+    const sendResult = await Adapter.sendEmail(account, {
+      to: msg.to,
+      cc: msg.cc,
+      bcc: msg.bcc,
+      subject: finalSubject,
+      bodyHtml: finalHtml,
+      bodyText: finalText,
+      attachments: msg.attachments,
+      inReplyTo: msg.inReplyTo,
+      references: msg.references,
+      threadId: msg.threadId,
+    });
+
+    msg.subject = finalSubject;
+    msg.bodyHtml = finalHtml;
+    msg.bodyText = finalText;
+    msg.snippet = finalText.slice(0, 140).trim();
+    msg.status = 'sent';
+    msg.folder = 'sent';
+    msg.sentAt = new Date();
+    msg.date = new Date();
+    msg.scheduledAt = null;
+    msg.messageId = sendResult.messageId;
+    msg.providerMessageId = sendResult.providerMessageId;
+    await msg.save();
+
+    if (msg.leadId) {
+      const lead = await Lead.findById(msg.leadId);
+      if (lead) {
+        lead.leadActivities = lead.leadActivities || [];
+        lead.leadActivities.push({
+          action: 'email_sent',
+          performedBy: user?._id || msg.userId,
+          performerName: user?.name || 'Advisor',
+          details: `Sent scheduled email "${msg.subject}" to ${msg.to.map((t) => t.email).join(', ')}`,
+          timestamp: new Date(),
+        });
+        await lead.save();
+      }
+    }
+
+    await EmailAccount.findByIdAndUpdate(account._id, {
+      $inc: { totalMessagesCount: 1 },
+      lastSyncAt: new Date(),
+    });
+
+    return msg;
+  }
+
+  /**
+   * Cancel scheduled email and return it to drafts
+   */
+  static async cancelScheduled(workspaceId, messageId, user = null) {
+    const authorizedAccountIds = await this.getAuthorizedAccountIds(workspaceId, user);
+    const filter = { _id: messageId, workspaceId, folder: 'scheduled' };
+    if (authorizedAccountIds !== null) filter.accountId = { $in: authorizedAccountIds };
+
+    const msg = await EmailMessage.findOne(filter);
+    if (!msg) {
+      throw new Error('Scheduled email not found');
+    }
+
+    msg.folder = 'drafts';
+    msg.status = 'draft';
+    msg.scheduledAt = null;
+    await msg.save();
+
+    return msg;
+  }
+
+  /**
+   * Empty trash: permanently delete all trashed emails for workspace (or specified account)
+   */
+  static async emptyTrash(workspaceId, accountId = null, user = null) {
+    const authorizedAccountIds = await this.getAuthorizedAccountIds(workspaceId, user);
+    const filter = { workspaceId, folder: 'trash' };
+    if (accountId && accountId !== 'all') {
+      filter.accountId = accountId;
+    } else if (authorizedAccountIds !== null) {
+      filter.accountId = { $in: authorizedAccountIds };
+    }
+
+    // If any are Gmail messages, attempt Gmail permanent delete
+    const trashedMessages = await EmailMessage.find(filter).select('accountId providerMessageId');
+    for (const msg of trashedMessages) {
+      if (msg.providerMessageId) {
+        EmailAccount.findById(msg.accountId)
+          .select('+accessTokenEncrypted +refreshTokenEncrypted')
+          .then((acc) => {
+            if (acc && acc.provider === 'gmail') {
+              const { GmailAdapter } = require('./emailProviderAdapters');
+              return GmailAdapter.deleteMessage(acc, msg.providerMessageId);
+            }
+          })
+          .catch(() => {});
+      }
+    }
+
+    const result = await EmailMessage.deleteMany(filter);
+    return { success: true, deletedCount: result.deletedCount || 0 };
   }
 
   /**
@@ -1097,6 +1406,26 @@ class EmailService {
     });
 
     return { account, email };
+  }
+
+  /**
+   * Return supported placeholders and optionally resolve live values for a given leadId
+   */
+  static async getPlaceholders(workspaceId, leadId = null, userId = null) {
+    let lead = null;
+    if (leadId) {
+      lead = await Lead.findOne({ _id: leadId, workspaceId }).lean().catch(() => null);
+    }
+    let user = null;
+    if (userId) {
+      user = await User.findById(userId).select('name email phone companyName workspaceName').lean().catch(() => null);
+    }
+    let workspace = null;
+    if (workspaceId) {
+      workspace = await Workspace.findById(workspaceId).select('name').lean().catch(() => null);
+    }
+
+    return getPlaceholderRegistry({ lead, user, workspace });
   }
 }
 

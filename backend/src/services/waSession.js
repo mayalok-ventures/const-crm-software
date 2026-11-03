@@ -3,6 +3,7 @@ const {
   DisconnectReason,
   Browsers,
   fetchLatestBaileysVersion,
+  makeCacheableSignalKeyStore,
 } = require('@whiskeysockets/baileys');
 const path = require('path');
 const fs = require('fs');
@@ -39,14 +40,15 @@ const pairingInProgress = {};
 const pairingCodeLocks = {};
 // In-memory debounce cache for inbound message notifications
 const leadNotificationThrottle = new Map();
-// Last active timestamp for tracking
+// Last active timestamp for tracking socket freshness
 const lastActivityTimestamps = new Map();
 
-// Instance Identifier for distributed leasing
+// Instance Identifier for distributed leasing (PM2 Cluster / Multi-process fence)
 const INSTANCE_ID = `proc_${process.pid}_${Math.random().toString(36).slice(2, 8)}`;
 
 const MAX_PAIRING_RECONNECTS = 5;
 const MAX_CONSECUTIVE_RECONNECTS = 10;
+const LEASE_DURATION_MS = 60000; // 60s lease window
 
 // Cache WA version
 let cachedWAVersion = null;
@@ -54,13 +56,125 @@ let versionFetchedAt = 0;
 const VERSION_CACHE_TTL_MS = 30 * 60 * 1000;
 const FALLBACK_WA_VERSION = [2, 3000, 1043857760];
 
+// Silent logger implementation compatible with Baileys and makeCacheableSignalKeyStore
+const silentLogger = {
+  level: 'silent',
+  child: () => silentLogger,
+  trace: () => {},
+  debug: () => {},
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+  fatal: () => {},
+};
+
+// ── OUTBOUND MESSAGE RATE LIMITING QUEUE ─────────────────────────────────────
+// Enforces minimum inter-message delays with natural jitter to prevent WhatsApp rate bans & socket drops
+const outboundQueues = new Map();
+const isProcessingQueue = new Map();
+const MIN_OUTBOUND_DELAY_MS = 1400; // 1.4s minimum delay
+const JITTER_MAX_MS = 600;          // +0 to 600ms random jitter
+
+const enqueueOutbound = (sessionId, taskFn) => {
+  return new Promise((resolve, reject) => {
+    const sId = sessionId.toString();
+    if (!outboundQueues.has(sId)) {
+      outboundQueues.set(sId, []);
+    }
+    outboundQueues.get(sId).push({ taskFn, resolve, reject });
+    processOutboundQueue(sId);
+  });
+};
+
+const processOutboundQueue = async (sessionId) => {
+  const sId = sessionId.toString();
+  if (isProcessingQueue.get(sId)) return;
+  isProcessingQueue.set(sId, true);
+
+  const queue = outboundQueues.get(sId);
+  while (queue && queue.length > 0) {
+    const item = queue.shift();
+    try {
+      const res = await item.taskFn();
+      item.resolve(res);
+    } catch (err) {
+      item.reject(err);
+    }
+
+    if (queue.length > 0) {
+      const delay = MIN_OUTBOUND_DELAY_MS + Math.floor(Math.random() * JITTER_MAX_MS);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+
+  isProcessingQueue.set(sId, false);
+};
+
+// ── DISTRIBUTED LEASING (PM2 CLUSTER & MULTI-PROCESS FENCING) ────────────────
+const acquireLease = async (sessionId) => {
+  const sId = sessionId.toString();
+  const now = new Date();
+  const leaseExpiresAt = new Date(Date.now() + LEASE_DURATION_MS);
+
+  try {
+    const acquired = await WhatsAppSessionState.findOneAndUpdate(
+      {
+        sessionId: sId,
+        $or: [
+          { leaseOwner: null },
+          { leaseOwner: INSTANCE_ID },
+          { leaseExpiresAt: { $lt: now } },
+          { leaseExpiresAt: null },
+        ],
+      },
+      {
+        $set: {
+          leaseOwner: INSTANCE_ID,
+          leaseExpiresAt,
+        },
+      },
+      { new: true }
+    );
+
+    if (!acquired) {
+      const current = await WhatsAppSessionState.findOne({ sessionId: sId })
+        .select('leaseOwner leaseExpiresAt')
+        .lean();
+      console.warn(`[WA-Cluster] Session ${sId} is active in another worker (${current?.leaseOwner}). Skipping socket bind in current process.`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(`[WA-Cluster] Lease acquisition notice for ${sId}:`, err.message);
+    return true; // Fallback to allowing in case of non-fatal DB glitch
+  }
+};
+
+const renewLease = async (sessionId) => {
+  try {
+    await WhatsAppSessionState.updateOne(
+      { sessionId: sessionId.toString(), leaseOwner: INSTANCE_ID },
+      { $set: { leaseExpiresAt: new Date(Date.now() + LEASE_DURATION_MS) } }
+    );
+  } catch (e) {}
+};
+
+const releaseLease = async (sessionId) => {
+  try {
+    await WhatsAppSessionState.updateOne(
+      { sessionId: sessionId.toString(), leaseOwner: INSTANCE_ID },
+      { $set: { leaseOwner: null, leaseExpiresAt: null } }
+    );
+  } catch (e) {}
+};
+
 const getWAVersion = async (forceRefresh = false) => {
   const now = Date.now();
   if (!forceRefresh && cachedWAVersion && now - versionFetchedAt < VERSION_CACHE_TTL_MS) {
     return cachedWAVersion;
   }
   try {
-    const { version, isLatest } = await fetchLatestBaileysVersion();
+    const { version } = await fetchLatestBaileysVersion();
     cachedWAVersion = version;
     versionFetchedAt = now;
     return version;
@@ -111,7 +225,7 @@ const persistStateTransition = async (userId, updateData) => {
       nextRetryAt: nextState.nextRetryAt || null,
       requiresAction: !!nextState.requiresAction,
       leaseOwner: INSTANCE_ID,
-      leaseExpiresAt: new Date(Date.now() + 60000), // 60s lease
+      leaseExpiresAt: new Date(Date.now() + LEASE_DURATION_MS),
     };
 
     await WhatsAppSessionState.findOneAndUpdate(
@@ -199,33 +313,23 @@ const recordOutboundMessage = async (userId, to, text, mediaUrl = null, mediaTyp
   }
 };
 
+/**
+ * Socket Configuration Builder
+ * Uses in-memory Signal Key Store caching and tuned keep-alive timings
+ */
 const buildSocketOptions = async (state) => {
   const version = await getWAVersion();
   return {
     version,
-    auth: state,
-    printQRInTerminal: false,
-    logger: {
-      level: 'silent',
-      child: () => ({
-        level: 'silent',
-        trace: () => {},
-        debug: () => {},
-        info: () => {},
-        warn: () => {},
-        error: () => {},
-        fatal: () => {},
-      }),
-      trace: () => {},
-      debug: () => {},
-      info: () => {},
-      warn: () => {},
-      error: () => {},
-      fatal: () => {},
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, silentLogger),
     },
+    printQRInTerminal: false,
+    logger: silentLogger,
     browser: Browsers.ubuntu('Chrome'),
     connectTimeoutMs: 60000,
-    keepAliveIntervalMs: 25000,
+    keepAliveIntervalMs: 30000, // 30s ping keeps NAT & proxy connections alive
     defaultQueryTimeoutMs: 60000,
     retryRequestDelayMs: 2000,
     syncFullHistory: false,
@@ -279,7 +383,7 @@ const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
         const mongoose = require('mongoose');
         const Lead = mongoose.model('Lead');
         const ChatMessage = mongoose.model('ChatMessage');
-        const { broadcastNotification, broadcastChatMessage } = require('../utils/realtime');
+        const { broadcastChatMessage } = require('../utils/realtime');
         const { dispatchNotification } = require('./notificationService');
 
         const tenDigit = senderPhone.slice(-10);
@@ -378,7 +482,7 @@ const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
     }
   });
 
-  // Connection Update Event
+  // Connection Update Event with Smart Reconnect Filter & DisconnectReason Handling
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
@@ -392,40 +496,114 @@ const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
     }
 
     if (connection === 'close') {
-      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      const error = lastDisconnect?.error;
+      const statusCode = error?.output?.statusCode;
+      const errorMsg = (error?.message || '').toLowerCase();
+
       const isLoggedOut = statusCode === DisconnectReason.loggedOut;
-      const shouldReconnect = !isLoggedOut;
+      const isBadSession = statusCode === DisconnectReason.badSession;
+      const isMultideviceMismatch = statusCode === DisconnectReason.multideviceMismatch;
+      const isForbidden = statusCode === DisconnectReason.forbidden;
+      const isRestartRequired = statusCode === DisconnectReason.restartRequired || statusCode === 515;
+      const isConnectionReplaced = statusCode === DisconnectReason.connectionReplaced || statusCode === 440 || errorMsg.includes('conflict');
+      const isConnectionClosed = statusCode === DisconnectReason.connectionClosed || statusCode === 428;
+      const isTimedOut = statusCode === DisconnectReason.timedOut || statusCode === 408;
+      const isUnavailable = statusCode === DisconnectReason.unavailableService || statusCode === 503;
+      const isStreamError = errorMsg.includes('stream errored');
 
       const normalizedReason = isLoggedOut
         ? 'device_logged_out'
-        : statusCode === 515
+        : isBadSession
+        ? 'bad_session_corrupted'
+        : isRestartRequired
         ? 'restart_required'
-        : statusCode === 428
+        : isConnectionReplaced
+        ? 'connection_replaced_conflict'
+        : isConnectionClosed
         ? 'connection_closed'
-        : statusCode === 408
+        : isTimedOut
         ? 'timed_out'
+        : isStreamError
+        ? 'stream_errored'
+        : isUnavailable
+        ? 'service_unavailable'
         : 'network_drop';
 
-      console.log(`[WA] Connection closed for ${uIdStr}. Status: ${statusCode} (${normalizedReason}). Should Reconnect? ${shouldReconnect}`);
+      console.log(`[WA] Socket closed for ${uIdStr}. StatusCode: ${statusCode}, NormalizedReason: ${normalizedReason}`);
 
-      // Case 1: Remote logout or revoked credentials
-      if (isLoggedOut) {
-        console.log(`[WA] Explicit remote logout detected for user ${uIdStr}. Requiring re-authentication.`);
+      // ──────────────────────────────────────────────────────────────────────────
+      // CASE 1: FATAL DISCONNECTS (Clear auth, halt reconnect, notify user)
+      // ──────────────────────────────────────────────────────────────────────────
+      if (isLoggedOut || isBadSession || isMultideviceMismatch || isForbidden) {
+        console.warn(`[WA] Fatal disconnect for ${uIdStr} (${normalizedReason}). Clearing stored credentials.`);
+        await releaseLease(uIdStr);
         await persistStateTransition(userId, {
           status: STATES.AUTHENTICATION_REQUIRED,
           lastDisconnectAt: new Date(),
-          lastDisconnectReason: 'logged_out',
+          lastDisconnectReason: normalizedReason,
           requiresAction: true,
           phone: cleanPhone,
           pairingCode: null,
           qrCode: null,
         });
-        await notifyWhatsAppDisconnected(userId, cleanPhone, 'Session unlinked from phone. Please re-pair.').catch(() => {});
         await disconnect(userId, true, false);
+        await notifyWhatsAppDisconnected(userId, cleanPhone, 'Session unlinked from phone or auth expired. Please re-pair.').catch(() => {});
         return;
       }
 
-      // Case 2: During active pairing window
+      // ──────────────────────────────────────────────────────────────────────────
+      // CASE 2: CONFLICT / CONNECTION REPLACED (440)
+      // Another instance or rapid reload connected; release lease and cool down to avoid thrashing
+      // ──────────────────────────────────────────────────────────────────────────
+      if (isConnectionReplaced) {
+        console.warn(`[WA] Connection replaced/conflict detected for ${uIdStr}. Releasing lease and cooling down.`);
+        await releaseLease(uIdStr);
+        const attempts = (reconnectAttempts[uIdStr] || 0) + 1;
+        reconnectAttempts[uIdStr] = attempts;
+
+        if (attempts > 3) {
+          console.warn(`[WA] Repeated connection conflicts for ${uIdStr}. Pausing auto-reconnect to avoid socket fighting.`);
+          await persistStateTransition(userId, {
+            status: STATES.DEGRADED,
+            lastDisconnectAt: new Date(),
+            lastDisconnectReason: 'connection_conflict',
+            requiresAction: true,
+          });
+          return;
+        }
+
+        // Wait 7.5s before attempting re-acquisition to prevent ping-pong battle
+        setTimeout(async () => {
+          if (!pairingInProgress[uIdStr]) {
+            const canAcquire = await acquireLease(uIdStr);
+            if (canAcquire) {
+              await restoreSession(userId, cleanPhone).catch(console.error);
+            }
+          }
+        }, 7500);
+        return;
+      }
+
+      // ──────────────────────────────────────────────────────────────────────────
+      // CASE 3: IMMEDIATE RESTART REQUIRED (515)
+      // Normal Baileys stream reset or handshake refresh: reconnect quickly in 1.5s
+      // ──────────────────────────────────────────────────────────────────────────
+      if (isRestartRequired) {
+        console.log(`[WA] Server requested restart (515) for ${uIdStr}. Reconnecting in 1.5s...`);
+        setTimeout(async () => {
+          if (!pairingInProgress[uIdStr]) {
+            const canAcquire = await acquireLease(uIdStr);
+            if (canAcquire) {
+              await restoreSession(userId, cleanPhone).catch(console.error);
+            }
+          }
+        }, 1500);
+        return;
+      }
+
+      // ──────────────────────────────────────────────────────────────────────────
+      // CASE 4: PAIRING IN PROGRESS
+      // ──────────────────────────────────────────────────────────────────────────
       if (pairingInProgress[uIdStr]) {
         const pairingAttempt = (pairingReconnectAttempts[uIdStr] || 0) + 1;
         pairingReconnectAttempts[uIdStr] = pairingAttempt;
@@ -435,6 +613,7 @@ const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
           pairingInProgress[uIdStr] = false;
           delete pairingReconnectAttempts[uIdStr];
           delete pairingCodeLocks[uIdStr];
+          await releaseLease(uIdStr);
           await persistStateTransition(userId, {
             status: STATES.DISCONNECTED,
             phone: null,
@@ -456,64 +635,70 @@ const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
         return;
       }
 
-      // Case 3: Standard active session dropped (Recoverable Network Failure)
-      // Immediately set state to RECONNECTING so UI NEVER shows false "Connected"
-      if (shouldReconnect) {
-        const attempts = (reconnectAttempts[uIdStr] || 0) + 1;
-        reconnectAttempts[uIdStr] = attempts;
+      // ──────────────────────────────────────────────────────────────────────────
+      // CASE 5: RECOVERABLE TRANSIENT NETWORK DROPS (428, 408, Stream Errored)
+      // Bounded exponential backoff with jitter
+      // ──────────────────────────────────────────────────────────────────────────
+      const attempts = (reconnectAttempts[uIdStr] || 0) + 1;
+      reconnectAttempts[uIdStr] = attempts;
 
-        // Bounded exponential backoff with jitter (3s to max 60s)
-        const baseDelay = Math.min(3000 * Math.pow(1.5, Math.min(attempts, 8)), 60000);
-        const jitter = Math.floor(Math.random() * 2000);
-        const delayMs = baseDelay + jitter;
-        const nextRetryAt = new Date(Date.now() + delayMs);
-
-        if (attempts > MAX_CONSECUTIVE_RECONNECTS) {
-          console.warn(`[WA] Reconnect attempts exceeded (${attempts}) for user ${uIdStr}. Entering degraded cooldown.`);
-          await persistStateTransition(userId, {
-            status: STATES.DEGRADED,
-            lastDisconnectAt: new Date(),
-            lastDisconnectReason: normalizedReason,
-            nextRetryAt: new Date(Date.now() + 5 * 60 * 1000), // 5-minute cooldown
-            requiresAction: true,
-          });
-          await notifyWhatsAppDisconnected(userId, cleanPhone, 'Repeated reconnect attempts exhausted. Cooldown active.').catch(() => {});
-          return;
-        }
-
+      if (attempts > MAX_CONSECUTIVE_RECONNECTS) {
+        console.warn(`[WA] Reconnect attempts exceeded (${attempts}) for user ${uIdStr}. Entering degraded cooldown.`);
+        await releaseLease(uIdStr);
         await persistStateTransition(userId, {
-          status: STATES.RECONNECTING,
+          status: STATES.DEGRADED,
           lastDisconnectAt: new Date(),
           lastDisconnectReason: normalizedReason,
-          nextRetryAt,
-          requiresAction: false,
+          nextRetryAt: new Date(Date.now() + 5 * 60 * 1000), // 5-minute cooldown
+          requiresAction: true,
         });
+        await notifyWhatsAppDisconnected(userId, cleanPhone, 'Repeated reconnect attempts exhausted. Cooldown active.').catch(() => {});
+        return;
+      }
 
-        if (reconnectInProgress[uIdStr]) {
-          return;
-        }
-        reconnectInProgress[uIdStr] = true;
+      // Bounded exponential backoff with jitter (3s to max 60s)
+      const baseDelay = Math.min(3000 * Math.pow(1.5, Math.min(attempts, 8)), 60000);
+      const jitter = Math.floor(Math.random() * 2000);
+      const delayMs = baseDelay + jitter;
+      const nextRetryAt = new Date(Date.now() + delayMs);
 
-        console.log(`[WA] Scheduling auto-reconnect attempt #${attempts} in ${Math.round(delayMs / 1000)}s for user ${uIdStr}...`);
+      await persistStateTransition(userId, {
+        status: STATES.RECONNECTING,
+        lastDisconnectAt: new Date(),
+        lastDisconnectReason: normalizedReason,
+        nextRetryAt,
+        requiresAction: false,
+      });
 
-        setTimeout(async () => {
-          try {
-            if (!pairingInProgress[uIdStr]) {
-              const liveStatus = getStatus(userId);
-              if (liveStatus.status !== STATES.CONNECTED) {
+      if (reconnectInProgress[uIdStr]) {
+        return;
+      }
+      reconnectInProgress[uIdStr] = true;
+
+      console.log(`[WA] Scheduling auto-reconnect attempt #${attempts} in ${Math.round(delayMs / 1000)}s for user ${uIdStr}...`);
+
+      setTimeout(async () => {
+        try {
+          if (!pairingInProgress[uIdStr]) {
+            const liveStatus = getStatus(userId);
+            if (liveStatus.status !== STATES.CONNECTED) {
+              const canAcquire = await acquireLease(uIdStr);
+              if (canAcquire) {
                 await restoreSession(userId, cleanPhone);
               }
             }
-          } catch (err) {
-            console.error(`[WA] Auto-reconnect failed for ${uIdStr}:`, err.message);
-          } finally {
-            reconnectInProgress[uIdStr] = false;
           }
-        }, delayMs);
-      }
+        } catch (err) {
+          console.error(`[WA] Auto-reconnect failed for ${uIdStr}:`, err.message);
+        } finally {
+          reconnectInProgress[uIdStr] = false;
+        }
+      }, delayMs);
     } else if (connection === 'open') {
       console.log(`[WA] ✅ Connection confirmed live & authenticated for user ${uIdStr} (${cleanPhone})`);
-      const wasReconnecting = sessionStates[uIdStr]?.status === STATES.RECONNECTING || sessionStates[uIdStr]?.status === STATES.DEGRADED;
+      const wasReconnecting =
+        sessionStates[uIdStr]?.status === STATES.RECONNECTING ||
+        sessionStates[uIdStr]?.status === STATES.DEGRADED;
 
       await persistStateTransition(userId, {
         status: STATES.CONNECTED,
@@ -531,6 +716,7 @@ const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
       delete pairingCodeLocks[uIdStr];
       reconnectAttempts[uIdStr] = 0;
       updateActivity(uIdStr);
+      await renewLease(uIdStr);
 
       if (wasReconnecting) {
         notifyWhatsAppReconnected(userId, cleanPhone).catch(() => {});
@@ -542,9 +728,19 @@ const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
 const restoreSession = async (userId, cleanPhone) => {
   const uIdStr = userId.toString();
 
+  // PM2 Cluster & Multi-process lease fence
+  const canAcquire = await acquireLease(uIdStr);
+  if (!canAcquire) {
+    console.log(`[WA-Cluster] Skipping session restore for ${uIdStr}: managed by another instance.`);
+    return false;
+  }
+
   if (sessions[uIdStr]) {
     const old = sessions[uIdStr];
-    try { old.end(); } catch (e) {}
+    try {
+      old.ev.removeAllListeners();
+      old.end();
+    } catch (e) {}
     delete sessions[uIdStr];
   }
 
@@ -560,6 +756,7 @@ const restoreSession = async (userId, cleanPhone) => {
   sessions[uIdStr] = sock;
   updateActivity(uIdStr);
   setupSocketListeners(sock, userId, cleanPhone, saveCreds);
+  return true;
 };
 
 const connect = async (userId, phoneNumber) => {
@@ -597,12 +794,21 @@ const connect = async (userId, phoneNumber) => {
     throw new Error('A pairing code request is already in progress. Please wait a few seconds.');
   }
 
+  // Acquire lease
+  const canAcquire = await acquireLease(uIdStr);
+  if (!canAcquire) {
+    throw new Error('Another server instance is currently managing this WhatsApp session. Please try again shortly.');
+  }
+
   if (sessions[uIdStr]) {
     const old = sessions[uIdStr];
     delete sessions[uIdStr];
     delete pairingInProgress[uIdStr];
     delete pairingReconnectAttempts[uIdStr];
-    try { old.end(); } catch (e) {}
+    try {
+      old.ev.removeAllListeners();
+      old.end();
+    } catch (e) {}
   }
 
   await persistStateTransition(userId, {
@@ -675,6 +881,7 @@ const connect = async (userId, phoneNumber) => {
     pairingInProgress[uIdStr] = false;
     delete pairingCodeLocks[uIdStr];
     delete pairingReconnectAttempts[uIdStr];
+    await releaseLease(uIdStr);
     await persistStateTransition(userId, {
       status: STATES.DISCONNECTED,
       phone: null,
@@ -702,6 +909,7 @@ const disconnect = async (userId, clearSession = true, notifyRemote = true) => {
     }
 
     try {
+      sock.ev.removeAllListeners();
       sock.end();
     } catch (e) {}
     delete sessions[uIdStr];
@@ -713,6 +921,8 @@ const disconnect = async (userId, clearSession = true, notifyRemote = true) => {
   delete reconnectInProgress[uIdStr];
   delete pairingCodeLocks[uIdStr];
   lastActivityTimestamps.delete(uIdStr);
+
+  await releaseLease(uIdStr);
 
   await persistStateTransition(userId, {
     status: STATES.DISCONNECTED,
@@ -780,102 +990,106 @@ const getStatus = (userId) => {
 };
 
 const sendText = async (userId, to, text, callerUserId = null, callerName = null) => {
-  const user = await User.findById(userId).select('phone localization').lean();
-  const countryCode = user?.localization?.countryPhoneCode || '91';
+  return enqueueOutbound(userId.toString(), async () => {
+    const user = await User.findById(userId).select('phone localization').lean();
+    const countryCode = user?.localization?.countryPhoneCode || '91';
 
-  let sock = sessions[userId.toString()];
-  if (!sock || !sock.ws || sock.ws.readyState !== 1) {
-    const authExists = await WhatsAppAuth.findOne({ sessionId: userId.toString(), key: 'creds' }).lean();
-    if (authExists && user && user.phone) {
-      await restoreSession(userId, user.phone);
-      sock = sessions[userId.toString()];
+    let sock = sessions[userId.toString()];
+    if (!sock || !sock.ws || sock.ws.readyState !== 1) {
+      const authExists = await WhatsAppAuth.findOne({ sessionId: userId.toString(), key: 'creds' }).lean();
+      if (authExists && user && user.phone) {
+        await restoreSession(userId, user.phone);
+        sock = sessions[userId.toString()];
+      }
     }
-  }
 
-  if (!sock) {
-    throw new Error('WhatsApp is not connected for this account.');
-  }
+    if (!sock) {
+      throw new Error('WhatsApp is not connected for this account.');
+    }
 
-  const { jid } = normalizePhoneAndJid(to, countryCode);
-  const result = await sock.sendMessage(jid, { text });
-  updateActivity(userId);
-  await recordOutboundMessage(callerUserId || userId, to, text);
-  return result;
+    const { jid } = normalizePhoneAndJid(to, countryCode);
+    const result = await sock.sendMessage(jid, { text });
+    updateActivity(userId);
+    await recordOutboundMessage(callerUserId || userId, to, text);
+    return result;
+  });
 };
 
 const sendMedia = async (userId, to, mediaArg, callerUserId = null, callerName = null) => {
-  let mediaPath = mediaArg;
-  let caption = '';
-  let mediaType = null;
+  return enqueueOutbound(userId.toString(), async () => {
+    let mediaPath = mediaArg;
+    let caption = '';
+    let mediaType = null;
 
-  if (mediaArg && typeof mediaArg === 'object' && !Array.isArray(mediaArg)) {
-    if (mediaArg.image) {
-      mediaPath = mediaArg.image;
-      mediaType = 'image';
-    } else if (mediaArg.video) {
-      mediaPath = mediaArg.video;
-      mediaType = 'video';
-    } else if (mediaArg.document) {
-      mediaPath = mediaArg.document;
-      mediaType = 'document';
-    } else if (mediaArg.audio) {
-      mediaPath = mediaArg.audio;
-      mediaType = 'audio';
-    } else if (mediaArg.url || mediaArg.mediaUrl) {
-      mediaPath = mediaArg.url || mediaArg.mediaUrl;
+    if (mediaArg && typeof mediaArg === 'object' && !Array.isArray(mediaArg)) {
+      if (mediaArg.image) {
+        mediaPath = mediaArg.image;
+        mediaType = 'image';
+      } else if (mediaArg.video) {
+        mediaPath = mediaArg.video;
+        mediaType = 'video';
+      } else if (mediaArg.document) {
+        mediaPath = mediaArg.document;
+        mediaType = 'document';
+      } else if (mediaArg.audio) {
+        mediaPath = mediaArg.audio;
+        mediaType = 'audio';
+      } else if (mediaArg.url || mediaArg.mediaUrl) {
+        mediaPath = mediaArg.url || mediaArg.mediaUrl;
+      }
+      caption = mediaArg.text || mediaArg.caption || '';
+      if (mediaArg.type) mediaType = mediaArg.type;
     }
-    caption = mediaArg.text || mediaArg.caption || '';
-    if (mediaArg.type) mediaType = mediaArg.type;
-  }
 
-  if (Array.isArray(mediaPath)) {
-    mediaPath = mediaPath[0];
-  }
-
-  const user = await User.findById(userId).select('phone localization').lean();
-  const countryCode = user?.localization?.countryPhoneCode || '91';
-
-  let sock = sessions[userId.toString()];
-  if (!sock || !sock.ws || sock.ws.readyState !== 1) {
-    const authExists = await WhatsAppAuth.findOne({ sessionId: userId.toString(), key: 'creds' }).lean();
-    if (authExists && user && user.phone) {
-      await restoreSession(userId, user.phone);
-      sock = sessions[userId.toString()];
+    if (Array.isArray(mediaPath)) {
+      mediaPath = mediaPath[0];
     }
-  }
 
-  if (!sock) {
-    throw new Error('WhatsApp is not connected for this account.');
-  }
+    const user = await User.findById(userId).select('phone localization').lean();
+    const countryCode = user?.localization?.countryPhoneCode || '91';
 
-  const { jid } = normalizePhoneAndJid(to, countryCode);
-  const mediaSource = resolveMediaSource(mediaPath);
-  if (!mediaSource) throw new Error('Could not resolve media source file');
+    let sock = sessions[userId.toString()];
+    if (!sock || !sock.ws || sock.ws.readyState !== 1) {
+      const authExists = await WhatsAppAuth.findOne({ sessionId: userId.toString(), key: 'creds' }).lean();
+      if (authExists && user && user.phone) {
+        await restoreSession(userId, user.phone);
+        sock = sessions[userId.toString()];
+      }
+    }
 
-  const captionText = typeof caption === 'string' && caption.trim().length > 0 ? caption.trim() : undefined;
+    if (!sock) {
+      throw new Error('WhatsApp is not connected for this account.');
+    }
 
-  let payload = {};
-  if (mediaType === 'image') {
-    payload = { image: mediaSource, caption: captionText };
-  } else if (mediaType === 'video') {
-    payload = { video: mediaSource, caption: captionText };
-  } else if (mediaType === 'audio') {
-    payload = { audio: mediaSource, mimetype: 'audio/mp4' };
-  } else {
-    const fileName = typeof mediaPath === 'string' && path.basename(mediaPath) ? path.basename(mediaPath) : 'document.pdf';
-    payload = { document: mediaSource, mimetype: 'application/pdf', fileName, caption: captionText };
-  }
+    const { jid } = normalizePhoneAndJid(to, countryCode);
+    const mediaSource = resolveMediaSource(mediaPath);
+    if (!mediaSource) throw new Error('Could not resolve media source file');
 
-  const result = await sock.sendMessage(jid, payload);
-  updateActivity(userId);
-  await recordOutboundMessage(
-    callerUserId || userId,
-    to,
-    caption || `[Media attachment: ${mediaType || 'document'}]`,
-    typeof mediaPath === 'string' ? mediaPath : null,
-    mediaType
-  );
-  return result;
+    const captionText = typeof caption === 'string' && caption.trim().length > 0 ? caption.trim() : undefined;
+
+    let payload = {};
+    if (mediaType === 'image') {
+      payload = { image: mediaSource, caption: captionText };
+    } else if (mediaType === 'video') {
+      payload = { video: mediaSource, caption: captionText };
+    } else if (mediaType === 'audio') {
+      payload = { audio: mediaSource, mimetype: 'audio/mp4' };
+    } else {
+      const fileName = typeof mediaPath === 'string' && path.basename(mediaPath) ? path.basename(mediaPath) : 'document.pdf';
+      payload = { document: mediaSource, mimetype: 'application/pdf', fileName, caption: captionText };
+    }
+
+    const result = await sock.sendMessage(jid, payload);
+    updateActivity(userId);
+    await recordOutboundMessage(
+      callerUserId || userId,
+      to,
+      caption || `[Media attachment: ${mediaType || 'document'}]`,
+      typeof mediaPath === 'string' ? mediaPath : null,
+      mediaType
+    );
+    return result;
+  });
 };
 
 const sendFromAnyActiveSession = async (to, text) => {
@@ -895,15 +1109,20 @@ const sendFromAnyActiveSession = async (to, text) => {
 };
 
 // Startup session restoration
-const initSessions = async () => {
+// Sockets do NOT auto-connect on server launch unless explicitly requested with { force: true }
+const initSessions = async (options = {}) => {
+  if (!options || !options.force) {
+    console.log('⚡ [WA] WhatsApp auto-connect on server launch is disabled (on-demand mode active).');
+    return [];
+  }
+
   try {
     const sessionsWithCreds = await WhatsAppAuth.distinct('sessionId', { key: 'creds' });
-    console.log(`[WA] Found ${sessionsWithCreds.length} stored WhatsApp credentials in MongoDB.`);
+    console.log(`[WA] Found ${sessionsWithCreds.length} stored WhatsApp credentials in MongoDB. Force restoring...`);
 
     for (const uId of sessionsWithCreds) {
       const user = await User.findById(uId).select('phone').lean();
       const phoneToUse = user?.phone || 'whatsapp';
-      console.log(`[WA] Restoring registered MongoDB session for user ${uId} (${phoneToUse})`);
       try {
         await restoreSession(uId, phoneToUse);
       } catch (e) {
@@ -915,7 +1134,8 @@ const initSessions = async () => {
   }
 };
 
-// Background Heartbeat & Self-Healing Engine (Every 30 seconds)
+// Background Heartbeat, Lease Renewal & Zombie Watchdog (Every 30 seconds)
+// ONLY monitors sessions that are currently alive in this process; does NOT resurrect offline sessions!
 let isHeartbeatRunning = false;
 const healFailureCooldowns = new Map();
 
@@ -923,34 +1143,53 @@ const heartbeatTimer = setInterval(async () => {
   if (isHeartbeatRunning) return;
   isHeartbeatRunning = true;
   try {
-    const sessionsWithCreds = await WhatsAppAuth.distinct('sessionId', { key: 'creds' });
+    const activeUserIds = Object.keys(sessions);
     const now = Date.now();
 
-    for (const uId of sessionsWithCreds) {
+    for (const uId of activeUserIds) {
       if (pairingInProgress[uId]) continue;
 
-      const cooldown = healFailureCooldowns.get(String(uId));
-      if (cooldown && now < cooldown.nextAllowedAt) {
-        continue;
-      }
+      const sock = sessions[uId];
+      if (!sock) continue;
 
-      const st = getStatus(uId);
-      const isDeadSocket = !sessions[uId] || !sessions[uId].ws || sessions[uId].ws.readyState !== 1;
+      const isLive = sock.ws && sock.ws.readyState === 1;
 
-      if (isDeadSocket || (st.status !== STATES.CONNECTED && st.status !== STATES.CONNECTING)) {
-        const user = await User.findById(uId).select('phone').lean();
-        console.log(`[WA-Heartbeat] Auto-healing offline WhatsApp session for user ${uId}...`);
-        try {
-          await restoreSession(uId, user?.phone || 'whatsapp');
-          healFailureCooldowns.delete(String(uId));
-        } catch (err) {
-          const failCount = (cooldown?.failCount || 0) + 1;
-          const cooldownMs = Math.min(60000 * Math.pow(2, Math.min(failCount - 1, 4)), 600000);
-          healFailureCooldowns.set(String(uId), { nextAllowedAt: now + cooldownMs, failCount });
-          console.warn(`[WA-Heartbeat] Session heal retry notice for ${uId}:`, err.message);
+      if (isLive) {
+        // 1. Renew lease for this process
+        await renewLease(uId);
+
+        // 2. Zombie socket watchdog: if no activity for 3 minutes, perform lightweight ping/check
+        const lastActive = lastActivityTimestamps.get(uId) || now;
+        if (now - lastActive > 180000) {
+          try {
+            if (sock.ws.ping) {
+              sock.ws.ping();
+            }
+          } catch (pingErr) {
+            console.warn(`[WA-Heartbeat] Zombie socket detected for user ${uId}. Re-establishing connection...`);
+            const user = await User.findById(uId).select('phone').lean();
+            await restoreSession(uId, user?.phone || 'whatsapp');
+          }
         }
       } else {
-        healFailureCooldowns.delete(String(uId));
+        // Socket unexpectedly dropped while session state is active
+        const st = sessionStates[uId];
+        if (st && st.status !== STATES.DISCONNECTED && st.status !== STATES.AUTHENTICATION_REQUIRED) {
+          const cooldown = healFailureCooldowns.get(String(uId));
+          if (cooldown && now < cooldown.nextAllowedAt) continue;
+
+          console.log(`[WA-Heartbeat] Recovering dropped connection for active user ${uId}...`);
+          try {
+            const user = await User.findById(uId).select('phone').lean();
+            await restoreSession(uId, user?.phone || 'whatsapp');
+            healFailureCooldowns.delete(String(uId));
+          } catch (err) {
+            const failCount = (cooldown?.failCount || 0) + 1;
+            const cooldownMs = Math.min(60000 * Math.pow(2, Math.min(failCount - 1, 4)), 600000);
+            healFailureCooldowns.set(String(uId), { nextAllowedAt: now + cooldownMs, failCount });
+            console.warn(`[WA-Heartbeat] Session restore error for ${uId}:`, err.message);
+          }
+        }
       }
     }
   } catch (e) {
@@ -966,14 +1205,16 @@ if (heartbeatTimer && heartbeatTimer.unref) {
 
 // Graceful Process Termination (does NOT treat server shutdown as user logout!)
 const handleGracefulShutdown = async (signal) => {
-  console.log(`\n[WA] Received ${signal}. Closing Baileys WebSockets cleanly without logging out...`);
+  console.log(`\n[WA] Received ${signal || 'SIGTERM'}. Closing Baileys WebSockets cleanly without logging out...`);
   const activeIds = Object.keys(sessions);
   for (const uId of activeIds) {
     try {
       const sock = sessions[uId];
       if (sock) {
+        sock.ev.removeAllListeners();
         sock.end();
       }
+      await releaseLease(uId);
       await WhatsAppSessionState.updateOne(
         { sessionId: uId },
         {
@@ -1003,4 +1244,5 @@ module.exports = {
   restoreSession,
   normalizePhoneAndJid,
   closeAllSessions: handleGracefulShutdown,
+  isClientReady: () => Object.values(sessions).some(s => s && s.ws && s.ws.readyState === 1),
 };

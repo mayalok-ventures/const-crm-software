@@ -64,6 +64,7 @@ router.get('/threads/:threadId', requirePermission('email.view'), emailControlle
 router.get('/lead/:leadId', requirePermission('email.view'), emailController.getLeadEmailHistory);
 
 // Sending & Drafts
+router.get('/placeholders', requirePermission('email.view'), emailController.getPlaceholders);
 router.post('/send', requirePermission('email.send'), upload.array('attachments', 10), emailController.sendEmail);
 router.post('/drafts', requirePermission('email.send'), emailController.saveDraft);
 
@@ -71,6 +72,9 @@ router.post('/drafts', requirePermission('email.send'), emailController.saveDraf
 router.patch('/messages/:id/read', requirePermission('email.view'), emailController.markRead);
 router.patch('/messages/:id/star', requirePermission('email.view'), emailController.markStarred);
 router.patch('/messages/:id/folder', requirePermission('email.view'), emailController.moveFolder);
+router.post('/messages/:id/send-now', requirePermission('email.send'), emailController.sendScheduledNow);
+router.post('/messages/:id/cancel-schedule', requirePermission('email.send'), emailController.cancelScheduled);
+router.delete('/trash', requirePermission('email.view'), emailController.emptyTrash);
 router.delete('/messages/:id', requirePermission('email.view'), emailController.deleteMessage);
 
 module.exports = router;

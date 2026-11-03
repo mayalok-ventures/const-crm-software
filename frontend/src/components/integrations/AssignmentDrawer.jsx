@@ -13,16 +13,22 @@ export default function AssignmentDrawer({ integration, isOpen = true, onClose, 
   const [fallbackUserId, setFallbackUserId] = useState('');
   const [skipInactive, setSkipInactive] = useState(true);
   const [counselorPool, setCounselorPool] = useState([]);
+  const [duplicatePolicy, setDuplicatePolicy] = useState('create_inquiry');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (integration?.assignmentRule) {
-      const rule = integration.assignmentRule;
-      setRuleType(rule.type || 'round_robin');
-      setSpecificCounselorId(rule.specificCounselorId || '');
-      setFallbackUserId(rule.fallbackUserId || '');
-      setSkipInactive(rule.skipInactive !== false);
-      setCounselorPool(Array.isArray(rule.counselorPool) ? rule.counselorPool : []);
+    if (integration) {
+      if (integration.assignmentRule) {
+        const rule = integration.assignmentRule;
+        setRuleType(rule.type || 'round_robin');
+        setSpecificCounselorId(rule.specificCounselorId || '');
+        setFallbackUserId(rule.fallbackUserId || '');
+        setSkipInactive(rule.skipInactive !== false);
+        setCounselorPool(Array.isArray(rule.counselorPool) ? rule.counselorPool : []);
+      }
+      if (integration.duplicatePolicy) {
+        setDuplicatePolicy(integration.duplicatePolicy);
+      }
     }
   }, [integration]);
 
@@ -32,6 +38,7 @@ export default function AssignmentDrawer({ integration, isOpen = true, onClose, 
     setSaving(true);
     try {
       await api.patch(`/integrations/${integration._id}`, {
+        duplicatePolicy,
         assignmentRule: {
           type: ruleType,
           specificCounselorId: specificCounselorId || null,
@@ -127,6 +134,22 @@ export default function AssignmentDrawer({ integration, isOpen = true, onClose, 
               ))}
             </select>
             <p className="text-[11px] text-slate-400 mt-1">If the assigned counselor is deleted, disabled, or over capacity, leads fall back to this user.</p>
+          </div>
+
+          {/* Duplicate / Re-Inquiry Policy */}
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold text-slate-300">Repeat Submissions & Duplicate Contacts</label>
+            <select
+              value={duplicatePolicy}
+              onChange={(e) => setDuplicatePolicy(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-white text-xs focus:outline-none focus:border-purple-500"
+            >
+              <option value="create_inquiry">Attach Inquiry & Reactivate (Recommended — Updates details, sets HOT, moves to Lead Received)</option>
+              <option value="create_lead">Always Create Brand New Lead (Separate lead row for every form submission)</option>
+              <option value="merge_activity">Merge Activity Only (Appends activity without changing stage)</option>
+              <option value="skip">Skip Duplicates (Ignore repeat submissions)</option>
+            </select>
+            <p className="text-[11px] text-slate-400 mt-1">Controls how Meta, Google, and Webhook leads matching an existing phone number are processed.</p>
           </div>
 
           <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800">

@@ -8,6 +8,7 @@ const waSession = require('./waSession');
 const MetaWhatsAppService = require('./whatsapp/metaWhatsAppService');
 const EmailService = require('./email/emailService');
 const { cacheService } = require('../config/redis');
+const { resolvePlaceholders } = require('../utils/placeholderResolver');
 
 function escapeRegExp(str) {
   return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -37,49 +38,21 @@ class AutomationEngine {
   static replaceVariables(text, { lead = {}, user = {}, custom = {} }) {
     if (!text || typeof text !== 'string') return '';
 
-    const learnerName = lead.name || custom.name || 'Student';
-    const courseName =
-      lead.course ||
-      lead.customData?.course ||
-      lead.customData?.programName ||
-      lead.customData?.targetExam ||
-      custom.course ||
-      'our program';
-    const phoneNum = lead.phone || custom.phone || '';
-    const emailAddr = lead.email || custom.email || '';
-    const cityName = lead.city || lead.customData?.city || custom.city || '';
-    const currentStage = lead.status || '';
-    const counselorName = lead.assignedToName || user?.name || custom.counselorName || 'Admissions Counselor';
-    const counselorPhone = user?.phone || lead.assignedToPhone || custom.counselorPhone || custom.phone || '';
-    const counselorEmail = user?.email || lead.assignedToEmail || custom.counselorEmail || '';
-    const companyName =
-      user?.companyName ||
-      user?.workspaceName ||
-      user?.workspace?.name ||
-      user?.organizationName ||
-      custom?.companyName ||
-      custom?.workspaceName ||
-      'Admissions Desk';
-    const sourceName = lead.source || custom.source || '';
-    const payableAmount = String(lead.payable_amount || lead.customData?.feeAmount || custom.amount || '');
+    const mergedCustom = {
+      name: lead?.name || custom?.name || 'Student',
+      course:
+        lead?.course ||
+        lead?.targetCourse ||
+        lead?.customData?.course ||
+        lead?.customData?.programName ||
+        lead?.customData?.targetExam ||
+        custom?.course ||
+        'our program',
+      counselorName: lead?.assignedToName || user?.name || custom?.counselorName || 'Admissions Counselor',
+      ...custom,
+    };
 
-    return text
-      .replace(/{{\s*name\s*}}/gi, learnerName)
-      .replace(/{{\s*course\s*}}/gi, courseName)
-      .replace(/{{\s*phone\s*}}/gi, phoneNum)
-      .replace(/{{\s*email\s*}}/gi, emailAddr)
-      .replace(/{{\s*city\s*}}/gi, cityName)
-      .replace(/{{\s*stage\s*}}/gi, currentStage)
-      .replace(/{{\s*counselorName\s*}}/gi, counselorName)
-      .replace(/{{\s*counsellorName\s*}}/gi, counselorName)
-      .replace(/{{\s*counselorPhone\s*}}/gi, counselorPhone)
-      .replace(/{{\s*counsellorPhone\s*}}/gi, counselorPhone)
-      .replace(/{{\s*counselorEmail\s*}}/gi, counselorEmail)
-      .replace(/{{\s*counsellorEmail\s*}}/gi, counselorEmail)
-      .replace(/{{\s*companyName\s*}}/gi, companyName)
-      .replace(/{{\s*source\s*}}/gi, sourceName)
-      .replace(/{{\s*amount\s*}}/gi, payableAmount)
-      .replace(/{{\s*payable_amount\s*}}/gi, payableAmount);
+    return resolvePlaceholders(text, { lead, user, custom: mergedCustom });
   }
 
   /**

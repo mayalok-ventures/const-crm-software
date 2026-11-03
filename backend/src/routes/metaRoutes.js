@@ -36,6 +36,8 @@ router.post('/sync/:integrationId', protect, metaWebhookController.syncNow);
 router.post('/:integrationId/sync', protect, metaWebhookController.syncNow);
 router.get('/', protect, metaIntegrationController.getIntegrations);
 router.get('/assets', protect, metaIntegrationController.getAssets);
+router.get('/forms', protect, metaIntegrationController.getIntegratedForms);
+router.delete('/forms/:formId', protect, metaIntegrationController.deleteIntegratedForm);
 router.get('/forms/:formId/questions', protect, metaIntegrationController.getFormQuestions);
 router.post('/configure', protect, metaIntegrationController.configure);
 router.post('/test', protect, metaIntegrationController.testConnection);

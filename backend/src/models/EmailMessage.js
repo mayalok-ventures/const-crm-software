@@ -8,7 +8,7 @@ const mongoose = require('mongoose');
 const emailRecipientSchema = new mongoose.Schema(
   {
     name: { type: String, default: '', trim: true },
-    email: { type: String, required: true, lowercase: true, trim: true },
+    email: { type: String, lowercase: true, trim: true, default: '' },
   },
   { _id: false }
 );
@@ -94,8 +94,18 @@ const emailMessageSchema = new mongoose.Schema(
     },
     to: {
       type: [emailRecipientSchema],
-      required: true,
-      validate: [v => Array.isArray(v) && v.length > 0, 'At least one recipient is required in To'],
+      default: [],
+      validate: {
+        validator: function (v) {
+          // Allow empty recipients when saving drafts
+          if (this.folder === 'drafts' || this.status === 'draft') {
+            return true;
+          }
+          // Sent or scheduled messages require at least one valid recipient
+          return Array.isArray(v) && v.length > 0 && v.some(r => r && r.email && r.email.trim().length > 0);
+        },
+        message: 'At least one recipient with a valid email is required to send or schedule an email',
+      },
     },
     cc: {
       type: [emailRecipientSchema],

@@ -5,6 +5,7 @@ const Lead = require('../../models/Lead');
 const leadIngestionService = require('../../services/integrations/leadIngestionService');
 const { encrypt, decrypt } = require('../../utils/encryption');
 const META_CONFIG = require('../../config/meta');
+const { notifyIntegrationDisconnected } = require('../../utils/integrationNotifier');
 
 function getTenantQuery(user) {
   if (!user) return { _id: null };
@@ -236,37 +237,41 @@ exports.configure = async (req, res) => {
     const apiVersion = META_CONFIG.GRAPH_API_VERSION;
     let pageAccessToken = null;
 
-    // Resolve Page Access Token
-    if (String(integration.pageId) === String(pageId) && integration.accessTokenEncrypted) {
-      pageAccessToken = decrypt(integration.accessTokenEncrypted);
-    } else {
-      // If switching pages, retrieve Page Access Token using user token from /me/accounts
-      const userToken = integration.metadata?.userAccessTokenEncrypted
-        ? decrypt(integration.metadata.userAccessTokenEncrypted)
-        : (integration.accessTokenEncrypted ? decrypt(integration.accessTokenEncrypted) : null);
+    // Resolve Page Access Token safely
+    try {
+      if (String(integration.pageId) === String(pageId) && integration.accessTokenEncrypted) {
+        pageAccessToken = decrypt(integration.accessTokenEncrypted);
+      } else {
+        // If switching pages, retrieve Page Access Token using user token from /me/accounts
+        const userToken = integration.metadata?.userAccessTokenEncrypted
+          ? decrypt(integration.metadata.userAccessTokenEncrypted)
+          : (integration.accessTokenEncrypted ? decrypt(integration.accessTokenEncrypted) : null);
 
-      if (userToken) {
-        try {
-          const accountsRes = await axios.get(
-            `${META_CONFIG.GRAPH_BASE_URL}/${apiVersion}/me/accounts`,
-            {
-              params: {
-                fields: 'id,name,access_token',
-                access_token: userToken,
-              },
-              timeout: 10000,
+        if (userToken) {
+          try {
+            const accountsRes = await axios.get(
+              `${META_CONFIG.GRAPH_BASE_URL}/${apiVersion}/me/accounts`,
+              {
+                params: {
+                  fields: 'id,name,access_token',
+                  access_token: userToken,
+                },
+                timeout: 10000,
+              }
+            );
+            const foundPage = (accountsRes.data?.data || []).find((p) => String(p.id) === String(pageId));
+            if (foundPage?.access_token) {
+              pageAccessToken = foundPage.access_token;
+              // Update integration with page-specific access token
+              integration.accessTokenEncrypted = encrypt(pageAccessToken);
             }
-          );
-          const foundPage = (accountsRes.data?.data || []).find((p) => String(p.id) === String(pageId));
-          if (foundPage?.access_token) {
-            pageAccessToken = foundPage.access_token;
-            // Update integration with page-specific access token
-            integration.accessTokenEncrypted = encrypt(pageAccessToken);
+          } catch (accErr) {
+            console.warn('[Meta configure] Could not fetch page access token from /me/accounts:', accErr.message);
           }
-        } catch (accErr) {
-          console.warn('[Meta configure] Could not fetch page access token from /me/accounts:', accErr.message);
         }
       }
+    } catch (tokenErr) {
+      console.warn('[Meta configure] Token decryption warning:', tokenErr.message);
     }
 
     // Subscribe Meta app to page leadgen webhooks via Graph API
@@ -298,9 +303,34 @@ exports.configure = async (req, res) => {
       }
     }
 
-    integration.pageId = String(pageId).trim();
-    integration.pageName = (pageName || integration.pageName || 'Facebook Page').trim();
-    integration.formIds = formIds.map((id) => String(id).trim());
+    integration.pageId = String(pageId || integration.pageId || '').trim();
+    if (pageName) {
+      integration.pageName = String(pageName).trim();
+    }
+    // Merge new formIds with existing formIds so configuring one form never drops others
+    const formIdSet = new Set((integration.formIds || []).map((id) => String(id).trim()).filter(Boolean));
+    for (const id of formIds) {
+      if (id) formIdSet.add(String(id).trim());
+    }
+    if (formRouting && typeof formRouting === 'object') {
+      for (const fId of Object.keys(formRouting)) {
+        if (fId) formIdSet.add(String(fId).trim());
+      }
+    }
+    integration.formIds = Array.from(formIdSet);
+
+    // Track multiple connected pages in metadata
+    if (!integration.metadata) integration.metadata = {};
+    const existingPageIds = new Set((integration.metadata.pageIds || []).map(String));
+    if (integration.pageId) existingPageIds.add(String(integration.pageId));
+    if (pageId) existingPageIds.add(String(pageId).trim());
+    integration.metadata.pageIds = Array.from(existingPageIds);
+
+    if (pageAccessToken && pageId) {
+      if (!integration.metadata.pageTokens) integration.metadata.pageTokens = {};
+      integration.metadata.pageTokens[String(pageId).trim()] = encrypt(pageAccessToken);
+    }
+
     integration.webhookSubscribed = webhookSubscribed;
     integration.lastSyncAt = new Date();
     if (Array.isArray(fieldMapping) && fieldMapping.length > 0) {
@@ -324,9 +354,9 @@ exports.configure = async (req, res) => {
 
     if (formRouting && typeof formRouting === 'object') {
       try {
-        const activeFormIdStrings = formIds.map((id) => String(id).trim());
+        const activeFormIdStrings = Object.keys(formRouting).map((id) => String(id).trim());
 
-        // 1. Process active mappings
+        // 1. Process active mappings for each form
         for (const [fId, config] of Object.entries(formRouting)) {
           if (!config || !config.campaignGroupId) continue;
           const cleanFormId = String(fId).trim();
@@ -364,12 +394,12 @@ exports.configure = async (req, res) => {
               displayName: campName,
               campaignName: campName,
               status: 'active',
-              connectionId: String(pageId).trim(),
-              connectionName: String(pageName || 'Facebook Page').trim(),
+              connectionId: String(pageId || integration.pageId || '').trim(),
+              connectionName: String(pageName || integration.pageName || 'Facebook Page').trim(),
               integrationId: integration._id,
               routingRules: {
                 metaFormIds: [cleanFormId],
-                metaPageIds: [String(pageId).trim()],
+                metaPageIds: [String(pageId || integration.pageId || '').trim()].filter(Boolean),
               },
               fieldMapping: subFieldMapping,
               assignmentRule: integration.assignmentRule || { type: 'round_robin' },
@@ -400,8 +430,8 @@ exports.configure = async (req, res) => {
                 integrationId: integration._id,
                 provider: 'meta',
                 sourceName: (config.formName || `Meta Form ${cleanFormId}`).trim(),
-                externalAccountId: String(pageId).trim(),
-                externalAccountName: String(pageName || '').trim(),
+                externalAccountId: String(pageId || integration.pageId || '').trim(),
+                externalAccountName: String(pageName || integration.pageName || '').trim(),
                 externalFormId: cleanFormId,
                 externalFormName: (config.formName || '').trim(),
                 campaignGroupId: targetCampaign._id,
@@ -429,18 +459,20 @@ exports.configure = async (req, res) => {
           });
         }
 
-        // 2. Pause subscriptions for forms that were unselected
-        await LeadSourceSubscription.updateMany(
-          {
-            ...(companyId ? { companyId } : { userId: req.user._id }),
-            provider: 'meta',
-            integrationId: integration._id,
-            externalFormId: { $nin: activeFormIdStrings },
-          },
-          {
-            $set: { status: 'paused' },
-          }
-        );
+        // ONLY pause other forms if replaceOtherForms is explicitly requested
+        if (req.body.replaceOtherForms === true) {
+          await LeadSourceSubscription.updateMany(
+            {
+              ...(companyId ? { companyId } : { userId: req.user._id }),
+              provider: 'meta',
+              integrationId: integration._id,
+              externalFormId: { $nin: activeFormIdStrings },
+            },
+            {
+              $set: { status: 'paused' },
+            }
+          );
+        }
       } catch (subErr) {
         console.warn('[Meta configure] Form subscription configuration warning:', subErr.message);
       }
@@ -507,6 +539,7 @@ exports.testConnection = async (req, res) => {
         name: req.body.name || 'Sarah Connor (Meta Test Lead)',
         phone: req.body.phone || '919876543210',
         email: req.body.email || 'sarah.connor@meta-ads-test.com',
+        formId: req.body.formId || undefined,
         formName: req.body.formName || 'Instagram Instant Lead Form',
         campaignName: req.body.campaignName || 'Summer Enterprise Promo 2026',
         adSetName: req.body.adSetName || 'High Net Worth Retargeting',
@@ -602,6 +635,15 @@ exports.disconnect = async (req, res) => {
 
     await integration.save();
 
+    // Immediate disconnect notification specifying exact reason
+    await notifyIntegrationDisconnected({
+      userId: integration.userId,
+      companyId: integration.companyId,
+      provider: 'meta',
+      integrationName: integration.pageName || integration.pageId || 'Meta Page',
+      reason: req.body?.reason || `Explicitly disconnected by ${req.user.name || req.user.email || 'user'}`,
+    });
+
     return res.json({
       success: true,
       message: 'Meta integration disconnected successfully',
@@ -692,6 +734,173 @@ exports.getFormQuestions = async (req, res) => {
     return res.status(error.response?.status || 500).json({
       success: false,
       message: error.response?.data?.error?.message || error.message || 'Failed to retrieve form questions',
+    });
+  }
+};
+
+/**
+ * GET /api/integrations/meta/forms
+ * Returns all currently integrated Meta forms with their mapped campaign,
+ * field mappings, status, and lead capture counts.
+ */
+exports.getIntegratedForms = async (req, res) => {
+  try {
+    const tenantQuery = getTenantQuery(req.user);
+    const integrationId = req.query.integrationId;
+
+    let integration = null;
+    if (integrationId && mongoose.Types.ObjectId.isValid(integrationId)) {
+      integration = await Integration.findOne({
+        _id: integrationId,
+        ...tenantQuery,
+        provider: 'meta',
+      });
+    }
+    if (!integration) {
+      integration = await Integration.findOne({
+        ...tenantQuery,
+        provider: 'meta',
+        status: { $ne: 'disconnected' },
+      });
+    }
+
+    if (!integration) {
+      return res.json({
+        success: true,
+        forms: [],
+      });
+    }
+
+    const LeadSourceSubscription = require('../../models/LeadSourceSubscription');
+    const companyId = req.user.companyId || (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? req.user._id : null);
+
+    const subscriptions = await LeadSourceSubscription.find({
+      ...(companyId ? { companyId } : { userId: req.user._id }),
+      provider: 'meta',
+      integrationId: integration._id,
+      status: 'active',
+    })
+      .populate('campaignGroupId', 'name displayName campaignName platform status leadCount')
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .lean();
+
+    const forms = subscriptions.map((sub) => ({
+      subscriptionId: sub._id,
+      formId: String(sub.externalFormId),
+      formName: sub.externalFormName || sub.sourceName || `Meta Form ${sub.externalFormId}`,
+      pageId: sub.externalAccountId || integration.pageId || '',
+      pageName: sub.externalAccountName || integration.pageName || '',
+      campaign: sub.campaignGroupId ? {
+        _id: sub.campaignGroupId._id,
+        name: sub.campaignGroupId.displayName || sub.campaignGroupId.name || sub.campaignGroupId.campaignName,
+        platform: sub.campaignGroupId.platform,
+      } : null,
+      fieldMapping: Array.isArray(sub.fieldMapping) ? sub.fieldMapping : [],
+      totalLeadsCount: sub.totalLeadsCount || 0,
+      lastLeadAt: sub.lastLeadAt || null,
+      status: sub.status || 'active',
+      createdAt: sub.createdAt,
+      updatedAt: sub.updatedAt,
+    }));
+
+    return res.json({
+      success: true,
+      integration: {
+        _id: integration._id,
+        pageId: integration.pageId,
+        pageName: integration.pageName,
+        totalForms: forms.length,
+      },
+      forms,
+    });
+  } catch (error) {
+    console.error('getIntegratedForms error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve integrated Meta forms',
+    });
+  }
+};
+
+/**
+ * DELETE /api/integrations/meta/forms/:formId
+ * Unlinks a specific integrated Meta form without affecting other forms
+ */
+exports.deleteIntegratedForm = async (req, res) => {
+  try {
+    const { formId } = req.params;
+    const { integrationId } = req.query;
+    const tenantQuery = getTenantQuery(req.user);
+    const cleanFormId = String(formId).trim();
+
+    let integration = null;
+    if (integrationId && mongoose.Types.ObjectId.isValid(integrationId)) {
+      integration = await Integration.findOne({
+        _id: integrationId,
+        ...tenantQuery,
+        provider: 'meta',
+      });
+    }
+    if (!integration) {
+      integration = await Integration.findOne({
+        ...tenantQuery,
+        provider: 'meta',
+        status: { $ne: 'disconnected' },
+      });
+    }
+
+    if (!integration) {
+      return res.status(404).json({
+        success: false,
+        message: 'Meta integration not found or unauthorized',
+      });
+    }
+
+    const LeadSourceSubscription = require('../../models/LeadSourceSubscription');
+    const Campaign = require('../../models/Campaign');
+    const companyId = req.user.companyId || (req.user.companyRole === 'owner' || req.user.workStatus === 'company_owner' ? req.user._id : null);
+
+    // 1. Remove subscription
+    const sub = await LeadSourceSubscription.findOne({
+      ...(companyId ? { companyId } : { userId: req.user._id }),
+      provider: 'meta',
+      externalFormId: cleanFormId,
+    });
+
+    if (sub) {
+      await LeadSourceSubscription.deleteOne({ _id: sub._id });
+      if (sub.campaignGroupId) {
+        await Campaign.findByIdAndUpdate(sub.campaignGroupId, {
+          $pull: { 'routingRules.metaFormIds': cleanFormId },
+        }).catch(() => null);
+      }
+    }
+
+    // 2. Remove formId from integration.formIds
+    integration.formIds = (integration.formIds || []).filter((id) => String(id).trim() !== cleanFormId);
+    await integration.save();
+
+    // 3. Remove formId from any Campaign routingRules
+    await Campaign.updateMany(
+      {
+        ...tenantQuery,
+        'routingRules.metaFormIds': cleanFormId,
+      },
+      {
+        $pull: { 'routingRules.metaFormIds': cleanFormId },
+      }
+    ).catch(() => null);
+
+    return res.json({
+      success: true,
+      message: `Meta form ${cleanFormId} unlinked successfully`,
+      remainingFormIds: integration.formIds,
+    });
+  } catch (error) {
+    console.error('deleteIntegratedForm error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to unlink Meta form',
     });
   }
 };

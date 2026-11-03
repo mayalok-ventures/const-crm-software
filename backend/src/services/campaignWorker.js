@@ -34,6 +34,7 @@ const CampaignLog = require('../models/CampaignLog');
 const Lead = require('../models/Lead');
 const Group = require('../models/Group');
 const waSession = require('./waSession');
+const { resolvePlaceholders } = require('../utils/placeholderResolver');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -121,12 +122,8 @@ const processCampaign = async (campaignId) => {
 
       const lead = leads[i];
 
-      // Personalize template
-      const text = (campaign.template || '')
-        .replace(/{name}/gi, lead.name || '')
-        .replace(/{phone}/gi, lead.phone || '')
-        .replace(/{company}/gi, lead.company || '')
-        .trim();
+      // Personalize template with full canonical CRM placeholder resolver
+      const text = resolvePlaceholders(campaign.template || '', { lead }).trim();
 
       // Attempt send with retries
       let sent = false;
