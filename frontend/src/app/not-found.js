@@ -12,7 +12,18 @@ const AcceptInviteClient = dynamic(() => import('@/components/AcceptInviteClient
 const DashboardPage = dynamic(() => import('@/app/dashboard/page'), { ssr: false });
 
 export default function NotFound() {
-  const [resolvedComponent, setResolvedComponent] = useState(null);
+  const [resolvedComponent, setResolvedComponent] = useState(() => {
+    if (typeof window === 'undefined') return null;
+    const rawPath = window.location.pathname || '';
+    const path = rawPath.replace(/\/+$/, '') || '/';
+    if (path.startsWith('/leads/') && path.split('/')[2]) return 'lead';
+    if (path.startsWith('/campaigns/') && path.split('/')[2]) return 'campaign';
+    if (path.startsWith('/share/') && path.split('/')[2]) return 'share';
+    if ((path.startsWith('/catalogue/') || path.startsWith('/colleges/')) && path.split('/')[2]) return 'college';
+    if (path.startsWith('/invite/') && path.split('/')[2]) return 'invite';
+    if (path === '/dashboard') return 'dashboard';
+    return null;
+  });
   const [user, setUser] = useState(null);
   const [mounted, setMounted] = useState(false);
 
@@ -69,6 +80,14 @@ export default function NotFound() {
 
   if (resolvedComponent === 'invite') {
     return <AcceptInviteClient />;
+  }
+
+  if (!mounted) {
+    return (
+      <div className="app-shell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh' }}>
+        <div className="spinner" />
+      </div>
+    );
   }
 
   const handleReturnToDashboard = () => {

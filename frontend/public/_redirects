@@ -1,8 +1,8 @@
 /_next/* /_next/:splat 200
 /static/* /static/:splat 200
-/leads/* /leads/placeholder.html 200
-/campaigns/* /campaigns/placeholder.html 200
-/colleges/* /colleges/placeholder.html 200
-/catalogue/* /catalogue/placeholder.html 200
-/invite/* /invite/placeholder.html 200
-/share/* /share/placeholder.html 200
+/leads/* /leads/placeholder 200
+/campaigns/* /campaigns/placeholder 200
+/colleges/* /colleges/placeholder 200
+/catalogue/* /catalogue/placeholder 200
+/invite/* /invite/placeholder 200
+/share/* /share/placeholder 200

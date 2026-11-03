@@ -117,10 +117,10 @@ console.log('\n9️⃣ Verifying Cloudflare Pages _redirects for dynamic routes.
 const redirectsPath = path.join(__dirname, '../public/_redirects');
 assert.ok(fs.existsSync(redirectsPath), '_redirects must exist');
 const redirectsContent = fs.readFileSync(redirectsPath, 'utf8');
-assert.ok(redirectsContent.includes('/leads/* /leads/placeholder.html 200'), 'leads dynamic route must rewrite to placeholder.html');
-assert.ok(redirectsContent.includes('/campaigns/* /campaigns/placeholder.html 200'), 'campaigns dynamic route must rewrite to placeholder.html');
-assert.ok(redirectsContent.includes('/colleges/* /colleges/placeholder.html 200'), 'colleges dynamic route must rewrite to placeholder.html');
-console.log('  ✅ Cloudflare Pages _redirects correctly rewrites all dynamic routes to exported static placeholders');
+assert.ok(redirectsContent.includes('/leads/* /leads/placeholder 200'), 'leads dynamic route must rewrite to placeholder without .html to prevent Cloudflare 308 redirect loops');
+assert.ok(redirectsContent.includes('/campaigns/* /campaigns/placeholder 200'), 'campaigns dynamic route must rewrite to placeholder without .html');
+assert.ok(redirectsContent.includes('/colleges/* /colleges/placeholder 200'), 'colleges dynamic route must rewrite to placeholder without .html');
+console.log('  ✅ Cloudflare Pages _redirects correctly rewrites all dynamic routes to exported static placeholders without redirect loops');
 
 // 10. Verify BottomNav prevents default reload on persistent tab clicks
 console.log('\n🔟 Verifying BottomNav preventDefault() on persistent tabs...');
