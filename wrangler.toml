@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 # Upstream Render backend service URL (update with your actual Render URL if different)
 BACKEND_URL = "https://sahyak-api.onrender.com"
-ALLOWED_ORIGINS = "https://app.sahyak.com,https://crm.sahyak.com"
+ALLOWED_ORIGINS = "https://app.sahyak.com"
 ENVIRONMENT = "production"
 
 # Custom domain routing for api-app.sahyak.com
