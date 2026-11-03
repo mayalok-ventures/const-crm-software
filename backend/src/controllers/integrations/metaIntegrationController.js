@@ -332,15 +332,40 @@ exports.configure = async (req, res) => {
           const cleanFormId = String(fId).trim();
 
           // STRICT MULTI-TENANT VERIFICATION: Target campaign must belong to authenticated tenant
-          const targetCampaign = await Campaign.findOne({
-            _id: config.campaignGroupId,
-            ...tenantQuery,
-            status: { $nin: ['archived', 'cancelled'] },
-          });
+          let targetCampaign = null;
+          if (config.campaignGroupId && config.campaignGroupId !== '__auto_create__') {
+            targetCampaign = await Campaign.findOne({
+              _id: config.campaignGroupId,
+              ...tenantQuery,
+              status: { $nin: ['archived', 'cancelled'] },
+            });
+          }
 
+          // Auto-provision inbound campaign if none exists or __auto_create__ requested
           if (!targetCampaign) {
-            console.warn(`[Meta configure] Tenant ${req.user._id} attempted to map form ${cleanFormId} to unauthorized or inactive campaign ${config.campaignGroupId}`);
-            continue;
+            const campName = (config.newCampaignName || (config.formName ? `${config.formName} (Meta Leads)` : `Meta Inbound Leads (${pageName || 'Facebook'})`)).trim();
+            targetCampaign = await Campaign.create({
+              companyId,
+              userId: req.user._id,
+              platform: 'meta',
+              type: 'inbound',
+              name: campName,
+              displayName: campName,
+              campaignName: campName,
+              status: 'active',
+              connectionId: String(pageId).trim(),
+              connectionName: String(pageName || 'Facebook Page').trim(),
+              integrationId: integration._id,
+              routingRules: {
+                metaFormIds: [cleanFormId],
+                metaPageIds: [String(pageId).trim()],
+              },
+              fieldMapping: subFieldMapping,
+              assignmentRule: integration.assignmentRule || { type: 'round_robin' },
+              leadCount: 0,
+              leadsGenerated: 0,
+            });
+            console.log(`[Meta configure] Auto-created inbound campaign "${campName}" (${targetCampaign._id}) for tenant ${req.user._id}`);
           }
 
           // Clean up old campaign routing if destination changed

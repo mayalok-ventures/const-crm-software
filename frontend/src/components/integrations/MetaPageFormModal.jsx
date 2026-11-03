@@ -329,17 +329,16 @@ export default function MetaPageFormModal({
       toast.error('Please select a Meta Lead Form');
       return;
     }
-    if (!selectedCampaignId) {
-      toast.error('Please select a destination CRM Campaign');
-      return;
-    }
+
+    const effectiveCampaignId = selectedCampaignId || '__auto_create__';
 
     setSaving(true);
     try {
       const formRouting = {
         [selectedFormId]: {
-          campaignGroupId: selectedCampaignId,
+          campaignGroupId: effectiveCampaignId,
           formName: selectedForm?.formName || `Meta Form ${selectedFormId}`,
+          newCampaignName: `${selectedForm?.formName || 'Meta'} Leads`,
           fieldMapping: mappings.filter((m) => m.crmField !== 'ignore'),
         },
       };
@@ -801,18 +800,27 @@ export default function MetaPageFormModal({
               <div className="space-y-5">
                 <div>
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                    Select Target CRM Campaign Group
+                    Target CRM Campaign Destination
                   </label>
                   {campaigns.length === 0 ? (
-                    <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-800 text-xs text-slate-400">
-                      No inbound campaigns found. A default inbound campaign will be automatically provisioned for your leads.
+                    <div className="p-4 rounded-xl bg-blue-600/10 border border-blue-500/30 text-xs text-blue-300 space-y-2">
+                      <div className="flex items-center gap-2 font-semibold text-white">
+                        <Sparkles className="w-4 h-4 text-blue-400" />
+                        Automatic Campaign Creation
+                      </div>
+                      <p className="text-slate-300 text-[11px] leading-relaxed">
+                        A dedicated inbound campaign named <strong className="text-blue-300">"{selectedForm?.formName ? `${selectedForm.formName} (Meta Leads)` : 'Meta Inbound Leads'}"</strong> will be automatically provisioned in your CRM to store and manage these applicants!
+                      </p>
                     </div>
                   ) : (
                     <select
-                      value={selectedCampaignId}
+                      value={selectedCampaignId || '__auto_create__'}
                       onChange={(e) => setSelectedCampaignId(e.target.value)}
                       className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
                     >
+                      <option value="__auto_create__">
+                        ✨ Auto-Create Dedicated Campaign ("{selectedForm?.formName ? `${selectedForm.formName} (Meta Leads)` : 'Meta Inbound Leads'}")
+                      </option>
                       {campaigns.map((c) => (
                         <option key={c._id} value={c._id}>
                           {c.displayName || c.name || c.campaignName} ({c.type || 'inbound'})
@@ -837,12 +845,16 @@ export default function MetaPageFormModal({
                       <p className="text-white font-medium">{selectedForm?.formName || `Meta Form ${selectedFormId}`}</p>
                     </div>
                     <div className="p-3 rounded-xl bg-slate-900 border border-slate-800/80 space-y-1">
-                      <span className="text-[10px] text-slate-400 block font-semibold uppercase">Mapped Questions</span>
-                      <p className="text-emerald-400 font-medium">{mappings.filter((m) => m.crmField !== 'ignore').length} CRM Fields Mapped</p>
+                      <span className="text-[10px] text-slate-400 block font-semibold uppercase">Destination Campaign</span>
+                      <p className="text-white font-medium">
+                        {campaigns.find((c) => String(c._id) === String(selectedCampaignId))?.displayName ||
+                          campaigns.find((c) => String(c._id) === String(selectedCampaignId))?.name ||
+                          `✨ ${selectedForm?.formName ? `${selectedForm.formName} (Meta Leads)` : 'Meta Inbound Leads'}`}
+                      </p>
                     </div>
                     <div className="p-3 rounded-xl bg-slate-900 border border-slate-800/80 space-y-1">
-                      <span className="text-[10px] text-slate-400 block font-semibold uppercase">Sync Mode</span>
-                      <p className="text-blue-400 font-medium">Real-Time Instant Webhook</p>
+                      <span className="text-[10px] text-slate-400 block font-semibold uppercase">Mapped Questions</span>
+                      <p className="text-emerald-400 font-medium">{mappings.filter((m) => m.crmField !== 'ignore').length} CRM Fields Mapped</p>
                     </div>
                   </div>
                 </div>
