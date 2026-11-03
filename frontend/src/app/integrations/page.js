@@ -84,12 +84,15 @@ export default function IntegrationsPage() {
       setApiError(null);
       const res = await api.get('/integrations');
       const list = res.data?.integrations || res.data?.data || (Array.isArray(res.data) ? res.data : []);
-      setIntegrations(Array.isArray(list) ? list : []);
+      const sanitized = Array.isArray(list) ? list : [];
+      setIntegrations(sanitized);
+      return sanitized;
     } catch (err) {
       console.error('Fetch integrations error:', err);
       const errorMsg = err.response?.data?.message || err.message || 'Unable to connect to integration backend';
       setApiError(errorMsg);
       toast.error(errorMsg);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -158,7 +161,14 @@ export default function IntegrationsPage() {
       if (integrationStatus === 'meta_success' || metaStatus === 'connected') {
         toast.success('Meta Ads account connected successfully! 🔵');
         window.history.replaceState({}, document.title, window.location.pathname);
-        fetchIntegrations();
+        fetchIntegrations().then((list) => {
+          if (Array.isArray(list)) {
+            const metaInt = list.find((i) => i.provider === 'meta' && i.status === 'connected') || list.find((i) => i.provider === 'meta');
+            if (metaInt) {
+              setMetaPageFormModalIntegration(metaInt);
+            }
+          }
+        });
       } else if (integrationStatus === 'meta_error' || metaStatus === 'error') {
         const errorMsg = params.get('message') || 'Connection failed';
         toast.error(`Meta connection failed: ${errorMsg}`);
@@ -239,7 +249,13 @@ export default function IntegrationsPage() {
 
       if (result.success) {
         toast.success('Meta Ads account connected successfully! 🔵');
-        fetchIntegrations();
+        const list = await fetchIntegrations();
+        if (Array.isArray(list)) {
+          const metaInt = list.find((i) => i.provider === 'meta' && i.status === 'connected') || list.find((i) => i.provider === 'meta');
+          if (metaInt) {
+            setMetaPageFormModalIntegration(metaInt);
+          }
+        }
         return result;
       } else if (result.cancelled) {
         // User closed popup without completing

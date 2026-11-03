@@ -183,6 +183,11 @@ export default function ChannelsList({
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
                 Connected Page: {metaList[0].pageName || metaList[0].pageId || 'Default Page'}
               </div>
+              <div style={{ fontSize: 11, color: '#2563eb', fontWeight: 600, marginBottom: 4 }}>
+                {metaList[0].formIds?.length > 0
+                  ? `${metaList[0].formIds.length} Form${metaList[0].formIds.length === 1 ? '' : 's'} Configured • ${metaList[0].fieldMapping?.length || 0} Fields Mapped`
+                  : 'Needs Lead Form & Field Mapping'}
+              </div>
               <div
                 style={{
                   fontSize: 11,
@@ -293,7 +298,7 @@ export default function ChannelsList({
                   Assignment
                 </button>
                 <button
-                  onClick={() => onOpenFieldMapping(metaList[0])}
+                  onClick={() => onOpenMetaPageForm?.(metaList[0])}
                   style={{
                     background: 'var(--bg)',
                     border: '1px solid var(--border)',
@@ -316,10 +321,10 @@ export default function ChannelsList({
               <button
                 onClick={() => onOpenMetaPageForm?.(metaList[0])}
                 style={{
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border)',
+                  background: 'rgba(37, 99, 235, 0.08)',
+                  border: '1px solid rgba(37, 99, 235, 0.3)',
                   borderRadius: 8,
-                  padding: '8px 10px',
+                  padding: '9px 12px',
                   fontSize: 12,
                   fontWeight: 600,
                   cursor: 'pointer',
@@ -331,7 +336,7 @@ export default function ChannelsList({
                 }}
               >
                 <Sliders size={13} />
-                Configure Page & Lead Forms
+                Map Lead Forms & Questions
               </button>
 
               <button

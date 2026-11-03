@@ -117,17 +117,30 @@ exports.getAssets = async (req, res) => {
       }
     }
 
-    // 2. Fetch Lead Forms for each page with cursor pagination
+    // Always ensure the already-connected page from the integration record is present
+    if (integration.pageId) {
+      const exists = pages.some((p) => String(p.id) === String(integration.pageId));
+      if (!exists) {
+        pages.unshift({
+          id: String(integration.pageId),
+          name: integration.pageName || 'Connected Facebook Page',
+          access_token: accessToken,
+        });
+      }
+    }
+
+    // 2. Fetch Lead Forms for each page with cursor pagination and questions
     const assets = [];
 
     for (const page of pages) {
       const forms = [];
       const pageToken = page.access_token || accessToken;
+      let formFetchError = null;
 
       try {
         let nextFormsUrl = `${META_CONFIG.GRAPH_BASE_URL}/${apiVersion}/${page.id}/leadgen_forms`;
         let formParams = {
-          fields: 'id,name,status,leads_count',
+          fields: 'id,name,status,leads_count,questions,created_time',
           access_token: pageToken,
           limit: 50,
         };
@@ -145,17 +158,40 @@ exports.getAssets = async (req, res) => {
           formParams = {};
         }
       } catch (e) {
-        console.warn(`Forms fetch error for page ${page.id}:`, e.message);
+        formFetchError = e.response?.data?.error?.message || e.message;
+        console.warn(`Forms fetch error for page ${page.id}:`, formFetchError);
+
+        // Fallback attempt with userAccessToken if pageToken failed
+        if (userAccessToken && userAccessToken !== pageToken) {
+          try {
+            const fallbackRes = await axios.get(`${META_CONFIG.GRAPH_BASE_URL}/${apiVersion}/${page.id}/leadgen_forms`, {
+              params: {
+                fields: 'id,name,status,leads_count,questions,created_time',
+                access_token: userAccessToken,
+                limit: 50,
+              },
+              timeout: 15000,
+            });
+            const fBatch = fallbackRes.data?.data || [];
+            forms.push(...fBatch);
+            formFetchError = null;
+          } catch (e2) {
+            console.warn(`Forms fallback fetch error for page ${page.id}:`, e2.message);
+          }
+        }
       }
 
       assets.push({
         pageId: String(page.id),
         pageName: page.name || 'Facebook Page',
+        formFetchError,
         forms: forms.map((f) => ({
           formId: String(f.id),
           formName: f.name || `Form ${f.id}`,
           status: f.status || 'ACTIVE',
           leadsCount: f.leads_count || 0,
+          questions: Array.isArray(f.questions) ? f.questions : [],
+          createdTime: f.created_time || null,
         })),
       });
     }
@@ -180,7 +216,7 @@ exports.getAssets = async (req, res) => {
  */
 exports.configure = async (req, res) => {
   try {
-    const { integrationId, pageId, pageName, formIds = [] } = req.body;
+    const { integrationId, pageId, pageName, formIds = [], formRouting = {}, fieldMapping = [] } = req.body;
     const tenantQuery = getTenantQuery(req.user);
 
     const integration = await Integration.findOne({
@@ -267,6 +303,9 @@ exports.configure = async (req, res) => {
     integration.formIds = formIds.map((id) => String(id).trim());
     integration.webhookSubscribed = webhookSubscribed;
     integration.lastSyncAt = new Date();
+    if (Array.isArray(fieldMapping) && fieldMapping.length > 0) {
+      integration.fieldMapping = fieldMapping;
+    }
     if (subscriptionWarning) {
       integration.lastError = `Webhook subscription notice: ${subscriptionWarning}`;
     } else {
@@ -283,12 +322,12 @@ exports.configure = async (req, res) => {
 
     const savedMappings = [];
 
-    if (req.body.formRouting && typeof req.body.formRouting === 'object') {
+    if (formRouting && typeof formRouting === 'object') {
       try {
         const activeFormIdStrings = formIds.map((id) => String(id).trim());
 
         // 1. Process active mappings
-        for (const [fId, config] of Object.entries(req.body.formRouting)) {
+        for (const [fId, config] of Object.entries(formRouting)) {
           if (!config || !config.campaignGroupId) continue;
           const cleanFormId = String(fId).trim();
 
@@ -317,6 +356,10 @@ exports.configure = async (req, res) => {
             }).catch(() => null);
           }
 
+          const subFieldMapping = (config.fieldMapping && Array.isArray(config.fieldMapping) && config.fieldMapping.length > 0)
+            ? config.fieldMapping
+            : (Array.isArray(fieldMapping) && fieldMapping.length > 0 ? fieldMapping : (existingSub?.fieldMapping || []));
+
           const updatedSub = await LeadSourceSubscription.findOneAndUpdate(
             {
               ...(companyId ? { companyId } : { userId: req.user._id }),
@@ -336,6 +379,7 @@ exports.configure = async (req, res) => {
                 externalFormId: cleanFormId,
                 externalFormName: (config.formName || '').trim(),
                 campaignGroupId: targetCampaign._id,
+                fieldMapping: subFieldMapping,
                 status: 'active',
                 healthStatus: 'healthy',
                 lastError: '',
@@ -347,6 +391,7 @@ exports.configure = async (req, res) => {
           // Dual-compatibility: also add form ID to campaign routingRules
           await Campaign.findByIdAndUpdate(targetCampaign._id, {
             $addToSet: { 'routingRules.metaFormIds': cleanFormId },
+            ...(subFieldMapping.length > 0 ? { $set: { fieldMapping: subFieldMapping } } : {}),
           }).catch(() => null);
 
           savedMappings.push({
@@ -354,6 +399,7 @@ exports.configure = async (req, res) => {
             formName: config.formName || '',
             campaignId: targetCampaign._id,
             campaignName: targetCampaign.displayName || targetCampaign.name || targetCampaign.campaignName,
+            fieldCount: subFieldMapping.length,
           });
         }
 
@@ -542,3 +588,84 @@ exports.disconnect = async (req, res) => {
     });
   }
 };
+
+/**
+ * GET /api/integrations/meta/forms/:formId/questions
+ * Returns real question fields from a Meta lead generation form
+ */
+exports.getFormQuestions = async (req, res) => {
+  try {
+    const { formId } = req.params;
+    const { integrationId } = req.query;
+    const tenantQuery = getTenantQuery(req.user);
+
+    const integration = await Integration.findOne({
+      _id: integrationId,
+      ...tenantQuery,
+      provider: 'meta',
+    }).select('+accessTokenEncrypted');
+
+    if (!integration) {
+      return res.status(404).json({
+        success: false,
+        message: 'Meta integration not found',
+      });
+    }
+
+    const accessToken = integration.accessTokenEncrypted
+      ? decrypt(integration.accessTokenEncrypted)
+      : null;
+
+    const userAccessToken = integration.metadata?.userAccessTokenEncrypted
+      ? decrypt(integration.metadata.userAccessTokenEncrypted)
+      : accessToken;
+
+    const apiVersion = META_CONFIG.GRAPH_API_VERSION;
+
+    let formRes = null;
+    try {
+      formRes = await axios.get(
+        `${META_CONFIG.GRAPH_BASE_URL}/${apiVersion}/${formId}`,
+        {
+          params: {
+            fields: 'id,name,status,leads_count,questions,context_card',
+            access_token: accessToken || userAccessToken,
+          },
+          timeout: 10000,
+        }
+      );
+    } catch (err1) {
+      if (userAccessToken && userAccessToken !== accessToken) {
+        formRes = await axios.get(
+          `${META_CONFIG.GRAPH_BASE_URL}/${apiVersion}/${formId}`,
+          {
+            params: {
+              fields: 'id,name,status,leads_count,questions,context_card',
+              access_token: userAccessToken,
+            },
+            timeout: 10000,
+          }
+        );
+      } else {
+        throw err1;
+      }
+    }
+
+    const formData = formRes.data || {};
+    return res.json({
+      success: true,
+      data: {
+        formId: String(formData.id || formId),
+        formName: formData.name || `Form ${formId}`,
+        status: formData.status || 'ACTIVE',
+        questions: Array.isArray(formData.questions) ? formData.questions : [],
+      },
+    });
+  } catch (error) {
+    console.error('Meta getFormQuestions error:', error.response?.data || error.message);
+    return res.status(error.response?.status || 500).json({
+      success: false,
+      message: error.response?.data?.error?.message || error.message || 'Failed to retrieve form questions',
+    });
+  }
+};
