@@ -256,8 +256,11 @@ if (typeof window !== 'undefined') {
       clearAllQueryCache();
     }
   });
-  window.addEventListener('user-updated', () => {
-    clearAllQueryCache();
+  window.addEventListener('user-updated', (e) => {
+    // Only flush queryCache when user logs out (detail is null/undefined)
+    if (!e?.detail) {
+      clearAllQueryCache();
+    }
   });
 }
 

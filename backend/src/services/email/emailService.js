@@ -598,6 +598,9 @@ class EmailService {
   /**
    * Mark message read / unread
    */
+  /**
+   * Mark message read / unread and sync with provider
+   */
   static async markMessageRead(workspaceId, messageId, isRead = true, user = null) {
     const authorizedAccountIds = await this.getAuthorizedAccountIds(workspaceId, user);
     const filter = { _id: messageId, workspaceId };
@@ -608,11 +611,27 @@ class EmailService {
       { isRead: Boolean(isRead) },
       { new: true }
     );
+
+    if (msg && msg.providerMessageId) {
+      EmailAccount.findById(msg.accountId)
+        .select('+accessTokenEncrypted +refreshTokenEncrypted')
+        .then((account) => {
+          if (account && account.provider === 'gmail') {
+            const { GmailAdapter } = require('./emailProviderAdapters');
+            return GmailAdapter.modifyMessage(account, msg.providerMessageId, {
+              removeLabelIds: isRead ? ['UNREAD'] : [],
+              addLabelIds: !isRead ? ['UNREAD'] : [],
+            });
+          }
+        })
+        .catch(() => {});
+    }
+
     return msg;
   }
 
   /**
-   * Mark message starred
+   * Mark message starred and sync with provider
    */
   static async markMessageStarred(workspaceId, messageId, isStarred = true, user = null) {
     const authorizedAccountIds = await this.getAuthorizedAccountIds(workspaceId, user);
@@ -624,11 +643,27 @@ class EmailService {
       { isStarred: Boolean(isStarred) },
       { new: true }
     );
+
+    if (msg && msg.providerMessageId) {
+      EmailAccount.findById(msg.accountId)
+        .select('+accessTokenEncrypted +refreshTokenEncrypted')
+        .then((account) => {
+          if (account && account.provider === 'gmail') {
+            const { GmailAdapter } = require('./emailProviderAdapters');
+            return GmailAdapter.modifyMessage(account, msg.providerMessageId, {
+              addLabelIds: isStarred ? ['STARRED'] : [],
+              removeLabelIds: !isStarred ? ['STARRED'] : [],
+            });
+          }
+        })
+        .catch(() => {});
+    }
+
     return msg;
   }
 
   /**
-   * Move message to folder (trash, archive, inbox, etc.)
+   * Move message to folder (trash, archive, inbox, etc.) and sync with provider
    */
   static async moveMessageFolder(workspaceId, messageId, targetFolder, user = null) {
     const validFolders = ['inbox', 'sent', 'drafts', 'scheduled', 'trash', 'archive'];
@@ -640,11 +675,36 @@ class EmailService {
     const filter = { _id: messageId, workspaceId };
     if (authorizedAccountIds !== null) filter.accountId = { $in: authorizedAccountIds };
 
+    const oldMsg = await EmailMessage.findOne(filter);
+    if (!oldMsg) throw new Error('Message not found');
+    const oldFolder = oldMsg.folder;
+
     const msg = await EmailMessage.findOneAndUpdate(
       filter,
       { folder: targetFolder },
       { new: true }
     );
+
+    // Sync label change with provider if supported
+    EmailAccount.findById(msg.accountId)
+      .select('+accessTokenEncrypted +refreshTokenEncrypted')
+      .then(async (account) => {
+        if (!account || account.provider !== 'gmail' || !msg.providerMessageId) return;
+        const { GmailAdapter } = require('./emailProviderAdapters');
+
+        if (targetFolder === 'trash') {
+          await GmailAdapter.trashMessage(account, msg.providerMessageId);
+        } else if (targetFolder === 'archive') {
+          await GmailAdapter.modifyMessage(account, msg.providerMessageId, { removeLabelIds: ['INBOX'] });
+        } else if (targetFolder === 'inbox') {
+          if (oldFolder === 'trash') {
+            await GmailAdapter.untrashMessage(account, msg.providerMessageId);
+          }
+          await GmailAdapter.modifyMessage(account, msg.providerMessageId, { addLabelIds: ['INBOX'] });
+        }
+      })
+      .catch((err) => console.warn('[EmailService] Provider folder update notice:', err.message));
+
     return msg;
   }
 
@@ -656,16 +716,222 @@ class EmailService {
     const filter = { _id: messageId, workspaceId };
     if (authorizedAccountIds !== null) filter.accountId = { $in: authorizedAccountIds };
 
+    const msg = await EmailMessage.findOne(filter);
+    if (!msg) return { success: false, message: 'Message not found' };
+
+    const account = await EmailAccount.findById(msg.accountId)
+      .select('+accessTokenEncrypted +refreshTokenEncrypted');
+
     if (permanent) {
+      if (account && account.provider === 'gmail' && msg.providerMessageId) {
+        const { GmailAdapter } = require('./emailProviderAdapters');
+        await GmailAdapter.deleteMessage(account, msg.providerMessageId).catch(() => {});
+      }
       await EmailMessage.deleteOne(filter);
       return { success: true, permanent: true };
     }
-    const msg = await EmailMessage.findOneAndUpdate(
-      filter,
-      { folder: 'trash' },
-      { new: true }
-    );
+
+    if (account && account.provider === 'gmail' && msg.providerMessageId) {
+      const { GmailAdapter } = require('./emailProviderAdapters');
+      await GmailAdapter.trashMessage(account, msg.providerMessageId).catch(() => {});
+    }
+
+    msg.folder = 'trash';
+    await msg.save();
     return { success: true, message: msg };
+  }
+
+  /**
+   * Synchronize messages from an email provider account into CRM EmailMessage collection
+   */
+  static async syncAccountMessages(account, options = {}) {
+    if (!account || account.status === 'disconnected') {
+      return { syncedCount: 0, updatedCount: 0 };
+    }
+
+    const Adapter = getProviderAdapter(account.provider);
+    if (!Adapter || typeof Adapter.syncMessages !== 'function') {
+      return { syncedCount: 0, updatedCount: 0 };
+    }
+
+    try {
+      const messages = await Adapter.syncMessages(account, options);
+      let syncedCount = 0;
+      let updatedCount = 0;
+
+      for (const msg of messages) {
+        if (!msg || !msg.providerMessageId) continue;
+
+        const existing = await EmailMessage.findOne({
+          workspaceId: account.workspaceId,
+          accountId: account._id,
+          providerMessageId: msg.providerMessageId,
+        });
+
+        if (existing) {
+          let updated = false;
+          if (existing.folder !== msg.folder) {
+            existing.folder = msg.folder;
+            updated = true;
+          }
+          if (existing.isRead !== msg.isRead) {
+            existing.isRead = msg.isRead;
+            updated = true;
+          }
+          if (existing.isStarred !== msg.isStarred) {
+            existing.isStarred = msg.isStarred;
+            updated = true;
+          }
+          if (msg.bodyHtml && (!existing.bodyHtml || existing.bodyHtml.length < 50)) {
+            existing.bodyHtml = msg.bodyHtml;
+            existing.bodyText = msg.bodyText;
+            updated = true;
+          }
+          if (updated) {
+            await existing.save();
+            updatedCount++;
+          }
+          continue;
+        }
+
+        // Auto-match Lead in workspace by from or to email
+        const participantEmails = [
+          msg.from?.email,
+          ...(Array.isArray(msg.to) ? msg.to.map((t) => t.email) : []),
+        ].filter(Boolean);
+
+        const matchedLead = await Lead.findOne({
+          workspaceId: account.workspaceId,
+          email: { $in: participantEmails },
+        });
+
+        await EmailMessage.create({
+          workspaceId: account.workspaceId,
+          accountId: account._id,
+          userId: account.userId,
+          leadId: matchedLead?._id || null,
+          ...msg,
+        });
+
+        syncedCount++;
+
+        // Add lead activity for new incoming emails
+        if (matchedLead && msg.folder === 'inbox') {
+          if (!Array.isArray(matchedLead.leadActivities)) {
+            matchedLead.leadActivities = [];
+          }
+          matchedLead.leadActivities.push({
+            action: 'email_received',
+            performerName: msg.from.name || msg.from.email,
+            details: `Received email: "${msg.subject}" from ${msg.from.email}`,
+            timestamp: msg.date || new Date(),
+          });
+          await matchedLead.save().catch(() => null);
+        }
+      }
+
+      await EmailAccount.findByIdAndUpdate(account._id, {
+        $set: { lastSyncAt: new Date() },
+        $inc: { totalMessagesCount: syncedCount },
+      });
+
+      return { syncedCount, updatedCount, totalFound: messages.length };
+    } catch (err) {
+      console.error(`[EmailService] syncAccountMessages error for ${account.email}:`, err.message);
+      throw err;
+    }
+  }
+
+  /**
+   * Sync single account or all active accounts in workspace
+   */
+  static async syncMailbox(workspaceId, accountId = null, user = null) {
+    let query = { workspaceId, status: { $ne: 'disconnected' } };
+
+    if (accountId && accountId !== 'all') {
+      query._id = accountId;
+    } else {
+      const authorizedAccountIds = await this.getAuthorizedAccountIds(workspaceId, user);
+      if (authorizedAccountIds !== null) {
+        query._id = { $in: authorizedAccountIds };
+      }
+    }
+
+    const accounts = await EmailAccount.find(query)
+      .select('+accessTokenEncrypted +refreshTokenEncrypted +smtpPassEncrypted');
+
+    let totalSynced = 0;
+    let totalUpdated = 0;
+
+    for (const acc of accounts) {
+      try {
+        const res = await this.syncAccountMessages(acc);
+        totalSynced += res.syncedCount || 0;
+        totalUpdated += res.updatedCount || 0;
+      } catch (err) {
+        console.warn(`[EmailService] syncMailbox notice for ${acc.email}:`, err.message);
+      }
+    }
+
+    return { totalSynced, totalUpdated, accountsCount: accounts.length };
+  }
+
+  /**
+   * Process scheduled emails due for delivery
+   */
+  static async processScheduledEmails() {
+    const dueMessages = await EmailMessage.find({
+      status: 'queued',
+      scheduledAt: { $lte: new Date() },
+    }).limit(20);
+
+    for (const msg of dueMessages) {
+      try {
+        const account = await EmailAccount.findById(msg.accountId)
+          .select('+accessTokenEncrypted +refreshTokenEncrypted +smtpPassEncrypted');
+        if (!account) continue;
+
+        const Adapter = getProviderAdapter(account.provider);
+        const sendResult = await Adapter.sendEmail(account, {
+          to: msg.to,
+          cc: msg.cc,
+          bcc: msg.bcc,
+          subject: msg.subject,
+          bodyHtml: msg.bodyHtml,
+          bodyText: msg.bodyText,
+          attachments: msg.attachments,
+          inReplyTo: msg.inReplyTo,
+          references: msg.references,
+          threadId: msg.threadId,
+        });
+
+        msg.status = 'sent';
+        msg.folder = 'sent';
+        msg.sentAt = new Date();
+        msg.messageId = sendResult.messageId;
+        msg.providerMessageId = sendResult.providerMessageId;
+        await msg.save();
+
+        if (msg.leadId) {
+          const lead = await Lead.findById(msg.leadId);
+          if (lead) {
+            lead.leadActivities = lead.leadActivities || [];
+            lead.leadActivities.push({
+              action: 'email_sent',
+              performedBy: msg.userId,
+              performerName: 'Scheduled Dispatcher',
+              details: `Sent scheduled email "${msg.subject}" to ${msg.to.map((t) => t.email).join(', ')}`,
+              timestamp: new Date(),
+            });
+            await lead.save();
+          }
+        }
+      } catch (err) {
+        console.error(`[EmailService] Failed to dispatch scheduled message ${msg._id}:`, err.message);
+        msg.status = 'failed';
+        await msg.save();
+      }
+    }
   }
 
   /**

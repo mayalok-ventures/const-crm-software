@@ -44,6 +44,30 @@ export default function EmailPage() {
   const [loading, setLoading] = useState(true);
   const [unreadInboxCount, setUnreadInboxCount] = useState(0);
   const [connectingGoogle, setConnectingGoogle] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSyncMailbox = async () => {
+    if (isSyncing) return;
+    try {
+      setIsSyncing(true);
+      const res = await api.post('/email/sync', {
+        accountId: selectedAccountId !== 'all' ? selectedAccountId : undefined,
+      });
+      const syncedCount = res.data?.totalSynced || 0;
+      const updatedCount = res.data?.totalUpdated || 0;
+      if (syncedCount > 0 || updatedCount > 0) {
+        toast.success(`Mailbox synchronized: ${syncedCount} new, ${updatedCount} updated`);
+      } else {
+        toast.success('Mailbox is up to date');
+      }
+      await fetchMessages(false);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Mailbox sync error');
+      await fetchMessages(false);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
@@ -313,11 +337,22 @@ export default function EmailPage() {
                   {accounts.length > 0 ? `${accounts.length} Active` : 'None'}
                 </span>
               </div>
+              {accounts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSyncMailbox}
+                  disabled={isSyncing}
+                  className={`mt-2 w-full py-1.5 px-3 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs ${isSyncing ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} />
+                  <span>{isSyncing ? 'Syncing...' : 'Sync Mailbox'}</span>
+                </button>
+              )}
               {hasPermission(user, 'email.manage_accounts') && (
                 <button
                   type="button"
                   onClick={() => setShowAccountsModal(true)}
-                  className="mt-2.5 w-full py-1.5 px-3 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+                  className="mt-2 w-full py-1.5 px-3 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
                 >
                   <Settings size={13} className="text-indigo-600" />
                   <span>Manage Mailboxes</span>
@@ -347,11 +382,12 @@ export default function EmailPage() {
                 </div>
 
                 <button
-                  onClick={() => fetchMessages()}
-                  title="Refresh mail"
-                  className="p-2 rounded-xl text-slate-500 hover:bg-slate-200/80 transition"
+                  onClick={handleSyncMailbox}
+                  disabled={isSyncing}
+                  title="Synchronize emails with provider"
+                  className={`p-2 rounded-xl text-slate-500 hover:bg-slate-200/80 transition ${isSyncing ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
-                  <RefreshCw size={14} />
+                  <RefreshCw size={14} className={isSyncing ? 'animate-spin text-indigo-600' : ''} />
                 </button>
 
                 {/* Mobile Quick Mailbox Settings if no accounts */}

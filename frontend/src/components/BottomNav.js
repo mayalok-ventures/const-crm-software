@@ -332,13 +332,14 @@ function BottomNavContent({ active }) {
             className={`bottom-nav-link btn-touch ${isLinkActive(key, href) ? 'active' : ''}`}
             onClick={(e) => {
               if ((key === 'leads' || key === 'pipeline') && !isModifiedEvent(e)) {
-                e.preventDefault();
                 setOptimisticActive(key);
-                if (typeof window !== 'undefined' && window.location.pathname !== href) {
-                  window.history.pushState(null, '', href);
-                }
                 if (typeof window !== 'undefined') {
                   window.dispatchEvent(new CustomEvent('persistent-tab-switch', { detail: key }));
+                }
+              } else if (!isModifiedEvent(e)) {
+                setOptimisticActive(null);
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('persistent-tab-switch', { detail: null }));
                 }
               }
               setIsMoreDrawerOpen(false);
@@ -470,18 +471,12 @@ function BottomNavContent({ active }) {
                       <Link
                         href="/pipeline"
                         onClick={(e) => {
+                          setIsMoreDrawerOpen(false);
                           if (!isModifiedEvent(e)) {
-                            e.preventDefault();
-                            setIsMoreDrawerOpen(false);
                             setOptimisticActive('pipeline');
-                            if (typeof window !== 'undefined' && window.location.pathname !== '/pipeline') {
-                              window.history.pushState(null, '', '/pipeline');
-                            }
                             if (typeof window !== 'undefined') {
                               window.dispatchEvent(new CustomEvent('persistent-tab-switch', { detail: 'pipeline' }));
                             }
-                          } else {
-                            setIsMoreDrawerOpen(false);
                           }
                         }}
                         className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/80 border border-slate-200/80 text-slate-800 text-xs font-semibold transition"
@@ -888,13 +883,14 @@ function BottomNavContent({ active }) {
                 className={`sidebar-nav-link ${activeState ? 'active' : ''}`}
                 onClick={(e) => {
                   if ((key === 'leads' || key === 'pipeline') && !isModifiedEvent(e)) {
-                    e.preventDefault();
                     setOptimisticActive(key);
-                    if (typeof window !== 'undefined' && window.location.pathname !== href) {
-                      window.history.pushState(null, '', href);
-                    }
                     if (typeof window !== 'undefined') {
                       window.dispatchEvent(new CustomEvent('persistent-tab-switch', { detail: key }));
+                    }
+                  } else if (!isModifiedEvent(e)) {
+                    setOptimisticActive(null);
+                    if (typeof window !== 'undefined') {
+                      window.dispatchEvent(new CustomEvent('persistent-tab-switch', { detail: null }));
                     }
                   }
                 }}

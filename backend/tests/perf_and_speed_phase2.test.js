@@ -1,3 +1,4 @@
+require('dotenv').config();
 const assert = require('assert');
 const mongoose = require('mongoose');
 const Lead = require('../src/models/Lead');
@@ -113,7 +114,7 @@ async function runPhase2TestSuite() {
 module.exports = { runPhase2TestSuite };
 
 if (require.main === module) {
-  const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mobile-crm';
+  const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mobile-crm';
   mongoose.connect(MONGO_URI).then(async () => {
     try {
       await runPhase2TestSuite();

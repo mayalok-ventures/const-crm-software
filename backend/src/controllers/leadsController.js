@@ -9,6 +9,7 @@ const xlsx = require('xlsx');
 const PDFDocument = require('pdfkit');
 const csv = require('csv-parser');
 const { Readable } = require('stream');
+const { appendCustomQuestionsNote, formatCustomQuestionsNote } = require('../utils/customQuestionsFormatter');
 
 // Helper to construct query mathematically enforcing Strict Visibility & Privacy Rules:
 // RULE 1: SuperAdmin sees all leads across the platform.
@@ -21,10 +22,16 @@ const buildLeadPermissionQuery = async (user, isUnclaimed = false) => {
     return { _id: null };
   }
 
-  // SuperAdmin bypass - if operating within an explicit workspace context, isolate to that workspace
+  // SuperAdmin bypass - if operating within an explicit workspace context, isolate to that workspace + legacy unassigned
   if (user.role === 'superadmin' || user.isAdmin) {
     if (user.workspaceId) {
-      return { workspaceId: user.workspaceId };
+      return {
+        $or: [
+          { workspaceId: user.workspaceId },
+          { workspaceId: { $in: [null, undefined] } },
+          { userId: user._id },
+        ],
+      };
     }
     return {};
   }
@@ -36,17 +43,28 @@ const buildLeadPermissionQuery = async (user, isUnclaimed = false) => {
     if (role === 'counsellor' || role === 'counselor') {
       if (isUnclaimed) {
         return {
-          workspaceId,
-          assignedTo: null,
-          currentOwnerId: null,
+          $or: [
+            { workspaceId, assignedTo: null, currentOwnerId: null },
+            { workspaceId: { $in: [null, undefined] }, companyId: user.companyId || user._id, assignedTo: null },
+          ],
         };
       }
       return {
-        workspaceId,
-        $or: [
-          { assignedTo: user._id },
-          { userId: user._id },
-          { currentOwnerId: user._id },
+        $and: [
+          {
+            $or: [
+              { workspaceId },
+              { companyId: user.companyId || user._id },
+              { workspaceId: { $in: [null, undefined] } },
+            ],
+          },
+          {
+            $or: [
+              { assignedTo: user._id },
+              { userId: user._id },
+              { currentOwnerId: user._id },
+            ],
+          },
         ],
       };
     }
@@ -57,6 +75,8 @@ const buildLeadPermissionQuery = async (user, isUnclaimed = false) => {
       $or: [
         { workspaceId },
         { companyId: ownerCompanyId },
+        { userId: user._id },
+        { workspaceId: { $in: [null, undefined] }, companyId: ownerCompanyId },
         { workspaceId: { $in: [null, undefined] }, userId: user._id },
       ],
     };
@@ -1247,6 +1267,15 @@ exports.createLead = async (req, res) => {
       }
     }
 
+    const initialNotes = [];
+    if (req.body.note && typeof req.body.note === 'string' && req.body.note.trim()) {
+      initialNotes.push({
+        text: req.body.note.trim(),
+        authorName: req.user.name || 'User',
+        createdAt: new Date(),
+      });
+    }
+
     const lead = await Lead.create({
       userId: req.user._id,
       companyId: resolvedCompanyId,
@@ -1258,6 +1287,7 @@ exports.createLead = async (req, res) => {
       email: email ? email.toLowerCase().trim() : undefined,
       company: company || undefined,
       tags: leadTags,
+      notes: initialNotes,
       status: status || firstStage,
       propertyType: propertyType || '',
       budget: budget || req.body.packageBudget || '',
@@ -1334,6 +1364,17 @@ exports.createLead = async (req, res) => {
         timestamp: new Date(),
       }],
     });
+
+    // Automatically append custom questions note if custom responses are present
+    const noteAppended = appendCustomQuestionsNote(lead, {
+      rawAnswers: req.body.rawAnswers || req.body.customQuestions || [],
+      customData: finalCustomData,
+      formName: req.body.formName || '',
+      authorName: req.body.formName ? `${req.body.formName} Form` : 'Form Submission',
+    });
+    if (noteAppended) {
+      await lead.save();
+    }
 
     emitCRMEvent(CRM_EVENTS.LEAD_CREATED, { lead, user: req.user });
     if (lead.customData?.targetCountry) {
@@ -2827,6 +2868,28 @@ exports.importLeads = async (req, res) => {
         }
       }
 
+      const rawUserNote = getVal(['note', 'notes', 'remarks', 'remark', 'comment', 'comments']);
+      const rowNotes = [];
+      if (rawUserNote && rawUserNote.trim()) {
+        rowNotes.push({
+          text: rawUserNote.trim(),
+          authorName: req.user.name || 'Bulk Import',
+          createdAt: new Date(),
+        });
+      }
+
+      const customQuestionsNoteText = formatCustomQuestionsNote({
+        customData,
+        formName: 'Bulk Import',
+      });
+      if (customQuestionsNoteText) {
+        rowNotes.push({
+          text: customQuestionsNoteText,
+          authorName: 'Bulk Import',
+          createdAt: new Date(),
+        });
+      }
+
       chunk.push({
         workspaceId: req.user.workspaceId || req.workspaceId,
         userId: req.user._id,
@@ -2843,6 +2906,7 @@ exports.importLeads = async (req, res) => {
         propertyType,
         project,
         tags: tagsStr ? (tagsStr.toLowerCase().includes('bulk import') ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : ['Bulk Import', ...tagsStr.split(',').map(t => t.trim()).filter(Boolean)]) : ['Bulk Import'],
+        notes: rowNotes,
         activeFollowUp: followUpDate ? {
           scheduledAt: followUpDate,
           note: 'Bulk Import Follow-Up Scheduled',

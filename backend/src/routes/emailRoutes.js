@@ -58,6 +58,7 @@ router.put('/accounts/:id/assign', requirePermission('email.manage_accounts'), e
 router.post('/accounts/disconnect', requirePermission('email.manage_accounts'), emailController.disconnectAccount);
 
 // Messages & Folders
+router.post('/sync', requirePermission('email.view'), emailController.syncMailbox);
 router.get('/messages', requirePermission('email.view'), emailController.getMessages);
 router.get('/threads/:threadId', requirePermission('email.view'), emailController.getThreadMessages);
 router.get('/lead/:leadId', requirePermission('email.view'), emailController.getLeadEmailHistory);

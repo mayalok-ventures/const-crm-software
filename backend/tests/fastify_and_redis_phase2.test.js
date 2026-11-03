@@ -1,3 +1,4 @@
+require('dotenv').config();
 const assert = require('assert');
 const { buildFastifyApp } = require('../src/fastify/app');
 const { cacheService } = require('../src/config/redis');

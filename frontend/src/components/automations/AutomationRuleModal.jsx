@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import api from '@/lib/api';
+import toast from 'react-hot-toast';
 import {
   X,
   Zap,
@@ -513,6 +514,126 @@ export default function AutomationRuleModal({ isOpen, onClose, onSaved, initialR
     }
   };
 
+  // Validate step completion
+  const validateStep = (stepNumber) => {
+    switch (stepNumber) {
+      case 1: { // When (Trigger)
+        if (!name.trim()) {
+          toast.error('Please enter a name for this automation rule in Step 1');
+          return false;
+        }
+        if (triggerType === 'stage_changed' || triggerType === 'stage_reached') {
+          if (!targetStage) {
+            toast.error('Please select the target stage for this pipeline trigger');
+            return false;
+          }
+        }
+        if (triggerType === 'whatsapp_inbound') {
+          if (keywords.length === 0) {
+            toast.error('Please add at least one trigger keyword for WhatsApp inbound message');
+            return false;
+          }
+        }
+        if (triggerType === 'stage_duration') {
+          if (!targetStage) {
+            toast.error('Please select the target stage to monitor for inactivity');
+            return false;
+          }
+          if (!daysInStage || Number(daysInStage) < 1) {
+            toast.error('Please enter a valid number of days (at least 1) for stage inactivity');
+            return false;
+          }
+        }
+        return true;
+      }
+      case 2: { // Check (Conditions)
+        if (useConditions) {
+          if (conditions.length === 0) {
+            toast.error('Conditions are enabled. Please add at least one condition or disable conditions.');
+            return false;
+          }
+          for (let i = 0; i < conditions.length; i++) {
+            const cond = conditions[i];
+            if (!cond.field) {
+              toast.error(`Condition #${i + 1}: Please select a property field`);
+              return false;
+            }
+            if (cond.operator !== 'is_empty' && cond.operator !== 'is_not_empty' && (cond.value === undefined || cond.value === '')) {
+              toast.error(`Condition #${i + 1}: Please provide a comparison value`);
+              return false;
+            }
+          }
+        }
+        return true;
+      }
+      case 3: { // Do (Actions)
+        if (!actions || actions.length === 0) {
+          toast.error('Please configure at least one action for this automation');
+          return false;
+        }
+        for (let i = 0; i < actions.length; i++) {
+          const act = actions[i];
+          if (act.actionType === 'send_whatsapp') {
+            const msg = act.config?.whatsappMessage || '';
+            if (!msg.trim()) {
+              toast.error(`Action #${i + 1} (WhatsApp): Message template cannot be empty`);
+              return false;
+            }
+          } else if (act.actionType === 'send_email') {
+            const subj = act.config?.emailSubject || '';
+            const body = act.config?.emailBody || '';
+            if (!subj.trim() || !body.trim()) {
+              toast.error(`Action #${i + 1} (Email): Both subject and email body are required`);
+              return false;
+            }
+          } else if (act.actionType === 'assign_counselor') {
+            if (!act.config?.assignedUserId) {
+              toast.error(`Action #${i + 1} (Assign Counselor): Please select a team member`);
+              return false;
+            }
+          } else if (act.actionType === 'update_lead_stage') {
+            if (!act.config?.newStage) {
+              toast.error(`Action #${i + 1} (Move Stage): Please select the target stage`);
+              return false;
+            }
+          } else if (act.actionType === 'add_lead_tag') {
+            if (!act.config?.tagToAdd || !act.config.tagToAdd.trim()) {
+              toast.error(`Action #${i + 1} (Add Tag): Please enter a tag name`);
+              return false;
+            }
+          }
+        }
+        return true;
+      }
+      case 4: { // Timing
+        if (workflowDelayMinutes < 0) {
+          toast.error('Workflow delay cannot be negative');
+          return false;
+        }
+        return true;
+      }
+      default:
+        return true;
+    }
+  };
+
+  const handleStepClick = (targetStep) => {
+    if (targetStep <= currentStep) {
+      setCurrentStep(targetStep);
+      return;
+    }
+    // Verify all steps up to targetStep - 1
+    for (let s = currentStep; s < targetStep; s++) {
+      if (!validateStep(s)) return;
+    }
+    setCurrentStep(targetStep);
+  };
+
+  const handleNextStep = () => {
+    if (!validateStep(currentStep)) return;
+    setCurrentStep((prev) => prev + 1);
+  };
+
   // Save / Submit
   const handleSave = async (targetStatus = status) => {
     setLoading(true);
@@ -637,7 +758,7 @@ export default function AutomationRuleModal({ isOpen, onClose, onSaved, initialR
             <button
               key={s.num}
               type="button"
-              onClick={() => setCurrentStep(s.num)}
+              onClick={() => handleStepClick(s.num)}
               className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl transition text-left ${
                 currentStep === s.num
                   ? 'bg-indigo-600 text-white shadow-xs'
@@ -1703,7 +1824,7 @@ export default function AutomationRuleModal({ isOpen, onClose, onSaved, initialR
             {currentStep < 5 ? (
               <button
                 type="button"
-                onClick={() => setCurrentStep((prev) => prev + 1)}
+                onClick={handleNextStep}
                 className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-indigo-200"
               >
                 Next Step <ChevronRight size={16} />

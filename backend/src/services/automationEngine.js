@@ -514,11 +514,51 @@ class AutomationEngine {
 
     let successCount = 0;
     let lastError = null;
+    let previousActionSucceeded = true;
+    let previousActionError = null;
+    let accumulatedDelayMinutes = 0;
 
-    for (const action of actions) {
-      const delay = Number(action.delayMinutes !== undefined ? action.delayMinutes : rule.delayMinutes) || 0;
-      if (delay > 0) {
+    for (let i = 0; i < actions.length; i++) {
+      const action = actions[i];
+      const isDependent = action.dependsOnPrevious !== false; // Default: actions in sequence depend on prior action succeeding
+
+      // Strict Dependency Enforcement: If preceding required action failed, do not execute dependent action
+      if (!previousActionSucceeded && isDependent) {
+        console.warn(`[AutomationEngine] Skipping dependent action ${i + 1} (${action.actionType}) because preceding action failed: ${previousActionError}`);
+        try {
+          await AutomationLog.create({
+            ruleId: rule._id,
+            ruleName: rule.name,
+            workspaceId: workspaceId || rule.workspaceId,
+            userId: user?._id || lead?.userId || rule.userId,
+            leadId: lead?._id || null,
+            leadName: lead?.name || '',
+            leadPhone: lead?.phone || customPhone || '',
+            recipientPhone: lead?.phone || customPhone || '',
+            leadEmail: lead?.email || '',
+            recipientEmail: lead?.email || '',
+            triggerType: rule.triggerType,
+            triggerDetails: `Skipped: Required preceding action failed (${previousActionError})`,
+            channel: rule.channel || 'whatsapp',
+            actionType: action.actionType,
+            status: 'skipped',
+            error: `Dependency failed: Preceding action failed with error: ${previousActionError}`,
+            errorMessage: `Preceding action failed: ${previousActionError}`,
+            executedAt: new Date(),
+            timestamp: new Date(),
+          });
+        } catch (skipErr) {
+          console.error('[AutomationEngine] Failed to persist skipped log:', skipErr.message);
+        }
+        continue;
+      }
+
+      const actionDelay = Number(action.delayMinutes !== undefined ? action.delayMinutes : (i === 0 ? rule.delayMinutes : 0)) || 0;
+      accumulatedDelayMinutes += actionDelay;
+
+      if (accumulatedDelayMinutes > 0) {
         // Durable Delayed Dispatch: Persist in AutomationLog as 'pending' with scheduledFor timestamp
+        const delay = accumulatedDelayMinutes;
         const scheduledTime = new Date(Date.now() + delay * 60 * 1000);
         let pendingLog = null;
         try {
@@ -572,11 +612,15 @@ class AutomationEngine {
 
         successCount++;
       } else {
-        // Immediate action execution
+        // Immediate action execution with timeout protection and dependency tracking
         try {
           await this.performAction(action, rule, context);
+          previousActionSucceeded = true;
+          previousActionError = null;
           successCount++;
         } catch (err) {
+          previousActionSucceeded = false;
+          previousActionError = err.message || 'Action failed';
           lastError = err.message;
           console.error(`[AutomationEngine] Action '${action.actionType}' failed for rule '${rule.name}':`, err.message);
         }
@@ -588,7 +632,7 @@ class AutomationEngine {
       $inc: { executionCount: 1 },
       $set: {
         lastExecutedAt: new Date(),
-        lastExecutionStatus: lastError ? 'failed' : 'success',
+        lastExecutionStatus: lastError ? 'failed' : 'completed',
         lastError: lastError || null,
       },
     }).catch(() => null);
@@ -609,9 +653,13 @@ class AutomationEngine {
 
     try {
       const logDoc = await AutomationLog.findById(logId);
-      if (!logDoc || logDoc.status !== 'pending') {
+      if (!logDoc || (logDoc.status !== 'pending' && logDoc.status !== 'processing')) {
         return; // Already executed
       }
+
+      // Mark status as 'processing'
+      logDoc.status = 'processing';
+      await logDoc.save().catch(() => null);
 
       // Re-verify that rule still exists and is active
       const currentRule = await AutomationRule.findById(rule._id || logDoc.ruleId);
@@ -637,7 +685,7 @@ class AutomationEngine {
       const updatedContext = { ...context, lead: freshLead };
       await AutomationEngine.performAction(action, currentRule, updatedContext);
 
-      logDoc.status = 'success';
+      logDoc.status = 'completed';
       logDoc.executedAt = new Date();
       logDoc.messageSent = `Delayed action completed successfully at ${new Date().toLocaleTimeString()}`;
       await logDoc.save().catch(() => null);

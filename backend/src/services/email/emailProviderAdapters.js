@@ -380,6 +380,239 @@ class GmailAdapter {
       threadId: res.data.threadId || options.threadId || res.data.id,
     };
   }
+
+  /**
+   * Recursively extract HTML and plain text bodies from Gmail message payload parts
+   */
+  static extractBodyParts(payload) {
+    let bodyHtml = '';
+    let bodyText = '';
+    const attachments = [];
+
+    const traverse = (part) => {
+      if (!part) return;
+
+      const mimeType = (part.mimeType || '').toLowerCase();
+      const body = part.body || {};
+      const filename = part.filename || '';
+
+      if (filename && body.attachmentId) {
+        attachments.push({
+          filename,
+          contentType: mimeType || 'application/octet-stream',
+          size: body.size || 0,
+          url: `/api/email/attachments/${body.attachmentId}`,
+          storageKey: body.attachmentId,
+        });
+      }
+
+      if (body.data) {
+        const decoded = Buffer.from(body.data.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+        if (mimeType === 'text/html') {
+          bodyHtml += decoded;
+        } else if (mimeType === 'text/plain') {
+          bodyText += decoded;
+        }
+      }
+
+      if (Array.isArray(part.parts)) {
+        for (const subPart of part.parts) {
+          traverse(subPart);
+        }
+      }
+    };
+
+    traverse(payload);
+
+    return { bodyHtml, bodyText, attachments };
+  }
+
+  static parseHeaders(headersList = []) {
+    const headers = {};
+    for (const h of headersList) {
+      if (h && h.name) {
+        headers[h.name.toLowerCase()] = h.value;
+      }
+    }
+    return headers;
+  }
+
+  static parseAddressList(headerStr = '') {
+    if (!headerStr) return [];
+    return headerStr
+      .split(',')
+      .map((part) => {
+        const trimmed = part.trim();
+        const match = trimmed.match(/^(?:"?([^"]*)"?\s)?(?:<?(.+@[^>]+)>?)$/);
+        if (match) {
+          return { name: match[1]?.trim() || '', email: match[2]?.trim().toLowerCase() || '' };
+        }
+        if (trimmed.includes('@')) {
+          return { name: '', email: trimmed.replace(/[<>]/g, '').trim().toLowerCase() };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }
+
+  static mapLabelsToFolder(labelIds = []) {
+    const labels = new Set((labelIds || []).map((l) => l.toUpperCase()));
+    let folder = 'inbox';
+    if (labels.has('TRASH')) {
+      folder = 'trash';
+    } else if (labels.has('SPAM')) {
+      folder = 'trash';
+    } else if (labels.has('DRAFT')) {
+      folder = 'drafts';
+    } else if (labels.has('SENT')) {
+      folder = 'sent';
+    } else if (labels.has('INBOX')) {
+      folder = 'inbox';
+    } else {
+      // Archived: not in INBOX, SENT, TRASH, DRAFT
+      folder = 'archive';
+    }
+
+    const isRead = !labels.has('UNREAD');
+    const isStarred = labels.has('STARRED');
+
+    return { folder, isRead, isStarred };
+  }
+
+  static async syncMessages(account, options = {}) {
+    const token = await this.getValidToken(account);
+    const maxResults = options.maxResults || 40;
+    const query = options.query || '';
+    const labelIds = options.labelIds || undefined;
+
+    // 1. Fetch message list from Gmail
+    const listRes = await axios.get('https://gmail.googleapis.com/gmail/v1/users/me/messages', {
+      headers: { Authorization: `Bearer ${token}` },
+      params: {
+        maxResults,
+        ...(query ? { q: query } : {}),
+        ...(labelIds ? { labelIds } : {}),
+      },
+      timeout: 15000,
+    });
+
+    const messageRefs = listRes.data?.messages || [];
+    if (messageRefs.length === 0) {
+      return [];
+    }
+
+    // 2. Fetch full message details in parallel chunks
+    const chunkSize = 10;
+    const parsedMessages = [];
+
+    for (let i = 0; i < messageRefs.length; i += chunkSize) {
+      const chunk = messageRefs.slice(i, i + chunkSize);
+      const details = await Promise.allSettled(
+        chunk.map((ref) =>
+          axios.get(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${ref.id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+            params: { format: 'full' },
+            timeout: 15000,
+          })
+        )
+      );
+
+      for (const res of details) {
+        if (res.status !== 'fulfilled' || !res.value?.data) continue;
+        const msg = res.value.data;
+        const headers = this.parseHeaders(msg.payload?.headers || []);
+        const { bodyHtml, bodyText, attachments } = this.extractBodyParts(msg.payload);
+        const { folder, isRead, isStarred } = this.mapLabelsToFolder(msg.labelIds);
+
+        const fromList = this.parseAddressList(headers.from);
+        const from = fromList[0] || { name: '', email: account.email };
+        const to = this.parseAddressList(headers.to);
+        const cc = this.parseAddressList(headers.cc);
+        const bcc = this.parseAddressList(headers.bcc);
+
+        const date = headers.date ? new Date(headers.date) : new Date(Number(msg.internalDate) || Date.now());
+        const snippet = msg.snippet || bodyText.slice(0, 140).trim();
+
+        parsedMessages.push({
+          providerMessageId: msg.id,
+          threadId: msg.threadId || msg.id,
+          messageId: headers['message-id'] || `<${msg.id}@mail.gmail.com>`,
+          inReplyTo: headers['in-reply-to'] || null,
+          references: headers.references ? headers.references.split(/\s+/).filter(Boolean) : [],
+          folder,
+          status: folder === 'sent' ? 'sent' : folder === 'drafts' ? 'draft' : 'received',
+          from,
+          to: to.length > 0 ? to : [{ name: '', email: account.email }],
+          cc,
+          bcc,
+          subject: headers.subject || '(No Subject)',
+          snippet,
+          bodyHtml: bodyHtml || (bodyText ? `<pre style="font-family:inherit;white-space:pre-wrap;">${bodyText}</pre>` : ''),
+          bodyText: bodyText || generatePlainText(bodyHtml),
+          isRead,
+          isStarred,
+          hasAttachments: attachments.length > 0,
+          attachments,
+          date,
+          receivedAt: folder === 'inbox' ? date : null,
+          sentAt: folder === 'sent' ? date : null,
+        });
+      }
+    }
+
+    return parsedMessages;
+  }
+
+  static async modifyMessage(account, providerMessageId, { addLabelIds = [], removeLabelIds = [] }) {
+    const token = await this.getValidToken(account);
+    const res = await axios.post(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${providerMessageId}/modify`,
+      { addLabelIds, removeLabelIds },
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000,
+      }
+    );
+    return res.data;
+  }
+
+  static async trashMessage(account, providerMessageId) {
+    const token = await this.getValidToken(account);
+    const res = await axios.post(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${providerMessageId}/trash`,
+      {},
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000,
+      }
+    );
+    return res.data;
+  }
+
+  static async untrashMessage(account, providerMessageId) {
+    const token = await this.getValidToken(account);
+    const res = await axios.post(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${providerMessageId}/untrash`,
+      {},
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000,
+      }
+    );
+    return res.data;
+  }
+
+  static async deleteMessage(account, providerMessageId) {
+    const token = await this.getValidToken(account);
+    const res = await axios.delete(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${providerMessageId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000,
+      }
+    );
+    return res.data;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

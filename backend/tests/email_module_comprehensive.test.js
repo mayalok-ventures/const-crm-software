@@ -1,3 +1,4 @@
+require('dotenv').config();
 const mongoose = require('mongoose');
 const assert = require('assert');
 const crypto = require('crypto');
@@ -19,9 +20,9 @@ async function runTests() {
 
   // Connect to MongoDB if not connected
   if (mongoose.connection.readyState === 0) {
-    const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mobile-crm';
+    const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mobile-crm';
     await mongoose.connect(mongoUri);
-    console.log('✅ Connected to MongoDB:', mongoUri);
+    console.log('✅ Connected to MongoDB');
   }
 
   const testSuffix = Date.now();

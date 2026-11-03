@@ -136,6 +136,48 @@ const startFollowUpCron = () => {
   });
   scheduledTasks.push(feeTask);
 
+  // Run every minute — Scheduled Email Dispatcher
+  let isEmailDispatchRunning = false;
+  const emailDispatchTask = cron.schedule('* * * * *', async () => {
+    if (!isDbReady() || isEmailDispatchRunning) return;
+    isEmailDispatchRunning = true;
+    try {
+      const EmailService = require('../services/email/emailService');
+      await EmailService.processScheduledEmails();
+    } catch (err) {
+      console.error('[Cron] Scheduled email dispatcher error:', err.message);
+    } finally {
+      isEmailDispatchRunning = false;
+    }
+  });
+  scheduledTasks.push(emailDispatchTask);
+
+  // Run every 5 minutes — Periodic Inbound Email & Reply Sync
+  let isEmailSyncRunning = false;
+  const emailSyncTask = cron.schedule('*/5 * * * *', async () => {
+    if (!isDbReady() || isEmailSyncRunning) return;
+    isEmailSyncRunning = true;
+    try {
+      const EmailService = require('../services/email/emailService');
+      const EmailAccount = require('../models/EmailAccount');
+      const activeAccounts = await EmailAccount.find({ status: 'connected' })
+        .select('+accessTokenEncrypted +refreshTokenEncrypted +smtpPassEncrypted')
+        .limit(50);
+      for (const acc of activeAccounts) {
+        try {
+          await EmailService.syncAccountMessages(acc, { maxResults: 20 });
+        } catch (accErr) {
+          console.warn(`[Cron] Email sync notice for ${acc.email}:`, accErr.message);
+        }
+      }
+    } catch (err) {
+      console.error('[Cron] Inbound email sync worker error:', err.message);
+    } finally {
+      isEmailSyncRunning = false;
+    }
+  });
+  scheduledTasks.push(emailSyncTask);
+
   // Safe startup execution: run once MongoDB is ready
   const runStartupPass = async () => {
     if (!isDbReady()) {

@@ -6,6 +6,7 @@ const User = require('../../models/User');
 const assignmentService = require('./assignmentService');
 const { normalizePhone } = require('../../utils/phoneNormalizer');
 const { emitCRMEvent, CRM_EVENTS } = require('../automationEvents');
+const { appendCustomQuestionsNote, formatCustomQuestionsNote } = require('../../utils/customQuestionsFormatter');
 
 function slugify(text) {
   return String(text || '')
@@ -353,6 +354,18 @@ class LeadIngestionService {
         updated = true;
       }
 
+      // Automatically append custom form responses if not already present
+      const noteAppended = appendCustomQuestionsNote(existingLead, {
+        rawAnswers,
+        customData: mappedLead.customData || customData,
+        fieldMapping: campaignOverride?.fieldMapping || integration?.fieldMapping,
+        formName,
+        authorName: formName ? `${formName} Form` : `${platform.toUpperCase()} Ingestion`,
+      });
+      if (noteAppended) {
+        updated = true;
+      }
+
       if (updated) {
         await existingLead.save();
       }
@@ -474,6 +487,26 @@ class LeadIngestionService {
             updatedAt: new Date(),
           },
         };
+
+        // Format custom form responses and append to notes idempotently if not already saved
+        const customNoteText = formatCustomQuestionsNote({
+          rawAnswers,
+          customData: mappedLead.customData || customData,
+          fieldMapping: campaignOverride?.fieldMapping || integration?.fieldMapping,
+          formName,
+        });
+
+        const hasMatchingNote = customNoteText && Array.isArray(existingPhoneLead.notes) && existingPhoneLead.notes.some(
+          (n) => n && n.text && n.text.trim() === customNoteText.trim()
+        );
+
+        if (customNoteText && !hasMatchingNote) {
+          updateOps.$push.notes = {
+            text: customNoteText,
+            authorName: formName ? `${formName} Form` : `${platform.toUpperCase()} Ingestion`,
+            createdAt: new Date(),
+          };
+        }
 
         if (integration.reInquiryAssignmentPolicy === 'reassign_by_rule' && assignment.assignedTo) {
           updateOps.$set.assignedTo = assignment.assignedTo;
@@ -609,6 +642,15 @@ class LeadIngestionService {
       ],
     });
 
+    // Part 2: Automatically save custom form responses into Notes (Idempotent & Preserves existing notes)
+    appendCustomQuestionsNote(lead, {
+      rawAnswers,
+      customData: mappedLead.customData || customData,
+      fieldMapping: campaignOverride?.fieldMapping || integration?.fieldMapping,
+      formName,
+      authorName: formName ? `${formName} Form` : `${platform.toUpperCase()} Ingestion`,
+    });
+
     // 12. Concurrency-Safe Save with E11000 Catch
     try {
       await lead.save();
@@ -623,6 +665,15 @@ class LeadIngestionService {
         });
 
         if (raceDuplicate) {
+          appendCustomQuestionsNote(raceDuplicate, {
+            rawAnswers,
+            customData: mappedLead.customData || customData,
+            fieldMapping: campaignOverride?.fieldMapping || integration?.fieldMapping,
+            formName,
+            authorName: formName ? `${formName} Form` : `${platform.toUpperCase()} Ingestion`,
+          });
+          await raceDuplicate.save().catch(() => null);
+
           return {
             created: false,
             duplicate: true,

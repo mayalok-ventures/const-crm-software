@@ -74,8 +74,8 @@ export default function PersistentTabManager({ children }) {
   }, []);
 
   const effectiveTab = optimisticTab || (isLeadsTab ? 'leads' : isPipelineTab ? 'pipeline' : null);
-  const isEffectiveLeads = effectiveTab === 'leads';
-  const isEffectivePipeline = effectiveTab === 'pipeline';
+  const isEffectiveLeads = isLeadsTab || (optimisticTab === 'leads' && (cleanPath === '/' || cleanPath === '/leads' || cleanPath === '/pipeline'));
+  const isEffectivePipeline = isPipelineTab || (optimisticTab === 'pipeline' && (cleanPath === '/' || cleanPath === '/leads' || cleanPath === '/pipeline'));
   const isPersistentModule = isEffectiveLeads || isEffectivePipeline;
 
   // Mount only on-demand when the user first visits the tab

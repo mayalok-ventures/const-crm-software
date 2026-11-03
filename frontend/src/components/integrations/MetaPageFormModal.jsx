@@ -282,9 +282,20 @@ export default function MetaPageFormModal({
 
   const handleProceedToRouting = () => {
     // Validate mappings
+    if (!mappings || mappings.length === 0) {
+      toast.error('Please configure at least one form question mapping.');
+      return;
+    }
     const invalid = mappings.some((m) => !m.sourceField.trim());
     if (invalid) {
       toast.error('All form question mappings must specify a Meta field key');
+      return;
+    }
+    const hasPhoneOrEmail = mappings.some(
+      (m) => (m.crmField === 'phone' || m.crmField === 'email') && !m.isCustom
+    );
+    if (!hasPhoneOrEmail) {
+      toast.error('You must map at least Phone Number OR Email Address so inbound leads can be contacted in CRM.');
       return;
     }
     setStep(3);

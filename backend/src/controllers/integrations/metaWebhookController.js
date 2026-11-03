@@ -75,23 +75,66 @@ exports.receive = async (req, res) => {
       for (const change of changes) {
         if (change.field === 'leadgen') {
           const value = change.value || {};
-          const pageId = String(value.page_id || entry.id || '');
+          const candidatePageIds = [
+            String(value.page_id || ''),
+            String(entry.id || ''),
+          ].filter(Boolean);
           const leadgenId = String(value.leadgen_id || '');
+          const formId = String(value.form_id || '');
 
           if (!leadgenId) continue;
 
-          // Lookup matching connected integration by Page ID
-          const integration = await Integration.findOne({
+          // Lookup matching connected integration:
+          // 1. By Page ID (matching candidatePageIds)
+          let integration = await Integration.findOne({
             provider: 'meta',
-            pageId,
+            pageId: { $in: candidatePageIds },
             status: 'connected',
           });
 
-          // Requirement C.5: For validly signed event with unknown page_id, log and discard safely
+          // 2. If not found by pageId, lookup by form_id in integration's mapped formIds or metadata.forms
+          if (!integration && formId) {
+            integration = await Integration.findOne({
+              provider: 'meta',
+              $or: [
+                { formIds: formId },
+                { 'metadata.forms.id': formId },
+              ],
+              status: 'connected',
+            });
+          }
+
+          // 3. Fallback: Lookup by active LeadSourceSubscription with externalFormId
+          if (!integration && formId) {
+            const LeadSourceSubscription = require('../../models/LeadSourceSubscription');
+            const sub = await LeadSourceSubscription.findOne({
+              platform: 'meta',
+              externalFormId: formId,
+              status: 'active',
+            });
+            if (sub && sub.integrationId) {
+              integration = await Integration.findById(sub.integrationId);
+            }
+          }
+
+          // 4. Fallback: If integration connected and entry.id matches adAccountId
+          if (!integration && entry.id) {
+            integration = await Integration.findOne({
+              provider: 'meta',
+              $or: [
+                { accountId: String(entry.id) },
+                { 'metadata.adAccountId': String(entry.id) },
+              ],
+              status: 'connected',
+            });
+          }
+
           if (!integration) {
-            console.warn(`[Meta Webhook] Inbound leadgen event for unmapped Page ID "${pageId}". Discarded safely to prevent cross-tenant leak.`);
+            console.warn(`[Meta Webhook] Inbound leadgen event (leadgenId: ${leadgenId}, formId: ${formId}, candidates: ${candidatePageIds.join(',')}) has no mapped integration. Discarded safely to prevent cross-tenant leak.`);
             continue;
           }
+
+          const resolvedPageId = integration.pageId || value.page_id || entry.id || '';
 
           // Enqueue into durable MongoDB queue
           await webhookQueueService.enqueueEvent({
@@ -102,8 +145,8 @@ exports.receive = async (req, res) => {
             externalLeadId: leadgenId,
             headers: req.headers,
             rawBody: {
-              pageId,
-              formId: value.form_id ? String(value.form_id) : '',
+              pageId: resolvedPageId,
+              formId: formId || (value.form_id ? String(value.form_id) : ''),
               leadgenId,
               adId: value.ad_id ? String(value.ad_id) : '',
               adSetId: value.adset_id ? String(value.adset_id) : '',

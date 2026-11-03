@@ -81,11 +81,19 @@ export default function AutomationLogsModal({ isOpen, onClose, ruleId = null, ru
 
   const getStatusBadge = (status) => {
     switch (status) {
+      case 'completed':
       case 'success':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-extrabold uppercase">
             <CheckCircle2 size={12} className="text-emerald-600" />
-            Success
+            Completed
+          </span>
+        );
+      case 'processing':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-extrabold uppercase">
+            <RotateCw size={12} className="text-purple-600 animate-spin" />
+            Processing
           </span>
         );
       case 'failed':

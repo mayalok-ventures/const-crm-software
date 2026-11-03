@@ -79,7 +79,7 @@ const automationLogSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['success', 'failed', 'skipped', 'pending'],
+      enum: ['pending', 'processing', 'completed', 'success', 'failed', 'skipped'],
       required: true,
       index: true,
     },

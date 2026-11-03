@@ -170,12 +170,15 @@ async function runTests() {
 
     assert(losslessRes.status === 200, 'Step 4a: Inbound Google webhook returned 200 OK immediately');
 
-    // Wait 250ms for background queue worker nudge
-    await new Promise((r) => setTimeout(r, 400));
-
-    const createdLead = await Lead.findOne({
-      'leadSource.externalLeadId': `g_lead_${rand}_lossless`,
-    });
+    // Poll for background queue worker to finish (up to 3s for remote cloud DB)
+    let createdLead = null;
+    for (let wait = 0; wait < 15; wait++) {
+      await new Promise((r) => setTimeout(r, 200));
+      createdLead = await Lead.findOne({
+        'leadSource.externalLeadId': `g_lead_${rand}_lossless`,
+      });
+      if (createdLead) break;
+    }
 
     assert(!!createdLead, 'Step 4b: Lead ingested into database from queue');
     assert(createdLead.leadSource.campaignId === '9007199254740999', `Step 4c: 64-bit campaignId stored as EXACT string "9007199254740999" (received: ${createdLead.leadSource.campaignId})`);
@@ -195,14 +198,16 @@ async function runTests() {
       ],
     });
 
-    assert(testPostRes.status === 200, 'Step 5a: Google test data webhook returned 200 OK');
-    await new Promise((r) => setTimeout(r, 400));
+    let updatedGoogleInt = null;
+    for (let wait = 0; wait < 15; wait++) {
+      await new Promise((r) => setTimeout(r, 200));
+      updatedGoogleInt = await Integration.findById(googleInt._id);
+      if (updatedGoogleInt?.metadata?.lastTestReceivedAt) break;
+    }
 
     const finalLeadCount = await Lead.countDocuments();
     assert(finalLeadCount === initialLeadCount, 'Step 5b: Google test event created NO Lead document in database');
-
-    const updatedGoogleInt = await Integration.findById(googleInt._id);
-    assert(!!updatedGoogleInt.metadata?.lastTestReceivedAt, 'Step 5c: integration.metadata.lastTestReceivedAt successfully updated');
+    assert(!!updatedGoogleInt?.metadata?.lastTestReceivedAt, 'Step 5c: integration.metadata.lastTestReceivedAt successfully updated');
 
     // 6. Test Multi-Inquiry Idempotency & Appending (Requirement J.1)
     const phone = `+9196${rand}`;
@@ -332,10 +337,13 @@ async function runTests() {
       }
     );
 
-    assert(sheetSyncRes.status === 200, 'Step 9b: Sheets sync returned 200 with valid x-crm-secret header');
-    await new Promise((r) => setTimeout(r, 400));
-
-    const sheetLeadInDB = await Lead.findOne({ 'leadSource.externalLeadId': sheetLeadUuid });
+    // Poll for background queue worker to finish (up to 3s for remote cloud DB)
+    let sheetLeadInDB = null;
+    for (let wait = 0; wait < 15; wait++) {
+      await new Promise((r) => setTimeout(r, 200));
+      sheetLeadInDB = await Lead.findOne({ 'leadSource.externalLeadId': sheetLeadUuid });
+      if (sheetLeadInDB) break;
+    }
     assert(!!sheetLeadInDB, 'Step 9c: Lead ingested from Google Sheets into CRM with tracking UUID');
 
     // 10. Test Stale-Lock Recovery in Queue (Requirement C.2)

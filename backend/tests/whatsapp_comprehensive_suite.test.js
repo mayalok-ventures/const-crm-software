@@ -4,6 +4,7 @@
  * - Meta Template Component Schema & Sample Values Validation
  * - WhatsApp Broadcast Campaigns (Creation, Channel Selection, Pause, Resume, Cancellation, Logs)
  */
+require('dotenv').config();
 const mongoose = require('mongoose');
 const User = require('../src/models/User');
 const Lead = require('../src/models/Lead');
@@ -13,7 +14,7 @@ const Campaign = require('../src/models/Campaign');
 const CampaignLog = require('../src/models/CampaignLog');
 const WhatsAppBusinessAccount = require('../src/models/WhatsAppBusinessAccount');
 
-const MONGODB_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mobile-crm';
+const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mobile-crm';
 
 let testUser;
 let testGroup;

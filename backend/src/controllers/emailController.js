@@ -99,6 +99,20 @@ exports.disconnectAccount = async (req, res) => {
   }
 };
 
+// @desc    Synchronize messages from connected email provider accounts
+// @route   POST /api/email/sync
+// @access  Private
+exports.syncMailbox = async (req, res) => {
+  try {
+    const accountId = req.body?.accountId || req.query?.accountId || null;
+    const result = await EmailService.syncMailbox(req.workspaceId, accountId, req.user);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[EmailController] syncMailbox error:', err);
+    res.status(500).json({ message: err.message || 'Failed to synchronize mailbox' });
+  }
+};
+
 // @desc    Get paginated messages for folder
 // @route   GET /api/email/messages
 // @access  Private

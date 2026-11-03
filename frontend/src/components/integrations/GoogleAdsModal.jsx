@@ -192,6 +192,36 @@ export default function GoogleAdsModal({
     }
   };
 
+  const handleTabClick = (targetStep) => {
+    if (targetStep === step) return;
+    if (targetStep < step) {
+      setStep(targetStep);
+      return;
+    }
+    // Sequential progression check
+    if (targetStep >= 2 && !createdIntegration) {
+      toast.error('Please complete Step 1 to initialize your Google Ads integration first.');
+      return;
+    }
+    if (targetStep >= 3 && !webhookUrl) {
+      toast.error('Please complete Step 2 to generate your webhook URL.');
+      return;
+    }
+    if (targetStep >= 4 && !routingCampaignId && campaigns.length > 0) {
+      toast.error('Please select and save a routing campaign in Step 3 before proceeding.');
+      return;
+    }
+    setStep(targetStep);
+  };
+
+  const handleStep2Next = () => {
+    if (!webhookUrl) {
+      toast.error('Webhook URL has not been generated yet. Please generate or refresh credentials.');
+      return;
+    }
+    setStep(3);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
       <div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl p-6 sm:p-8 text-white flex flex-col">
@@ -231,9 +261,7 @@ export default function GoogleAdsModal({
           ].map((s) => (
             <button
               key={s.num}
-              onClick={() => {
-                if (createdIntegration || s.num === 1) setStep(s.num);
-              }}
+              onClick={() => handleTabClick(s.num)}
               className={`flex flex-col items-center gap-1 p-2 rounded-xl text-center transition ${
                 step === s.num
                   ? 'bg-rose-500/15 text-rose-400 font-semibold border border-rose-500/30'
@@ -398,7 +426,7 @@ export default function GoogleAdsModal({
               </button>
               <button
                 type="button"
-                onClick={() => setStep(3)}
+                onClick={handleStep2Next}
                 className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-rose-600/20 transition"
               >
                 Next: Configure Routing

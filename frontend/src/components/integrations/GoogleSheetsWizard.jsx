@@ -297,6 +297,15 @@ export default function GoogleSheetsWizard({ isOpen = true, onClose, onSuccess, 
     );
   };
 
+  // Step 2 Next Validation: Detected columns required
+  const handleStep2Next = () => {
+    if (!detectedHeaders || detectedHeaders.length === 0) {
+      toast.error('No columns were detected from your sheet yet. Please click "Detect Sheet Columns" first.');
+      return;
+    }
+    setStep(3);
+  };
+
   // Step 3 Next Validation: Phone OR Email required
   const handleStep3Next = () => {
     const hasPhoneOrEmail = fieldMappings.some(
@@ -797,7 +806,7 @@ export default function GoogleSheetsWizard({ isOpen = true, onClose, onSuccess, 
                 <ArrowLeft className="w-4 h-4" /> Back
               </button>
               <button
-                onClick={() => setStep(3)}
+                onClick={handleStep2Next}
                 className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm flex items-center gap-2 shadow-lg shadow-emerald-600/30 transition"
               >
                 Proceed to Mapping <ArrowRight className="w-4 h-4" />

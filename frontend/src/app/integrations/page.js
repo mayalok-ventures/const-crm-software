@@ -40,7 +40,17 @@ export default function IntegrationsPage() {
   const router = useRouter();
 
   // Role & Authentication Guard States
-  const [authStatus, setAuthStatus] = useState('checking'); // 'checking' | 'authorized' | 'unauthorized' | 'unauthenticated'
+  const [authStatus, setAuthStatus] = useState(() => {
+    if (typeof window === 'undefined') return 'checking';
+    try {
+      const user = getUser();
+      if (!user) return 'checking';
+      const canManage = isSuperAdmin(user) || isOwner(user) || isManager(user) || hasPermission(user, 'integrations.manage');
+      return canManage ? 'authorized' : 'unauthorized';
+    } catch {
+      return 'checking';
+    }
+  });
   const [currentUser, setCurrentUser] = useState(null);
 
   // Primary data states
