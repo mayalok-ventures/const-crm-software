@@ -1,19 +1,19 @@
 /**
  * Sahyak CRM — Cloudflare Worker API Gateway / Reverse Proxy
  *
- * Edge Domain: https://api-app.sahyak.com
- * Upstream Backend: Render Web Service (configured via BACKEND_URL)
+ * Worker Name: api-app-proxy
+ * Public Domain: https://api-app.sahyak.com
+ * Upstream Target: Configured via BACKEND_URL (e.g. https://sahyak-api.onrender.com)
  *
- * Features & Specifications:
- * - Dynamic upstream resolution from Cloudflare environment variable BACKEND_URL.
- * - Zero hardcoded platform or container URLs (Zoho Catalyst completely removed).
- * - Full HTTP method, path, query parameter, header, and body preservation.
- * - Strict CORS enforcement for configured ALLOWED_ORIGINS and *.sahyak.com.
- * - Robust OPTIONS preflight handler with 204 No Content.
- * - Auth headers (Bearer tokens, cookies) forwarded without mutation.
- * - Upstream error, timeout, and connection failure handling with sanitized 502 Bad Gateway.
+ * Core Features:
+ * - Robust runtime environment variable resolution (ES module env, globalThis, process.env, global scope).
+ * - HTTPS protocol enforcement on upstream backend URL.
+ * - Full preservation of HTTP method, URL path, query string, headers, and request body.
+ * - CORS management with OPTIONS preflight (204 No Content) for https://app.sahyak.com and subdomains.
+ * - Authorization header (Bearer tokens) and cookie forwarding without mutation.
+ * - Upstream failure resilience (502 Bad Gateway with CORS headers).
  * - Proxy loop detection and missing configuration guards.
- * - Zero sensitive environment variable or secret leakage.
+ * - Zero secret or environment variable leakage.
  */
 
 // Default origins if ALLOWED_ORIGINS is not set in Worker environment
@@ -23,15 +23,65 @@ const DEFAULT_ALLOWED_ORIGINS = [
 ];
 
 /**
+ * Merge environment variables from all available Cloudflare Worker runtime sources.
+ * Supports ES Module bindings (env), Service Worker bindings (globalThis), and nodejs_compat (process.env).
+ * @param {Record<string, unknown>} env - Worker environment bindings
+ * @returns {Record<string, unknown>}
+ */
+export function getRuntimeEnv(env = {}) {
+  const merged = {};
+  if (typeof globalThis !== 'undefined') {
+    Object.assign(merged, globalThis);
+  }
+  if (typeof process !== 'undefined' && process.env) {
+    Object.assign(merged, process.env);
+  }
+  if (env && typeof env === 'object') {
+    Object.assign(merged, env);
+  }
+  return merged;
+}
+
+/**
+ * Resolve the BACKEND_URL string from available runtime sources.
+ * @param {Record<string, unknown>} env
+ * @returns {string|null}
+ */
+export function resolveBackendUrl(env = {}) {
+  // 1. Direct ES module env object
+  if (env && typeof env === 'object' && typeof env.BACKEND_URL === 'string' && env.BACKEND_URL.trim()) {
+    return env.BACKEND_URL.trim();
+  }
+  // 2. globalThis (Service Worker syntax / Cloudflare global binding)
+  if (typeof globalThis !== 'undefined' && typeof globalThis.BACKEND_URL === 'string' && globalThis.BACKEND_URL.trim()) {
+    return globalThis.BACKEND_URL.trim();
+  }
+  // 3. process.env (nodejs_compat mode)
+  if (typeof process !== 'undefined' && process.env && typeof process.env.BACKEND_URL === 'string' && process.env.BACKEND_URL.trim()) {
+    return process.env.BACKEND_URL.trim();
+  }
+  // 4. Global scope lookup (classic Cloudflare Service Worker syntax)
+  try {
+    const val = (new Function("return typeof BACKEND_URL !== 'undefined' ? BACKEND_URL : null;"))();
+    if (typeof val === 'string' && val.trim()) {
+      return val.trim();
+    }
+  } catch {}
+
+  return null;
+}
+
+/**
  * Determine if an incoming Origin is authorized by CORS policy.
  * @param {string|null} origin - Incoming Origin header
- * @param {Record<string, string>} env - Worker environment variables
+ * @param {Record<string, unknown>} env - Worker environment variables
  * @returns {string|null} The origin to echo in Access-Control-Allow-Origin, or null if denied
  */
 export function resolveAllowedOrigin(origin, env = {}) {
   if (!origin) return null;
 
-  const rawOrigins = env.ALLOWED_ORIGINS || '';
+  const runtime = getRuntimeEnv(env);
+  const rawOrigins = typeof runtime.ALLOWED_ORIGINS === 'string' ? runtime.ALLOWED_ORIGINS : '';
   const configuredOrigins = rawOrigins
     .split(',')
     .map(o => o.trim())
@@ -58,7 +108,7 @@ export function resolveAllowedOrigin(origin, env = {}) {
   }
 
   // Allow localhost / LAN in non-production environments
-  const environment = env.ENVIRONMENT || env.NODE_ENV || 'production';
+  const environment = runtime.ENVIRONMENT || runtime.NODE_ENV || 'production';
   if (environment !== 'production') {
     if (/^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)) {
       return origin;
@@ -117,7 +167,6 @@ export async function handleRequest(request, env = {}, ctx = {}) {
 
   // 1. Handle OPTIONS preflight requests
   if (request.method.toUpperCase() === 'OPTIONS') {
-    // If browser supplied an Origin that is unauthorized, reject with 403
     if (clientOrigin && !allowedOrigin) {
       return jsonResponse(
         {
@@ -136,12 +185,12 @@ export async function handleRequest(request, env = {}, ctx = {}) {
   }
 
   // 2. Validate BACKEND_URL configuration
-  const backendUrlRaw = env.BACKEND_URL;
-  if (!backendUrlRaw || typeof backendUrlRaw !== 'string' || !backendUrlRaw.trim()) {
+  const backendUrlRaw = resolveBackendUrl(env);
+  if (!backendUrlRaw) {
     return jsonResponse(
       {
         error: 'Gateway Configuration Error',
-        message: 'Upstream BACKEND_URL is not configured on Cloudflare Worker',
+        message: 'Upstream BACKEND_URL is not configured in the Worker environment',
         code: 'MISSING_BACKEND_URL'
       },
       500,
@@ -151,9 +200,9 @@ export async function handleRequest(request, env = {}, ctx = {}) {
 
   let backendUrl;
   try {
-    backendUrl = new URL(backendUrlRaw.trim());
+    backendUrl = new URL(backendUrlRaw);
     if (!['http:', 'https:'].includes(backendUrl.protocol)) {
-      throw new Error('Invalid protocol');
+      throw new Error('Invalid web protocol');
     }
   } catch {
     return jsonResponse(
@@ -167,7 +216,22 @@ export async function handleRequest(request, env = {}, ctx = {}) {
     );
   }
 
-  // 3. Prevent proxy loops
+  // 3. Enforce HTTPS (HTTP allowed only in test environments)
+  const runtime = getRuntimeEnv(env);
+  const isTest = (runtime.ENVIRONMENT === 'test' || runtime.NODE_ENV === 'test');
+  if (backendUrl.protocol !== 'https:' && (!isTest || backendUrl.protocol !== 'http:')) {
+    return jsonResponse(
+      {
+        error: 'Gateway Configuration Error',
+        message: 'Configured BACKEND_URL must use the HTTPS protocol',
+        code: 'HTTPS_REQUIRED'
+      },
+      500,
+      corsHeaders
+    );
+  }
+
+  // 4. Prevent proxy loops
   if (incomingUrl.hostname.toLowerCase() === backendUrl.hostname.toLowerCase()) {
     return jsonResponse(
       {
@@ -180,14 +244,14 @@ export async function handleRequest(request, env = {}, ctx = {}) {
     );
   }
 
-  // 4. Construct upstream target URL
+  // 5. Construct upstream target URL
   // Note: Backend routes are mounted on exact paths (e.g. /api/leads, /health/live, /).
   // Neither strip nor add /api prefix; preserve pathname and search query string identically.
   const upstreamBasePath = backendUrl.pathname.replace(/\/+$/, '');
   const upstreamFullPath = `${upstreamBasePath}${incomingUrl.pathname}${incomingUrl.search}`;
   const targetUrl = new URL(upstreamFullPath, backendUrl.origin);
 
-  // 5. Clone and prepare headers for forwarding
+  // 6. Clone and prepare headers for forwarding
   const forwardHeaders = new Headers(request.headers);
 
   // Set authoritative Host header for Render SNI and service routing
@@ -214,7 +278,7 @@ export async function handleRequest(request, env = {}, ctx = {}) {
   forwardHeaders.delete('cf-ray');
   forwardHeaders.delete('cf-visitor');
 
-  // 6. Build upstream request
+  // 7. Build upstream request
   const method = request.method.toUpperCase();
   const hasBody = !['GET', 'HEAD'].includes(method);
 
@@ -225,12 +289,11 @@ export async function handleRequest(request, env = {}, ctx = {}) {
   };
 
   if (hasBody) {
-    // Forward the request body as stream / buffer
     requestInit.body = request.body;
     requestInit.duplex = 'half';
   }
 
-  // 7. Execute fetch to upstream Render backend
+  // 8. Execute fetch to upstream Render backend
   let upstreamResponse;
   try {
     upstreamResponse = await fetch(targetUrl.toString(), requestInit);
@@ -247,7 +310,7 @@ export async function handleRequest(request, env = {}, ctx = {}) {
     );
   }
 
-  // 8. Construct downstream response with merged CORS & security headers
+  // 9. Construct downstream response with merged CORS & security headers
   const responseHeaders = new Headers(upstreamResponse.headers);
 
   // Apply CORS headers for allowed origins
@@ -270,3 +333,11 @@ export async function handleRequest(request, env = {}, ctx = {}) {
 export default {
   fetch: handleRequest
 };
+
+// Fallback for Service Worker runtime (if deployed using addEventListener)
+if (typeof addEventListener === 'function' && typeof self !== 'undefined' && !self.__WORKER_FETCH_LISTENER_REGISTERED__) {
+  self.__WORKER_FETCH_LISTENER_REGISTERED__ = true;
+  addEventListener('fetch', (event) => {
+    event.respondWith(handleRequest(event.request, globalThis, event));
+  });
+}

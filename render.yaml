@@ -45,7 +45,7 @@ services:
       - key: META_VERIFY_TOKEN
         sync: false
       - key: META_REDIRECT_URI
-        value: https://api.sahyak.com/api/integrations/meta/oauth/callback
+        value: https://api-app.sahyak.com/api/integrations/meta/oauth/callback
       - key: META_API_VERSION
         value: v22.0
       - key: GOOGLE_CLIENT_ID
@@ -53,6 +53,6 @@ services:
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: GOOGLE_REDIRECT_URI
-        value: https://api.sahyak.com/api/integrations/google/oauth/callback
+        value: https://api-app.sahyak.com/api/integrations/google/oauth/callback
       - key: GOOGLE_WEBHOOK_SECRET
         sync: false

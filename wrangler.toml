@@ -1,6 +1,6 @@
-name = "sahyak-api-proxy"
+name = "api-app-proxy"
 main = "worker.js"
-compatibility_date = "2026-08-15"
+compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
