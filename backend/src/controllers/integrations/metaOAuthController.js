@@ -19,7 +19,7 @@ function getMetaAppSecret() {
 }
 
 function getMetaRedirectUri(req) {
-  if (req && req.query && req.query.redirect_uri) return req.query.redirect_uri;
+  if (req && req.query && req.query.redirect_uri) return String(req.query.redirect_uri).trim();
   const isLocal = !process.env.NODE_ENV || process.env.NODE_ENV === 'development' || (req && req.headers && req.headers.host && req.headers.host.includes('localhost'));
   const port = process.env.PORT || 5000;
 
@@ -28,15 +28,23 @@ function getMetaRedirectUri(req) {
     return `http://localhost:${port}/api/integrations/meta/oauth/callback`;
   }
 
-  if (process.env.META_REDIRECT_URI) return process.env.META_REDIRECT_URI;
+  if (process.env.META_REDIRECT_URI) {
+    let uri = String(process.env.META_REDIRECT_URI).trim();
+    // Safety guard: If accidentally set to the webhook endpoint, correct to the oauth callback endpoint
+    if (uri.endsWith('/webhook')) {
+      uri = uri.replace(/\/webhook$/, '/oauth/callback');
+    }
+    return uri;
+  }
 
   if (process.env.BACKEND_URL) {
-    return `${process.env.BACKEND_URL}/api/integrations/meta/oauth/callback`;
+    const backend = String(process.env.BACKEND_URL).trim().replace(/\/+$/, '');
+    return `${backend}/api/integrations/meta/oauth/callback`;
   }
 
   return isLocal
     ? `http://localhost:${port}/api/integrations/meta/oauth/callback`
-    : `https://${req?.headers?.host || 'localhost'}/api/integrations/meta/oauth/callback`;
+    : `https://${(req?.headers?.host || 'api-app.sahyak.com').trim()}/api/integrations/meta/oauth/callback`;
 }
 
 const META_SCOPES = [
