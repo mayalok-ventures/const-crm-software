@@ -958,10 +958,10 @@ export default function LeadDetailPage() {
 
   useEffect(() => {
     if (!leadId) {
-      const resolved = getActualId();
+      const resolved = getResolvedRouteParam(params, 'id', 'leads', isValidEntityId);
       if (resolved) setLeadId(resolved);
     }
-  }, [params]);
+  }, [params, leadId]);
 
   useEffect(() => {
     try {
@@ -971,7 +971,7 @@ export default function LeadDetailPage() {
   }, []);
 
   useEffect(() => {
-    const activeId = leadId || getActualId();
+    const activeId = leadId || getResolvedRouteParam(params, 'id', 'leads', isValidEntityId);
     if (!activeId || activeId === '[id]' || activeId === 'placeholder' || activeId === 'undefined' || activeId === 'null' || !/^[0-9a-fA-F]{24}$/.test(activeId)) {
       setLoading(false);
       return;

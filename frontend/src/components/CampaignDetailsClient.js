@@ -60,10 +60,10 @@ export default function CampaignDetailsPage() {
 
   useEffect(() => {
     if (!activeId) {
-      const resolved = getActualId();
+      const resolved = getResolvedRouteParam(params, 'id', 'campaigns');
       if (resolved) setActiveId(resolved);
     }
-  }, [params]);
+  }, [params, activeId]);
 
   useEffect(() => {
     if (campaignId && campaignId !== '[id]' && campaignId !== 'placeholder' && campaignId !== 'undefined') {
