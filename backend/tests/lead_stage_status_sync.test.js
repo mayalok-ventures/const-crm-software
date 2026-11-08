@@ -131,6 +131,20 @@ async function runTest() {
     console.log('✅ Step 3: reportAndFixStageStatusDrift healed drifted status.');
   }
 
+  // 4. Verify resolveStageAndStatus strictly normalizes non-canonical display names to canonical statuses
+  {
+    const { resolveStageAndStatus } = require('../src/utils/leadStageStatus');
+    const displayWon = resolveStageAndStatus({ status: 'Admission Confirmed' });
+    assert.strictEqual(displayWon.status, 'won', 'Display name "Admission Confirmed" must map to canonical "won"');
+
+    const displayVisit = resolveStageAndStatus({ status: 'Campus Visit Arranged' });
+    assert.strictEqual(displayVisit.status, 'in_progress', 'Display name "Campus Visit Arranged" must map to canonical "in_progress"');
+
+    const rawId = resolveStageAndStatus({ stageId: 'stage_999999', status: 'stage_999999' });
+    assert.strictEqual(rawId.status, 'open', 'Unmatched raw stageId must map to canonical "open"');
+    console.log('✅ Step 4: resolveStageAndStatus guarantees canonical status output for all inputs.');
+  }
+
   await mongoose.disconnect();
   await mongod.stop();
   console.log('🎉 ALL B6 LEAD STAGE & STATUS SYNC TESTS PASSED!');

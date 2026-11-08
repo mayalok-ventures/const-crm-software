@@ -20,6 +20,29 @@ function mapStageToCanonicalStatus(stage) {
   const sId = (stage.stageId || '').toLowerCase();
   const sName = (stage.name || '').toLowerCase();
 
+  if (
+    sId.includes('won') ||
+    sId.includes('converted') ||
+    sId.includes('admitted') ||
+    sName.includes('won') ||
+    sName.includes('converted') ||
+    sName.includes('admission confirmed') ||
+    sName.includes('admitted')
+  ) {
+    return 'won';
+  }
+  if (
+    sId.includes('lost') ||
+    sId.includes('dropped') ||
+    sId.includes('declined') ||
+    sName.includes('lost') ||
+    sName.includes('declined') ||
+    sName.includes('not interested') ||
+    sName.includes('dropped')
+  ) {
+    return 'lost';
+  }
+
   if (sId.includes('new') || sId.includes('inquiry') || sId.includes('received') || sName.includes('received') || sName.includes('inquiry')) {
     return 'new_lead';
   }
@@ -67,10 +90,22 @@ function resolveStageAndStatus({ stageId, status, pipeline }) {
     resolvedStatus = mapStageToCanonicalStatus({ stageId: resolvedStage });
   }
 
+  // Guarantee resolvedStatus is strictly canonical (never a display name, arbitrary string, or raw stage ID)
+  if (resolvedStatus && !CANONICAL_STATUSES.includes(resolvedStatus)) {
+    resolvedStatus = mapStageToCanonicalStatus({
+      stageId: resolvedStage || resolvedStatus,
+      name: resolvedStatus,
+    });
+  }
+
+  if (!CANONICAL_STATUSES.includes(resolvedStatus)) {
+    resolvedStatus = 'open';
+  }
+
   return {
     pipelineStage: resolvedStage,
     pipeline_stage: resolvedStage,
-    status: resolvedStatus || 'open',
+    status: resolvedStatus,
   };
 }
 
