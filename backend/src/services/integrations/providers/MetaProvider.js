@@ -17,14 +17,16 @@ class MetaProvider extends BaseProvider {
 
     const signature = req.headers['x-hub-signature-256'];
     if (!signature) {
-      if (process.env.NODE_ENV === 'test') return true;
       return false;
     }
 
     const appSecret = (process.env.META_APP_SECRET || '').trim();
-    if (!appSecret) return true;
+    if (!appSecret) {
+      console.warn('[Meta Webhook] Inbound webhook rejected: META_APP_SECRET is not configured on server');
+      return false;
+    }
 
-    const payload = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body);
+    const payload = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body || {});
     const expected = 'sha256=' + crypto.createHmac('sha256', appSecret).update(payload).digest('hex');
 
     const sigBuf = Buffer.from(signature, 'utf8');

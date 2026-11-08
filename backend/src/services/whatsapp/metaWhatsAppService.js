@@ -146,21 +146,20 @@ class MetaWhatsAppService {
       return false;
     }
 
-    const secret = appSecret || process.env.META_APP_SECRET;
+    const secret = (appSecret || process.env.META_APP_SECRET || '').trim();
     if (!secret) {
-      console.warn('[MetaWhatsApp Webhook] META_APP_SECRET not configured on server');
-      if (process.env.NODE_ENV === 'production') {
-        console.error('[MetaWhatsApp Webhook] Rejecting webhook in production: META_APP_SECRET is required');
-        return false;
-      }
-      return true; // Bypass in dev if not set
+      console.warn('[MetaWhatsApp Webhook] Inbound webhook rejected: META_APP_SECRET not configured on server');
+      return false;
     }
 
-    const rawBody = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body);
+    const rawBody = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body || {});
     const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
 
     try {
-      return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+      const sigBuf = Buffer.from(signature, 'utf8');
+      const expBuf = Buffer.from(expected, 'utf8');
+      if (sigBuf.length !== expBuf.length) return false;
+      return crypto.timingSafeEqual(sigBuf, expBuf);
     } catch {
       return false;
     }

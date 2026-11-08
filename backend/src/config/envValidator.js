@@ -29,6 +29,11 @@ function validateEnvironment() {
       errors.push('ENCRYPTION_KEY / INTEGRATION_ENCRYPTION_KEY: Must be configured in production with min 32 chars.');
     }
 
+    // 4. Inbound Webhook Secrets Validation (Fail-Closed Notice)
+    if (!process.env.META_APP_SECRET) {
+      console.warn('⚠️ [EnvValidator] META_APP_SECRET is not configured. Inbound Meta webhooks will fail closed.');
+    }
+
     configErrors = errors;
 
     if (errors.length > 0) {
