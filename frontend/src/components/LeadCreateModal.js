@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Plus, X, AlertCircle, Calendar } from 'lucide-react';
 import { SERVICE_CATALOG, TIMELINE_OPTIONS } from './LeadCard';
+import { useModalA11y } from '@/lib/useModalA11y';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
@@ -15,6 +16,7 @@ export default function LeadCreateModal({
 }) {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const { modalRef } = useModalA11y({ isOpen, onClose });
 
   // STRICT 7 Basic Fields ONLY
   const [form, setForm] = useState({
@@ -87,14 +89,25 @@ export default function LeadCreateModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-[#0b1120] border border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl animate-fade-in text-left">
+    <div
+      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="lead-create-modal-title"
+        className="bg-[#0b1120] border border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl animate-fade-in text-left max-h-[92dvh] overflow-y-auto"
+      >
         <div className="flex items-center justify-between mb-1">
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
+          <h3 id="lead-create-modal-title" className="text-base font-bold text-white flex items-center gap-2">
             <Plus className="w-5 h-5 text-indigo-400" />
             Add New Lead (Admin/Agent)
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition">
+          <button onClick={onClose} aria-label="Close dialog" className="text-slate-400 hover:text-white transition cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>

@@ -510,9 +510,20 @@ function LeadCardComponent({
 
       {/* ── MODAL 1: EDIT LEAD ── */}
       {showEditModal && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
-          <div className="bg-[#0b1120] border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl animate-fade-in text-left">
-            <h3 className="text-base font-bold text-white mb-1 flex items-center gap-2">
+        <div
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowEditModal(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="lead-card-edit-modal-title"
+            className="bg-[#0b1120] border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl animate-fade-in text-left max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="lead-card-edit-modal-title" className="text-base font-bold text-white mb-1 flex items-center gap-2">
               <Edit className="w-5 h-5 text-indigo-400" />
               Edit Lead Details
             </h3>
