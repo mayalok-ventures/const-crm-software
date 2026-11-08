@@ -36,6 +36,23 @@ describe('Shared UI & Accessibility Unit Tests (T3 / Group U)', () => {
     expect(highAmberRatio).toBeGreaterThanOrEqual(4.5); // Passes AA
   });
 
+  it('all hardened source badge palettes meet WCAG 2.1 AA (>= 4.5:1 contrast)', () => {
+    // Verified light backgrounds vs hardened text colors
+    const badges = [
+      { name: 'Meta Ads', text: '#1d4ed8', bg: '#f0f7ff' },
+      { name: 'Google Ads', text: '#c5221f', bg: '#fef2f2' },
+      { name: 'Google Sheets', text: '#047857', bg: '#ecfdf5' },
+      { name: 'Website Form', text: '#4338ca', bg: '#eef2ff' },
+      { name: 'Custom Webhook', text: '#7e22ce', bg: '#faf5ff' },
+      { name: 'Manual Direct', text: '#334155', bg: '#f8fafc' },
+    ];
+
+    badges.forEach(({ name, text, bg }) => {
+      const ratio = contrastRatio(text, bg);
+      expect(ratio, `${name} (${text} on ${bg}) failed WCAG AA with ratio ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(4.5);
+    });
+  });
+
   it('renders an accessible modal shell wrapper with role="dialog" and aria-modal="true"', () => {
     function MockModalShell({ title, children, isOpen }) {
       if (!isOpen) return null;
@@ -61,3 +78,4 @@ describe('Shared UI & Accessibility Unit Tests (T3 / Group U)', () => {
     expect(screen.getByLabelText('Close dialog')).toBeDefined();
   });
 });
+

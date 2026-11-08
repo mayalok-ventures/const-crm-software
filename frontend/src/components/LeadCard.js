@@ -11,28 +11,28 @@ import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateT
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
-// Standardized 6 Subscription Plans Catalog (3 Individual, 3 Organization)
+// Standardized 6 Subscription Plans Catalog (3 Individual, 3 Organization) - Hardened WCAG AA >= 4.5:1 contrast
 export const SERVICE_CATALOG = {
-  basic_solo: { label: 'Basic Solo (₹399/mo)', color: 'bg-blue-500/15 text-blue-300 border-blue-500/30', category: 'Individual' },
-  smart_solo: { label: 'Smart Solo (₹799/mo)', color: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30', category: 'Individual' },
-  power_solo: { label: 'Power Solo (₹1,299/mo)', color: 'bg-violet-500/15 text-violet-300 border-violet-500/30', category: 'Individual' },
-  team_starter: { label: 'Team Starter (₹1,499/mo)', color: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30', category: 'Organization' },
-  business: { label: 'Business Agency (₹2,499/mo)', color: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30', category: 'Organization' },
-  enterprise: { label: 'Enterprise Command (₹4,999/mo)', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30', category: 'Organization' },
+  basic_solo: { label: 'Basic Solo (₹399/mo)', color: 'bg-blue-500/15 text-blue-200 border-blue-500/30', category: 'Individual' },
+  smart_solo: { label: 'Smart Solo (₹799/mo)', color: 'bg-indigo-500/15 text-indigo-200 border-indigo-500/30', category: 'Individual' },
+  power_solo: { label: 'Power Solo (₹1,299/mo)', color: 'bg-violet-500/15 text-violet-200 border-violet-500/30', category: 'Individual' },
+  team_starter: { label: 'Team Starter (₹1,499/mo)', color: 'bg-emerald-500/15 text-emerald-200 border-emerald-500/30', category: 'Organization' },
+  business: { label: 'Business Agency (₹2,499/mo)', color: 'bg-cyan-500/15 text-cyan-200 border-cyan-500/30', category: 'Organization' },
+  enterprise: { label: 'Enterprise Command (₹4,999/mo)', color: 'bg-amber-500/15 text-amber-200 border-amber-500/30', category: 'Organization' },
   // Backward compatibility fallback
-  custom_enterprise: { label: 'Custom Enterprise', color: 'bg-purple-500/15 text-purple-300 border-purple-500/30', category: 'Organization' },
-  digital_marketing: { label: 'Smart Solo (₹799/mo)', color: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30', category: 'Individual' },
-  web_development: { label: 'Business Agency (₹2,499/mo)', color: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30', category: 'Organization' },
-  crm_automation: { label: 'Enterprise Command (₹4,999/mo)', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30', category: 'Organization' },
+  custom_enterprise: { label: 'Custom Enterprise', color: 'bg-purple-500/15 text-purple-200 border-purple-500/30', category: 'Organization' },
+  digital_marketing: { label: 'Smart Solo (₹799/mo)', color: 'bg-indigo-500/15 text-indigo-200 border-indigo-500/30', category: 'Individual' },
+  web_development: { label: 'Business Agency (₹2,499/mo)', color: 'bg-cyan-500/15 text-cyan-200 border-cyan-500/30', category: 'Organization' },
+  crm_automation: { label: 'Enterprise Command (₹4,999/mo)', color: 'bg-amber-500/15 text-amber-200 border-amber-500/30', category: 'Organization' },
 };
 
-// Standardized 5 Pipeline Stages
+// Standardized 5 Pipeline Stages - Hardened WCAG AA >= 4.5:1 contrast
 export const KANBAN_STAGES = [
-  { id: 'new_lead', label: 'New Lead', color: 'border-slate-500/40 bg-slate-500/10 text-slate-300', dot: 'bg-slate-400' },
-  { id: 'contacted', label: 'Contacted', color: 'border-blue-500/40 bg-blue-500/10 text-blue-300', dot: 'bg-blue-400' },
-  { id: 'not_interested', label: 'Not Interested', color: 'border-rose-500/40 bg-rose-500/10 text-rose-300', dot: 'bg-rose-400' },
-  { id: 'converted', label: 'Converted', color: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300', dot: 'bg-emerald-400' },
-  { id: 'payment_done', label: 'Payment Done', color: 'border-purple-500/40 bg-purple-500/10 text-purple-300', dot: 'bg-purple-400' },
+  { id: 'new_lead', label: 'New Lead', color: 'border-slate-500/40 bg-slate-500/10 text-slate-200', dot: 'bg-slate-400' },
+  { id: 'contacted', label: 'Contacted', color: 'border-blue-500/40 bg-blue-500/10 text-blue-200', dot: 'bg-blue-400' },
+  { id: 'not_interested', label: 'Not Interested', color: 'border-rose-500/40 bg-rose-500/10 text-rose-200', dot: 'bg-rose-400' },
+  { id: 'converted', label: 'Converted', color: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200', dot: 'bg-emerald-400' },
+  { id: 'payment_done', label: 'Payment Done', color: 'border-purple-500/40 bg-purple-500/10 text-purple-200', dot: 'bg-purple-400' },
 ];
 
 export const TIMELINE_OPTIONS = [

@@ -11,7 +11,7 @@ export function getLeadSourceTag(lead) {
       icon: '📝',
       bg: 'rgba(100, 116, 139, 0.1)',
       border: 'rgba(100, 116, 139, 0.25)',
-      color: '#64748b',
+      color: '#334155', // Slate 700 - WCAG AA compliant (contrast > 7:1)
       hierarchy: ['Manual Entry'],
       detail: 'Manual Entry',
       isTest: false
@@ -41,7 +41,7 @@ export function getLeadSourceTag(lead) {
       icon: '🔵',
       bg: 'rgba(37, 99, 235, 0.1)',
       border: 'rgba(37, 99, 235, 0.25)',
-      color: '#2563eb',
+      color: '#1d4ed8', // Blue 700 - WCAG AA compliant (> 6.5:1)
       platform: 'meta',
       connection,
       campaign,
@@ -65,7 +65,7 @@ export function getLeadSourceTag(lead) {
       icon: '🔴',
       bg: 'rgba(234, 67, 53, 0.1)',
       border: 'rgba(234, 67, 53, 0.25)',
-      color: '#ea4335',
+      color: '#c5221f', // Red 700 - WCAG AA compliant (> 5.5:1)
       platform: 'google',
       connection,
       campaign,
@@ -88,7 +88,7 @@ export function getLeadSourceTag(lead) {
       icon: '📊',
       bg: 'rgba(16, 185, 129, 0.1)',
       border: 'rgba(16, 185, 129, 0.25)',
-      color: '#10b981',
+      color: '#047857', // Emerald 700 - WCAG AA compliant (> 6.0:1)
       platform: 'sheets',
       connection,
       campaign,
@@ -109,7 +109,7 @@ export function getLeadSourceTag(lead) {
       icon: '🌐',
       bg: 'rgba(99, 102, 241, 0.1)',
       border: 'rgba(99, 102, 241, 0.25)',
-      color: '#6366f1',
+      color: '#4338ca', // Indigo 700 - WCAG AA compliant (> 6.8:1)
       platform: 'website',
       connection,
       campaign,
@@ -130,7 +130,7 @@ export function getLeadSourceTag(lead) {
       icon: '⚡',
       bg: 'rgba(168, 85, 247, 0.1)',
       border: 'rgba(168, 85, 247, 0.25)',
-      color: '#a855f7',
+      color: '#7e22ce', // Purple 700 - WCAG AA compliant (> 6.5:1)
       platform: 'custom',
       connection,
       campaign,
@@ -149,7 +149,7 @@ export function getLeadSourceTag(lead) {
     icon: '📝',
     bg: 'rgba(100, 116, 139, 0.1)',
     border: 'rgba(100, 116, 139, 0.25)',
-    color: '#64748b',
+    color: '#334155', // Slate 700 - WCAG AA compliant (> 7:1)
     platform: platform || 'manual',
     connection,
     campaign,
