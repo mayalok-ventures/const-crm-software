@@ -105,7 +105,12 @@ const buildLeadPermissionQuery = async (user, isUnclaimed = false) => {
     return { workspaceId };
   }
 
-  // Legacy fallback for tests or requests before workspace resolution
+  // Fail-closed tenant security: if legacy transitional mode is not enabled, requests without an active workspace context must return zero leads
+  if (process.env.ALLOW_UNSCOPED_LEGACY_LEADS !== 'true') {
+    return { workspaceId: new mongoose.Types.ObjectId() };
+  }
+
+  // Legacy transitional fallback for requests before workspace backfill completion
   const effectiveCompanyId = user.companyId || (user.companyRole === 'owner' ? user._id : null);
   if (effectiveCompanyId) {
     if (user.companyRole === 'owner' || user.companyRole === 'manager') {
