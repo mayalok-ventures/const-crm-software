@@ -229,7 +229,8 @@ const leadSchema = new mongoose.Schema({
   version: { type: Number, default: 1 },
 
   // Soft Deletion
-  deletedAt: { type: Date, default: null },
+  deletedAt: { type: Date, default: null, index: true },
+  deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 
   // Candidate Budget & Package Range
   budget: { type: String, default: '' },
@@ -639,6 +640,15 @@ leadSchema.index({ companyId: 1, isTestLead: 1, createdAt: -1 });
 leadSchema.index({ userId: 1, 'leadSource.platform': 1, createdAt: -1 });
 leadSchema.index({ userId: 1, 'leadSource.campaignId': 1, createdAt: -1 });
 leadSchema.index({ 'leadSource.platform': 1, 'leadSource.campaignId': 1, createdAt: -1 });
+
+// Exclude soft-deleted leads by default on find/count queries unless explicitly requested
+leadSchema.pre(['find', 'findOne', 'countDocuments', 'count', 'findOneAndUpdate', 'findByIdAndUpdate'], function () {
+  if (this.getOptions().includeDeleted) return;
+  const currentQuery = this.getQuery();
+  if (currentQuery && currentQuery.deletedAt === undefined) {
+    this.where({ deletedAt: null });
+  }
+});
 
 leadSchema.pre('save', async function() {
   if (!this.primarySource && this.source) {

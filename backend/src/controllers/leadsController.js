@@ -1789,15 +1789,46 @@ exports.updateLead = async (req, res) => {
   }
 };
 
-// @desc  Delete lead
+// @desc  Delete lead (Soft delete with non-financial cascade cleanup)
 // @route DELETE /api/leads/:id
 // @access Private
 exports.deleteLead = async (req, res) => {
   try {
     const basePermissionQuery = await buildLeadPermissionQuery(req.user);
-    const lead = await Lead.findOneAndDelete({ _id: req.params.id, ...basePermissionQuery });
+    const lead = await Lead.findOne({ _id: req.params.id, ...basePermissionQuery });
 
     if (!lead) return res.status(404).json({ message: 'Lead not found or unauthorized' });
+
+    const auditBefore = {
+      name: lead.name,
+      phone: lead.phone,
+      status: lead.status,
+      company: lead.company,
+      budget: lead.budget,
+    };
+
+    // Soft delete: mark timestamp, actor, and release phone uniqueness constraint
+    lead.deletedAt = new Date();
+    lead.deletedBy = req.user._id;
+    if (lead.phone && !lead.phone.includes('_del_')) {
+      lead.phone = `${lead.phone}_del_${lead._id}`;
+    }
+    await lead.save();
+
+    // Cascade cleanup non-financial children:
+    // 1. Cancel pending follow-ups
+    const FollowUp = mongoose.models.FollowUp || require('../models/FollowUp');
+    await FollowUp.updateMany(
+      { $or: [{ leadId: lead._id }, { lead_id: lead._id }], status: 'pending' },
+      { $set: { status: 'cancelled' } }
+    ).catch(err => console.warn('[Lead Delete] FollowUp cascade warning:', err.message));
+
+    // 2. Remove lead from groups
+    const Group = mongoose.models.Group || require('../models/Group');
+    await Group.updateMany(
+      { leadIds: lead._id },
+      { $pull: { leadIds: lead._id } }
+    ).catch(err => console.warn('[Lead Delete] Group cascade warning:', err.message));
 
     // Record Immutable Audit Log
     auditService.record({
@@ -1807,13 +1838,7 @@ exports.deleteLead = async (req, res) => {
       resourceType: 'Lead',
       resourceId: lead._id,
       resourceName: lead.name,
-      before: {
-        name: lead.name,
-        phone: lead.phone,
-        status: lead.status,
-        company: lead.company,
-        budget: lead.budget,
-      },
+      before: auditBefore,
       req,
     });
 
