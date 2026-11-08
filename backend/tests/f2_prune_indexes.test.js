@@ -48,3 +48,4 @@ describe('F2.2: Lead Index Pruning and Schema Index Limit Compliance', () => {
     assert(!remainingNames.includes('userId_1_createdAt_-1'), 'Dropped index must not exist in collection');
   });
 });
+

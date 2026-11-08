@@ -406,7 +406,7 @@ exports.getLeads = async (req, res) => {
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
     const skip = (parsedPage - 1) * cap;
 
-    const skipCount = req.query.includeTotal === 'false' || req.query.skipCount === 'true' || req.headers['x-skip-total-count'] === 'true';
+    const skipCount = req.query?.includeTotal === 'false' || req.query?.skipCount === 'true' || req.headers?.['x-skip-total-count'] === 'true';
     const isDefaultQuery = !status && !tag && !search && !projectId && !assignedTo && !source && !primarySource && !unclaimed && !platform && !connectionId && !campaignId && !startDate && !endDate && (isTest === undefined || isTest === '' || isTest === 'all');
     const tenantKey = req.workspaceId || req.tenantId || req.user?.workspaceId || req.user?._id;
     const countCacheKey = isDefaultQuery
@@ -657,8 +657,8 @@ exports.scheduleFollowUp = async (req, res) => {
 
     // Idempotency check: prevent duplicate follow-ups under network retry or rapid double-submit
     const idempotencyKey = (
-      req.headers['idempotency-key'] ||
-      req.headers['x-idempotency-key'] ||
+      req.headers?.['idempotency-key'] ||
+      req.headers?.['x-idempotency-key'] ||
       req.body.idempotencyKey ||
       req.body.idempotency_key ||
       ''
@@ -1316,8 +1316,8 @@ exports.createLead = async (req, res) => {
     const resolvedName = (name && String(name).trim()) || (cleanPhone ? `Lead (${cleanPhone})` : `Lead #${Date.now().toString().slice(-4)}`);
 
     const clientTxnId = (
-      req.headers['idempotency-key'] ||
-      req.headers['x-idempotency-key'] ||
+      req.headers?.['idempotency-key'] ||
+      req.headers?.['x-idempotency-key'] ||
       req.body.idempotencyKey ||
       req.body.idempotency_key ||
       ''
@@ -3155,7 +3155,7 @@ exports.importLeads = async (req, res) => {
       const fileBytes = fs.readFileSync(req.file.path);
       fileHash = crypto.createHash('sha256').update(fileBytes).digest('hex');
     }
-    const passedJobId = req.body.importJobId || req.headers['x-import-job-id'];
+    const passedJobId = req.body?.importJobId || req.headers?.['x-import-job-id'];
     let job = null;
     if (passedJobId && mongoose.Types.ObjectId.isValid(passedJobId)) {
       job = await ImportJob.findById(passedJobId);

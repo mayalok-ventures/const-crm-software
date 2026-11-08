@@ -419,7 +419,7 @@ exports.getChatHistory = async (req, res) => {
       ? `"${messages.length}_${lastMsg._id}_${new Date(lastMsg.timestamp).getTime()}"`
       : '"0_empty"';
 
-    if (req.headers['if-none-match'] === etag) {
+    if (req.headers?.['if-none-match'] === etag) {
       return res.status(304).end();
     }
 
@@ -444,8 +444,13 @@ exports.getChatHistory = async (req, res) => {
       };
     });
 
-    res.set('ETag', etag);
-    res.set('Cache-Control', 'private, no-cache');
+    if (typeof res.set === 'function') {
+      res.set('ETag', etag);
+      res.set('Cache-Control', 'private, no-cache');
+    } else if (typeof res.setHeader === 'function') {
+      res.setHeader('ETag', etag);
+      res.setHeader('Cache-Control', 'private, no-cache');
+    }
     res.json(safeMessages);
   } catch (err) {
     console.error('getChatHistory error:', err);

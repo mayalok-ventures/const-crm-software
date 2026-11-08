@@ -95,3 +95,4 @@ export function initOfflineSyncWorker() {
     window.removeEventListener('online', handleOnline);
   };
 }
+

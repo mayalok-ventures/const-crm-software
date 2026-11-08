@@ -96,3 +96,4 @@ module.exports = {
   REDUNDANT_INDEXES,
   pruneRedundantIndexes,
 };
+
