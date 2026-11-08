@@ -4,13 +4,14 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
-import { waLink, mergeTemplate } from '@/lib/auth';
+import { waLink, mergeTemplate, hasPermission, isOwner, isSuperAdmin } from '@/lib/auth';
 import {
   ArrowLeft, MessageCircle, Phone, Edit2, Trash2, Mic, MicOff,
   Play, Pause, Send, Plus, X, Check, Calendar, AlertTriangle, ExternalLink,
   Image as ImageIcon, Video as VideoIcon, File as FileIcon, CheckCheck, RefreshCw,
   Paperclip, Copy, Package, UserCheck, ShieldCheck, History, Activity, Sparkles, Briefcase,
-  GraduationCap, BookOpen, Clock, Building2, ChevronRight, ChevronDown, FileText, CheckCircle2
+  GraduationCap, BookOpen, Clock, Building2, ChevronRight, ChevronDown, FileText, CheckCircle2,
+  GitMerge
 } from 'lucide-react';
 import { format } from 'date-fns';
 import dynamic from 'next/dynamic';
@@ -21,6 +22,10 @@ const FollowUpSchedulerModal = dynamic(() => import('@/components/FollowUpSchedu
 const FollowUpCompleteModal = dynamic(() => import('@/components/FollowUpCompleteModal'), { ssr: false });
 import { SourcePill, getLeadSourceTag } from '@/lib/sourceHelper';
 const ShareCollegeFeeModal = dynamic(() => import('@/components/leads/ShareCollegeFeeModal'), { ssr: false });
+const LeadPhoneReveal = dynamic(() => import('@/components/leads/LeadPhoneReveal'), { ssr: false });
+const LeadTimelineDrawer = dynamic(() => import('@/components/leads/LeadTimelineDrawer'), { ssr: false });
+const LeadMergeModal = dynamic(() => import('@/components/leads/LeadMergeModal'), { ssr: false });
+const FeeInstallmentsCard = dynamic(() => import('@/components/leads/FeeInstallmentsCard'), { ssr: false });
 import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
 import { getResolvedRouteParam, isValidEntityId } from '@/lib/routeParams';
 import { useDirtyFormWarning } from '@/lib/useDirtyFormWarning';
@@ -958,6 +963,9 @@ export default function LeadDetailPage() {
   const [mobileTab, setMobileTab] = useState('details');
   const [activeRightTab, setActiveRightTab] = useState('chat'); // 'chat' | 'notes' | 'memos' | 'audit'
   const [editTab, setEditTab] = useState('academics'); // 'academics' | 'entrance' | 'preferences' | 'personal' | 'milestones'
+  const [showTimelineDrawer, setShowTimelineDrawer] = useState(false);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [reloadTrigger, setReloadTrigger] = useState(0);
   const [collapsedSections, setCollapsedSections] = useState({
     personal: true,
     milestones: false,
@@ -1004,7 +1012,7 @@ export default function LeadDetailPage() {
     }).finally(() => {
       setLoading(false);
     });
-  }, [id, leadId]);
+  }, [id, leadId, reloadTrigger]);
 
   const industryDefaults = getIndustryDefaults(currentUser?.industryType);
 
@@ -1280,24 +1288,14 @@ export default function LeadDetailPage() {
 
                 {/* Subtitle Contact Details */}
                 <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 flex-wrap">
-                  <a
-                    href={`tel:${lead.phone}`}
-                    className="font-mono font-bold text-slate-700 hover:text-indigo-600 flex items-center gap-1 transition"
-                  >
-                    📞 +{lead.phone}
-                  </a>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(lead.phone);
-                      toast.success('Phone copied! 📋');
+                  <LeadPhoneReveal
+                    lead={lead}
+                    user={currentUser}
+                    onPhoneUpdated={(newPhone) => {
+                      setLead(prev => ({ ...prev, phone: newPhone, isPhoneMasked: false }));
+                      setForm(prev => ({ ...prev, phone: newPhone }));
                     }}
-                    className="text-slate-400 hover:text-slate-700"
-                    title="Copy phone"
-                  >
-                    <Copy size={11} />
-                  </button>
+                  />
 
                   {lead.email && (
                     <>
@@ -1498,6 +1496,26 @@ export default function LeadDetailPage() {
               <GraduationCap size={15} className="text-white shrink-0" />
               <span>Share Fee</span>
             </button>
+
+            {currentUser && hasPermission(currentUser, 'activities.view') && (
+              <button
+                type="button"
+                onClick={() => setShowTimelineDrawer(true)}
+                className="btn btn-secondary btn-sm flex-1 sm:flex-initial min-w-[95px] text-xs py-2 px-2.5 sm:px-3.5 rounded-xl font-bold flex items-center justify-center gap-1.5 text-slate-700 bg-white border-slate-200 hover:bg-slate-50 shadow-xs"
+              >
+                <History size={14} className="text-indigo-600 shrink-0" /> <span>Timeline</span>
+              </button>
+            )}
+
+            {currentUser && hasPermission(currentUser, 'leads.merge') && (
+              <button
+                type="button"
+                onClick={() => setShowMergeModal(true)}
+                className="btn btn-secondary btn-sm flex-1 sm:flex-initial min-w-[90px] text-xs py-2 px-2.5 sm:px-3.5 rounded-xl font-bold flex items-center justify-center gap-1.5 text-purple-700 bg-purple-50/60 border-purple-200 hover:bg-purple-100 shadow-xs"
+              >
+                <GitMerge size={14} className="text-purple-600 shrink-0" /> <span>Merge</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -2442,6 +2460,14 @@ export default function LeadDetailPage() {
                     </div>
                   )}
 
+                  {/* Fee Installments & Collection Schedule (F4) */}
+                  {currentUser && hasPermission(currentUser, 'deals.view') && (
+                    <FeeInstallmentsCard
+                      leadId={lead._id}
+                      user={currentUser}
+                    />
+                  )}
+
                   {/* Ad Attribution Details (if available) */}
                   {lead.leadSource?.provider && (
                     <div style={{ marginTop: 10, padding: 12, background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -2690,6 +2716,26 @@ export default function LeadDetailPage() {
           onSuccess={(updatedLead) => {
             setLead(updatedLead);
             setForm(updatedLead);
+          }}
+        />
+      )}
+
+      {showTimelineDrawer && (
+        <LeadTimelineDrawer
+          isOpen={showTimelineDrawer}
+          onClose={() => setShowTimelineDrawer(false)}
+          leadId={lead._id}
+          leadName={lead.name}
+        />
+      )}
+
+      {showMergeModal && (
+        <LeadMergeModal
+          isOpen={showMergeModal}
+          onClose={() => setShowMergeModal(false)}
+          lead={lead}
+          onMerged={() => {
+            setReloadTrigger((prev) => prev + 1);
           }}
         />
       )}
