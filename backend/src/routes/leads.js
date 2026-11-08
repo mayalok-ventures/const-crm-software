@@ -9,6 +9,11 @@ const {
   scheduleFollowUp, delayFollowUp, completeFollowUp, rescheduleFollowUp, cancelFollowUp,
   unmaskLeadPhone, getLeadTimeline,
 } = require('../controllers/leadsController');
+const {
+  getLeadInstallments,
+  createLeadInstallments,
+  recordInstallmentPayment,
+} = require('../controllers/feeInstallmentController');
 const { protect, checkPlanExpiry } = require('../middleware/auth');
 const { resolveWorkspace, requirePermission } = require('../middleware/permission');
 const { enforceExportGating } = require('../middleware/antiFraud');
@@ -72,6 +77,11 @@ router.route('/:id')
 router.post('/:id/notes', requirePermission('activities.create'), checkPlanExpiry, addNote);
 router.post('/:id/unmask-phone', requirePermission('leads.view'), unmaskLeadPhone);
 router.get('/:id/timeline', requirePermission('activities.view'), getLeadTimeline);
+
+// Fee Installments Tracking (F4)
+router.get('/:id/installments', requirePermission('deals.view'), getLeadInstallments);
+router.post('/:id/installments', requirePermission('deals.create'), checkPlanExpiry, createLeadInstallments);
+router.post('/:id/installments/:installmentId/pay', requirePermission('deals.create'), checkPlanExpiry, recordInstallmentPayment);
 
 module.exports = router;
 
