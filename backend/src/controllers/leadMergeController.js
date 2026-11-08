@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Lead = require('../models/Lead');
 const { buildLeadPermissionQuery } = require('./leadsController');
+const { shouldMaskPhoneForUser, maskPhoneNumber } = require('../utils/phoneMasking');
 
 /**
  * @desc  Find candidate duplicate leads by phone, phoneDigits, email, or exact name+location
@@ -118,6 +119,14 @@ exports.getDuplicateCandidates = async (req, res) => {
     });
 
     scoredCandidates.sort((a, b) => b.confidence - a.confidence);
+
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
+    if (shouldMask) {
+      scoredCandidates.forEach((cand) => {
+        if (cand.phone) cand.phone = maskPhoneNumber(cand.phone);
+        if (cand.phoneDigits) cand.phoneDigits = maskPhoneNumber(cand.phoneDigits);
+      });
+    }
 
     res.json({
       success: true,

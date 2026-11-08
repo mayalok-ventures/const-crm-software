@@ -43,14 +43,15 @@ describe('F1: Role-Based Phone Masking & Unmask Audit Integration Tests', () => 
     assert.strictEqual(maskPhoneNumber(undefined), undefined);
   });
 
-  it('Integration: Counsellor sees masked phone in getLead, Owner sees unmasked phone', async () => {
+  it('Integration: Flag OFF yields byte-identical unmasked phone; Flag ON masks phone for Counsellor but not Owner', async () => {
     const ownerUserId = new mongoose.Types.ObjectId();
 
-    // 1. Create Workspace
+    // 1. Create Workspace with default flag OFF (maskLeadPhones: false)
     const workspace = await Workspace.create({
       name: 'EduConsult Test Academy',
       domain: 'educonsult-test',
       ownerId: ownerUserId,
+      settings: { maskLeadPhones: false },
     });
 
     // 2. Create Owner and Counsellor Users
@@ -115,11 +116,34 @@ describe('F1: Role-Based Phone Masking & Unmask Audit Integration Tests', () => 
     owner.workspaceRole = 'owner';
     owner.membership = ownerMembership;
 
-    // 5. Test Counsellor getLead invocation
+    // 5. Test Flag OFF: Counsellor receives byte-identical unmasked phone
+    const mockReqFlagOff = {
+      params: { id: testLead._id.toString() },
+      user: counsellor,
+      membership: counsellorMembership,
+      workspace,
+      workspaceId: workspace._id,
+    };
+    let flagOffPayload = null;
+    const mockResFlagOff = {
+      status(code) { this.statusCode = code; return this; },
+      json(data) { flagOffPayload = data; return this; },
+    };
+    await leadsController.getLead(mockReqFlagOff, mockResFlagOff);
+    assert(flagOffPayload, 'Expected JSON response for flag OFF getLead');
+    assert.strictEqual(flagOffPayload.isPhoneMasked, false, 'isPhoneMasked must be false when flag is OFF');
+    assert.strictEqual(flagOffPayload.phone, rawPhone, 'Phone must remain raw unmasked when flag is OFF');
+
+    // 6. Turn flag ON
+    workspace.settings.maskLeadPhones = true;
+    await workspace.save();
+
+    // 7. Test Counsellor getLead invocation with flag ON
     const mockReqCounsellor = {
       params: { id: testLead._id.toString() },
       user: counsellor,
       membership: counsellorMembership,
+      workspace,
       workspaceId: workspace._id,
     };
 
@@ -142,11 +166,12 @@ describe('F1: Role-Based Phone Masking & Unmask Audit Integration Tests', () => 
     assert.strictEqual(counsellorResPayload.alternatePhone, '+9191234*****', 'Alternate phone must be masked');
     assert.strictEqual(counsellorResPayload.fatherPhone, '+9199887*****', 'Father phone must be masked');
 
-    // 6. Test Owner getLead invocation
+    // 8. Test Owner getLead invocation with flag ON (bypasses masking)
     const mockReqOwner = {
       params: { id: testLead._id.toString() },
       user: owner,
       membership: ownerMembership,
+      workspace,
       workspaceId: workspace._id,
     };
 
@@ -173,6 +198,7 @@ describe('F1: Role-Based Phone Masking & Unmask Audit Integration Tests', () => 
       query: { page: 1, limit: 10 },
       user: counsellor,
       membership: counsellorMembership,
+      workspace,
       workspaceId: workspace._id,
     };
     let listPayload = null;
@@ -200,6 +226,7 @@ describe('F1: Role-Based Phone Masking & Unmask Audit Integration Tests', () => 
       params: { id: testLead._id.toString() },
       user: counsellor,
       membership: counsellorMembership,
+      workspace,
       workspaceId: workspace._id,
       ip: '192.168.1.100',
       headers: { 'user-agent': 'AntigravityAuditAgent/3.0' },

@@ -8,6 +8,7 @@ const {
   addChildInquiry, updateChildInquiry, deleteChildInquiry,
   scheduleFollowUp, delayFollowUp, completeFollowUp, rescheduleFollowUp, cancelFollowUp,
   unmaskLeadPhone, getLeadTimeline,
+  callRedirect, whatsappRedirect,
 } = require('../controllers/leadsController');
 const {
   getLeadInstallments,
@@ -80,6 +81,8 @@ router.route('/:id')
 
 router.post('/:id/notes', requirePermission('activities.create'), checkPlanExpiry, addNote);
 router.post('/:id/unmask-phone', requirePermission('leads.view'), unmaskLeadPhone);
+router.get('/:id/call-redirect', requirePermission('leads.view'), callRedirect);
+router.get('/:id/whatsapp-redirect', requirePermission('leads.view'), whatsappRedirect);
 router.get('/:id/timeline', requirePermission('activities.view'), getLeadTimeline);
 
 // Fee Installments Tracking (F4)

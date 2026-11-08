@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const Lead = require('../models/Lead');
 const Notification = require('../models/Notification');
+const { maskPhoneNumber } = require('../utils/phoneMasking');
 
 // @desc  Get share dashboard data (read-only)
 // @route GET /api/share/:token
@@ -25,6 +26,18 @@ exports.getShareDashboard = async (req, res) => {
 
     const stats = { new: 0, contacted: 0, follow_up: 0, closed: 0 };
     byStatus.forEach((s) => { if (stats[s._id] !== undefined) stats[s._id] = s.count; });
+
+    if (user.workspaceId) {
+      try {
+        const Workspace = require('../models/Workspace');
+        const ws = await Workspace.findById(user.workspaceId).select('settings').lean();
+        if (ws?.settings?.maskLeadPhones) {
+          leads.forEach((l) => {
+            if (l.phone) l.phone = maskPhoneNumber(l.phone);
+          });
+        }
+      } catch (_) {}
+    }
 
     res.json({
       owner: { name: user.name },

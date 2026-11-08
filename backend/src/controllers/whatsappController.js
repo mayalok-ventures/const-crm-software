@@ -2,6 +2,7 @@ const ChatMessage = require('../models/ChatMessage');
 const Lead = require('../models/Lead');
 const User = require('../models/User');
 const waSession = require('../services/waSession');
+const { shouldMaskPhoneForUser, maskPhoneNumber, redactPhoneInText } = require('../utils/phoneMasking');
 
 // Helper to resolve effective WhatsApp session ID & verify permissions
 const resolveWhatsAppSender = (user, requestedSender) => {
@@ -296,15 +297,24 @@ exports.getChats = async (req, res) => {
     const leadMap = {};
     leads.forEach(l => { leadMap[l._id.toString()] = l; });
 
-    const formatted = chats.map(c => ({
-      phone: c._id,
-      lastMessage: c.lastMessage,
-      lastTimestamp: c.lastTimestamp,
-      direction: c.direction,
-      unreadCount: c.unreadCount,
-      lead: c.leadId ? leadMap[c.leadId.toString()] : null,
-      displayName: (c.leadId && leadMap[c.leadId.toString()]?.name) || c.senderName || '+' + c._id
-    }));
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
+    const formatted = chats.map(c => {
+      const maskedPhone = shouldMask ? maskPhoneNumber(c._id) : c._id;
+      const rawLead = c.leadId ? leadMap[c.leadId.toString()] : null;
+      let safeLead = rawLead;
+      if (shouldMask && rawLead && rawLead.phone) {
+        safeLead = { ...rawLead, phone: maskPhoneNumber(rawLead.phone) };
+      }
+      return {
+        phone: maskedPhone,
+        lastMessage: shouldMask ? redactPhoneInText(c.lastMessage) : c.lastMessage,
+        lastTimestamp: c.lastTimestamp,
+        direction: c.direction,
+        unreadCount: c.unreadCount,
+        lead: safeLead,
+        displayName: (c.leadId && leadMap[c.leadId.toString()]?.name) || c.senderName || '+' + maskedPhone
+      };
+    });
 
     res.json(formatted);
   } catch (err) {
@@ -407,7 +417,17 @@ exports.getChatHistory = async (req, res) => {
       { $set: { status: 'read' } }
     );
 
-    res.json(messages);
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
+    const safeMessages = messages.map(m => {
+      if (!shouldMask) return m;
+      return {
+        ...m,
+        phone: maskPhoneNumber(m.phone),
+        text: redactPhoneInText(m.text),
+      };
+    });
+
+    res.json(safeMessages);
   } catch (err) {
     console.error('getChatHistory error:', err);
     res.status(500).json({ message: 'Server error fetching chat history' });

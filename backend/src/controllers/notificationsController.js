@@ -1,6 +1,7 @@
 const Notification = require('../models/Notification');
 const PushSubscription = require('../models/PushSubscription');
 const { getVapidPublicKey, subscribe, unsubscribe, sendPushNotification } = require('../services/pushNotificationService');
+const { shouldMaskPhoneForUser, maskPhoneNumber, redactPhoneInText } = require('../utils/phoneMasking');
 
 // Map of active SSE client connections: userId -> Set of res objects
 const sseClients = new Map();
@@ -50,8 +51,24 @@ const getNotifications = async (req, res) => {
       Notification.countDocuments(query),
     ]);
 
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
+    const safeNotifications = notifications.map(n => {
+      if (!shouldMask) return n;
+      const copy = { ...n };
+      if (copy.leadId && copy.leadId.phone) {
+        copy.leadId = {
+          ...copy.leadId,
+          phone: maskPhoneNumber(copy.leadId.phone),
+        };
+      }
+      if (copy.message) {
+        copy.message = redactPhoneInText(copy.message);
+      }
+      return copy;
+    });
+
     res.json({
-      notifications,
+      notifications: safeNotifications,
       unreadCount,
       totalCount,
       page: parseInt(page, 10),

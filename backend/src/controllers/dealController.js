@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const AdmissionDeal = require('../models/AdmissionDeal');
 const Lead = require('../models/Lead');
+const { shouldMaskPhoneForUser, maskPhoneNumber } = require('../utils/phoneMasking');
 
 /**
  * List deals for workspace with filtering and pagination
@@ -70,12 +71,17 @@ exports.getDeals = async (req, res) => {
       ? await req.membership.hasPermission('commission.view')
       : (req.membership?.role === 'owner' || req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.companyRole === 'owner');
 
-    const sanitizedDeals = canViewCommission
-      ? deals
-      : deals.map(d => {
-          const { commission, ...safe } = d;
-          return safe;
-        });
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
+    const sanitizedDeals = deals.map(d => {
+      const copy = { ...d };
+      if (!canViewCommission && copy.commission) {
+        delete copy.commission;
+      }
+      if (shouldMask && copy.studentPhone) {
+        copy.studentPhone = maskPhoneNumber(copy.studentPhone);
+      }
+      return copy;
+    });
 
     res.json({
       success: true,
@@ -128,6 +134,16 @@ exports.getDealById = async (req, res) => {
 
     if (!canViewCommission && dealDoc.commission) {
       delete dealDoc.commission;
+    }
+
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
+    if (shouldMask) {
+      if (dealDoc.studentPhone) {
+        dealDoc.studentPhone = maskPhoneNumber(dealDoc.studentPhone);
+      }
+      if (dealDoc.leadId && dealDoc.leadId.phone) {
+        dealDoc.leadId.phone = maskPhoneNumber(dealDoc.leadId.phone);
+      }
     }
 
     res.json({

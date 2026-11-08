@@ -44,6 +44,7 @@ const workspaceSchema = new mongoose.Schema({
     showFollowUpOnCreate: { type: Boolean, default: true },
     autoAdvanceStageOnNote: { type: Boolean, default: false }, // Explicit automation per spec
     maxSnoozeCount: { type: Number, default: 2 },
+    maskLeadPhones: { type: Boolean, default: false }, // F1: Workspace phone masking flag (default: false)
   },
   rolePermissions: {
     type: Map,

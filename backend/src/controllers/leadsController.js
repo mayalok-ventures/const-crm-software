@@ -14,6 +14,7 @@ const { appendCustomQuestionsNote, formatCustomQuestionsNote } = require('../uti
 const { resolveStageAndStatus } = require('../utils/leadStageStatus');
 const {
   maskPhoneNumber,
+  redactPhoneInText,
   shouldMaskPhoneForUser,
   sanitizeLeadPhone,
 } = require('../utils/phoneMasking');
@@ -421,7 +422,7 @@ exports.getLeads = async (req, res) => {
 
     const [leads, total] = await Promise.all([leadsPromise, countPromise]);
 
-    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership);
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
     if (shouldMask && Array.isArray(leads)) {
       leads.forEach((l) => sanitizeLeadPhone(l, true));
     } else if (Array.isArray(leads)) {
@@ -501,7 +502,7 @@ exports.getLead = async (req, res) => {
 
     if (!lead) return res.status(404).json({ message: 'Lead not found or unauthorized' });
 
-    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership);
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
     sanitizeLeadPhone(lead, shouldMask);
 
     res.json(lead);
@@ -531,7 +532,7 @@ exports.getTodayFollowUps = async (req, res) => {
     .sort({ followUpDate: 1 })
     .lean();
 
-    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership);
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
     if (shouldMask && Array.isArray(leads)) {
       leads.forEach((l) => sanitizeLeadPhone(l, true));
     }
@@ -587,7 +588,7 @@ exports.getDueFollowUps = async (req, res) => {
       .sort({ updatedAt: -1, followUpDate: -1 })
       .lean();
 
-    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership);
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
     if (shouldMask && Array.isArray(leads)) {
       leads.forEach((l) => sanitizeLeadPhone(l, true));
     }
@@ -2736,6 +2737,8 @@ exports.exportLeads = async (req, res) => {
       metadata: { format, queryStatus: status || statuses || 'all' },
     });
 
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
+
     // ── 1. STREAMING CSV EXPORT (Zero-Memory Pipeline) ──
     if (format.toLowerCase() === 'csv') {
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -2762,7 +2765,7 @@ exports.exportLeads = async (req, res) => {
         const row = [
           idx,
           l.name || '',
-          l.phone || '',
+          shouldMask ? maskPhoneNumber(l.phone) : (l.phone || ''),
           l.email || '',
           l.company || '',
           l.status || '',
@@ -2841,7 +2844,8 @@ exports.exportLeads = async (req, res) => {
         doc.fontSize(8).font('Helvetica').fillColor('#1f2937');
         doc.text(String(idx), colX[0], currentY);
         doc.text(lead.name || '—', colX[1], currentY, { width: 85, truncate: true });
-        doc.text(lead.phone ? `+${lead.phone}` : '—', colX[2], currentY, { width: 65, truncate: true });
+        const displayPhone = shouldMask ? (lead.phone ? maskPhoneNumber(lead.phone) : '—') : (lead.phone ? `+${lead.phone}` : '—');
+        doc.text(displayPhone, colX[2], currentY, { width: 65, truncate: true });
         doc.text(lead.status || '—', colX[3], currentY, { width: 65, truncate: true });
         doc.text(lead.budget || '—', colX[4], currentY, { width: 65, truncate: true });
         doc.text(lead.closedDealAmount ? `${userCurrency}${Number(lead.closedDealAmount).toLocaleString()}` : '—', colX[5], currentY, { width: 75, truncate: true });
@@ -2899,7 +2903,7 @@ exports.exportLeads = async (req, res) => {
       rows.push({
         '#': index,
         'Name': l.name || '',
-        'Phone': l.phone || '',
+        'Phone': shouldMask ? maskPhoneNumber(l.phone) : (l.phone || ''),
         'Email': l.email || '',
         'Company': l.company || '',
         'Status / Stage': l.status || '',
@@ -3399,6 +3403,120 @@ exports.unmaskLeadPhone = async (req, res) => {
   } catch (error) {
     console.error('unmaskLeadPhone error:', error);
     res.status(500).json({ message: 'Server error unmasking phone' });
+  }
+};
+
+// @desc  Server-mediated call redirect for lead
+// @route GET /api/leads/:id/call-redirect
+// @access Private
+exports.callRedirect = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid lead ID format' });
+    }
+
+    const permissionQuery = await buildLeadPermissionQuery(req.user, false);
+    const lead = await Lead.findOne({ _id: id, ...permissionQuery })
+      .select('name phone phoneDigits workspaceId companyId userId')
+      .lean();
+
+    if (!lead || (!lead.phone && !lead.phoneDigits)) {
+      return res.status(404).json({ message: 'Lead or phone number not found' });
+    }
+
+    const cleanDigits = String(lead.phoneDigits || lead.phone).replace(/\D/g, '');
+    const telUrl = `tel:${cleanDigits}`;
+
+    // Security Audit Log for Mediated Reveal
+    try {
+      const AuditLog = mongoose.models.AuditLog || require('../models/AuditLog');
+      await AuditLog.create({
+        actorId: req.user._id,
+        actorName: req.user.name || 'User',
+        actorEmail: req.user.email || null,
+        actorRole: req.membership?.role || req.user.role || 'user',
+        organizationId: req.workspaceId || req.user.companyId || null,
+        action: 'LEAD_CALL_INITIATED',
+        resourceType: 'Lead',
+        resourceId: String(lead._id),
+        resourceName: lead.name || 'Lead',
+        requestId: req.id || req.headers?.['x-request-id'] || null,
+        ip: req.ip || req.connection?.remoteAddress || null,
+        userAgent: req.headers?.['user-agent'] || null,
+        metadata: { channel: 'tel', leadName: lead.name },
+        timestamp: new Date(),
+      });
+    } catch (auditErr) {
+      console.warn('[AuditLog] Call redirect audit warning:', auditErr.message);
+    }
+
+    if (req.query.format === 'json' || req.headers.accept?.includes('application/json')) {
+      return res.json({ success: true, url: telUrl, phoneDigits: cleanDigits });
+    }
+    return res.redirect(telUrl);
+  } catch (err) {
+    console.error('callRedirect error:', err);
+    res.status(500).json({ message: 'Server error initiating call' });
+  }
+};
+
+// @desc  Server-mediated WhatsApp action for lead
+// @route GET /api/leads/:id/whatsapp-redirect
+// @access Private
+exports.whatsappRedirect = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { text = '' } = req.query;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid lead ID format' });
+    }
+
+    const permissionQuery = await buildLeadPermissionQuery(req.user, false);
+    const lead = await Lead.findOne({ _id: id, ...permissionQuery })
+      .select('name phone phoneDigits workspaceId companyId userId')
+      .lean();
+
+    if (!lead || (!lead.phone && !lead.phoneDigits)) {
+      return res.status(404).json({ message: 'Lead or phone number not found' });
+    }
+
+    let cleanDigits = String(lead.phoneDigits || lead.phone).replace(/\D/g, '');
+    if (cleanDigits.length === 10) {
+      cleanDigits = '91' + cleanDigits;
+    }
+    const waUrl = `https://wa.me/${cleanDigits}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
+
+    // Security Audit Log for Mediated Reveal
+    try {
+      const AuditLog = mongoose.models.AuditLog || require('../models/AuditLog');
+      await AuditLog.create({
+        actorId: req.user._id,
+        actorName: req.user.name || 'User',
+        actorEmail: req.user.email || null,
+        actorRole: req.membership?.role || req.user.role || 'user',
+        organizationId: req.workspaceId || req.user.companyId || null,
+        action: 'LEAD_WHATSAPP_INITIATED',
+        resourceType: 'Lead',
+        resourceId: String(lead._id),
+        resourceName: lead.name || 'Lead',
+        requestId: req.id || req.headers?.['x-request-id'] || null,
+        ip: req.ip || req.connection?.remoteAddress || null,
+        userAgent: req.headers?.['user-agent'] || null,
+        metadata: { channel: 'whatsapp', leadName: lead.name },
+        timestamp: new Date(),
+      });
+    } catch (auditErr) {
+      console.warn('[AuditLog] WhatsApp redirect audit warning:', auditErr.message);
+    }
+
+    if (req.query.format === 'json' || req.headers.accept?.includes('application/json')) {
+      return res.json({ success: true, url: waUrl, phoneDigits: cleanDigits });
+    }
+    return res.redirect(waUrl);
+  } catch (err) {
+    console.error('whatsappRedirect error:', err);
+    res.status(500).json({ message: 'Server error initiating WhatsApp' });
   }
 };
 
