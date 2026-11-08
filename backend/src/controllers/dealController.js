@@ -17,33 +17,39 @@ exports.getDeals = async (req, res) => {
       search,
     } = req.query;
 
-    const query = { workspaceId };
+    const andConditions = [{ workspaceId }];
 
     if (admissionStatus) {
-      query.admissionStatus = admissionStatus;
+      andConditions.push({ admissionStatus });
     }
     if (invoiceStatus) {
-      query['commission.invoiceStatus'] = invoiceStatus;
+      andConditions.push({ 'commission.invoiceStatus': invoiceStatus });
     }
     if (payoutStatus) {
-      query['commission.payoutStatus'] = payoutStatus;
+      andConditions.push({ 'commission.payoutStatus': payoutStatus });
     }
     if (search && search.trim()) {
-      const s = search.trim();
-      query.$or = [
-        { studentName: { $regex: s, $options: 'i' } },
-        { studentPhone: { $regex: s, $options: 'i' } },
-        { collegeName: { $regex: s, $options: 'i' } },
-        { courseName: { $regex: s, $options: 'i' } },
-        { 'commission.invoiceNumber': { $regex: s, $options: 'i' } },
-      ];
+      const s = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      andConditions.push({
+        $or: [
+          { studentName: { $regex: s, $options: 'i' } },
+          { studentPhone: { $regex: s, $options: 'i' } },
+          { collegeName: { $regex: s, $options: 'i' } },
+          { courseName: { $regex: s, $options: 'i' } },
+          { 'commission.invoiceNumber': { $regex: s, $options: 'i' } },
+        ],
+      });
     }
 
     const userRole = req.membership?.role || req.user.workspaceRole || req.user.role;
     const isOwnerOrManager = userRole === 'owner' || userRole === 'manager' || userRole === 'auditor' || req.user.role === 'admin' || req.user.role === 'superadmin';
     if (!isOwnerOrManager) {
-      query.$or = [{ assignedTo: req.user._id }, { createdBy: req.user._id }];
+      andConditions.push({
+        $or: [{ assignedTo: req.user._id }, { createdBy: req.user._id }],
+      });
     }
+
+    const query = andConditions.length > 1 ? { $and: andConditions } : andConditions[0];
 
     const pageNum = Math.max(1, parseInt(page, 10));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10)));
