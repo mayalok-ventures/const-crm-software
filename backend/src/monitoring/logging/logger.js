@@ -136,15 +136,17 @@ exports.logger = new StructuredLogger();
  * Specialized Request Logger
  */
 function requestLogger(req, res, durationMs, extraMeta = {}) {
+    const rawUrl = req.originalUrl || req.url || '';
+    const safeUrl = rawUrl.replace(/([?&](?:token|access_token|secret|key|apiKey)=)[^&]+/gi, '$1[REDACTED]');
     const level = res.statusCode >= 500 ? 'ERROR' : res.statusCode >= 400 ? 'WARN' : 'INFO';
-    exports.logger[level.toLowerCase()](`${req.method} ${req.originalUrl || req.url} - ${res.statusCode} (${durationMs}ms)`, {
+    exports.logger[level.toLowerCase()](`${req.method} ${safeUrl} - ${res.statusCode} (${durationMs}ms)`, {
         module: 'http',
         requestId: req.headers?.['x-request-id'] || req.requestId,
         userId: req.user?._id || req.user?.id,
         organizationId: req.user?.companyId || req.tenantId,
         metadata: {
             method: req.method,
-            url: req.originalUrl || req.url,
+            url: safeUrl,
             statusCode: res.statusCode,
             durationMs,
             ip: req.ip || req.connection?.remoteAddress,
