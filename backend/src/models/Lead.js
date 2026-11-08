@@ -102,8 +102,8 @@ const leadSchema = new mongoose.Schema({
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 
   // Campaign Inbound Routing & Attribution Linkage
-  campaignId: { type: mongoose.Schema.Types.ObjectId, ref: 'Campaign', default: null, index: true },
-  campaignName: { type: String, default: '', trim: true, index: true },
+  campaignId: { type: mongoose.Schema.Types.ObjectId, ref: 'Campaign', default: null },
+  campaignName: { type: String, default: '', trim: true },
 
   // Single User Ownership
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
@@ -251,14 +251,12 @@ const leadSchema = new mongoose.Schema({
     enum: ['HOT', 'WARM', 'COLD', null],
     default: 'WARM',
     set: (v) => (v ? String(v).toUpperCase().trim() : 'WARM'),
-    index: true,
   },
   score: {
     type: Number,
     default: 0,
     min: 0,
     max: 100,
-    index: true,
   },
   scoringBreakdown: [{
     factor: { type: String, required: true },
@@ -374,7 +372,7 @@ const leadSchema = new mongoose.Schema({
   },
   leadSource: {
     provider: { type: String, default: '' },
-    platform: { type: String, default: '', index: true }, // meta, google, sheets, website, custom, manual, signup
+    platform: { type: String, default: '' }, // meta, google, sheets, website, custom, manual, signup
     connectionId: { type: String, default: null, index: true }, // pageId, customerId/accountId, sheetId, formKey
     connectionName: { type: String, default: '' },
     externalLeadId: { type: String, default: '', index: true },
@@ -383,7 +381,7 @@ const leadSchema = new mongoose.Schema({
     pageId: { type: String, default: null },
     formId: { type: String, default: null },
     formName: { type: String, default: '' },
-    campaignId: { type: String, default: null, index: true },
+    campaignId: { type: String, default: null },
     campaignName: { type: String, default: '' },
     adSetId: { type: String, default: null },
     adSetName: { type: String, default: '' },
@@ -413,7 +411,7 @@ const leadSchema = new mongoose.Schema({
   // Multi-inquiry support for re-inquiries without phone collision (capped at 50)
   inquiries: [inquirySchema],
   assignmentReason: { type: String, default: '' },
-  isTestLead: { type: Boolean, default: false, index: true },
+  isTestLead: { type: Boolean, default: false },
 
   // Lost Deal Context
   lostReasonDetail: {
@@ -504,8 +502,6 @@ leadSchema.virtual('stream')
   .set(function(v) { this.twelfthStream = v; });
 
 // Indexes for fast queries (single-field prefixes userId/companyId/assignedTo are covered by compound indexes)
-leadSchema.index({ userId: 1, status: 1 });
-leadSchema.index({ companyId: 1, status: 1 });
 leadSchema.index({ userId: 1, followUpDate: 1 });
 leadSchema.index({ followUpDate: 1, status: 1 });
 leadSchema.index({ 'activeFollowUp.status': 1, 'activeFollowUp.scheduledAt': 1 });
@@ -556,7 +552,6 @@ leadSchema.index(
     },
   }
 );
-leadSchema.index({ userId: 1, createdAt: -1 });
 leadSchema.index({ userId: 1, deletedAt: 1, status: 1 });
 leadSchema.index({ userId: 1, deletedAt: 1, createdAt: -1 });
 leadSchema.index({ userId: 1, deletedAt: 1, updatedAt: -1 });
@@ -570,7 +565,6 @@ leadSchema.index({ assignedTo: 1, deletedAt: 1, createdAt: -1 });
 leadSchema.index({ assignedTo: 1, deletedAt: 1, updatedAt: -1 });
 leadSchema.index({ sharedWithCompanyId: 1, deletedAt: 1 });
 leadSchema.index({ followUpDate: 1, deletedAt: 1 });
-leadSchema.index({ 'leadActivities.timestamp': -1 });
 // ─────────────────────────────────────────────────────────────
 // CANONICAL LEAD SOURCE NORMALIZATION
 // ─────────────────────────────────────────────────────────────
@@ -624,7 +618,6 @@ leadSchema.index({ workspaceId: 1, pipelineId: 1, updatedAt: -1 });
 leadSchema.index({ workspaceId: 1, pipelineId: 1, status: 1 });
 leadSchema.index({ workspaceId: 1, score: -1, _id: -1 });
 leadSchema.index({ workspaceId: 1, createdAt: -1 });
-leadSchema.index({ workspaceId: 1, updatedAt: -1 });
 leadSchema.index({ workspaceId: 1, status: 1, updatedAt: -1 });
 leadSchema.index({ workspaceId: 1, assignedTo: 1, updatedAt: -1 });
 leadSchema.index({ workspaceId: 1, deletedAt: 1, updatedAt: -1, _id: -1 });
@@ -644,7 +637,6 @@ leadSchema.index({ companyId: 1, assignedTo: 1, createdAt: -1 });
 leadSchema.index({ companyId: 1, isTestLead: 1, createdAt: -1 });
 leadSchema.index({ userId: 1, 'leadSource.platform': 1, createdAt: -1 });
 leadSchema.index({ userId: 1, 'leadSource.campaignId': 1, createdAt: -1 });
-leadSchema.index({ 'leadSource.platform': 1, 'leadSource.campaignId': 1, createdAt: -1 });
 
 // Exclude soft-deleted leads by default on find/count/update queries unless explicitly requested
 leadSchema.pre(['find', 'findOne', 'countDocuments', 'count', 'findOneAndUpdate', 'findByIdAndUpdate'], function () {
