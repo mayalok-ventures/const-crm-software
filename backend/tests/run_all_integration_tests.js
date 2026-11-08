@@ -15,11 +15,12 @@ const MANIFEST_PATH = path.resolve(__dirname, 'test-manifest.json');
 
 async function runSingleSuite(suiteName, options = {}) {
   const fullPath = path.resolve(__dirname, suiteName);
+  const bddShimPath = path.resolve(__dirname, 'setupBdd.js');
   const timeoutMs = options.timeoutMs || 45000;
   const startTime = Date.now();
 
   return new Promise((resolve) => {
-    const child = spawn('node', [fullPath], {
+    const child = spawn('node', ['-r', bddShimPath, fullPath], {
       cwd: path.resolve(__dirname, '..'),
       env: {
         ...process.env,

@@ -1,3 +1,7 @@
+try {
+  require('./setupBdd');
+} catch (_) {}
+
 /**
  * Test Safety Guard
  * Prevents test suites or test runner from executing against live/production databases.
