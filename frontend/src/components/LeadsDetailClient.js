@@ -261,6 +261,7 @@ function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, onOpenShareFee, 
   const [sending, setSending] = useState(false);
   const chatScrollRef = useRef(null);
   const isFetchingHistoryRef = useRef(false);
+  const lastEtagRef = useRef(null);
 
   const canUseCompanyWA = Boolean(waStatus?.allowCompanyWhatsApp && waStatus?.company?.status === 'connected');
   const isPersonalConnected = waStatus?.personal?.status === 'connected' || waStatus?.status === 'connected';
@@ -280,8 +281,20 @@ function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, onOpenShareFee, 
     if (isFetchingHistoryRef.current) return;
     isFetchingHistoryRef.current = true;
     try {
-      const { data } = await api.get(`/whatsapp/chats/${lead.phone}?leadId=${lead._id || ''}`);
-      setMessages(data || []);
+      const headers = lastEtagRef.current ? { 'if-none-match': lastEtagRef.current } : {};
+      const res = await api.get(`/whatsapp/chats/${lead.phone}?leadId=${lead._id || ''}`, {
+        headers,
+        validateStatus: (status) => (status >= 200 && status < 300) || status === 304,
+      });
+      if (res.status === 304) {
+        // Not modified, no re-render needed
+        if (!silent) setLoading(false);
+        return;
+      }
+      if (res.headers?.etag) {
+        lastEtagRef.current = res.headers.etag;
+      }
+      setMessages(res.data || []);
       if (!silent) setLoading(false);
     } catch {
       if (!silent) setLoading(false);
@@ -291,10 +304,12 @@ function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, onOpenShareFee, 
   };
 
   useEffect(() => {
+    lastEtagRef.current = null;
     fetchHistory();
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       fetchHistory(true);
-    }, 3500);
+    }, 7000);
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {

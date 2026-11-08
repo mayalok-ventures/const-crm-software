@@ -398,19 +398,36 @@ exports.getChatHistory = async (req, res) => {
       ...(companyId ? [companyId, companyId.toString()] : [])
     ];
 
+    let queryConditions = conditions;
+    if (req.query.since) {
+      const sinceDate = new Date(req.query.since);
+      if (!isNaN(sinceDate.getTime())) {
+        queryConditions = conditions.map((c) => ({ ...c, timestamp: { $gt: sinceDate } }));
+      }
+    }
+
     const messages = await ChatMessage.find({
       userId: { $in: userScope },
-      $or: conditions
+      $or: queryConditions
     })
     .sort({ timestamp: 1 })
     .limit(300)
     .lean();
 
+    const lastMsg = messages[messages.length - 1];
+    const etag = lastMsg
+      ? `"${messages.length}_${lastMsg._id}_${new Date(lastMsg.timestamp).getTime()}"`
+      : '"0_empty"';
+
+    if (req.headers['if-none-match'] === etag) {
+      return res.status(304).end();
+    }
+
     // Mark unread inbound messages as read
     await ChatMessage.updateMany(
       {
         userId: { $in: userScope },
-        $or: conditions,
+        $or: queryConditions,
         direction: 'inbound',
         status: 'received'
       },
@@ -427,6 +444,8 @@ exports.getChatHistory = async (req, res) => {
       };
     });
 
+    res.set('ETag', etag);
+    res.set('Cache-Control', 'private, no-cache');
     res.json(safeMessages);
   } catch (err) {
     console.error('getChatHistory error:', err);
