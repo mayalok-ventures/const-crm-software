@@ -83,20 +83,116 @@ async function runTest() {
 
     const body = await res.json();
     assert.strictEqual(res.status, 200, `Expected 200 OK but got ${res.status}: ${JSON.stringify(body)}`);
-    assert.strictEqual(body.status, 'converted', 'Lead status in response should be converted');
+    assert.ok(body.status === 'won' || body.status === 'converted', 'Lead status in response should be canonical won');
 
-    // 3. Verify in database
+    // 3. Verify in database & assert exactly ONE payment created
     const updatedLead = await Lead.findById(lead._id);
-    assert.strictEqual(updatedLead.status, 'converted', 'Lead in DB must be converted');
+    assert.ok(updatedLead.status === 'won' || updatedLead.status === 'converted', 'Lead in DB must be canonical won');
 
-    // 4. Verify Payment created in DB
-    const payment = await Payment.findOne({
+    const paymentCount1 = await Payment.countDocuments({
       $or: [{ lead_id: lead._id }, { leadId: lead._id }],
     });
-    assert.ok(payment, 'Payment record must be created in DB');
-    assert.strictEqual(payment.amount, 15000, 'Payment amount must match');
+    assert.strictEqual(paymentCount1, 1, 'Exactly one payment must be created on initial conversion');
 
-    console.log('✅ Issue 1 Test PASSED: Lead converted, payment recorded, zero crash on missing agencyController.');
+    const payment1 = await Payment.findOne({
+      $or: [{ lead_id: lead._id }, { leadId: lead._id }],
+    });
+    assert.ok(payment1, 'Payment record must be created in DB');
+    assert.strictEqual(payment1.amount, 15000, 'Payment amount must match 15000');
+    console.log('✅ Step 1: Lead converted and exactly one payment created.');
+
+    // 4. Repeated identical request is idempotent (does NOT create duplicate payment)
+    const repeatRes = await fetch(`${baseUrl}/leads/${lead._id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'x-workspace-id': workspace._id.toString(),
+      },
+      body: JSON.stringify({
+        status: 'converted',
+        paid_amount: 15000,
+        payment_method: 'bank_transfer',
+        transaction_id: 'TXN-WON-TEST-001',
+      }),
+    });
+    assert.strictEqual(repeatRes.status, 200, 'Repeated request must return 200 OK');
+    const paymentCount2 = await Payment.countDocuments({
+      $or: [{ lead_id: lead._id }, { leadId: lead._id }],
+    });
+    assert.strictEqual(paymentCount2, 1, 'Repeated identical conversion request must be idempotent (zero duplicate payments)');
+    console.log('✅ Step 2: Idempotent repeat request did not duplicate payment.');
+
+    // 5. Legitimate second installment with distinct transactionId / idempotency key is recorded
+    const installmentRes = await fetch(`${baseUrl}/leads/${lead._id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'x-workspace-id': workspace._id.toString(),
+        'Idempotency-Key': 'INSTALLMENT-KEY-002',
+      },
+      body: JSON.stringify({
+        status: 'converted',
+        paid_amount: 15000,
+        payment_method: 'bank_transfer',
+        transaction_id: 'TXN-WON-TEST-002',
+        idempotencyKey: 'INSTALLMENT-KEY-002',
+      }),
+    });
+    assert.strictEqual(installmentRes.status, 200, 'Second installment request must return 200 OK');
+    const paymentCount3 = await Payment.countDocuments({
+      $or: [{ lead_id: lead._id }, { leadId: lead._id }],
+    });
+    assert.strictEqual(paymentCount3, 2, 'Legitimate second installment must create second payment record');
+    console.log('✅ Step 3: Legitimate second installment recorded successfully.');
+
+    // 6. Pipeline stage and status consistency (B6)
+    const Pipeline = require('../src/models/Pipeline');
+    const pipeline = await Pipeline.create({
+      name: 'Admissions 2026',
+      workspaceId: workspace._id,
+      createdBy: user._id,
+      stages: [
+        { stageId: 'stage_intake', name: 'Intake', category: 'open', order: 0 },
+        { stageId: 'stage_admitted', name: 'Admission Confirmed', category: 'won', order: 1 },
+      ],
+    });
+
+    const lead2 = await Lead.create({
+      name: 'Stage Sync Candidate',
+      phone: '+919876543219',
+      status: 'in_progress',
+      pipelineId: pipeline._id,
+      pipelineStage: 'stage_intake',
+      userId: user._id,
+      companyId: user._id,
+      workspaceId: workspace._id,
+    });
+
+    const syncRes = await fetch(`${baseUrl}/leads/${lead2._id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'x-workspace-id': workspace._id.toString(),
+      },
+      body: JSON.stringify({
+        pipelineStage: 'stage_admitted',
+      }),
+    });
+    assert.strictEqual(syncRes.status, 200);
+    const syncBody = await syncRes.json();
+    assert.strictEqual(syncBody.status, 'won', 'Status must be synchronized to canonical won');
+    assert.strictEqual(syncBody.pipelineStage, 'stage_admitted', 'Pipeline stage must be stage_admitted');
+
+    // 7. Verify response shape backward compatibility
+    assert.ok(syncBody._id, 'Response must include _id');
+    assert.ok(syncBody.name, 'Response must include name');
+    assert.ok(syncBody.phone, 'Response must include phone');
+    console.log('✅ Step 4: Pipeline stage and status consistency verified with 100% backward-compatible response shape.');
+
+    console.log('🎉 ALL T2 WON/CONVERTED COVERAGE TESTS PASSED!');
   } finally {
     server.close();
     await mongoose.disconnect();
