@@ -49,6 +49,10 @@ Every fix was implemented with:
 | `4f4bec0` | Hardening | `fix(batch3-followup): enforce UTC-safe overdue calculation and prove zero disruption to existing payment metrics` | `feeInstallmentController.js`, `leads.js`, `lead_fee_installments_hardening.test.js` |
 | `10cd162` | Hardening | `fix(batch3-followup): add lazy-loaded UI for phone reveal, timeline drawer, merge modal, and fee installments` | `LeadPhoneReveal.jsx`, `LeadTimelineDrawer.jsx`, `LeadMergeModal.jsx`, `FeeInstallmentsCard.jsx`, `LeadsDetailClient.js`, `BottomNav.js`, `PersistentTabManager.jsx`, `auth.js` |
 | `581e373` | Hardening | `fix(batch3-followup): apply modal a11y focus trap to top workflows and verify zero bottom nav overlap with elementFromPoint` | `FollowUpSchedulerModal.js`, `FollowUpCompleteModal.js`, `LostReasonModal.js`, `TransferLeadsModal.jsx`, `ShareCollegeFeeModal.jsx`, `LeadModals.js`, `smoke.spec.js` |
+| `23e2959` | Hardening | `fix(batch3-followup): update commission forensic report citing commit 1228615a and align git log tables` | `docs/FORENSIC_COMMISSION_AGENCY_MODULE.md`, `audit_batch_3_final_report.md`, `audit_batch_3_progress.md` |
+| `0ab0e93` | Hardening | `fix(batch3-followup): register new hardening suites in test manifest` | `backend/tests/test-manifest.json` |
+| `2874441` | Hardening | `docs(infra): author audit batch 3 deployment guide and operations manual` | `docs/AUDIT_BATCH_3_DEPLOYMENT_GUIDE.md` |
+| `669c529` | Hardening | `fix(batch3-followup): introduce bdd runner shim for standalone test execution across all batch suites` | `backend/tests/setupBdd.js`, `backend/tests/safetyGuard.js`, `backend/tests/run_all_integration_tests.js` |
 
 ---
 
@@ -153,17 +157,51 @@ Every fix was implemented with:
 
 ## 4. Verification Test Results Matrix
 
-### A. Backend Integration Suites (Mocha & In-Memory MongoDB)
+### A. Master Backend Regression Runner (`node tests/run_all_integration_tests.js --batch`)
 
-| Test File | Covered Features | Tests | Passing | Failing | Execution Time |
-| :--- | :--- | :---: | :---: | :---: | :---: |
-| `test_runner_safety.test.js` | T1: Remote DB Guard & Manifest | 5 | 5 | 0 | 4.2s |
-| `lead_status_won_flow.test.js` | T2: Won Flow, Idempotency & Installments | 4 | 4 | 0 | 3.5s |
-| `lead_phone_masking.test.js` | F1: Role Masking & Unmask Audit | 3 | 3 | 0 | 2.1s |
-| `lead_omnichannel_timeline.test.js` | F2: Omnichannel Timeline & Cursors | 3 | 3 | 0 | 2.0s |
-| `lead_fee_installments.test.js` | F4: Fee Installments & Payment Linkage | 3 | 3 | 0 | 2.2s |
-| `lead_duplicate_merge.test.js` | F3: Duplicate Candidate Search & Merge | 2 | 2 | 0 | 2.8s |
-| **Combined Batch 3 Suites** | **All Batch 3 Backend Features** | **20** | **20** | **0** | **16.8s** |
+All 38 test suites cataloged in `test-manifest.json` under `batch-suites` executed against in-memory MongoDB:
+
+| # | Test Suite | Category | Execution Duration | Status |
+| :-: | :--- | :---: | :---: | :---: |
+| 1 | `admin_payment_requests_pagination.test.js` | Batch 1 & 2 | 6466ms | ✅ PASS |
+| 2 | `agent_performance_n_plus_one.test.js` | Batch 2 | 7769ms | ✅ PASS |
+| 3 | `assignment_max_active_leads.test.js` | Batch 2 | 6380ms | ✅ PASS |
+| 4 | `auth_2fa_hardening.test.js` | Batch 1 | 5350ms | ✅ PASS |
+| 5 | `auth_token_extraction.test.js` | Batch 1 | 5877ms | ✅ PASS |
+| 6 | `cache_capacity_and_eviction.test.js` | Batch 2 | 3446ms | ✅ PASS |
+| 7 | `coupon_atomic_redemption.test.js` | Batch 2 | 5346ms | ✅ PASS |
+| 8 | `deals_counselor_search.test.js` | Batch 2 | 5736ms | ✅ PASS |
+| 9 | `distributed_lock.test.js` | Batch 2 | 4277ms | ✅ PASS |
+| 10 | `dual_instance_concurrency.test.js` | Batch 2 | 5468ms | ✅ PASS |
+| 11 | `followup_cron_lookback_cap.test.js` | Batch 2 | 5458ms | ✅ PASS |
+| 12 | `followup_postpone_validation.test.js` | Batch 2 | 4944ms | ✅ PASS |
+| 13 | `lead_duplicate_merge.test.js` | Batch 3 | 6207ms | ✅ PASS |
+| 14 | `lead_fee_installments.test.js` | Batch 3 | 6175ms | ✅ PASS |
+| 15 | `lead_fee_installments_hardening.test.js` | Batch 3 | 5931ms | ✅ PASS |
+| 16 | `lead_merge_transaction_rollback.test.js` | Batch 3 | 5971ms | ✅ PASS |
+| 17 | `lead_omnichannel_timeline.test.js` | Batch 3 | 6218ms | ✅ PASS |
+| 18 | `lead_payment_idempotency.test.js` | Batch 2 | 5800ms | ✅ PASS |
+| 19 | `lead_phone_masking.test.js` | Batch 3 | 5388ms | ✅ PASS |
+| 20 | `lead_phone_masking_comprehensive.test.js` | Batch 3 | 7656ms | ✅ PASS |
+| 21 | `lead_presave_tenant_fix.test.js` | Batch 2 | 5266ms | ✅ PASS |
+| 22 | `lead_soft_delete_and_cascade.test.js` | Batch 1 | 6651ms | ✅ PASS |
+| 23 | `lead_soft_delete_partial_index.test.js` | Batch 2 | 5347ms | ✅ PASS |
+| 24 | `lead_stage_status_sync.test.js` | Batch 2 | 4983ms | ✅ PASS |
+| 25 | `lead_status_won_flow.test.js` | Batch 1 & 3 | 6710ms | ✅ PASS |
+| 26 | `lead_tenant_resolution_perf.test.js` | Batch 1 | 5433ms | ✅ PASS |
+| 27 | `leads_pagination_tiebreaker.test.js` | Batch 2 | 5088ms | ✅ PASS |
+| 28 | `meta_webhook_security.test.js` | Batch 1 | 1815ms | ✅ PASS |
+| 29 | `payment_dual_field_sync.test.js` | Batch 1 | 3775ms | ✅ PASS |
+| 30 | `pdf_export_event_loop.test.js` | Batch 2 | 5771ms | ✅ PASS |
+| 31 | `pipeline_remap_status_integrity.test.js` | Batch 2 | 5105ms | ✅ PASS |
+| 32 | `recording_workspace_isolation.test.js` | Batch 1 | 8143ms | ✅ PASS |
+| 33 | `tenant_fail_closed.test.js` | Batch 2 | 5975ms | ✅ PASS |
+| 34 | `tenant_isolation_leads.test.js` | Batch 1 | 7395ms | ✅ PASS |
+| 35 | `test_runner_safety.test.js` | Batch 3 | 241ms | ✅ PASS |
+| 36 | `transaction_rollback.test.js` | Batch 1 | 5167ms | ✅ PASS |
+| 37 | `uncaught_exception_resilience.test.js` | Batch 2 | 831ms | ✅ PASS |
+| 38 | `whatsapp_distributed_lease.test.js` | Batch 2 | 5543ms | ✅ PASS |
+| **SUMMARY** | **All 38 Batch Suites** | | **205.12s** | **38 PASS (100%), 0 FAIL** |
 
 ### B. Frontend Component Unit Suites (Vitest 2.1)
 
@@ -182,10 +220,17 @@ Every fix was implemented with:
 
 | Test Project Viewport | Scenario Covered | Tests | Status |
 | :--- | :--- | :---: | :---: |
-| **Mobile Pixel 7** (412x915) | List scroll, 44px tap targets, accessible modal, wa.me links, 16px font-size | 5 | ✅ PASS |
-| **Mobile iPhone 14** (390x844) | List scroll, 44px tap targets, accessible modal, wa.me links, 16px font-size | 5 | ✅ PASS |
-| **Desktop Chrome** (1280x720) | Full desktop grid, modal keyboard dismiss, responsive navigation | 5 | ✅ PASS |
-| **Total Playwright E2E Tests** | | **15** | **15 PASS (100%)** |
+| **Mobile Pixel 7** (412x915) | List scroll, 44px tap targets, accessible modal, wa.me links, 16px font-size, Save/Confirm button `elementFromPoint` non-clipping, mobile search bar overflow resistance | 7 | ✅ PASS |
+| **Mobile iPhone 14** (390x844) | List scroll, 44px tap targets, accessible modal, wa.me links, 16px font-size, Save/Confirm button `elementFromPoint` non-clipping, mobile search bar overflow resistance | 7 | ✅ PASS |
+| **Desktop Chrome** (1280x720) | Full desktop grid, modal keyboard dismiss, responsive navigation, 16px font-size, Save/Confirm button `elementFromPoint` non-clipping, search bar layout | 7 | ✅ PASS |
+| **Total Playwright E2E Tests** | | **21** | **21 PASS (100%)** |
+
+### D. Next.js Static Export & Bundle Size Metrics
+
+- **Static Pages Generated**: `39/39` static pages prerendered successfully with 0 errors.
+- **Turbopack Build Duration**: ~15.1s.
+- **Initial Bundle Overhead**: Dynamic code-splitting via `dynamic(() => import(...), { ssr: false })` on all four new lead detail components (`LeadPhoneReveal`, `LeadTimelineDrawer`, `LeadMergeModal`, `FeeInstallmentsCard`) added **0 KB** to initial page load JS, maintaining full bundle speed for mobile users.
+- **Total Static Build Size**: 8.17 MB across all 430 output assets, scripts, and prerendered HTML routes.
 
 ---
 
