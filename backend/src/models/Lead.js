@@ -93,7 +93,7 @@ const inquirySchema = new mongoose.Schema({
 
 const leadSchema = new mongoose.Schema({
   // Multi-Tenant Workspace Boundary (Spec Section 5)
-  workspaceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Workspace', index: true },
+  workspaceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Workspace' },
 
   // Creator / Lead Owner
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -498,17 +498,14 @@ leadSchema.virtual('stream')
   .get(function() { return this.twelfthStream || this.targetStream || ''; })
   .set(function(v) { this.twelfthStream = v; });
 
-// Indexes for fast queries
-leadSchema.index({ userId: 1 });
-leadSchema.index({ companyId: 1 });
-leadSchema.index({ assignedTo: 1 });
+// Indexes for fast queries (single-field prefixes userId/companyId/assignedTo are covered by compound indexes)
 leadSchema.index({ userId: 1, status: 1 });
 leadSchema.index({ companyId: 1, status: 1 });
 leadSchema.index({ userId: 1, followUpDate: 1 });
 leadSchema.index({ followUpDate: 1, status: 1 });
 leadSchema.index({ 'activeFollowUp.status': 1, 'activeFollowUp.scheduledAt': 1 });
 // Multi-tenant phone uniqueness: unique within the company when linked, or unique per solo user when unlinked
-// Partial filter guarantees that email-only leads (phone: empty or null) never collide
+// Partial filter guarantees that email-only leads never collide and soft-deleted leads (deletedAt != null) are excluded
 leadSchema.index(
   { companyId: 1, phone: 1 },
   {
@@ -516,6 +513,7 @@ leadSchema.index(
     partialFilterExpression: {
       companyId: { $exists: true, $type: 'objectId' },
       phone: { $exists: true, $type: 'string', $gt: '' },
+      deletedAt: null,
     },
   }
 );
@@ -526,6 +524,7 @@ leadSchema.index(
     partialFilterExpression: {
       companyId: { $eq: null },
       phone: { $exists: true, $type: 'string', $gt: '' },
+      deletedAt: null,
     },
   }
 );
@@ -537,6 +536,7 @@ leadSchema.index(
     partialFilterExpression: {
       companyId: { $exists: true, $type: 'objectId' },
       'leadSource.externalLeadId': { $gt: '' },
+      deletedAt: null,
     },
   }
 );
@@ -547,6 +547,7 @@ leadSchema.index(
     partialFilterExpression: {
       companyId: { $eq: null },
       'leadSource.externalLeadId': { $gt: '' },
+      deletedAt: null,
     },
   }
 );
@@ -611,7 +612,6 @@ leadSchema.pre('validate', function() {
   }
 });
 
-leadSchema.index({ workspaceId: 1, status: 1 });
 leadSchema.index({ workspaceId: 1, status: 1, _id: -1 });
 leadSchema.index({ workspaceId: 1, assignedTo: 1, _id: -1 });
 leadSchema.index({ workspaceId: 1, pipelineId: 1, pipelineStage: 1, _id: -1 });
@@ -619,10 +619,10 @@ leadSchema.index({ workspaceId: 1, pipelineId: 1, updatedAt: -1 });
 leadSchema.index({ workspaceId: 1, pipelineId: 1, status: 1 });
 leadSchema.index({ workspaceId: 1, score: -1, _id: -1 });
 leadSchema.index({ workspaceId: 1, createdAt: -1 });
-leadSchema.index({ workspaceId: 1, assignedTo: 1 });
 leadSchema.index({ workspaceId: 1, updatedAt: -1 });
 leadSchema.index({ workspaceId: 1, status: 1, updatedAt: -1 });
 leadSchema.index({ workspaceId: 1, assignedTo: 1, updatedAt: -1 });
+leadSchema.index({ workspaceId: 1, deletedAt: 1, updatedAt: -1, _id: -1 });
 leadSchema.index({ userId: 1, status: 1, updatedAt: -1 });
 leadSchema.index({ workspaceId: 1, campaignId: 1, status: 1 });
 leadSchema.index({ workspaceId: 1, nameLower: 1 });
@@ -641,12 +641,31 @@ leadSchema.index({ userId: 1, 'leadSource.platform': 1, createdAt: -1 });
 leadSchema.index({ userId: 1, 'leadSource.campaignId': 1, createdAt: -1 });
 leadSchema.index({ 'leadSource.platform': 1, 'leadSource.campaignId': 1, createdAt: -1 });
 
-// Exclude soft-deleted leads by default on find/count queries unless explicitly requested
+// Exclude soft-deleted leads by default on find/count/update queries unless explicitly requested
 leadSchema.pre(['find', 'findOne', 'countDocuments', 'count', 'findOneAndUpdate', 'findByIdAndUpdate'], function () {
   if (this.getOptions().includeDeleted) return;
   const currentQuery = this.getQuery();
   if (currentQuery && currentQuery.deletedAt === undefined) {
     this.where({ deletedAt: null });
+  }
+});
+
+// Exclude soft-deleted leads in aggregate pipelines while safely respecting stages that must be first ($geoNear, $search, $collStats)
+leadSchema.pre('aggregate', function () {
+  if (this.options && this.options.includeDeleted) return;
+  const pipeline = this.pipeline();
+  if (!pipeline || !Array.isArray(pipeline)) return;
+  
+  // If pipeline already explicitly filters deletedAt, do not duplicate
+  const hasDeletedAtFilter = pipeline.some(stage => stage.$match && stage.$match.deletedAt !== undefined);
+  if (hasDeletedAtFilter) return;
+
+  const firstStage = pipeline[0];
+  const mustBeFirst = firstStage && (firstStage.$geoNear || firstStage.$search || firstStage.$collStats || firstStage.$indexStats);
+  if (mustBeFirst) {
+    pipeline.splice(1, 0, { $match: { deletedAt: null } });
+  } else {
+    pipeline.unshift({ $match: { deletedAt: null } });
   }
 });
 

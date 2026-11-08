@@ -1833,12 +1833,9 @@ exports.deleteLead = async (req, res) => {
       budget: lead.budget,
     };
 
-    // Soft delete: mark timestamp, actor, and release phone uniqueness constraint
+    // Soft delete: mark timestamp and actor (phone & status stay preserved; partial index excludes deletedAt != null)
     lead.deletedAt = new Date();
     lead.deletedBy = req.user._id;
-    if (lead.phone && !lead.phone.includes('_del_')) {
-      lead.phone = `${lead.phone}_del_${lead._id}`;
-    }
     await lead.save();
 
     // Cascade cleanup non-financial children:
