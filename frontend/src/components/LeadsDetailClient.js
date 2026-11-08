@@ -23,6 +23,7 @@ import { SourcePill, getLeadSourceTag } from '@/lib/sourceHelper';
 const ShareCollegeFeeModal = dynamic(() => import('@/components/leads/ShareCollegeFeeModal'), { ssr: false });
 import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
 import { getResolvedRouteParam, isValidEntityId } from '@/lib/routeParams';
+import { useDirtyFormWarning } from '@/lib/useDirtyFormWarning';
 
 const STATUS_OPTIONS = [
   'new_lead',
@@ -958,6 +959,11 @@ export default function LeadDetailPage() {
   const [activeRightTab, setActiveRightTab] = useState('chat'); // 'chat' | 'notes' | 'memos' | 'audit'
   const [editTab, setEditTab] = useState('academics'); // 'academics' | 'entrance' | 'preferences' | 'personal' | 'milestones'
 
+  const { confirmNavigation } = useDirtyFormWarning({
+    isDirty: editing,
+    message: 'You have unsaved changes to this candidate profile. Are you sure you want to discard them?',
+  });
+
   useEffect(() => {
     if (!leadId) {
       const resolved = getResolvedRouteParam(params, 'id', 'leads', isValidEntityId);
@@ -1338,8 +1344,10 @@ export default function LeadDetailPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      setForm(lead);
-                      setEditing(false);
+                      if (confirmNavigation()) {
+                        setForm(lead);
+                        setEditing(false);
+                      }
                     }}
                     className="btn btn-secondary btn-sm text-xs rounded-xl"
                   >

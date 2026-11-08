@@ -23,6 +23,8 @@
     --yellow: #f59e0b;
     --orange: #f97316;
     --sky: #0ea5e9;
+    --bottom-nav-height: 3.75rem;
+    --bottom-safe-offset: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
   }
 
   * {
@@ -195,11 +197,40 @@
 /* Mobile Safe Area Padding Utilities (Active on mobile, zeroed on desktop) */
 @media (max-width: 767px) {
   .pb-mobile-nav {
-    padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: calc(var(--bottom-safe-offset) + 1.5rem) !important;
   }
 
   .pb-mobile-sheet {
     padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+/* Modal Stacking & Z-Index: Modals and Dialog Overlays must ALWAYS stack over BottomNav (z-index 8000) */
+.fixed.inset-0.z-50,
+.modal-overlay,
+.modal-backdrop,
+.modal-sheet,
+[role="dialog"] {
+  z-index: 9500 !important;
+}
+
+/* Mobile Sticky Action Bar Utility */
+.mobile-sticky-actions {
+  position: sticky;
+  bottom: var(--bottom-safe-offset);
+  z-index: 7000;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+}
+@media (min-width: 768px) {
+  .mobile-sticky-actions {
+    position: static;
+    background: transparent;
+    border-top: none;
+    padding: 0;
   }
 }
 
