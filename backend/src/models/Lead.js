@@ -680,8 +680,8 @@ leadSchema.pre('save', async function() {
   if (this.company) this.companyLower = this.company.toLowerCase().trim();
   if (this.phone) this.phoneDigits = String(this.phone).replace(/\D/g, '');
 
-  // Optimize hot-path: skip queries if workspaceId is already established
-  const needsResolution = !this.workspaceId && (this.userId || this.companyId);
+  // Optimize hot-path: skip queries if both workspaceId and valid companyId are established
+  const needsResolution = (!this.workspaceId || !this.companyId || String(this.companyId) === String(this.userId)) && (this.userId || this.companyId || this.workspaceId);
 
   if (needsResolution) {
     try {

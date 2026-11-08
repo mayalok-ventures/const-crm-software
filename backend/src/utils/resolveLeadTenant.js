@@ -1,8 +1,8 @@
 const mongoose = require('mongoose');
 
-// Shared in-memory memo cache with 5-minute TTL
+// Shared in-memory memo cache with bounded 10-second TTL to avoid cross-tenant staleness
 const memoCache = new Map();
-const MEMO_TTL_MS = 5 * 60 * 1000;
+const MEMO_TTL_MS = 10 * 1000;
 
 function getCached(key) {
   const entry = memoCache.get(key);
