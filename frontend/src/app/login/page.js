@@ -164,27 +164,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleReset2FAEmergency = async () => {
-    if (!confirm('Are you sure you want to remove 2FA from your account? You will be signed in directly with your password.')) return;
-    setLoading(true);
-    try {
-      const { data } = await api.post('/auth/reset-2fa-emergency', {
-        identifier,
-        password,
-      });
-      setAuth(data, data.token);
-      toast.success('2FA successfully removed! Welcome back! 🎉');
-      if (data.role === 'superadmin') {
-        router.replace('/superadmin-dashboard');
-      } else {
-        router.replace('/dashboard');
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to reset 2FA');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div style={{
@@ -630,13 +609,6 @@ export default function LoginPage() {
                 {useRecovery ? 'Use 6-Digit Authenticator App Code' : 'Lost Device? Use Emergency Recovery Code'}
               </button>
 
-              <button
-                type="button"
-                onClick={handleReset2FAEmergency}
-                style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}
-              >
-                🔓 Remove / Reset 2FA with Password
-              </button>
 
               <button
                 type="button"

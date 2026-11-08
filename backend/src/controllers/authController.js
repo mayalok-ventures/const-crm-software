@@ -809,63 +809,14 @@ exports.get2FAStatus = async (req, res) => {
   }
 };
 
-// @desc  Emergency Reset 2FA for account with password verification
+// @desc  Emergency Reset 2FA disabled for security compliance
 // @route POST /api/auth/reset-2fa-emergency
-// @access Public
+// @access Disabled
 exports.reset2FAEmergency = async (req, res) => {
-  try {
-    const { identifier, password } = req.body;
-    if (!identifier || !password) {
-      return res.status(400).json({ message: 'Identifier (email/phone/username) and password required' });
-    }
-
-    const cleanId = String(identifier).trim().toLowerCase();
-    const user = await User.findOne({
-      $or: [
-        { email: cleanId },
-        { phone: cleanId },
-        { username: cleanId.toUpperCase() },
-      ]
-    });
-
-    if (!user) {
-      return res.status(404).json({ message: 'User account not found' });
-    }
-
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid password' });
-    }
-
-    await User.findByIdAndUpdate(user._id, {
-      $set: {
-        twoFactorEnabled: false,
-        twoFactorSecret: null,
-        twoFactorTempSecret: null,
-        twoFactorTempExpires: null,
-        twoFactorRecoveryCodes: [],
-        twoFactorOtp: null,
-        twoFactorOtpExpires: null,
-      }
-    });
-
-    const token = generateToken(user._id);
-    const resolvedRole = user.role || 'agent';
-
-    res.json({
-      message: '2FA has been successfully removed from your account. You can now log in directly!',
-      twoFactorEnabled: false,
-      token,
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role || 'agent',
-      isAdmin: user.role === 'superadmin' || user.isAdmin === true,
-    });
-  } catch (error) {
-    console.error('reset2FAEmergency error:', error);
-    res.status(500).json({ message: 'Failed to reset 2FA' });
-  }
+  return res.status(410).json({
+    message: 'Emergency 2FA password bypass is permanently disabled for security. Please use an emergency recovery code or contact your workspace administrator.',
+    code: 'FEATURE_DISABLED',
+  });
 };
 
 // @desc  Update Dynamic Pipeline Stages
