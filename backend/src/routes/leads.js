@@ -14,6 +14,10 @@ const {
   createLeadInstallments,
   recordInstallmentPayment,
 } = require('../controllers/feeInstallmentController');
+const {
+  getDuplicateCandidates,
+  mergeLeads,
+} = require('../controllers/leadMergeController');
 const { protect, checkPlanExpiry } = require('../middleware/auth');
 const { resolveWorkspace, requirePermission } = require('../middleware/permission');
 const { enforceExportGating } = require('../middleware/antiFraud');
@@ -82,6 +86,10 @@ router.get('/:id/timeline', requirePermission('activities.view'), getLeadTimelin
 router.get('/:id/installments', requirePermission('deals.view'), getLeadInstallments);
 router.post('/:id/installments', requirePermission('deals.create'), checkPlanExpiry, createLeadInstallments);
 router.post('/:id/installments/:installmentId/pay', requirePermission('deals.create'), checkPlanExpiry, recordInstallmentPayment);
+
+// Duplicate Lead Detection & Merge (F3)
+router.get('/:id/duplicate-candidates', requirePermission('leads.view'), getDuplicateCandidates);
+router.post('/merge', requirePermission(['leads.edit', 'leads.delete']), checkPlanExpiry, mergeLeads);
 
 module.exports = router;
 

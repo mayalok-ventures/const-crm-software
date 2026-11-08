@@ -228,9 +228,10 @@ const leadSchema = new mongoose.Schema({
   // Concurrency & Optimistic Locking Version
   version: { type: Number, default: 1 },
 
-  // Soft Deletion
+  // Soft Deletion & Merge Reference
   deletedAt: { type: Date, default: null, index: true },
   deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  mergedInto: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead', default: null, index: true },
 
   // Candidate Budget & Package Range
   budget: { type: String, default: '' },
