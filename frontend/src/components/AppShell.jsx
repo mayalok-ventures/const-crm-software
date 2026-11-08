@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import BottomNav, { AppShellContext } from '@/components/BottomNav';
 import MobileTopHeader from '@/components/MobileTopHeader';
 import TopProgressBar from '@/components/common/TopProgressBar';
+import OfflineBanner from '@/components/common/OfflineBanner';
 import PersistentTabManager from '@/components/common/PersistentTabManager';
 import { bootstrapOptions } from '@/lib/queries';
 
@@ -63,6 +64,7 @@ export default function AppShell({ children }) {
   return (
     <AppShellContext.Provider value={true}>
       <TopProgressBar />
+      <OfflineBanner />
       <div className="app-container app-shell-root">
         <MobileTopHeader />
         <BottomNav active={activeModule} isRootShell={true} />
