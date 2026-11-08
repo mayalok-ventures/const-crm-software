@@ -1528,6 +1528,20 @@ exports.updateLead = async (req, res) => {
 
     if (!lead) return res.status(404).json({ message: 'Lead not found or unauthorized' });
 
+    // Optimistic Concurrency Control (OCC): Reject update if client provided a stale version
+    if (req.body.version !== undefined && req.body.version !== null && req.body.version !== '') {
+      const clientVersion = Number(req.body.version);
+      if (!isNaN(clientVersion) && lead.__v !== undefined && lead.__v !== clientVersion) {
+        return res.status(409).json({
+          success: false,
+          code: 'VERSION_CONFLICT',
+          message: 'This lead was modified by another user. Please refresh and review before saving.',
+          currentVersion: lead.__v,
+          clientVersion,
+        });
+      }
+    }
+
     const changes = {};
     const activitiesToAdd = [];
 
@@ -1869,6 +1883,7 @@ exports.updateLead = async (req, res) => {
       }
     }
 
+    lead.increment();
     await lead.save();
 
     // Event-Driven Automations Dispatch
