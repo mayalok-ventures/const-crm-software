@@ -388,12 +388,11 @@ const initializePostConnectionServices = async () => {
   await securityTracker.initDefaultRules().catch(err => console.error('[Security Rules Init Error]:', err.message));
   await ipBlocker.initSync().catch(err => console.error('[IP Blocker Sync Error]:', err.message));
 
-  // Start cron jobs
-  startFollowUpCron();
-
   const runBackgroundWorkers = process.env.RUN_BACKGROUND_WORKERS !== 'false';
 
   if (runBackgroundWorkers) {
+    // Start recurring background cron jobs
+    startFollowUpCron();
     // Auto-restore saved WhatsApp sessions
     // Auto-reconnect on server launch is disabled per configuration (on-demand mode active)
     console.log('⚡ [WhatsApp] Auto-reconnect on server launch is disabled (on-demand & manual connect mode active).');
