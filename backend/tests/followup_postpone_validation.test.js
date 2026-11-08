@@ -132,6 +132,39 @@ async function runTest() {
     console.log('✅ Step 5: Clearing follow-up date succeeds without remark.');
   }
 
+  // 6. Scheduling initial follow-up on lead without existing date succeeds without postpone remark
+  {
+    const req = {
+      params: { id: lead._id.toString() },
+      body: { followUpDate: '2026-11-20T10:00:00Z' },
+      user,
+      workspaceId: ws._id,
+    };
+    const res = mockRes();
+    await updateLead(req, res);
+    assert.strictEqual(res.statusCode, 200);
+    const updated = await Lead.findById(lead._id);
+    assert.strictEqual(new Date(updated.followUpDate).toISOString(), new Date('2026-11-20T10:00:00Z').toISOString());
+    console.log('✅ Step 6: Initial follow-up scheduling does NOT require postpone remark.');
+  }
+
+  // 7. Setting a past follow-up date (backlogging past activity) is NOT rejected
+  {
+    const pastDate = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const req = {
+      params: { id: lead._id.toString() },
+      body: { followUpDate: pastDate },
+      user,
+      workspaceId: ws._id,
+    };
+    const res = mockRes();
+    await updateLead(req, res);
+    assert.strictEqual(res.statusCode, 200, 'Past date should not be rejected');
+    const updated = await Lead.findById(lead._id);
+    assert.strictEqual(new Date(updated.followUpDate).toISOString(), pastDate);
+    console.log('✅ Step 7: Valid past date succeeds without rejection.');
+  }
+
   await mongoose.disconnect();
   await mongod.stop();
   console.log('🎉 ALL B5 FOLLOW-UP POSTPONE VALIDATION TESTS PASSED!');
