@@ -1258,25 +1258,53 @@ exports.getAgentsPerformance = async (req, res) => {
         { companyRole: { $in: ['agent', 'manager', 'sales_rep'] } },
       ],
     }).select('name role managerName leadCap isAvailableForRouting isActive incentive_pct email').lean();
-    const performance = [];
+    const agentIds = agents.map((a) => a._id);
+    const convertedStatuses = ['converted', 'payment_done', 'won', 'closed won', 'Admission Confirmed'];
 
-    for (const agent of agents) {
-      const [totalAssigned, convertedCount, revenueAgg, commissionAgg] = await Promise.all([
-        Lead.countDocuments({ assignedTo: agent._id, deletedAt: null }),
-        Lead.countDocuments({ assignedTo: agent._id, status: { $in: ['converted', 'payment_done'] }, deletedAt: null }),
-        Lead.aggregate([
-          { $match: { assignedTo: agent._id, status: { $in: ['converted', 'payment_done'] } } },
-          { $group: { _id: null, total: { $sum: '$paid_amount' } } },
-        ]),
-        Promise.resolve([{ earned: 0 }]),
-      ]);
+    const aggResults = await Lead.aggregate([
+      {
+        $match: {
+          assignedTo: { $in: agentIds },
+          deletedAt: null,
+        },
+      },
+      {
+        $group: {
+          _id: '$assignedTo',
+          totalAssigned: { $sum: 1 },
+          convertedCount: {
+            $sum: {
+              $cond: [{ $in: ['$status', convertedStatuses] }, 1, 0],
+            },
+          },
+          salesRevenue: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', convertedStatuses] },
+                { $ifNull: ['$paid_amount', 0] },
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]);
 
-      const salesRevenue = revenueAgg[0]?.total || 0;
+    const statsMap = new Map();
+    for (const row of aggResults) {
+      statsMap.set(String(row._id), row);
+    }
+
+    const performance = agents.map((agent) => {
+      const stats = statsMap.get(String(agent._id)) || { totalAssigned: 0, convertedCount: 0, salesRevenue: 0 };
+      const totalAssigned = stats.totalAssigned;
+      const convertedCount = stats.convertedCount;
+      const salesRevenue = stats.salesRevenue;
       const incentiveRate = Number(agent.incentive_pct) || 10;
-      const commissionEarned = commissionAgg[0]?.earned || Math.round((salesRevenue * incentiveRate) / 100);
+      const commissionEarned = Math.round((salesRevenue * incentiveRate) / 100);
       const conversionRate = totalAssigned > 0 ? ((convertedCount / totalAssigned) * 100).toFixed(1) : 0;
 
-      performance.push({
+      return {
         id: agent._id,
         agentId: agent._id,
         name: agent.name,
@@ -1293,8 +1321,8 @@ exports.getAgentsPerformance = async (req, res) => {
         incentivePct: incentiveRate,
         totalIncentives: commissionEarned,
         commissionEarned,
-      });
-    }
+      };
+    });
 
     res.json({ success: true, performance });
   } catch (error) {
