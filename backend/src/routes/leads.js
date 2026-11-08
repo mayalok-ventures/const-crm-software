@@ -87,8 +87,8 @@ router.get('/:id/timeline', requirePermission('activities.view'), getLeadTimelin
 
 // Fee Installments Tracking (F4)
 router.get('/:id/installments', requirePermission('deals.view'), getLeadInstallments);
-router.post('/:id/installments', requirePermission('deals.create'), checkPlanExpiry, createLeadInstallments);
-router.post('/:id/installments/:installmentId/pay', requirePermission('deals.create'), checkPlanExpiry, recordInstallmentPayment);
+router.post('/:id/installments', requirePermission(['deals.create', 'deals.edit']), checkPlanExpiry, createLeadInstallments);
+router.post('/:id/installments/:installmentId/pay', requirePermission(['deals.create', 'deals.edit']), checkPlanExpiry, recordInstallmentPayment);
 
 // Duplicate Lead Detection & Merge (F3)
 router.get('/:id/duplicate-candidates', requirePermission('leads.view'), getDuplicateCandidates);

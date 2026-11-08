@@ -5,6 +5,20 @@ const Payment = require('../models/Payment');
 const { buildLeadPermissionQuery } = require('./leadsController');
 
 /**
+ * Computes whether an installment is overdue in a UTC-safe manner.
+ * Evaluates against the end of the due day in UTC (23:59:59.999 UTC) plus gracePeriodDays.
+ */
+function isInstallmentOverdue(dueDate, gracePeriodDays = 0, asOf = Date.now()) {
+  if (!dueDate) return false;
+  const d = new Date(dueDate);
+  if (isNaN(d.getTime())) return false;
+  const endOfDueDayUtc = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999);
+  const graceMs = (Math.max(0, Number(gracePeriodDays)) || 0) * 86400000;
+  return asOf > (endOfDueDayUtc + graceMs);
+}
+exports.isInstallmentOverdue = isInstallmentOverdue;
+
+/**
  * @desc  Get all fee installments for a lead with summary metrics and auto-overdue detection
  * @route GET /api/leads/:id/installments
  * @access Private
@@ -37,12 +51,10 @@ exports.getLeadInstallments = async (req, res) => {
     const now = Date.now();
     const updateOps = [];
 
-    // Auto-detect overdue status based on dueDate and gracePeriodDays
+    // Auto-detect overdue status based on dueDate and gracePeriodDays (UTC-safe)
     for (const inst of installments) {
       if (inst.status === 'pending' || inst.status === 'partially_paid') {
-        const graceMs = (inst.gracePeriodDays || 0) * 86400000;
-        const dueWithGrace = new Date(inst.dueDate).getTime() + graceMs;
-        if (now > dueWithGrace) {
+        if (isInstallmentOverdue(inst.dueDate, inst.gracePeriodDays, now)) {
           inst.status = 'overdue';
           updateOps.push(
             FeeInstallment.updateOne({ _id: inst._id }, { $set: { status: 'overdue' } })
@@ -199,9 +211,11 @@ exports.recordInstallmentPayment = async (req, res) => {
       return res.status(404).json({ message: 'Lead not found or unauthorized' });
     }
 
+    const wsId = req.workspaceId || lead.workspaceId;
     const installment = await FeeInstallment.findOne({
       _id: installmentId,
       leadId: lead._id,
+      ...(wsId ? { workspaceId: wsId } : {}),
     });
 
     if (!installment) {
@@ -222,17 +236,22 @@ exports.recordInstallmentPayment = async (req, res) => {
     let paymentDoc = null;
 
     if (req.body.paymentId && mongoose.Types.ObjectId.isValid(req.body.paymentId)) {
-      paymentDoc = await Payment.findById(req.body.paymentId);
+      paymentDoc = await Payment.findOne({
+        _id: req.body.paymentId,
+        ...(wsId ? { $or: [{ workspaceId: wsId }, { companyId: wsId }] } : {}),
+      });
       if (!paymentDoc) {
         return res.status(404).json({ message: 'Referenced payment document not found' });
       }
     } else {
-      // Create and persist verified Payment record
+      // Create and persist verified Payment record with multi-tenant context
       paymentDoc = await Payment.create({
         lead_id: lead._id,
         leadId: lead._id,
         agent_id: req.user._id,
         agentId: req.user._id,
+        workspaceId: wsId,
+        companyId: wsId,
         amount: payAmount,
         method: req.body.paymentMethod || req.body.method || 'bank_transfer',
         transaction_id: req.body.transactionId || req.body.transaction_id || `INST-${Date.now()}`,
@@ -242,6 +261,7 @@ exports.recordInstallmentPayment = async (req, res) => {
         verifiedByAgent: true,
         verified_at: new Date(),
         verifiedAt: new Date(),
+        status: 'completed',
       });
     }
 
