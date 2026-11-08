@@ -263,16 +263,13 @@ async function recordRedemption({
     throw new Error(`Coupon ${couponId} not found for redemption`);
   }
 
-  // 3. Atomic Conditional Increment on Coupon
+  // 3. Atomic Conditional Increment on Coupon (usageCount is single canonical authority)
   let updatedCoupon = null;
   if (coupon.maxOverallUses && coupon.maxOverallUses !== -1) {
     updatedCoupon = await Coupon.findOneAndUpdate(
       {
         _id: couponId,
-        $or: [
-          { usageCount: { $lt: coupon.maxOverallUses } },
-          { currentUsageCount: { $lt: coupon.maxOverallUses } },
-        ],
+        usageCount: { $lt: coupon.maxOverallUses },
       },
       {
         $inc: { usageCount: 1, currentUsageCount: 1 },
