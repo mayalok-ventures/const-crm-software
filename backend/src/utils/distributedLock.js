@@ -110,18 +110,44 @@ async function releaseDistributedLock(lockKey, ownerId) {
 
 /**
  * Execute an async function guarded by a distributed lock.
+ * Supports both signatures:
+ *   withDistributedLock(lockKey, ttlMs, fn)
+ *   withDistributedLock(lockKey, fn, { ttlMs, ownerId })
  * If lock is held by another instance, execution is safely skipped.
  */
-async function withDistributedLock(lockKey, ttlMs, fn) {
-  const lock = await acquireDistributedLock(lockKey, ttlMs);
+async function withDistributedLock(lockKey, arg2, arg3) {
+  let ttlMs = 30000;
+  let fn = null;
+  let ownerId = null;
+
+  if (typeof arg2 === 'function') {
+    fn = arg2;
+    if (typeof arg3 === 'number') {
+      ttlMs = arg3;
+    } else if (arg3 && typeof arg3 === 'object') {
+      if (typeof arg3.ttlMs === 'number') ttlMs = arg3.ttlMs;
+      if (typeof arg3.ownerId === 'string') ownerId = arg3.ownerId;
+    }
+  } else if (typeof arg2 === 'number') {
+    ttlMs = arg2;
+    fn = arg3;
+  }
+
+  if (typeof fn !== 'function') {
+    throw new TypeError(`withDistributedLock requires an async task function, received ${typeof fn}`);
+  }
+
+  const lock = await acquireDistributedLock(lockKey, ttlMs, ownerId);
   if (!lock.acquired) {
-    return { executed: false, skipped: true, reason: lock.reason || 'LOCKED' };
+    return { executed: false, skipped: true, reason: (lock.reason || 'LOCKED').toLowerCase() };
   }
   try {
     const result = await fn();
     return { executed: true, result };
   } finally {
-    await lock.release();
+    if (typeof lock.release === 'function') {
+      await lock.release();
+    }
   }
 }
 
