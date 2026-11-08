@@ -94,6 +94,30 @@ async function acquireDistributedLock(lockKey, ttlMs = 30000, ownerId = null) {
 }
 
 /**
+ * Renew an existing distributed lock lease.
+ * @param {string} lockKey - Unique identifier for the lock
+ * @param {string} ownerId - Lock owner
+ * @param {number} extensionMs - Milliseconds to extend the lock from current time
+ * @returns {Promise<boolean>}
+ */
+async function renewDistributedLock(lockKey, ownerId, extensionMs = 30000) {
+  if (mongoose.connection.readyState !== 1) return false;
+  try {
+    const Model = getLockModel();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + extensionMs);
+    const res = await Model.updateOne(
+      { _id: lockKey, ownerId, expiresAt: { $gt: now } },
+      { $set: { expiresAt } }
+    );
+    return res.modifiedCount > 0;
+  } catch (err) {
+    console.warn(`[DistributedLock] Error renewing lock for ${lockKey}:`, err.message);
+    return false;
+  }
+}
+
+/**
  * Release a previously acquired distributed lock.
  */
 async function releaseDistributedLock(lockKey, ownerId) {
@@ -112,13 +136,14 @@ async function releaseDistributedLock(lockKey, ownerId) {
  * Execute an async function guarded by a distributed lock.
  * Supports both signatures:
  *   withDistributedLock(lockKey, ttlMs, fn)
- *   withDistributedLock(lockKey, fn, { ttlMs, ownerId })
+ *   withDistributedLock(lockKey, fn, { ttlMs, ownerId, heartbeat })
  * If lock is held by another instance, execution is safely skipped.
  */
 async function withDistributedLock(lockKey, arg2, arg3) {
   let ttlMs = 30000;
   let fn = null;
   let ownerId = null;
+  let enableHeartbeat = false;
 
   if (typeof arg2 === 'function') {
     fn = arg2;
@@ -127,6 +152,7 @@ async function withDistributedLock(lockKey, arg2, arg3) {
     } else if (arg3 && typeof arg3 === 'object') {
       if (typeof arg3.ttlMs === 'number') ttlMs = arg3.ttlMs;
       if (typeof arg3.ownerId === 'string') ownerId = arg3.ownerId;
+      if (typeof arg3.heartbeat === 'boolean') enableHeartbeat = arg3.heartbeat;
     }
   } else if (typeof arg2 === 'number') {
     ttlMs = arg2;
@@ -141,10 +167,25 @@ async function withDistributedLock(lockKey, arg2, arg3) {
   if (!lock.acquired) {
     return { executed: false, skipped: true, reason: (lock.reason || 'LOCKED').toLowerCase() };
   }
+
+  let heartbeatTimer = null;
+  if (enableHeartbeat || ttlMs >= 30000) {
+    const intervalMs = Math.max(2000, Math.floor(ttlMs / 3));
+    heartbeatTimer = setInterval(async () => {
+      try {
+        await renewDistributedLock(lockKey, lock.ownerId, ttlMs);
+      } catch (hbErr) {
+        // silent catch on background heartbeat
+      }
+    }, intervalMs);
+    if (heartbeatTimer.unref) heartbeatTimer.unref();
+  }
+
   try {
     const result = await fn();
     return { executed: true, result };
   } finally {
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
     if (typeof lock.release === 'function') {
       await lock.release();
     }
@@ -153,6 +194,7 @@ async function withDistributedLock(lockKey, arg2, arg3) {
 
 module.exports = {
   acquireDistributedLock,
+  renewDistributedLock,
   releaseDistributedLock,
   withDistributedLock,
   getLockModel,

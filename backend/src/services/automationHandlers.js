@@ -88,26 +88,52 @@ async function assignEdTechRoundRobin({ tenantUserId, companyId }) {
       return tenantUserId;
     }
 
-    if (agents.length === 1) {
-      return agents[0]._id;
+    // Filter dedicated counsellors/agents if present; otherwise fallback to all active members
+    let eligibleAgents = agents.filter(a => String(a._id) !== String(ownerId));
+    if (eligibleAgents.length === 0) {
+      eligibleAgents = agents;
     }
 
-    // Atomically find and update the last-assigned pointer on TenantConfig
-    const config = await TenantConfig.findOne({
+    if (eligibleAgents.length === 1) {
+      return eligibleAgents[0]._id;
+    }
+
+    // Atomically increment the round-robin counter to prevent race condition collapse
+    let updatedConfig;
+    const existingConfig = await TenantConfig.findOne({
       $or: [{ userId: ownerId }, { companyId: ownerId }]
-    });
+    }).select('_id');
 
-    let lastIdx = config?.automationSettings?.lastAssignedAgentIndex ?? -1;
-    let nextIdx = (lastIdx + 1) % agents.length;
-    const selectedAgent = agents[nextIdx];
+    if (existingConfig) {
+      updatedConfig = await TenantConfig.findByIdAndUpdate(
+        existingConfig._id,
+        { $inc: { 'automationSettings.lastAssignedAgentIndex': 1 } },
+        { new: true }
+      );
+    } else {
+      try {
+        updatedConfig = await TenantConfig.findOneAndUpdate(
+          { userId: ownerId },
+          {
+            $inc: { 'automationSettings.lastAssignedAgentIndex': 1 },
+            $setOnInsert: { userId: ownerId, companyId: ownerId }
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+      } catch (upsertErr) {
+        updatedConfig = await TenantConfig.findOneAndUpdate(
+          { $or: [{ userId: ownerId }, { companyId: ownerId }] },
+          { $inc: { 'automationSettings.lastAssignedAgentIndex': 1 } },
+          { new: true }
+        );
+      }
+    }
 
-    await TenantConfig.findOneAndUpdate(
-      { $or: [{ userId: ownerId }, { companyId: ownerId }] },
-      { $set: { 'automationSettings.lastAssignedAgentIndex': nextIdx } },
-      { upsert: true }
-    );
+    const seq = updatedConfig?.automationSettings?.lastAssignedAgentIndex ?? 0;
+    const nextIdx = Math.abs(seq) % eligibleAgents.length;
+    const selectedAgent = eligibleAgents[nextIdx];
 
-    console.log(`[Round-Robin] Assigned lead to agent ${selectedAgent.name || selectedAgent._id} (Index: ${nextIdx}/${agents.length})`);
+    console.log(`[Round-Robin] Assigned lead to agent ${selectedAgent.name || selectedAgent._id} (Index: ${nextIdx}/${eligibleAgents.length})`);
     return selectedAgent._id;
   } catch (err) {
     console.error('[Round-Robin] Error in lead assignment:', err.message);

@@ -777,6 +777,9 @@ class SmtpAdapter {
       tls: {
         rejectUnauthorized: process.env.NODE_ENV === 'production',
       },
+      connectionTimeout: 10000,
+      greetingTimeout: 5000,
+      socketTimeout: 15000,
     });
   }
 

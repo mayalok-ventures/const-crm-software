@@ -48,13 +48,15 @@ const startFollowUpCron = () => {
     if (!isDbReady() || isWebhookSweepRunning) return;
     isWebhookSweepRunning = true;
     try {
-      await webhookQueueService.processQueueSweep();
+      await withDistributedLock('cron_sweep_webhook_queue', 50000, () => webhookQueueService.processQueueSweep());
     } catch (err) {
       console.error('[Cron] Webhook queue sweep error:', err.message);
     } finally {
       isWebhookSweepRunning = false;
     }
   });
+  scheduledTasks.push(webhookSweepTask);
+
   // Run every minute — Pending Delayed Automations Sweep (recovers delayed jobs after server restart)
   let isDelayedSweepRunning = false;
   const delayedSweepTask = cron.schedule('* * * * *', async () => {
@@ -79,10 +81,12 @@ const startFollowUpCron = () => {
     if (!isDbReady() || isMetaReconcileRunning) return;
     isMetaReconcileRunning = true;
     try {
-      const activeMeta = await Integration.find({ provider: 'meta', status: 'connected' }).select('_id');
-      for (const intDoc of activeMeta) {
-        await reconcileMetaIntegration(intDoc._id);
-      }
+      await withDistributedLock('cron_sweep_meta_leads_reconciliation', 14 * 60 * 1000, async () => {
+        const activeMeta = await Integration.find({ provider: 'meta', status: 'connected' }).select('_id');
+        for (const intDoc of activeMeta) {
+          await reconcileMetaIntegration(intDoc._id);
+        }
+      });
     } catch (err) {
       console.error('[Cron] Meta reconciliation sweep error:', err.message);
     } finally {
@@ -113,7 +117,7 @@ const startFollowUpCron = () => {
     isIdleLeadCronRunning = true;
     try {
       const AutomationEngine = require('../services/automationEngine');
-      await AutomationEngine.processIdleLeadAutomations();
+      await withDistributedLock('cron_sweep_idle_lead_automations', 14 * 60 * 1000, () => AutomationEngine.processIdleLeadAutomations());
     } catch (err) {
       console.error('[Cron] Idle lead automation worker error:', err.message);
     } finally {
@@ -128,7 +132,7 @@ const startFollowUpCron = () => {
     if (!isDbReady() || isFeeCronRunning) return;
     isFeeCronRunning = true;
     try {
-      await runTestPrepFeeAlertsCron();
+      await withDistributedLock('cron_sweep_test_prep_fee_alerts', 60 * 60 * 1000, () => runTestPrepFeeAlertsCron());
     } catch (err) {
       console.error('[Cron] Fee due alert scheduler error:', err.message);
     } finally {
@@ -144,7 +148,7 @@ const startFollowUpCron = () => {
     isEmailDispatchRunning = true;
     try {
       const EmailService = require('../services/email/emailService');
-      await EmailService.processScheduledEmails();
+      await withDistributedLock('cron_sweep_scheduled_email_dispatch', 50000, () => EmailService.processScheduledEmails());
     } catch (err) {
       console.error('[Cron] Scheduled email dispatcher error:', err.message);
     } finally {
@@ -161,16 +165,18 @@ const startFollowUpCron = () => {
     try {
       const EmailService = require('../services/email/emailService');
       const EmailAccount = require('../models/EmailAccount');
-      const activeAccounts = await EmailAccount.find({ status: 'connected' })
-        .select('+accessTokenEncrypted +refreshTokenEncrypted +smtpPassEncrypted')
-        .limit(50);
-      for (const acc of activeAccounts) {
-        try {
-          await EmailService.syncAccountMessages(acc, { maxResults: 20 });
-        } catch (accErr) {
-          console.warn(`[Cron] Email sync notice for ${acc.email}:`, accErr.message);
+      await withDistributedLock('cron_sweep_email_inbound_sync', 4 * 60 * 1000, async () => {
+        const activeAccounts = await EmailAccount.find({ status: 'connected' })
+          .select('+accessTokenEncrypted +refreshTokenEncrypted +smtpPassEncrypted')
+          .limit(50);
+        for (const acc of activeAccounts) {
+          try {
+            await EmailService.syncAccountMessages(acc, { maxResults: 20 });
+          } catch (accErr) {
+            console.warn(`[Cron] Email sync notice for ${acc.email}:`, accErr.message);
+          }
         }
-      }
+      });
     } catch (err) {
       console.error('[Cron] Inbound email sync worker error:', err.message);
     } finally {
@@ -187,12 +193,22 @@ const startFollowUpCron = () => {
     }
     if (!isSchedulerStarted) return; // stopped before startup ran
     try {
-      if (isSchedulerStarted && isDbReady()) await processSubscriptionLifecycle().catch(err => { if (isDbReady() && isSchedulerStarted) console.error('[Cron Startup] Subscription error:', err.message); });
-      if (isSchedulerStarted && isDbReady()) await runTestPrepFeeAlertsCron().catch(err => { if (isDbReady() && isSchedulerStarted) console.error('[Cron Startup] Fee alerts error:', err.message); });
-      if (isSchedulerStarted && isDbReady()) await webhookQueueService.processQueueSweep().catch(err => { if (isDbReady() && isSchedulerStarted) console.error('[Cron Startup] Webhook queue error:', err.message); });
+      if (isSchedulerStarted && isDbReady()) {
+        await withDistributedLock('cron_startup_subscription_pass', 60000, () => processSubscriptionLifecycle())
+          .catch(err => { if (isDbReady() && isSchedulerStarted) console.error('[Cron Startup] Subscription error:', err.message); });
+      }
+      if (isSchedulerStarted && isDbReady()) {
+        await withDistributedLock('cron_startup_fee_alerts_pass', 60000, () => runTestPrepFeeAlertsCron())
+          .catch(err => { if (isDbReady() && isSchedulerStarted) console.error('[Cron Startup] Fee alerts error:', err.message); });
+      }
+      if (isSchedulerStarted && isDbReady()) {
+        await withDistributedLock('cron_startup_webhook_queue_pass', 60000, () => webhookQueueService.processQueueSweep())
+          .catch(err => { if (isDbReady() && isSchedulerStarted) console.error('[Cron Startup] Webhook queue error:', err.message); });
+      }
       if (isSchedulerStarted && isDbReady()) {
         const AutomationEngine = require('../services/automationEngine');
-        await AutomationEngine.sweepPendingDelayedAutomations().catch(err => { if (isDbReady() && isSchedulerStarted) console.error('[Cron Startup] Delayed automation sweep error:', err.message); });
+        await withDistributedLock('cron_startup_delayed_automations_pass', 60000, () => AutomationEngine.sweepPendingDelayedAutomations())
+          .catch(err => { if (isDbReady() && isSchedulerStarted) console.error('[Cron Startup] Delayed automation sweep error:', err.message); });
       }
     } catch (err) {
       if (isDbReady() && isSchedulerStarted) console.error('[Cron Startup] Initialization pass error:', err.message);
