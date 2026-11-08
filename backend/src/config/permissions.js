@@ -14,6 +14,7 @@ const PERMISSIONS = {
   'leads.export': { key: 'leads.export', category: 'Leads', label: 'Export Leads', description: 'Download CSV / Excel datasets of student contacts' },
   'leads.view_sensitive': { key: 'leads.view_sensitive', category: 'Leads', label: 'View Sensitive Fields', description: 'Access financial notes and confidential marks' },
   'leads.view_documents': { key: 'leads.view_documents', category: 'Leads', label: 'View Student Documents', description: 'Access student marksheets and identity proofs' },
+  'leads.view_phone_unmasked': { key: 'leads.view_phone_unmasked', category: 'Leads', label: 'View Unmasked Phone Numbers', description: 'View full raw unmasked student telephone numbers' },
 
   // Follow-ups & Activities
   'activities.view': { key: 'activities.view', category: 'Follow-ups', label: 'View Activities', description: 'Read interaction history and call logs' },
@@ -98,6 +99,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
     { key: 'leads.export', scope: 'workspace' },
     { key: 'leads.view_sensitive', scope: 'workspace' },
     { key: 'leads.view_documents', scope: 'workspace' },
+    { key: 'leads.view_phone_unmasked', scope: 'workspace' },
     { key: 'activities.view', scope: 'workspace' },
     { key: 'activities.create', scope: 'workspace' },
     { key: 'followups.create', scope: 'workspace' },

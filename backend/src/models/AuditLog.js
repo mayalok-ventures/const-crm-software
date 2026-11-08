@@ -85,6 +85,7 @@ const AuditLogSchema = new mongoose.Schema(
         'RECONCILIATION_STALE_EVENT',
         'RECONCILIATION_MANUAL_REVIEW',
         'MANUAL_RECONCILIATION_ACTION',
+        'LEAD_PHONE_UNMASKED',
       ],
       index: true,
     },

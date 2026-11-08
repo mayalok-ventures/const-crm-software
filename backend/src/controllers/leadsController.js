@@ -3,6 +3,7 @@ const Lead = require('../models/Lead');
 const User = require('../models/User');
 const Campaign = require('../models/Campaign');
 const Notification = require('../models/Notification');
+require('../models/Catalogue');
 const { emitCRMEvent, CRM_EVENTS } = require('../services/automationEvents');
 const { auditService } = require('../monitoring/audit/auditService');
 const xlsx = require('xlsx');
@@ -11,6 +12,11 @@ const csv = require('csv-parser');
 const { Readable } = require('stream');
 const { appendCustomQuestionsNote, formatCustomQuestionsNote } = require('../utils/customQuestionsFormatter');
 const { resolveStageAndStatus } = require('../utils/leadStageStatus');
+const {
+  maskPhoneNumber,
+  shouldMaskPhoneForUser,
+  sanitizeLeadPhone,
+} = require('../utils/phoneMasking');
 
 // Helper to construct query mathematically enforcing Strict Visibility & Privacy Rules:
 // RULE 1: SuperAdmin sees all leads across the platform.
@@ -415,6 +421,13 @@ exports.getLeads = async (req, res) => {
 
     const [leads, total] = await Promise.all([leadsPromise, countPromise]);
 
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership);
+    if (shouldMask && Array.isArray(leads)) {
+      leads.forEach((l) => sanitizeLeadPhone(l, true));
+    } else if (Array.isArray(leads)) {
+      leads.forEach((l) => { if (l && typeof l === 'object') l.isPhoneMasked = false; });
+    }
+
     res.json({
       leads,
       total,
@@ -487,6 +500,10 @@ exports.getLead = async (req, res) => {
       .lean();
 
     if (!lead) return res.status(404).json({ message: 'Lead not found or unauthorized' });
+
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership);
+    sanitizeLeadPhone(lead, shouldMask);
+
     res.json(lead);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'Invalid lead ID format' });
@@ -513,6 +530,11 @@ exports.getTodayFollowUps = async (req, res) => {
     .populate('projectId', 'name location')
     .sort({ followUpDate: 1 })
     .lean();
+
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership);
+    if (shouldMask && Array.isArray(leads)) {
+      leads.forEach((l) => sanitizeLeadPhone(l, true));
+    }
 
     res.json(leads);
   } catch (error) {
@@ -564,6 +586,11 @@ exports.getDueFollowUps = async (req, res) => {
       .populate('assignedTo', 'name usercode email')
       .sort({ updatedAt: -1, followUpDate: -1 })
       .lean();
+
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership);
+    if (shouldMask && Array.isArray(leads)) {
+      leads.forEach((l) => sanitizeLeadPhone(l, true));
+    }
 
     res.json(leads);
   } catch (error) {
@@ -3313,6 +3340,65 @@ exports.deleteChildInquiry = async (req, res) => {
   } catch (error) {
     console.error('deleteChildInquiry error:', error);
     res.status(500).json({ message: error.message || 'Failed to delete child inquiry' });
+  }
+};
+
+// @desc  Unmask phone number for a specific lead and log security audit entry
+// @route POST /api/leads/:id/unmask-phone
+// @access Private
+exports.unmaskLeadPhone = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid lead ID format' });
+    }
+
+    const permissionQuery = await buildLeadPermissionQuery(req.user, false);
+    const lead = await Lead.findOne({ _id: id, ...permissionQuery })
+      .select('name phone phoneDigits alternatePhone fatherPhone workspaceId companyId userId')
+      .lean();
+
+    if (!lead) {
+      return res.status(404).json({ message: 'Lead not found or unauthorized' });
+    }
+
+    // Record Security Audit Trail
+    try {
+      const AuditLog = mongoose.models.AuditLog || require('../models/AuditLog');
+      await AuditLog.create({
+        actorId: req.user._id,
+        actorName: req.user.name || 'User',
+        actorEmail: req.user.email || null,
+        actorRole: req.membership?.role || req.user.role || 'user',
+        organizationId: req.workspaceId || req.user.companyId || null,
+        action: 'LEAD_PHONE_UNMASKED',
+        resourceType: 'Lead',
+        resourceId: String(lead._id),
+        resourceName: lead.name || 'Lead',
+        requestId: req.id || req.headers?.['x-request-id'] || null,
+        ip: req.ip || req.connection?.remoteAddress || null,
+        userAgent: req.headers?.['user-agent'] || null,
+        metadata: {
+          leadName: lead.name,
+          unmaskedFields: ['phone', 'alternatePhone', 'fatherPhone'].filter(f => Boolean(lead[f])),
+        },
+        timestamp: new Date(),
+      });
+    } catch (auditErr) {
+      console.warn('[AuditLog] Unmask security log warning:', auditErr.message);
+    }
+
+    return res.json({
+      success: true,
+      leadId: lead._id,
+      phone: lead.phone || '',
+      phoneDigits: lead.phoneDigits || '',
+      alternatePhone: lead.alternatePhone || '',
+      fatherPhone: lead.fatherPhone || '',
+    });
+  } catch (error) {
+    console.error('unmaskLeadPhone error:', error);
+    res.status(500).json({ message: 'Server error unmasking phone' });
   }
 };
 
