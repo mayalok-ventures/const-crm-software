@@ -22,14 +22,16 @@ const sweepDueFollowUps = async () => {
 
   isSchedulerRunning = true;
   const now = new Date();
-  // Include follow-ups due right now or within the next 30 seconds
+  const FOLLOWUP_LOOKBACK_HOURS = parseInt(process.env.FOLLOWUP_LOOKBACK_HOURS, 10) || 24;
+  const minCutoff = new Date(now.getTime() - FOLLOWUP_LOOKBACK_HOURS * 60 * 60 * 1000);
+  // Include follow-ups due right now or within the next 30 seconds, bounded by lookback window
   const cutoff = new Date(now.getTime() + 30000);
   let processedCount = 0;
 
   try {
     // ── 1. SWEEP LEADS COLLECTION ──────────────────────────────────────────
     const dueLeads = await Lead.find({
-      followUpDate: { $lte: cutoff, $ne: null },
+      followUpDate: { $gte: minCutoff, $lte: cutoff },
       followUpNotified: { $ne: true },
       followUpStatus: { $nin: ['completed', 'cancelled'] },
       'activeFollowUp.status': { $nin: ['completed', 'cancelled'] },
@@ -50,7 +52,7 @@ const sweepDueFollowUps = async () => {
         {
           _id: lead._id,
           followUpNotified: { $ne: true },
-          followUpStatus: { $nin: ['completed', 'cancelled', 'none'] },
+          followUpStatus: { $nin: ['completed', 'cancelled'] },
         },
         {
           $set: {
@@ -100,8 +102,8 @@ const sweepDueFollowUps = async () => {
     // ── 2. SWEEP FOLLOWUPS COLLECTION (Enterprise sub-record model) ─────────
     const dueFollowUps = await FollowUp.find({
       $or: [
-        { scheduled_at: { $lte: cutoff, $ne: null } },
-        { scheduledAt: { $lte: cutoff, $ne: null } },
+        { scheduled_at: { $gte: minCutoff, $lte: cutoff } },
+        { scheduledAt: { $gte: minCutoff, $lte: cutoff } },
       ],
       status: 'open',
       notified: { $ne: true },
