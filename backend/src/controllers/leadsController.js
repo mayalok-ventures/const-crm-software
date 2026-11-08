@@ -1436,7 +1436,7 @@ exports.updateLead = async (req, res) => {
     const incomingStatus = req.body.status !== undefined ? req.body.status : lead.status;
     const isConverting = ['converted', 'payment_done', 'closed', 'Closed', 'Closed / Won'].includes(incomingStatus);
     if (isConverting) {
-      const rawAmt = req.body.paymentAmount !== undefined ? req.body.paymentAmount : (req.body.payment_amount !== undefined ? req.body.payment_amount : (req.body.closedDealAmount !== undefined ? req.body.closedDealAmount : lead.paid_amount));
+      const rawAmt = req.body.paymentAmount !== undefined ? req.body.paymentAmount : (req.body.payment_amount !== undefined ? req.body.payment_amount : (req.body.paid_amount !== undefined ? req.body.paid_amount : (req.body.closedDealAmount !== undefined ? req.body.closedDealAmount : lead.paid_amount)));
       const rawMethod = req.body.paymentMethod || req.body.payment_method || lead.payment_method;
 
       const paymentAmount = Number(rawAmt);
@@ -1479,9 +1479,18 @@ exports.updateLead = async (req, res) => {
         }).catch(err => console.warn('[Payment] Manual payment record warning:', err.message));
       }
 
-      // Trigger split incentive calculation dynamically on WON status conversion
-      const { triggerWonIncentiveCalculation } = require('./agencyController');
-      triggerWonIncentiveCalculation(lead._id, lead.companyId).catch(err => console.error('[Incentive Calculation Hook Error]:', err.message));
+      // Trigger split incentive calculation dynamically on WON status conversion (safely isolated)
+      try {
+        const { triggerWonIncentiveCalculation } = require('./agencyController');
+        if (typeof triggerWonIncentiveCalculation === 'function') {
+          triggerWonIncentiveCalculation(lead._id, lead.companyId).catch(err =>
+            console.error('[Incentive Calculation Hook Error]:', err.message)
+          );
+        }
+      } catch (hookErr) {
+        // Safe no-op if module is absent; status update and payment must never fail
+        console.warn(`[Incentive Hook] Agency commission calculation skipped for lead ${lead._id} (module unavailable)`);
+      }
     }
 
     // Enforce Mandatory Postpone Remark when delaying/postponing an existing follow-up
