@@ -179,6 +179,32 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: true }));
 
+// NoSQL Operator Injection Sanitization: recursively strip keys starting with '$' or containing '.'
+const sanitizeNoSql = (obj) => {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) {
+    for (let i = 0; i < obj.length; i++) {
+      sanitizeNoSql(obj[i]);
+    }
+    return obj;
+  }
+  for (const key of Object.keys(obj)) {
+    if (key.startsWith('$') || key.includes('.')) {
+      delete obj[key];
+    } else {
+      sanitizeNoSql(obj[key]);
+    }
+  }
+  return obj;
+};
+
+app.use((req, res, next) => {
+  if (req.body) sanitizeNoSql(req.body);
+  if (req.query) sanitizeNoSql(req.query);
+  if (req.params) sanitizeNoSql(req.params);
+  next();
+});
+
 // Serve recordings & templates statically
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 

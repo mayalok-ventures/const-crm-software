@@ -114,3 +114,33 @@ export async function patchLocalLeadOptimistic(id, patch) {
     console.warn('[Dexie Optimistic Patch Error]:', err.message);
   }
 }
+
+/**
+ * Completely purges all local offline IndexedDB tables and CacheStorage
+ * on user logout or tenant/user switch to prevent cross-account data leakage.
+ */
+export async function clearAllLocalClientStorage() {
+  if (typeof window === 'undefined') return;
+  try {
+    if (localDb) {
+      await Promise.allSettled([
+        localDb.leads?.clear(),
+        localDb.followUps?.clear(),
+        localDb.pipelines?.clear(),
+        localDb.colleges?.clear(),
+        localDb.cachedQueries?.clear(),
+        localDb.offlineMutationQueue?.clear(),
+      ]);
+    }
+  } catch (err) {
+    console.warn('[Dexie Clear Error]:', err.message);
+  }
+
+  // Clear Service Worker CacheStorage
+  if (typeof window !== 'undefined' && 'caches' in window) {
+    try {
+      const keys = await caches.keys();
+      await Promise.allSettled(keys.map((k) => caches.delete(k)));
+    } catch (_) {}
+  }
+}

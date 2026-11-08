@@ -19,7 +19,8 @@ class SecurityTrackerEngine {
     constructor() {
         this.loadRules();
         // Prune sliding window every 60 seconds
-        setInterval(() => this.pruneWindow(), 60000);
+        const pruneTimer = setInterval(() => this.pruneWindow(), 60000);
+        if (pruneTimer.unref) pruneTimer.unref();
     }
     async initDefaultRules() {
         try {

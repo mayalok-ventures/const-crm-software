@@ -167,6 +167,7 @@ const userSchema = new mongoose.Schema({
   twoFactorRecoveryCodes: { type: [String], default: [] },
   twoFactorOtp: { type: String, default: null },
   twoFactorOtpExpires: { type: Date, default: null },
+  tokenVersion: { type: Number, default: 0 },
 
   // Subscription Tiering
   plan: {

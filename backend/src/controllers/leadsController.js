@@ -72,7 +72,7 @@ const buildLeadPermissionQuery = async (user, isUnclaimed = false) => {
   }
 
   const workspaceId = user.workspaceId;
-  const role = user.workspaceRole || user.companyRole;
+  const role = user.workspaceRole || user.companyRole || user.role;
 
   if (workspaceId) {
     const allowLegacy = isUnscopedLegacyAllowed();
@@ -355,6 +355,8 @@ exports.getLeads = async (req, res) => {
         ownershipStatus: { $nin: ['claimed', 'assigned', 'transferred'] }
       });
     }
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
+
     if (search && search.trim()) {
       const trimmed = search.trim();
       if (trimmed.length >= 2) {
@@ -364,26 +366,37 @@ exports.getLeads = async (req, res) => {
 
         if (digitsOnly.length >= 3 && /^\d+$/.test(trimmed)) {
           // Dedicated phone search against indexed phoneDigits
-          query.$and.push({
-            $or: [
-              { phoneDigits: new RegExp('^' + digitsOnly) },
-              { phoneDigits: new RegExp(digitsOnly + '$') },
-              { phone: new RegExp(safeSearch, 'i') },
-            ]
-          });
+          if (shouldMask) {
+            // Masked users can only search by visible unmasked suffix (last 4 digits) to prevent phone enumeration oracle
+            const suffixDigits = digitsOnly.slice(-4);
+            query.$and.push({
+              $or: [
+                { phoneDigits: new RegExp(suffixDigits + '$') },
+              ]
+            });
+          } else {
+            query.$and.push({
+              $or: [
+                { phoneDigits: new RegExp('^' + digitsOnly) },
+                { phoneDigits: new RegExp(digitsOnly + '$') },
+                { phone: new RegExp(safeSearch, 'i') },
+              ]
+            });
+          }
         } else {
           // Anchored prefix queries on indexed nameLower & companyLower with full fallback for comprehensive recall
-          query.$and.push({
-            $or: [
-              { nameLower: new RegExp('^' + safeLower) },
-              { companyLower: new RegExp('^' + safeLower) },
-              { name: new RegExp(safeSearch, 'i') },
-              { company: new RegExp(safeSearch, 'i') },
-              { phone: new RegExp(safeSearch, 'i') },
-              { project: new RegExp(safeSearch, 'i') },
-              { location: new RegExp(safeSearch, 'i') },
-            ]
-          });
+          const textConditions = [
+            { nameLower: new RegExp('^' + safeLower) },
+            { companyLower: new RegExp('^' + safeLower) },
+            { name: new RegExp(safeSearch, 'i') },
+            { company: new RegExp(safeSearch, 'i') },
+            { project: new RegExp(safeSearch, 'i') },
+            { location: new RegExp(safeSearch, 'i') },
+          ];
+          if (!shouldMask) {
+            textConditions.push({ phone: new RegExp(safeSearch, 'i') });
+          }
+          query.$and.push({ $or: textConditions });
         }
       }
     }
@@ -436,7 +449,6 @@ exports.getLeads = async (req, res) => {
       }
     }
 
-    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
     if (shouldMask && Array.isArray(leads)) {
       leads.forEach((l) => sanitizeLeadPhone(l, true));
     } else if (Array.isArray(leads)) {
@@ -1329,6 +1341,13 @@ exports.createLead = async (req, res) => {
             idempotent: true,
           });
         }
+        const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
+        if (shouldMask) {
+          return res.status(409).json({
+            message: "Unable to create lead with provided details. A record with matching criteria already exists.",
+            code: 'DUPLICATE_RECORD',
+          });
+        }
         return res.status(409).json({
           message: companyId
             ? "This phone number already exists in your company's database."
@@ -1578,6 +1597,13 @@ exports.createLead = async (req, res) => {
   } catch (error) {
     console.error('createLead error:', error);
     if (error.code === 11000 || error.message?.includes('E11000')) {
+      const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
+      if (shouldMask) {
+        return res.status(409).json({
+          message: "Unable to create lead with provided details. A record with matching criteria already exists.",
+          code: 'DUPLICATE_RECORD',
+        });
+      }
       return res.status(409).json({
         message: "This phone number already exists in your company's database.",
         code: 'DUPLICATE_PHONE',
@@ -3098,6 +3124,26 @@ exports.importLeads = async (req, res) => {
     }
 
     const maxAllowedNew = maxLeadsLimit === -1 ? Infinity : Math.max(0, maxLeadsLimit - currentCount);
+
+    // ─────────────────────────────────────────────────────────────
+    // MAGIC BYTE VERIFICATION (F5: Security Hardening)
+    // ─────────────────────────────────────────────────────────────
+    const isXlsxFile = req.file.originalname?.toLowerCase().endsWith('.xlsx') || req.file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    if (isXlsxFile && req.file.path) {
+      try {
+        const fd = fs.openSync(req.file.path, 'r');
+        const header = Buffer.alloc(4);
+        fs.readSync(fd, header, 0, 4, 0);
+        fs.closeSync(fd);
+        if (header[0] !== 0x50 || header[1] !== 0x4b) {
+          if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+          return res.status(400).json({ message: 'Invalid or corrupted XLSX file structure (magic header mismatch).' });
+        }
+      } catch (headerErr) {
+        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.status(400).json({ message: 'Failed to read file signature.' });
+      }
+    }
 
     // ─────────────────────────────────────────────────────────────
     // IMPORT JOB TRACKING & RESUMABILITY (F1.6)

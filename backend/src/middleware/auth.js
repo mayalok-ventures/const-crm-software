@@ -98,7 +98,7 @@ const protect = async (req, res, next) => {
     }
     if (!token) return res.status(401).json({ message: 'Not authorized, no token' });
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { clockTolerance: 30 });
     if (decoded.pending2FA) {
       return res.status(401).json({ message: 'Two-Factor Authentication required to access this endpoint.' });
     }
@@ -118,6 +118,11 @@ const protect = async (req, res, next) => {
 
     if (!user || !user.isActive) {
       return res.status(401).json({ message: 'Not authorized, account inactive' });
+    }
+
+    // Token version check: reject stale/revoked JWT tokens immediately
+    if (decoded.tokenVersion !== undefined && user.tokenVersion !== undefined && decoded.tokenVersion < user.tokenVersion) {
+      return res.status(401).json({ message: 'Token has been revoked or invalidated' });
     }
 
     // Suspension check
@@ -411,5 +416,6 @@ module.exports = {
   calculateSubscriptionLifecycle,
   generateToken,
   generateTemp2FAToken,
+  userCache,
 };
 

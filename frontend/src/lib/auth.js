@@ -50,6 +50,10 @@ export const clearAuth = () => {
       const { clearAllQueryCache: clearApiCache } = require('@/lib/api');
       if (clearApiCache) clearApiCache();
     } catch (_) {}
+    try {
+      const { clearAllLocalClientStorage } = require('@/lib/db');
+      if (clearAllLocalClientStorage) clearAllLocalClientStorage();
+    } catch (_) {}
   }
 };
 

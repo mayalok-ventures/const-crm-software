@@ -126,6 +126,12 @@ exports.getDuplicateCandidates = async (req, res) => {
       scoredCandidates.forEach((cand) => {
         if (cand.phone) cand.phone = maskPhoneNumber(cand.phone);
         if (cand.phoneDigits) cand.phoneDigits = maskPhoneNumber(cand.phoneDigits);
+        // Eliminate phone oracle in matchType for masked users
+        if (cand.matchType === 'phone') {
+          cand.matchType = 'record_match';
+        } else if (cand.matchType === 'phone_and_email') {
+          cand.matchType = 'email';
+        }
       });
     }
 
