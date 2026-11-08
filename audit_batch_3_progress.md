@@ -15,6 +15,7 @@
 | **Stage 3** | UI/UX Frontend: U1–U5 | ✅ DONE | U1 bottom nav safe area & dirty form guard, U4 iOS 16px font-size, U3 WCAG AA badge contrast, U5 modal a11y focus trap, U2 accordion cards. |
 | **Stage 4** | Missing Features: F1, F2 | ✅ DONE | F1 role-based phone masking & unmask audit logging, F2 unified omnichannel timeline API with cursor pagination. |
 | **Stage 5** | Missing Features: F4, F3, F5 + Phase C & Final Report | ✅ DONE | F4 fee installments tracking, F3 duplicate candidate search & atomic merge, F5 commission forensic report, Phase C regression tests & `audit_batch_3_final_report.md`. |
+| **Stage 6** | Batch 3 Hardening Pass (Follow-ups 1–9) | ✅ DONE | Phone masking tied to `maskLeadPhones` with server-mediated redirects, timeline per-source RBAC, merge dryRun & full child repointing, UTC overdue, lazy UI, modal a11y & Playwright overlap proof. |
 
 ---
 
@@ -72,7 +73,20 @@
 
 ---
 
-## 7. Current Test Suite Status Summary
+## 7. Stage 6 Hardening Pass Commits Tracker
+
+| Commit Hash | Conventional Commit Message | Key Verification |
+| :---: | :--- | :--- |
+| `6e840f0` | `fix(batch3-followup): tie phone masking to workspace setting maskLeadPhones with server-mediated call and whatsapp actions` | Workspace setting `maskLeadPhones` controls masking. Flag OFF = byte-identical raw output (proven by test). Flag ON = masks phone across all 15 system exposure paths. Server-mediated call (`/call-redirect`) and WhatsApp (`/whatsapp-redirect`) links allow outbound contact without leaking clear text. Verified via `lead_phone_masking_comprehensive.test.js` (6 passing). |
+| `53eeba0` | `fix(batch3-followup): enforce per-source permission filtering and phone redaction in timeline summaries` | Added per-source permission filtering (`whatsapp.view`, `email.view`, `activities.view`, `deals.view`) and phone redaction in timeline text/summaries. Verified via `lead_omnichannel_timeline.test.js` (5 passing). |
+| `d539cc2` | `fix(batch3-followup): add merge dryRun preview, field choices, same-workspace guard, and full child entity repointing` | Added `dryRun` preview mode, `fieldChoices` winner selection, same-workspace guard, `leads.merge` permission, and atomic repointing across all 12 child collections. Verified via `lead_duplicate_merge.test.js` (6 passing) and `lead_merge_transaction_rollback.test.js` (1 passing, proves rollback on injected error). |
+| `4f4bec0` | `fix(batch3-followup): enforce UTC-safe overdue calculation and prove zero disruption to existing payment metrics` | Computed overdue threshold against end of UTC day plus gracePeriodDays. Proved via `lead_fee_installments_hardening.test.js` (4 passing) that existing revenue aggregations and metrics are completely unchanged. |
+| `10cd162` | `fix(batch3-followup): add lazy-loaded UI for phone reveal, timeline drawer, merge modal, and fee installments` | Honestly disclosed UI absence in original batch 3. Created 4 lazy-loaded components (`LeadPhoneReveal`, `LeadTimelineDrawer`, `LeadMergeModal`, `FeeInstallmentsCard`) resulting in ~0 KB bundle addition on initial page load. Tested and built with Next.js (`39/39` static pages). |
+| `581e373` | `fix(batch3-followup): apply modal a11y focus trap to top workflows and verify zero bottom nav overlap with elementFromPoint` | Applied `useModalA11y` focus trap to top 6 modals (`FollowUpSchedulerModal`, `FollowUpCompleteModal`, `LostReasonModal`, `TransferLeadsModal`, `ShareCollegeFeeModal`, `LeadModals`). Proved with Playwright `document.elementFromPoint` across Pixel 7, iPhone 14, and Desktop viewports (21/21 passed) that Save/Confirm buttons are never covered by BottomNav. |
+
+---
+
+## 8. Current Test Suite Status Summary
 
 - **Backend Test Guard & Runner**:
   - `safetyGuard.js`: Enforces in-memory Mongo test environment; blocks localhost production/staging ports (27017) or cloud URIs.

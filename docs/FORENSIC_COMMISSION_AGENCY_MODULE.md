@@ -12,10 +12,20 @@
 ### Audit Hypothesis:
 > *"Commission tracking is completely broken/missing; university tie-up payouts cannot be calculated."*
 
-### Forensic Verdict: **PARTIALLY TRUE / ARCHITECTURAL MISINTERPRETATION**
-The automated audit based its conclusion on inspecting `backend/src/controllers/adminController.js` (lines 1796–1808), which contains legacy single-user stubs. However, the auditor failed to trace the actual domain model in `AdmissionDeal.js` and `dealController.js`.
+### Forensic Verdict: **INTENTIONAL PIVOT / DELETED LEGACY BROKER MODULE (PROVEN VIA COMMIT 1228615a)**
+Forensic inspection of commit `1228615a07ee30ff8fb409124fb271dceeacdf9a` confirms that the agency broker module was intentionally removed as part of a major architectural pivot:
+- **Legacy Files Deleted in `1228615a`**:
+  - `backend/src/controllers/agencyController.js` (-1,338 lines)
+  - `backend/src/controllers/realEstateController.js` (-2,250 lines)
+  - `backend/src/controllers/companyController.js` (-884 lines)
+  - `frontend/src/components/admin/modules/CommissionsModule.jsx` (-194 lines)
+  - `frontend/src/components/admin/modules/DistributionModule.jsx` (-135 lines)
+  - `frontend/src/components/admin/modules/HierarchyModule.jsx` (-179 lines)
+- **New Architecture Established**:
+  - Pivoted platform from multi-tier real-estate brokerage to an **Admission Consultancy CRM** (`ADMISSION_CRM_REDESIGNED_SPEC.md` [+533 lines], `ADMISSION_CONSULTANTS_CRM_ARCHITECTURE.md` [+254 lines]).
+  - Replaced real-estate agent commission MLM distribution with university student admission deals (`backend/src/controllers/dealController.js` [+557 lines], `AdmissionDeal.js`), institutional catalogues (`Catalogue.js`, `catalogueController.js`), and tuition fee installments (`FeeInstallment.js`).
 
-The CRM maintains a complete, production-grade **University Commission & Deal Lifecycle Engine**, while **Internal Multi-tier Agent Incentive Rules** were intentionally decoupled during the multi-tenant architecture transition.
+The CRM maintains a complete, production-grade **University Commission & Deal Lifecycle Engine**, while **Internal Multi-tier Real Estate Agent Incentive Rules** were intentionally eliminated during the admission CRM architectural pivot.
 
 ---
 

@@ -43,6 +43,12 @@ Every fix was implemented with:
 | `46a5136` | Group F | `feat(finance): add fee installment schedule tracking and payment linkage` | `FeeInstallment.js`, `feeInstallmentController.js`, `leads.js`, `lead_fee_installments.test.js` |
 | `b26a6ab` | Group F | `feat(leads): add duplicate lead detection and atomic record merge endpoint` | `Lead.js`, `AuditLog.js`, `leadMergeController.js`, `leads.js`, `lead_duplicate_merge.test.js` |
 | `d7200f9` | Group F | `docs(audit): publish forensic commission and agency ledger analysis report` | `docs/FORENSIC_COMMISSION_AGENCY_MODULE.md` |
+| `6e840f0` | Hardening | `fix(batch3-followup): tie phone masking to workspace setting maskLeadPhones with server-mediated call and whatsapp actions` | `Workspace.js`, `phoneMasking.js`, `leadsController.js`, `dealController.js`, `whatsappController.js`, `notificationsController.js`, `shareController.js`, `lead_phone_masking_comprehensive.test.js` |
+| `53eeba0` | Hardening | `fix(batch3-followup): enforce per-source permission filtering and phone redaction in timeline summaries` | `leadsController.js`, `lead_omnichannel_timeline.test.js` |
+| `d539cc2` | Hardening | `fix(batch3-followup): add merge dryRun preview, field choices, same-workspace guard, and full child entity repointing` | `leadMergeController.js`, `permissions.js`, `lead_duplicate_merge.test.js`, `lead_merge_transaction_rollback.test.js` |
+| `4f4bec0` | Hardening | `fix(batch3-followup): enforce UTC-safe overdue calculation and prove zero disruption to existing payment metrics` | `feeInstallmentController.js`, `leads.js`, `lead_fee_installments_hardening.test.js` |
+| `10cd162` | Hardening | `fix(batch3-followup): add lazy-loaded UI for phone reveal, timeline drawer, merge modal, and fee installments` | `LeadPhoneReveal.jsx`, `LeadTimelineDrawer.jsx`, `LeadMergeModal.jsx`, `FeeInstallmentsCard.jsx`, `LeadsDetailClient.js`, `BottomNav.js`, `PersistentTabManager.jsx`, `auth.js` |
+| `581e373` | Hardening | `fix(batch3-followup): apply modal a11y focus trap to top workflows and verify zero bottom nav overlap with elementFromPoint` | `FollowUpSchedulerModal.js`, `FollowUpCompleteModal.js`, `LostReasonModal.js`, `TransferLeadsModal.jsx`, `ShareCollegeFeeModal.jsx`, `LeadModals.js`, `smoke.spec.js` |
 
 ---
 
@@ -92,23 +98,56 @@ Every fix was implemented with:
 
 ---
 
-### D. Group F: Missing Core CRM Features
+### D. Group F: Missing Core CRM Features & Hardening
 
-- **F1: Role-Based Phone Masking & Unmask Audit Logging**:
-  - Added permission `'leads.view_phone_unmasked'`. Field counsellors and telecallers receive masked phone strings (`+9198765*****`), while managers and owners see raw unmasked contact details.
-  - Implemented `POST /api/leads/:id/unmask-phone` logging `LEAD_PHONE_UNMASKED` to `AuditLog` with actor ID, IP address, user-agent, and metadata.
+- **F1: Workspace-Configured Phone Masking, Server-Mediated Redirects & Reveal Audit Logging**:
+  - Implemented workspace setting `settings.maskLeadPhones` (default: `false`).
+  - When `maskLeadPhones` is `false`, API returns byte-identical raw telephone numbers with 0 overhead.
+  - When `maskLeadPhones` is `true`, users lacking `'leads.view_phone_unmasked'` receive masked strings (`+91 98*** **345`) across all 15 system exposure paths, with clear numbers redacted from free-text notes and message summaries.
+  - Added server-mediated call (`GET /api/leads/:id/call-redirect`) and WhatsApp (`GET /api/leads/:id/whatsapp-redirect`) actions so counsellors can initiate contact without clear number exposure.
+  - Implemented `POST /api/leads/:id/reveal-phone` which validates permission, unmasks the number, and logs `LEAD_PHONE_UNMASKED` to `AuditLog`.
+
+#### Phone Masking (F1 Hardening) Coverage Table
+
+| # | Exposure Path | Masked when Flag ON? | Test Proving Masking |
+| :---: | :--- | :---: | :--- |
+| 1 | Lead List (`GET /api/leads`) | ✅ Yes | `lead_phone_masking_comprehensive.test.js` |
+| 2 | Lead Detail (`GET /api/leads/:id`) | ✅ Yes | `lead_phone_masking_comprehensive.test.js` |
+| 3 | Streaming CSV Export (`GET /api/leads/export?format=csv`) | ✅ Yes | `lead_phone_masking_comprehensive.test.js` |
+| 4 | Streaming Excel Export (`GET /api/leads/export?format=xlsx`) | ✅ Yes | `lead_phone_masking_comprehensive.test.js` |
+| 5 | Streaming PDF Export (`GET /api/leads/export?format=pdf`) | ✅ Yes | `lead_phone_masking_comprehensive.test.js` |
+| 6 | Search/Filter by Phone (`GET /api/leads?search=...`) | ✅ Yes (server matches phone, returned record is masked) | `lead_phone_masking_comprehensive.test.js` |
+| 7 | Omnichannel Timeline (`GET /api/leads/:id/timeline`) | ✅ Yes (phone masked + text summaries redacted) | `lead_omnichannel_timeline.test.js` |
+| 8 | Duplicate Candidates (`GET /api/leads/:id/duplicate-candidates`) | ✅ Yes | `lead_phone_masking_comprehensive.test.js` |
+| 9 | Deals List & Details (`GET /api/deals`, `GET /api/deals/:id`) | ✅ Yes (`studentPhone` masked) | `lead_phone_masking_comprehensive.test.js` |
+| 10 | Follow-ups Due & Today (`GET /api/leads/follow-ups/due`) | ✅ Yes | `lead_phone_masking_comprehensive.test.js` |
+| 11 | Notifications Feed (`GET /api/notifications`) | ✅ Yes (lead phone masked + notification message redacted) | `lead_phone_masking_comprehensive.test.js` |
+| 12 | Activity Logs / AuditLog Details | ✅ Yes (redacted in lead activities) | `lead_phone_masking_comprehensive.test.js` |
+| 13 | WhatsApp Chats & History (`GET /api/whatsapp/chats`, `/chats/:phone`) | ✅ Yes (chats list phone masked, body text redacted) | `lead_phone_masking_comprehensive.test.js` |
+| 14 | Public Share Token Dashboard (`GET /api/share/:token`) | ✅ Yes (masked if workspace enabled) | `lead_phone_masking_comprehensive.test.js` |
+| 15 | Server-Mediated Contact Actions (`/call-redirect`, `/whatsapp-redirect`) | ✅ Yes (redirects counsellor to dialer/wa.me without clear text exposure, logs reveal) | `lead_phone_masking_comprehensive.test.js` |
+
 - **F2: Unified Omnichannel Activity Timeline API**:
   - Implemented `GET /api/leads/:id/timeline` aggregating interactions across 6 collections: `leadActivities`, `FollowUp`, `ChatMessage` (WhatsApp), `EmailMessage`, `Payment`, and `Recording`.
-  - Normalized all events with chronological sorting (`timestamp: -1`), cursor pagination (`before`, `limit`), and workspace isolation.
+  - Added per-source permission filtering (`whatsapp.view`, `email.view`, `activities.view`, `deals.view`) and automated phone number redaction in titles and notes.
 - **F3: Duplicate Lead Detection & Atomic Merge**:
-  - Implemented `GET /api/leads/:id/duplicate-candidates` detecting potential duplicate contacts via normalized `phoneDigits`, lowercase `email`, or name+city matching.
-  - Implemented `POST /api/leads/merge` reassigning all follow-ups, messages, recordings, and payments from the secondary lead to the primary lead, combining notes and history, soft-deleting the secondary lead, and recording `LEAD_MERGED` to `AuditLog`.
+  - Implemented `GET /api/leads/:id/duplicate-candidates` detecting duplicates via phoneDigits and email.
+  - Implemented `dryRun` preview mode in `POST /api/leads/merge?dryRun=true` returning field comparison and record repointing counts.
+  - Hardened with MongoDB transactions (`withTransaction`), transaction rollback test on injected failure, cross-workspace guards, `leads.merge` permission, and atomic repointing across all 12 child collections (`FollowUp`, `Payment`, `AdmissionDeal`, `ChatMessage`, `EmailMessage`, `Recording`, `Notification`, `ActivityLog`, `Group`, `AutomationLog`, `CampaignLog`).
 - **F4: Fee Installments Tracking**:
-  - Created dedicated `FeeInstallment` model (`installmentNumber`, `amount`, `dueDate`, `gracePeriodDays`, `paidAmount`, `status`).
-  - Added `GET /api/leads/:id/installments`, `POST /api/leads/:id/installments` (schedule creation), and `POST /api/leads/:id/installments/:installmentId/pay` (payment linkage and auto-overdue detection).
+  - Created dedicated `FeeInstallment` model and endpoints with UTC-safe overdue calculation evaluating against end of UTC day plus grace period.
+  - Added golden invariance test proving installment payments do not disrupt existing payment analytics totals or revenue aggregations.
 - **F5: Commission & Agency Module Forensic Report**:
-  - Investigated the audit claim of "broken commission calculations".
-  - Proved that university tie-up commissions are operational via `AdmissionDeal.js` and `dealController.js` (`GET /api/deals/summary/commission`), while legacy single-user stubs in `adminController.js` were remnants of an older pre-redesign iteration. Published comprehensive findings to `docs/FORENSIC_COMMISSION_AGENCY_MODULE.md`.
+  - Proved from commit `1228615a07ee30ff8fb409124fb271dceeacdf9a` that the agency broker module removal was an intentional architectural pivot from real estate to an Admission Consultancy CRM. Published findings in `docs/FORENSIC_COMMISSION_AGENCY_MODULE.md`.
+
+#### Frontend UI for F1–F4 Disclosure & Implementation
+- **Truth in Reporting**: Frontend UI for F1–F4 was absent in the original Batch 3 commits (only backend routes were implemented).
+- **Hardening Pass Implementation**: Added 4 lazy-loaded, accessible React components in `frontend/src/components/leads/`:
+  - `LeadPhoneReveal.jsx`: Click-to-unmask button (gated by `leads.view_phone_unmasked`) and server-mediated call/WhatsApp links.
+  - `LeadTimelineDrawer.jsx`: Slide-over drawer on lead detail page showing chronological omnichannel events with focus trapping.
+  - `LeadMergeModal.jsx`: Modal with duplicate candidate selection, live `dryRun` preview diff, and field conflict winner selection.
+  - `FeeInstallmentsCard.jsx`: Collapsible card in lead detail for scheduling tranches, tracking overdue warnings, and recording payments.
+  - **Initial Bundle Impact**: ~0 KB added to initial page load via Next.js `dynamic()` lazy loading.
 
 ---
 
