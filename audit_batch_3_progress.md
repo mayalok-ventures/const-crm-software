@@ -2,7 +2,7 @@
 
 **Branch**: `fix/audit-batch-3`
 **Base Commit**: `b18fc5a` (HEAD of `fix/audit-batch-2`)
-**Current Stage**: Stage 2 Complete (Waiting for User "Continue" to begin Stage 3: UI/UX Frontend)
+**Current Stage**: Stage 3 Complete (Waiting for User "Continue" to begin Stage 4: Missing Features Part 1: F1, F2)
 
 ---
 
@@ -12,8 +12,8 @@
 | :---: | :--- | :---: | :--- |
 | **Stage 1** | Precondition, Phase 0 Follow-ups & Phase A Plan | ✅ DONE | All Phase 0 Addendum items resolved, 6 follow-up commits landed, plan written to `audit_batch_3_plan.md`. |
 | **Stage 2** | Testing Infrastructure: T1, T2, T3 | ✅ DONE | T1 runner guard & manifest (111 tests), T2 won/converted/idempotency tests, T3 Vitest (18/18 pass) & Playwright (15/15 pass). |
-| **Stage 3** | UI/UX Frontend: U1–U5 | ⏳ PENDING | Will begin upon user "Continue". |
-| **Stage 4** | Missing Features: F1, F2 | ⏳ PENDING | Will execute after Stage 3. |
+| **Stage 3** | UI/UX Frontend: U1–U5 | ✅ DONE | U1 bottom nav safe area & dirty form guard, U4 iOS 16px font-size, U3 WCAG AA badge contrast, U5 modal a11y focus trap, U2 accordion cards. |
+| **Stage 4** | Missing Features: F1, F2 | ⏳ PENDING | Will begin upon user "Continue". |
 | **Stage 5** | Missing Features: F4, F3, F5 + Phase C & Final Report | ⏳ PENDING | Will execute after Stage 4. |
 
 ---
@@ -41,14 +41,26 @@
 
 ---
 
-## 4. Current Test Suite Status Summary
+## 4. Stage 3 UI/UX Frontend Commits Tracker
+
+| Commit Hash | Conventional Commit Message | Key Verification |
+| :---: | :--- | :--- |
+| `53e46e0` | `fix(ui): eliminate bottom nav overlap with sticky actions and add dirty form guard` | **U1**: Declared `--bottom-nav-height` and `--bottom-safe-offset` in `globals.css`. Added `z-index: 9500 !important` to modals/dialogs ensuring bottom actions are never obscured by BottomNav (`z-index: 8000`). Added `useDirtyFormWarning` hook to `LeadsDetailClient.js` with `beforeunload` guard and cancel prompt. Verified via `dirty_form.unit.test.jsx`. |
+| `9854447` | `fix(ui): enforce minimum 16px font size on mobile inputs to prevent ios safari auto zoom` | **U4**: Added mobile media query rule enforcing `font-size: 16px !important` for text, email, tel, select, and textarea elements on viewports < 768px. Verified via Playwright E2E test `smoke.spec.js` on mobile viewports. |
+| `d51e498` | `fix(a11y): adjust badge color palettes to meet wcag aa 4.5 to 1 contrast ratio` | **U3**: Hardened badge text colors in `sourceHelper.js` (`#1d4ed8`, `#c5221f`, `#047857`, `#4338ca`, `#7e22ce`, `#334155`) and `LeadCard.js` (`SERVICE_CATALOG`, `KANBAN_STAGES`). Added automated WCAG contrast tests to `shared_ui.unit.test.jsx` confirming all ratios >= 4.5:1. |
+| `4c72bce` | `fix(a11y): integrate modal accessibility hook for aria dialog role focus trap and escape listener` | **U5**: Integrated `useModalA11y` into `Modal.jsx`, `LeadCreateModal.js`, and `LeadCard.js` (Edit modal). Enforced `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, Tab/Shift+Tab focus trap cycling, and Escape key dismissal. Verified via `modal_accessibility.unit.test.jsx`. |
+| `aef79eb` | `fix(ui): add collapsible accordion cards to mobile lead detail page to reduce scroll fatigue` | **U2**: Added progressive disclosure accordion cards for secondary details (Personal & Family Dossier, Commercial Milestones) in `LeadsDetailClient.js` on mobile viewports (< 1024px) with smooth `ChevronDown` rotation. Preserved desktop grid (`lg:grid`) and kept inputs mounted without state loss. |
+
+---
+
+## 5. Current Test Suite Status Summary
 
 - **Backend Test Guard & Runner**:
   - `safetyGuard.js`: Enforces in-memory Mongo test environment; blocks localhost production/staging ports (27017) or cloud URIs.
   - Manifest: 111 backend tests cataloged with tags (`audit-batch-1`, `audit-batch-2`, `audit-batch-3`).
 - **Frontend Unit & Component Tests (Vitest)**:
-  - Total Suites: 6 (`shared_ui`, `lead_card`, `lead_form`, `bottom_nav`, `offline_banner`, `modal_accessibility`)
-  - Total Tests: 18 passed (0 failed)
+  - Total Suites: 7 (`shared_ui`, `dirty_form`, `lead_card`, `lead_form`, `bottom_nav`, `offline_banner`, `modal_accessibility`)
+  - Total Tests: 21 passed (0 failed)
 - **Frontend E2E Smoke Tests (Playwright)**:
   - Total Test Runs: 15 passed across 3 projects (`Mobile Pixel 7`, `Mobile iPhone 14 Viewport`, `Desktop Chrome`)
-  - Coverage: Lead list loading & scrolling, BottomNav tap target compliance (height >= 44px), Accessible modal opening, WhatsApp wa.me link generation, mobile input font-size measurement.
+  - Coverage: Lead list loading & scrolling, BottomNav tap target compliance (height >= 44px), Accessible modal opening, WhatsApp wa.me link generation, mobile input font-size >= 16px enforcement.
