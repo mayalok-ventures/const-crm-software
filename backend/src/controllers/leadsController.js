@@ -22,16 +22,18 @@ const buildLeadPermissionQuery = async (user, isUnclaimed = false) => {
     return { _id: null };
   }
 
-  // SuperAdmin bypass - if operating within an explicit workspace context, isolate to that workspace + legacy unassigned
+  // SuperAdmin bypass - if operating within an explicit workspace context, isolate strictly to that workspace
   if (user.role === 'superadmin' || user.isAdmin) {
     if (user.workspaceId) {
-      return {
-        $or: [
-          { workspaceId: user.workspaceId },
-          { workspaceId: { $in: [null, undefined] } },
-          { userId: user._id },
-        ],
-      };
+      if (process.env.ALLOW_UNSCOPED_LEGACY_LEADS === 'true') {
+        return {
+          $or: [
+            { workspaceId: user.workspaceId },
+            { workspaceId: { $in: [null, undefined] } },
+          ],
+        };
+      }
+      return { workspaceId: user.workspaceId };
     }
     return {};
   }
@@ -40,46 +42,67 @@ const buildLeadPermissionQuery = async (user, isUnclaimed = false) => {
   const role = user.workspaceRole || user.companyRole;
 
   if (workspaceId) {
+    const allowLegacy = process.env.ALLOW_UNSCOPED_LEGACY_LEADS === 'true';
+
     if (role === 'counsellor' || role === 'counselor') {
       if (isUnclaimed) {
+        if (allowLegacy) {
+          return {
+            $or: [
+              { workspaceId, assignedTo: null, currentOwnerId: null },
+              { workspaceId: { $in: [null, undefined] }, companyId: user.companyId || user._id, assignedTo: null },
+            ],
+          };
+        }
+        return { workspaceId, assignedTo: null, currentOwnerId: null };
+      }
+
+      if (allowLegacy) {
         return {
-          $or: [
-            { workspaceId, assignedTo: null, currentOwnerId: null },
-            { workspaceId: { $in: [null, undefined] }, companyId: user.companyId || user._id, assignedTo: null },
+          $and: [
+            {
+              $or: [
+                { workspaceId },
+                { companyId: user.companyId || user._id },
+                { workspaceId: { $in: [null, undefined] } },
+              ],
+            },
+            {
+              $or: [
+                { assignedTo: user._id },
+                { userId: user._id },
+                { currentOwnerId: user._id },
+              ],
+            },
           ],
         };
       }
+
       return {
-        $and: [
-          {
-            $or: [
-              { workspaceId },
-              { companyId: user.companyId || user._id },
-              { workspaceId: { $in: [null, undefined] } },
-            ],
-          },
-          {
-            $or: [
-              { assignedTo: user._id },
-              { userId: user._id },
-              { currentOwnerId: user._id },
-            ],
-          },
+        workspaceId,
+        $or: [
+          { assignedTo: user._id },
+          { userId: user._id },
+          { currentOwnerId: user._id },
         ],
       };
     }
 
     // Owner, Manager, Auditor, or solo consultant
-    const ownerCompanyId = user.companyId || user._id;
-    return {
-      $or: [
-        { workspaceId },
-        { companyId: ownerCompanyId },
-        { userId: user._id },
-        { workspaceId: { $in: [null, undefined] }, companyId: ownerCompanyId },
-        { workspaceId: { $in: [null, undefined] }, userId: user._id },
-      ],
-    };
+    if (allowLegacy) {
+      const ownerCompanyId = user.companyId || user._id;
+      return {
+        $or: [
+          { workspaceId },
+          { companyId: ownerCompanyId },
+          { userId: user._id },
+          { workspaceId: { $in: [null, undefined] }, companyId: ownerCompanyId },
+          { workspaceId: { $in: [null, undefined] }, userId: user._id },
+        ],
+      };
+    }
+
+    return { workspaceId };
   }
 
   // Legacy fallback for tests or requests before workspace resolution
