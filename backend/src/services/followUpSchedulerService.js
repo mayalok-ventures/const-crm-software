@@ -168,7 +168,16 @@ const sweepDueFollowUps = async () => {
 
       if (!lockedFup) continue;
 
-      const lead = fup.leadId || {};
+      const lead = fup.leadId;
+      if (!lead || !lead._id) {
+        // Orphan follow-up record (lead deleted or soft-deleted)
+        await FollowUp.updateOne(
+          { _id: fup._id },
+          { $set: { status: 'cancelled', claimStatus: 'orphaned_skipped' } }
+        );
+        continue;
+      }
+
       const recipientId = fup.agent_id || fup.agentId || fup.createdBy || lead.assignedTo || lead.userId;
       if (!recipientId) continue;
 

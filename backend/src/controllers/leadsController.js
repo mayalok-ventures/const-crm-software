@@ -1939,15 +1939,29 @@ exports.deleteLead = async (req, res) => {
     lead.deletedBy = req.user._id;
     await lead.save();
 
-    // Cascade cleanup non-financial children:
-    // 1. Cancel pending follow-ups
+    // Cascade cleanup non-financial and active child records:
+    // 1. Cancel pending and open follow-ups
     const FollowUp = mongoose.models.FollowUp || require('../models/FollowUp');
     await FollowUp.updateMany(
-      { $or: [{ leadId: lead._id }, { lead_id: lead._id }], status: 'pending' },
+      { $or: [{ leadId: lead._id }, { lead_id: lead._id }], status: { $in: ['open', 'pending', 'scheduled'] } },
       { $set: { status: 'cancelled' } }
     ).catch(err => console.warn('[Lead Delete] FollowUp cascade warning:', err.message));
 
-    // 2. Remove lead from groups
+    // 2. Cancel active admission deals
+    const AdmissionDeal = mongoose.models.AdmissionDeal || require('../models/AdmissionDeal');
+    await AdmissionDeal.updateMany(
+      { leadId: lead._id, admissionStatus: { $in: ['draft', 'seat_locked', 'fee_submitted'] } },
+      { $set: { admissionStatus: 'cancelled', cancellationReason: 'Lead soft-deleted' } }
+    ).catch(err => console.warn('[Lead Delete] AdmissionDeal cascade warning:', err.message));
+
+    // 3. Cancel pending fee installments
+    const FeeInstallment = mongoose.models.FeeInstallment || require('../models/FeeInstallment');
+    await FeeInstallment.updateMany(
+      { leadId: lead._id, status: { $in: ['pending', 'overdue', 'partially_paid'] } },
+      { $set: { status: 'cancelled', notes: 'Lead soft-deleted' } }
+    ).catch(err => console.warn('[Lead Delete] FeeInstallment cascade warning:', err.message));
+
+    // 4. Remove lead from groups
     const Group = mongoose.models.Group || require('../models/Group');
     await Group.updateMany(
       { leadIds: lead._id },
