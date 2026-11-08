@@ -145,8 +145,8 @@ const acquireLease = async (sessionId) => {
     }
     return true;
   } catch (err) {
-    console.warn(`[WA-Cluster] Lease acquisition notice for ${sId}:`, err.message);
-    return true; // Fallback to allowing in case of non-fatal DB glitch
+    console.warn(`[WA-Cluster] Lease acquisition error for ${sId}:`, err.message);
+    return false; // Fail-closed: Never allow socket bind if DB/lease cannot be verified
   }
 };
 
@@ -553,34 +553,28 @@ const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
 
       // ──────────────────────────────────────────────────────────────────────────
       // CASE 2: CONFLICT / CONNECTION REPLACED (440)
-      // Another instance or rapid reload connected; release lease and cool down to avoid thrashing
+      // Another instance or phone location connected; release lease and halt auto-reconnect
       // ──────────────────────────────────────────────────────────────────────────
       if (isConnectionReplaced) {
-        console.warn(`[WA] Connection replaced/conflict detected for ${uIdStr}. Releasing lease and cooling down.`);
+        console.warn(`[WA] Connection replaced/conflict (440) detected for ${uIdStr}. Releasing lease and halting auto-reconnect.`);
         await releaseLease(uIdStr);
-        const attempts = (reconnectAttempts[uIdStr] || 0) + 1;
-        reconnectAttempts[uIdStr] = attempts;
+        delete sessions[uIdStr];
+        reconnectAttempts[uIdStr] = (reconnectAttempts[uIdStr] || 0) + 1;
 
-        if (attempts > 3) {
-          console.warn(`[WA] Repeated connection conflicts for ${uIdStr}. Pausing auto-reconnect to avoid socket fighting.`);
-          await persistStateTransition(userId, {
-            status: STATES.DEGRADED,
-            lastDisconnectAt: new Date(),
-            lastDisconnectReason: 'connection_conflict',
-            requiresAction: true,
-          });
-          return;
-        }
+        await persistStateTransition(userId, {
+          status: STATES.DEGRADED,
+          lastDisconnectAt: new Date(),
+          lastDisconnectReason: 'connection_conflict',
+          requiresAction: true,
+          phone: cleanPhone,
+        });
 
-        // Wait 7.5s before attempting re-acquisition to prevent ping-pong battle
-        setTimeout(async () => {
-          if (!pairingInProgress[uIdStr]) {
-            const canAcquire = await acquireLease(uIdStr);
-            if (canAcquire) {
-              await restoreSession(userId, cleanPhone).catch(console.error);
-            }
-          }
-        }, 7500);
+        // Halt auto-reconnect loop to prevent socket fighting / ping-pong battles
+        await notifyWhatsAppDisconnected(
+          userId,
+          cleanPhone,
+          'WhatsApp was disconnected because the account was linked from another device or location.'
+        ).catch(() => {});
         return;
       }
 
@@ -1004,6 +998,17 @@ const sendText = async (userId, to, text, callerUserId = null, callerName = null
     }
 
     if (!sock) {
+      const sessionDoc = await WhatsAppSessionState.findOne({ sessionId: userId.toString() })
+        .select('leaseOwner leaseExpiresAt status')
+        .lean();
+      const isOwnedByOther = sessionDoc?.leaseOwner && sessionDoc.leaseOwner !== INSTANCE_ID && sessionDoc.leaseExpiresAt && new Date(sessionDoc.leaseExpiresAt) > new Date();
+      if (isOwnedByOther) {
+        const err = new Error(`WhatsApp session is owned by another cluster worker (${sessionDoc.leaseOwner}).`);
+        err.code = 'WA_SESSION_OWNED_BY_ANOTHER_INSTANCE';
+        err.statusCode = 503;
+        err.leaseOwner = sessionDoc.leaseOwner;
+        throw err;
+      }
       throw new Error('WhatsApp is not connected for this account.');
     }
 
@@ -1058,6 +1063,17 @@ const sendMedia = async (userId, to, mediaArg, callerUserId = null, callerName =
     }
 
     if (!sock) {
+      const sessionDoc = await WhatsAppSessionState.findOne({ sessionId: userId.toString() })
+        .select('leaseOwner leaseExpiresAt status')
+        .lean();
+      const isOwnedByOther = sessionDoc?.leaseOwner && sessionDoc.leaseOwner !== INSTANCE_ID && sessionDoc.leaseExpiresAt && new Date(sessionDoc.leaseExpiresAt) > new Date();
+      if (isOwnedByOther) {
+        const err = new Error(`WhatsApp session is owned by another cluster worker (${sessionDoc.leaseOwner}).`);
+        err.code = 'WA_SESSION_OWNED_BY_ANOTHER_INSTANCE';
+        err.statusCode = 503;
+        err.leaseOwner = sessionDoc.leaseOwner;
+        throw err;
+      }
       throw new Error('WhatsApp is not connected for this account.');
     }
 
@@ -1245,4 +1261,7 @@ module.exports = {
   normalizePhoneAndJid,
   closeAllSessions: handleGracefulShutdown,
   isClientReady: () => Object.values(sessions).some(s => s && s.ws && s.ws.readyState === 1),
+  acquireLease,
+  releaseLease,
+  INSTANCE_ID,
 };
