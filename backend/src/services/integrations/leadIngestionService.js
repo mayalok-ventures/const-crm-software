@@ -607,10 +607,19 @@ class LeadIngestionService {
       isTest,
     });
 
+    // Resolve tenant context before instantiation to avoid N+1 DB queries in pre-save hook
+    const { resolveLeadTenant } = require('../../utils/resolveLeadTenant');
+    const tenantContext = await resolveLeadTenant({
+      userId,
+      companyId,
+      workspaceId: integration?.workspaceId || null,
+    });
+
     // 11. Create Brand New Lead Document with Normalized Source Hierarchy
     const lead = new Lead({
       userId,
-      companyId,
+      companyId: tenantContext.companyId || companyId,
+      workspaceId: tenantContext.workspaceId || null,
       campaignId: campaignRecord._id,
       campaignName: resolvedCampaignName,
       assignedTo: assignment.assignedTo,

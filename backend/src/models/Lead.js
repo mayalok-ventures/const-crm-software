@@ -651,43 +651,21 @@ leadSchema.pre('save', async function() {
   if (this.company) this.companyLower = this.company.toLowerCase().trim();
   if (this.phone) this.phoneDigits = String(this.phone).replace(/\D/g, '');
 
-  // Optimize hot-path: skip 4 sequential queries if workspaceId & companyId are already established
-  const needsResolution = (this.isNew || this.isModified('userId') || this.isModified('workspaceId') || this.isModified('companyId'))
-    && (!this.workspaceId || !this.companyId || String(this.companyId) === String(this.userId))
-    && (this.userId || this.companyId);
+  // Optimize hot-path: skip queries if workspaceId is already established
+  const needsResolution = !this.workspaceId && (this.userId || this.companyId);
 
   if (needsResolution) {
     try {
-      const Workspace = mongoose.models.Workspace || require('./Workspace');
-      const User = mongoose.models.User || require('./User');
-      let ws = null;
-      let creator = null;
-
-      if (this.userId) {
-        creator = await User.findById(this.userId).select('companyId companyRole').lean();
-        if (creator && creator.companyId && String(creator.companyId) !== String(this.userId)) {
-          this.companyId = creator.companyId;
-        }
-      }
-
-      if (!this.workspaceId && this.userId) {
-        ws = await Workspace.findOne({ ownerId: this.userId, deletedAt: null }).select('_id ownerId').lean();
-      }
-      if (!ws && this.companyId) {
-        ws = await Workspace.findOne({ ownerId: this.companyId, deletedAt: null }).select('_id ownerId').lean();
-      }
-      if (!ws && this.userId) {
-        const WorkspaceMembership = mongoose.models.WorkspaceMembership || require('./WorkspaceMembership');
-        const mem = await WorkspaceMembership.findOne({ userId: this.userId, status: 'active' }).select('workspaceId').lean();
-        if (mem) {
-          ws = await Workspace.findById(mem.workspaceId).select('_id ownerId').lean();
-        }
-      }
-      if (ws) {
-        if (!this.workspaceId) this.workspaceId = ws._id;
-        if ((!this.companyId || String(this.companyId) === String(this.userId)) && ws.ownerId) {
-          this.companyId = ws.ownerId;
-        }
+      console.warn(`[Lead pre-save] Fallback tenant resolution triggered for lead: ${this._id || 'new'}`);
+      const { resolveLeadTenant } = require('../utils/resolveLeadTenant');
+      const resolved = await resolveLeadTenant({
+        userId: this.userId,
+        companyId: this.companyId,
+        workspaceId: this.workspaceId,
+      });
+      if (resolved.workspaceId && !this.workspaceId) this.workspaceId = resolved.workspaceId;
+      if (resolved.companyId && (!this.companyId || String(this.companyId) === String(this.userId))) {
+        this.companyId = resolved.companyId;
       }
     } catch (e) {
       // Non-blocking
