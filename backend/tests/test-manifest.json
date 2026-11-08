@@ -127,6 +127,7 @@
     "whatsapp_and_notifications_reliability.test.js": { "category": "quarantined", "reason": "Pre-existing test with legacy single-process socket mocks" },
     "whatsapp_comprehensive_suite.test.js": { "category": "core", "reason": "WhatsApp Baileys & Meta message formatting" },
     "whatsapp_distributed_lease.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 WhatsApp lease & 440 reconnect loop prevention" },
-    "workspace_rbac_and_isolation.test.js": { "category": "core", "reason": "Workspace RBAC and data isolation" }
+    "workspace_rbac_and_isolation.test.js": { "category": "core", "reason": "Workspace RBAC and data isolation" },
+    "f1_installment_race.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 atomic installment payment race condition" }
   }
 }

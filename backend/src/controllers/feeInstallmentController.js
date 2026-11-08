@@ -3,6 +3,7 @@ const FeeInstallment = require('../models/FeeInstallment');
 const Lead = require('../models/Lead');
 const Payment = require('../models/Payment');
 const { buildLeadPermissionQuery } = require('./leadsController');
+const { withTransaction } = require('../utils/withTransaction');
 
 /**
  * Computes whether an installment is overdue in a UTC-safe manner.
@@ -233,74 +234,136 @@ exports.recordInstallmentPayment = async (req, res) => {
       return res.status(400).json({ message: 'Payment amount must be greater than zero' });
     }
 
-    let paymentDoc = null;
+    let result = null;
 
-    if (req.body.paymentId && mongoose.Types.ObjectId.isValid(req.body.paymentId)) {
-      paymentDoc = await Payment.findOne({
-        _id: req.body.paymentId,
-        ...(wsId ? { $or: [{ workspaceId: wsId }, { companyId: wsId }] } : {}),
-      });
-      if (!paymentDoc) {
-        return res.status(404).json({ message: 'Referenced payment document not found' });
+    await withTransaction(async (session) => {
+      let paymentDoc = null;
+
+      if (req.body.paymentId && mongoose.Types.ObjectId.isValid(req.body.paymentId)) {
+        const query = {
+          _id: req.body.paymentId,
+          ...(wsId ? { $or: [{ workspaceId: wsId }, { companyId: wsId }] } : {}),
+        };
+        paymentDoc = session ? await Payment.findOne(query).session(session) : await Payment.findOne(query);
+        if (!paymentDoc) {
+          const err = new Error('Referenced payment document not found');
+          err.status = 404;
+          throw err;
+        }
+      } else {
+        const paymentData = {
+          lead_id: lead._id,
+          leadId: lead._id,
+          agent_id: req.user._id,
+          agentId: req.user._id,
+          workspaceId: wsId,
+          companyId: wsId,
+          amount: payAmount,
+          method: req.body.paymentMethod || req.body.method || 'bank_transfer',
+          transaction_id: req.body.transactionId || req.body.transaction_id || `INST-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          transactionId: req.body.transactionId || req.body.transaction_id || `INST-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          receipt_url: req.body.receiptUrl || '',
+          verified_by_agent: true,
+          verifiedByAgent: true,
+          verified_at: new Date(),
+          verifiedAt: new Date(),
+          status: 'completed',
+        };
+
+        if (session) {
+          const [created] = await Payment.create([paymentData], { session });
+          paymentDoc = created;
+        } else {
+          paymentDoc = await Payment.create(paymentData);
+        }
       }
-    } else {
-      // Create and persist verified Payment record with multi-tenant context
-      paymentDoc = await Payment.create({
-        lead_id: lead._id,
-        leadId: lead._id,
-        agent_id: req.user._id,
-        agentId: req.user._id,
-        workspaceId: wsId,
-        companyId: wsId,
-        amount: payAmount,
-        method: req.body.paymentMethod || req.body.method || 'bank_transfer',
-        transaction_id: req.body.transactionId || req.body.transaction_id || `INST-${Date.now()}`,
-        transactionId: req.body.transactionId || req.body.transaction_id || `INST-${Date.now()}`,
-        receipt_url: req.body.receiptUrl || '',
-        verified_by_agent: true,
-        verifiedByAgent: true,
-        verified_at: new Date(),
-        verifiedAt: new Date(),
-        status: 'completed',
-      });
-    }
 
-    // Update installment paid state
-    installment.paidAmount = (installment.paidAmount || 0) + payAmount;
-    if (installment.paidAmount >= installment.amount || req.body.markFullyPaid) {
-      installment.status = 'paid';
-    } else {
-      installment.status = 'partially_paid';
-    }
+      // Atomic update of installment with pipeline update to prevent read-modify-write lost updates
+      const updatedInstallment = await FeeInstallment.findOneAndUpdate(
+        {
+          _id: installmentId,
+          leadId: lead._id,
+          ...(wsId ? { workspaceId: wsId } : {}),
+          status: { $ne: 'paid' },
+        },
+        [
+          {
+            $set: {
+              paidAmount: { $add: [{ $ifNull: ['$paidAmount', 0] }, payAmount] },
+              paidAt: new Date(),
+              paymentId: paymentDoc._id,
+              status: {
+                $cond: [
+                  {
+                    $or: [
+                      { $gte: [{ $add: [{ $ifNull: ['$paidAmount', 0] }, payAmount] }, '$amount'] },
+                      Boolean(req.body.markFullyPaid),
+                    ],
+                  },
+                  'paid',
+                  'partially_paid',
+                ],
+              },
+              notes: req.body.notes
+                ? {
+                    $cond: [
+                      {
+                        $and: [
+                          { $ne: ['$notes', null] },
+                          { $ne: ['$notes', ''] },
+                        ],
+                      },
+                      { $concat: ['$notes', ' | ', String(req.body.notes).trim()] },
+                      String(req.body.notes).trim(),
+                    ],
+                  }
+                : '$notes',
+            },
+          },
+        ],
+        { new: true, session: session || null }
+      );
 
-    installment.paidAt = new Date();
-    installment.paymentId = paymentDoc._id;
-    if (req.body.notes) {
-      installment.notes = (installment.notes ? `${installment.notes} | ` : '') + String(req.body.notes).trim();
-    }
+      if (!updatedInstallment) {
+        const err = new Error('Installment is already fully paid');
+        err.status = 400;
+        throw err;
+      }
 
-    await installment.save();
+      // Atomically append activity log to lead without whole-document replace
+      const activityData = {
+        action: 'installment_paid',
+        performedBy: req.user._id,
+        performerName: req.user.name || 'Agent',
+        details: `Received ₹${payAmount.toLocaleString('en-IN')} for Installment #${updatedInstallment.installmentNumber} (${updatedInstallment.title}). Status: ${updatedInstallment.status}`,
+        timestamp: new Date(),
+      };
 
-    // Log in-lead activity
-    lead.leadActivities.push({
-      action: 'installment_paid',
-      performedBy: req.user._id,
-      performerName: req.user.name || 'Agent',
-      details: `Received ₹${payAmount.toLocaleString('en-IN')} for Installment #${installment.installmentNumber} (${installment.title}). Status: ${installment.status}`,
-      timestamp: new Date(),
+      const leadUpdateOptions = session ? { session } : {};
+      await Lead.updateOne(
+        { _id: lead._id },
+        { $push: { leadActivities: activityData } },
+        leadUpdateOptions
+      );
+
+      result = {
+        installment: updatedInstallment,
+        payment: paymentDoc,
+      };
     });
 
-    await lead.save();
-
-    res.json({
+    return res.json({
       success: true,
       message: `Recorded payment of ₹${payAmount.toLocaleString('en-IN')}`,
-      installment,
-      payment: paymentDoc,
+      installment: result.installment,
+      payment: result.payment,
     });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ message: error.message });
+    }
     console.error('recordInstallmentPayment error:', error);
-    res.status(500).json({ message: 'Server error recording installment payment' });
+    return res.status(500).json({ message: error.message || 'Server error recording installment payment' });
   }
 };
 
