@@ -124,6 +124,11 @@ const admissionDealSchema = new mongoose.Schema({
   },
 }, {
   timestamps: true,
+  writeConcern: {
+    w: 'majority',
+    j: true,
+    wtimeout: 10000,
+  },
 });
 
 admissionDealSchema.index({ workspaceId: 1, admissionStatus: 1 });

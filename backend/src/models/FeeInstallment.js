@@ -74,6 +74,11 @@ const feeInstallmentSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    writeConcern: {
+      w: 'majority',
+      j: true,
+      wtimeout: 10000,
+    },
   }
 );
 

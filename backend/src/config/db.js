@@ -122,6 +122,10 @@ const connectDB = async () => {
         minPoolSize: 5,
         serverSelectionTimeoutMS: isLocal ? 8000 : 15000,
         socketTimeoutMS: 45000,
+        writeConcern: {
+          w: 'majority',
+          wtimeoutMS: 10000,
+        },
       });
       console.log(`✅ MongoDB Connected: ${conn.connection.host} (${safeUri})`);
       attachConnectionListeners(mongoUri);
@@ -153,6 +157,10 @@ const connectDB = async () => {
         minPoolSize: 5,
         serverSelectionTimeoutMS: 10000,
         socketTimeoutMS: 45000,
+        writeConcern: {
+          w: 'majority',
+          wtimeoutMS: 10000,
+        },
       });
       console.log(`✅ Resilient MongoDB Connected: ${conn.connection.host} (${safeUri})`);
       attachConnectionListeners(mongoUri);

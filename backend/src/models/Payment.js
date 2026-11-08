@@ -110,7 +110,14 @@ const paymentSchema = new mongoose.Schema({
     default: '',
     trim: true,
   },
-}, { timestamps: true });
+}, {
+  timestamps: true,
+  writeConcern: {
+    w: 'majority',
+    j: true,
+    wtimeout: 10000,
+  },
+});
 
 const DUAL_FIELD_PAIRS = [
   ['lead_id', 'leadId'],
