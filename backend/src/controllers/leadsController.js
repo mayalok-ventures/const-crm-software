@@ -1550,23 +1550,33 @@ exports.updateLead = async (req, res) => {
     }
 
     // Enforce Mandatory Postpone Remark when delaying/postponing an existing follow-up
-    if (req.body.followUpDate) {
+    if (req.body.followUpDate !== undefined && req.body.followUpDate !== null && req.body.followUpDate !== '') {
       const newFollowUpDate = new Date(req.body.followUpDate);
-      if (lead.followUpDate && newFollowUpDate.getTime() > new Date(lead.followUpDate).getTime()) {
-        const postponeRemark = req.body.postponeRemark || req.body.postpone_remark || req.body.remark;
-        if (!postponeRemark || !String(postponeRemark).trim()) {
-          return res.status(400).json({
-            success: false,
-            code: 'POSTPONE_REMARK_REQUIRED',
-            message: 'postponeRemark is strictly required explaining why the follow-up is postponed.',
+      if (isNaN(newFollowUpDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          code: 'INVALID_FOLLOWUP_DATE',
+          message: 'Invalid follow-up date provided.',
+        });
+      }
+      if (lead.followUpDate) {
+        const existingFollowUpDate = new Date(lead.followUpDate);
+        if (!isNaN(existingFollowUpDate.getTime()) && newFollowUpDate.getTime() > existingFollowUpDate.getTime()) {
+          const postponeRemark = req.body.postponeRemark || req.body.postpone_remark || req.body.remark;
+          if (!postponeRemark || !String(postponeRemark).trim()) {
+            return res.status(400).json({
+              success: false,
+              code: 'POSTPONE_REMARK_REQUIRED',
+              message: 'postponeRemark is strictly required explaining why the follow-up is postponed.',
+            });
+          }
+          lead.notes.push({
+            text: `[Follow-Up Postponed to ${newFollowUpDate.toLocaleString()}]: ${String(postponeRemark).trim()}`,
+            createdBy: req.user._id,
+            authorName: req.user.name || 'Agent',
+            createdAt: new Date(),
           });
         }
-        lead.notes.push({
-          text: `[Follow-Up Postponed to ${newFollowUpDate.toLocaleString()}]: ${String(postponeRemark).trim()}`,
-          createdBy: req.user._id,
-          authorName: req.user.name || 'Agent',
-          createdAt: new Date(),
-        });
       }
     }
 
