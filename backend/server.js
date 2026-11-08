@@ -11,12 +11,19 @@ const { validateEnvironment } = require('./src/config/envValidator');
 validateEnvironment();
 
 // Process-level uncaught exception & unhandled rejection resilience
+let unhandledRejectionsCount = 0;
 process.on('uncaughtException', (err) => {
   console.error('💥 [Fatal] Uncaught Exception:', err.stack || err.message);
+  if (typeof gracefulShutdown === 'function') {
+    gracefulShutdown('UNCAUGHT_EXCEPTION', 1).catch(() => process.exit(1));
+  } else {
+    process.exit(1);
+  }
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.error('⚠️ [Warning] Unhandled Promise Rejection:', reason instanceof Error ? reason.message : reason);
+  unhandledRejectionsCount++;
+  console.error('⚠️ [Warning] Unhandled Promise Rejection (#' + unhandledRejectionsCount + '):', reason instanceof Error ? (reason.stack || reason.message) : reason);
 });
 
 const express = require('express');
@@ -473,7 +480,7 @@ connectDB().then(async (conn) => {
 });
 
 let isShuttingDown = false;
-const gracefulShutdown = async (signal) => {
+const gracefulShutdown = async (signal, exitCode = 0) => {
   if (isShuttingDown) return;
   isShuttingDown = true;
   console.log(`\n🛑 [Shutdown] Received ${signal}. Starting graceful shutdown...`);
@@ -534,7 +541,7 @@ const gracefulShutdown = async (signal) => {
     }
 
     console.log('✅ [Shutdown] Cleanup completed cleanly.');
-    process.exit(0);
+    process.exit(exitCode);
   } catch (err) {
     console.error('❌ [Shutdown] Error during shutdown:', err.message);
     process.exit(1);
