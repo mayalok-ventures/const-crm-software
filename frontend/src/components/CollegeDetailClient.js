@@ -13,8 +13,9 @@ import {
   ShieldCheck, Clock, Share2, Layers, BookOpen, UserCheck, Sparkles,
   Check, X, Plus, Edit, AlertTriangle, Search
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { COMMON_DEGREES, ACCREDITATION_TAGS, INSTITUTION_TYPES, getAccreditationBadgeStyle } from '@/lib/commonDegrees';
-import SendFeeStructureWhatsAppModal from '@/components/catalogue/SendFeeStructureWhatsAppModal';
+const SendFeeStructureWhatsAppModal = dynamic(() => import('@/components/catalogue/SendFeeStructureWhatsAppModal'), { ssr: false });
 import { getUser, hasPermission, canViewField } from '@/lib/auth';
 import { getResolvedRouteParam } from '@/lib/routeParams';
 

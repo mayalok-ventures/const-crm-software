@@ -13,12 +13,14 @@ import {
   GraduationCap, BookOpen, Clock, Building2, ChevronRight, FileText, CheckCircle2
 } from 'lucide-react';
 import { format } from 'date-fns';
+import dynamic from 'next/dynamic';
 import { getIndustryDefaults } from '@/lib/industryTemplates';
-import LostReasonModal, { isLostStage, LOST_REASON_OPTIONS } from '@/components/LostReasonModal';
-import FollowUpSchedulerModal from '@/components/FollowUpSchedulerModal';
-import FollowUpCompleteModal from '@/components/FollowUpCompleteModal';
+import { isLostStage, LOST_REASON_OPTIONS } from '@/components/LostReasonModal';
+const LostReasonModal = dynamic(() => import('@/components/LostReasonModal'), { ssr: false });
+const FollowUpSchedulerModal = dynamic(() => import('@/components/FollowUpSchedulerModal'), { ssr: false });
+const FollowUpCompleteModal = dynamic(() => import('@/components/FollowUpCompleteModal'), { ssr: false });
 import { SourcePill, getLeadSourceTag } from '@/lib/sourceHelper';
-import ShareCollegeFeeModal from '@/components/leads/ShareCollegeFeeModal';
+const ShareCollegeFeeModal = dynamic(() => import('@/components/leads/ShareCollegeFeeModal'), { ssr: false });
 import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
 import { getResolvedRouteParam, isValidEntityId } from '@/lib/routeParams';
 
