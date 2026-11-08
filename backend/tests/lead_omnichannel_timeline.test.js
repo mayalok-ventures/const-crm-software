@@ -310,4 +310,91 @@ describe('F2: Omnichannel Activity Timeline API Integration Tests', () => {
     assert.strictEqual(mockRes.statusCode, 404, 'Must return 404 for lead in foreign workspace');
     assert.strictEqual(resPayload.message, 'Lead not found or unauthorized');
   });
+
+  it('Hardening: Per-source permission filtering excludes unauthorized communication streams', async () => {
+    // Agent without whatsapp.view or email.view permissions
+    const restrictedUser = await User.create({
+      name: 'Restricted Agent',
+      email: 'restricted@omni.test',
+      password: 'password123',
+      role: 'counsellor',
+      workStatus: 'counsellor',
+      workspaceId: workspace._id,
+    });
+
+    const restrictedMembership = await WorkspaceMembership.create({
+      workspaceId: workspace._id,
+      userId: restrictedUser._id,
+      role: 'counsellor',
+      status: 'active',
+      permissionOverrides: [
+        { key: 'whatsapp.view', granted: false },
+        { key: 'email.view', granted: false },
+        { key: 'deals.view', granted: false },
+      ],
+    });
+
+    lead.assignedTo = restrictedUser._id;
+    await lead.save();
+
+    const mockReq = {
+      params: { id: lead._id.toString() },
+      query: { limit: 50 },
+      user: restrictedUser,
+      membership: restrictedMembership,
+      workspace,
+      workspaceId: workspace._id,
+    };
+    let payload = null;
+    const mockRes = {
+      status(code) { this.statusCode = code; return this; },
+      json(data) { payload = data; return this; },
+    };
+
+    await leadsController.getLeadTimeline(mockReq, mockRes);
+    assert(payload && Array.isArray(payload.timeline), 'Expected timeline array');
+
+    const typesPresent = new Set(payload.timeline.map((i) => i.type));
+    assert(!typesPresent.has('whatsapp'), 'Restricted agent must not see whatsapp events');
+    assert(!typesPresent.has('email'), 'Restricted agent must not see email events');
+    assert(!typesPresent.has('payment'), 'Restricted agent must not see payment/deals events');
+    assert(typesPresent.has('followup'), 'Allowed sources (followup) must still appear');
+  });
+
+  it('Hardening: Masking inside summaries redacts phone numbers when maskLeadPhones is ON', async () => {
+    // 1. Turn masking ON for workspace
+    workspace.settings.maskLeadPhones = true;
+    await workspace.save();
+
+    // 2. Add an activity with raw phone number in details
+    lead.assignedTo = counsellor._id;
+    lead.leadActivities.push({
+      action: 'note_added',
+      performerName: 'Agent John',
+      details: 'Spoke to father at 9876543210 regarding admission fee schedule',
+      timestamp: new Date(),
+    });
+    await lead.save();
+
+    const mockReq = {
+      params: { id: lead._id.toString() },
+      query: { limit: 50 },
+      user: counsellor,
+      workspace,
+      workspaceId: workspace._id,
+    };
+    let payload = null;
+    const mockRes = {
+      status(code) { this.statusCode = code; return this; },
+      json(data) { payload = data; return this; },
+    };
+
+    await leadsController.getLeadTimeline(mockReq, mockRes);
+    assert(payload && Array.isArray(payload.timeline), 'Expected timeline array');
+
+    const noteItem = payload.timeline.find((i) => i.action === 'note_added');
+    assert(noteItem, 'Note item must be found in timeline');
+    assert(noteItem.description.includes('98765*****'), 'Phone inside description must be masked');
+    assert(!noteItem.description.includes('9876543210'), 'Raw phone must never appear in summary text');
+  });
 });

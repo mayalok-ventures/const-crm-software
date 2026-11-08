@@ -3557,59 +3557,103 @@ exports.getLeadTimeline = async (req, res) => {
 
     const leadObjectId = new mongoose.Types.ObjectId(id);
 
-    // Concurrently fetch from all omnichannel communication & activity collections
+    // Per-source permission evaluation
+    const checkPerm = async (permKey) => {
+      if (req.user.role === 'superadmin' || req.user.isAdmin) return true;
+      if (req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner' || req.membership?.role === 'owner') return true;
+      if (req.membership && typeof req.membership.hasPermission === 'function') {
+        return await req.membership.hasPermission(permKey);
+      }
+      if (typeof req.user.hasPermission === 'function') {
+        return await req.user.hasPermission(permKey);
+      }
+      if (Array.isArray(req.membership?.permissionOverrides)) {
+        const override = req.membership.permissionOverrides.find(o => o.key === permKey);
+        if (override) return Boolean(override.granted);
+      }
+      if (Array.isArray(req.membership?.permissions)) {
+        return req.membership.permissions.includes(permKey);
+      }
+      if (Array.isArray(req.user.permissions)) {
+        return req.user.permissions.includes(permKey);
+      }
+      if (req.user.role === 'manager' || req.user.companyRole === 'manager' || req.membership?.role === 'manager') return true;
+      const defaultCounsellorPerms = ['activities.view', 'whatsapp.view', 'email.view', 'deals.view'];
+      return defaultCounsellorPerms.includes(permKey);
+    };
+
+    const [canViewActivities, canViewWhatsApp, canViewEmail, canViewDeals] = await Promise.all([
+      checkPerm('activities.view'),
+      checkPerm('whatsapp.view'),
+      checkPerm('email.view'),
+      checkPerm('deals.view'),
+    ]);
+
+    // Concurrently fetch from authorized omnichannel communication & activity collections
     const FollowUp = mongoose.models.FollowUp || require('../models/FollowUp');
     const ChatMessage = mongoose.models.ChatMessage || require('../models/ChatMessage');
     const EmailMessage = mongoose.models.EmailMessage || require('../models/EmailMessage');
     const Payment = mongoose.models.Payment || require('../models/Payment');
     const Recording = mongoose.models.Recording || require('../models/Recording');
 
+    const followupsPromise = canViewActivities
+      ? FollowUp.find({ $or: [{ lead_id: leadObjectId }, { leadId: leadObjectId }] })
+          .populate('agent_id', 'name email usercode')
+          .populate('agentId', 'name email usercode')
+          .lean()
+          .catch(() => [])
+      : Promise.resolve([]);
+
+    const chatsPromise = canViewWhatsApp
+      ? ChatMessage.find({
+          $or: [
+            { leadId: leadObjectId },
+            ...(lead.phone ? [{ phone: lead.phone }] : []),
+          ],
+        })
+          .populate('userId', 'name email')
+          .lean()
+          .catch(() => [])
+      : Promise.resolve([]);
+
+    const emailsPromise = canViewEmail
+      ? EmailMessage.find({
+          $or: [
+            { leadId: leadObjectId },
+            ...(lead.email ? [{ 'to.email': lead.email }, { 'from.email': lead.email }] : []),
+          ],
+        })
+          .populate('userId', 'name email')
+          .lean()
+          .catch(() => [])
+      : Promise.resolve([]);
+
+    const paymentsPromise = canViewDeals
+      ? Payment.find({ $or: [{ lead_id: leadObjectId }, { leadId: leadObjectId }] })
+          .populate('agent_id', 'name email')
+          .lean()
+          .catch(() => [])
+      : Promise.resolve([]);
+
+    const recordingsPromise = canViewActivities
+      ? Recording.find({ leadId: leadObjectId })
+          .populate('userId', 'name email')
+          .lean()
+          .catch(() => [])
+      : Promise.resolve([]);
+
     const [followups, chats, emails, payments, recordings] = await Promise.all([
-      FollowUp.find({
-        $or: [{ lead_id: leadObjectId }, { leadId: leadObjectId }],
-      })
-      .populate('agent_id', 'name email usercode')
-      .populate('agentId', 'name email usercode')
-      .lean()
-      .catch(() => []),
-
-      ChatMessage.find({
-        $or: [
-          { leadId: leadObjectId },
-          ...(lead.phone ? [{ phone: lead.phone }] : []),
-        ],
-      })
-      .populate('userId', 'name email')
-      .lean()
-      .catch(() => []),
-
-      EmailMessage.find({
-        $or: [
-          { leadId: leadObjectId },
-          ...(lead.email ? [{ 'to.email': lead.email }, { 'from.email': lead.email }] : []),
-        ],
-      })
-      .populate('userId', 'name email')
-      .lean()
-      .catch(() => []),
-
-      Payment.find({
-        $or: [{ lead_id: leadObjectId }, { leadId: leadObjectId }],
-      })
-      .populate('agent_id', 'name email')
-      .lean()
-      .catch(() => []),
-
-      Recording.find({ leadId: leadObjectId })
-      .populate('userId', 'name email')
-      .lean()
-      .catch(() => []),
+      followupsPromise,
+      chatsPromise,
+      emailsPromise,
+      paymentsPromise,
+      recordingsPromise,
     ]);
 
     const timelineItems = [];
 
     // 1. In-lead activity stream
-    if (Array.isArray(lead.leadActivities)) {
+    if (canViewActivities && Array.isArray(lead.leadActivities)) {
       lead.leadActivities.forEach((act, idx) => {
         timelineItems.push({
           id: act._id ? String(act._id) : `lead_act_${idx}`,
@@ -3751,6 +3795,22 @@ exports.getLeadTimeline = async (req, res) => {
             filename: r.filename,
           },
         });
+      });
+    }
+
+    // Masking inside summaries and titles if shouldMask
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
+    if (shouldMask) {
+      timelineItems.forEach((item) => {
+        if (item.title) item.title = redactPhoneInText(item.title);
+        if (item.description) item.description = redactPhoneInText(item.description);
+        if (item.actor?.name) item.actor.name = redactPhoneInText(item.actor.name);
+        if (item.metadata) {
+          if (item.metadata.phone) item.metadata.phone = maskPhoneNumber(item.metadata.phone);
+          if (item.metadata.note) item.metadata.note = redactPhoneInText(item.metadata.note);
+          if (item.metadata.postponeRemark) item.metadata.postponeRemark = redactPhoneInText(item.metadata.postponeRemark);
+          if (item.metadata.completionNote) item.metadata.completionNote = redactPhoneInText(item.metadata.completionNote);
+        }
       });
     }
 
