@@ -568,12 +568,12 @@ exports.getUserPaymentRequest = async (req, res) => {
 // @access AdminOnly
 exports.getAdminPaymentRequests = async (req, res) => {
   try {
-    const { status, page = 1, limit = 50 } = req.query;
+    const { status, page = 1, limit } = req.query;
     const query = {};
     if (status) query.status = status;
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const limitNum = limit ? Math.min(200, Math.max(1, parseInt(limit, 10) || 50)) : 200;
     const skip = (pageNum - 1) * limitNum;
 
     const [total, requests] = await Promise.all([
