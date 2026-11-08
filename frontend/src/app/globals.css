@@ -54,6 +54,15 @@
   textarea {
     touch-action: manipulation;
   }
+
+  /* Prevent iOS Safari automatic viewport zooming on input focus (requires computed font-size >= 16px) */
+  @media (max-width: 767.98px) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
 }
 
 /* High-performance content visibility for long lists (skips off-screen layout/paint) */

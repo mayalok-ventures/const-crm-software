@@ -131,7 +131,7 @@ test.describe('E2E Smoke & Mobile Ergonomics Suite (T3 & Group U)', () => {
     expect(expectedUrl).toBe('https://wa.me/919876543210');
   });
 
-  test('Ergonomics 5: Input elements on mobile viewports baseline font-size measurement (U4 target >= 16px)', async ({ page, isMobile }) => {
+  test('Ergonomics 5: Input elements on mobile viewports enforce font-size >= 16px to prevent iOS auto-zoom', async ({ page, isMobile }) => {
     await page.goto('/login');
     await page.waitForLoadState('domcontentloaded');
 
@@ -140,8 +140,12 @@ test.describe('E2E Smoke & Mobile Ergonomics Suite (T3 & Group U)', () => {
       const fontSize = await input.evaluate((el) => {
         return parseFloat(window.getComputedStyle(el).fontSize);
       });
-      // Baseline check: currently ~13.5px to 14px. U4 enforces >= 16px on mobile to prevent iOS Safari auto-zoom
-      expect(fontSize).toBeGreaterThanOrEqual(13.0);
+      if (isMobile) {
+        // Enforce font-size >= 16px on mobile viewports (< 768px) to prevent iOS Safari auto-zoom
+        expect(fontSize).toBeGreaterThanOrEqual(16.0);
+      } else {
+        expect(fontSize).toBeGreaterThanOrEqual(13.0);
+      }
     }
   });
 });
