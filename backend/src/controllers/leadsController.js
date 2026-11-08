@@ -357,9 +357,9 @@ exports.getLeads = async (req, res) => {
     }
 
     const parsedLimit = Math.max(1, parseInt(limit, 10) || 50);
+    const cap = Math.min(parsedLimit, 300);
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
-    const skip = (parsedPage - 1) * parsedLimit;
-    const cap = Math.min(parsedLimit, 250);
+    const skip = (parsedPage - 1) * cap;
 
     const countCacheKey = `${req.workspaceId || req.tenantId || req.user?._id}_${JSON.stringify(query)}`;
     const cachedTotal = getCachedCount(countCacheKey);
@@ -379,7 +379,7 @@ exports.getLeads = async (req, res) => {
     }
 
     const leadsPromise = queryBuilder
-      .sort({ updatedAt: -1 })
+      .sort({ updatedAt: -1, _id: -1 })
       .skip(skip)
       .limit(cap)
       .lean();
