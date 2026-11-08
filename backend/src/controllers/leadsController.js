@@ -1,8 +1,10 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 const Lead = require('../models/Lead');
 const User = require('../models/User');
 const Campaign = require('../models/Campaign');
 const Notification = require('../models/Notification');
+const ImportJob = require('../models/ImportJob');
 require('../models/Catalogue');
 const { emitCRMEvent, CRM_EVENTS } = require('../services/automationEvents');
 const { auditService } = require('../monitoring/audit/auditService');
@@ -3073,8 +3075,55 @@ exports.importLeads = async (req, res) => {
     }
 
     const maxAllowedNew = maxLeadsLimit === -1 ? Infinity : Math.max(0, maxLeadsLimit - currentCount);
-    let totalImported = 0;
-    let skippedCount = 0;
+
+    // ─────────────────────────────────────────────────────────────
+    // IMPORT JOB TRACKING & RESUMABILITY (F1.6)
+    // ─────────────────────────────────────────────────────────────
+    const fileHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
+    const passedJobId = req.body.importJobId || req.headers['x-import-job-id'];
+    let job = null;
+    if (passedJobId && mongoose.Types.ObjectId.isValid(passedJobId)) {
+      job = await ImportJob.findById(passedJobId);
+    }
+    if (!job) {
+      const tenantFilter = companyId ? { companyId } : (req.workspaceId ? { workspaceId: req.workspaceId } : { userId: req.user._id });
+      job = await ImportJob.findOne({
+        ...tenantFilter,
+        fileHash,
+        createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      }).sort({ createdAt: -1 });
+    }
+
+    if (job && job.status === 'completed') {
+      return res.status(200).json({
+        message: 'Import already completed for this file (idempotent replay)',
+        jobId: job._id,
+        importedCount: job.importedCount,
+        skippedCount: job.skippedCount,
+        idempotent: true,
+        status: 'completed',
+      });
+    }
+
+    if (!job) {
+      job = await ImportJob.create({
+        workspaceId: req.user.workspaceId || req.workspaceId,
+        companyId,
+        userId: req.user._id,
+        fileHash,
+        filename: req.file.originalname || 'leads_upload',
+        status: 'processing',
+        startedAt: new Date(),
+      });
+    } else {
+      job.status = 'processing';
+      job.errorMessage = null;
+      await job.save();
+    }
+
+    const alreadyProcessedSet = new Set(job.processedRowHashes || []);
+    let totalImported = job.importedCount || 0;
+    let skippedCount = job.skippedCount || 0;
     let quotaReached = false;
     let chunk = [];
     const CHUNK_SIZE = 1000;
@@ -3105,6 +3154,11 @@ exports.importLeads = async (req, res) => {
 
       if (!cleanPhone || cleanPhone.length < 7) {
         skippedCount++;
+        return;
+      }
+
+      if (alreadyProcessedSet.has(cleanPhone)) {
+        // Row already processed in prior run/chunk of this resumable job
         return;
       }
 
@@ -3196,7 +3250,7 @@ exports.importLeads = async (req, res) => {
         followUpDelayCount: 0,
         followUpNotified: false,
         customData,
-        source: 'bulk_import',
+        source: 'import',
         leadActivities: [{
           action: 'lead_created',
           performedBy: req.user._id,
@@ -3232,36 +3286,53 @@ exports.importLeads = async (req, res) => {
       try {
         const inserted = await Lead.insertMany(currentBatch, { ordered: false });
         totalImported += inserted.length;
+        for (const doc of inserted) {
+          if (doc.phone) {
+            alreadyProcessedSet.add(doc.phone);
+            job.processedRowHashes.push(doc.phone);
+          }
+        }
       } catch (err) {
         if (err.insertedDocs) {
           totalImported += err.insertedDocs.length;
           skippedCount += (currentBatch.length - err.insertedDocs.length);
+          for (const doc of err.insertedDocs) {
+            if (doc.phone) {
+              alreadyProcessedSet.add(doc.phone);
+              job.processedRowHashes.push(doc.phone);
+            }
+          }
         } else if (err.writeErrors) {
           const insertedCount = currentBatch.length - err.writeErrors.length;
           totalImported += Math.max(0, insertedCount);
           skippedCount += err.writeErrors.length;
+          for (const we of err.writeErrors) {
+            const failedDoc = currentBatch[we.index];
+            if (failedDoc) {
+              job.errorRows.push({
+                rowNumber: we.index + 1,
+                reason: we.errmsg || 'Write error',
+                phone: failedDoc.phone,
+              });
+            }
+          }
         } else {
           skippedCount += currentBatch.length;
         }
       }
+
+      job.importedCount = totalImported;
+      job.skippedCount = skippedCount;
+      job.processedRows = (job.processedRows || 0) + currentBatch.length;
+      job.lastChunkIndex = (job.lastChunkIndex || 0) + 1;
+      await job.save().catch(() => {});
     };
 
     if (isCSV) {
-      const bufferStream = Readable.from(req.file.buffer);
-      await new Promise((resolve, reject) => {
-        bufferStream
-          .pipe(csv())
-          .on('data', async (row) => {
-            bufferStream.pause();
-            await processRow(row);
-            bufferStream.resume();
-          })
-          .on('end', async () => {
-            await flushChunk();
-            resolve();
-          })
-          .on('error', reject);
-      });
+      for await (const row of Readable.from(req.file.buffer).pipe(csv())) {
+        await processRow(row);
+      }
+      await flushChunk();
     } else {
       const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
       const sheetName = workbook.SheetNames[0];
@@ -3274,11 +3345,18 @@ exports.importLeads = async (req, res) => {
       await flushChunk();
     }
 
+    job.status = 'completed';
+    job.completedAt = new Date();
+    job.importedCount = totalImported;
+    job.skippedCount = skippedCount;
+    await job.save().catch(() => {});
+
     if (totalImported === 0) {
       return res.status(400).json({
         message: `No new leads imported (${skippedCount} rows skipped due to invalid data or duplicate phones).`,
         importedCount: 0,
         skippedCount,
+        jobId: job._id,
       });
     }
 
@@ -3289,6 +3367,7 @@ exports.importLeads = async (req, res) => {
         skippedCount,
         quotaReached: true,
         maxLeads: maxLeadsLimit,
+        jobId: job._id,
       });
     }
 
@@ -3296,10 +3375,49 @@ exports.importLeads = async (req, res) => {
       message: `🎉 Successfully imported ${totalImported} leads! (${skippedCount} duplicates/invalid rows skipped)`,
       importedCount: totalImported,
       skippedCount,
+      jobId: job._id,
     });
   } catch (error) {
     console.error('importLeads streaming error:', error);
     res.status(500).json({ message: error.message || 'Failed to stream import leads' });
+  }
+};
+
+// @desc  Get status of an asynchronous/resumable lead import job (F1.6)
+// @route GET /api/leads/import/status/:jobId
+// @access Private
+exports.getImportStatus = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    if (!jobId || !mongoose.Types.ObjectId.isValid(jobId)) {
+      return res.status(400).json({ message: 'Invalid import job ID format' });
+    }
+
+    const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner';
+    const companyId = req.user.companyId || (isOwner ? req.user._id : null);
+    const tenantFilter = companyId ? { companyId } : (req.workspaceId ? { workspaceId: req.workspaceId } : { userId: req.user._id });
+
+    const job = await ImportJob.findOne({ _id: jobId, ...tenantFilter });
+    if (!job) {
+      return res.status(404).json({ message: 'Import job not found or unauthorized' });
+    }
+
+    res.status(200).json({
+      success: true,
+      jobId: job._id,
+      status: job.status,
+      filename: job.filename,
+      importedCount: job.importedCount,
+      skippedCount: job.skippedCount,
+      processedRows: job.processedRows,
+      totalRows: job.totalRows,
+      startedAt: job.startedAt,
+      completedAt: job.completedAt,
+      errorMessage: job.errorMessage,
+    });
+  } catch (err) {
+    console.error('getImportStatus error:', err);
+    res.status(500).json({ message: err.message || 'Failed to fetch import job status' });
   }
 };
 

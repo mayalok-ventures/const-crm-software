@@ -4,7 +4,7 @@ const multer = require('multer');
 const {
   getLeads, getLead, createLead, updateLead,
   addNote, deleteLead, getTodayFollowUps, getDueFollowUps, getTags, trackMessage, trackCall,
-  reassignLead, bulkTransferLeads, releaseLead, exportLeads, importLeads, toggleLeadOrgSharing,
+  reassignLead, bulkTransferLeads, releaseLead, exportLeads, importLeads, getImportStatus, toggleLeadOrgSharing,
   addChildInquiry, updateChildInquiry, deleteChildInquiry,
   scheduleFollowUp, delayFollowUp, completeFollowUp, rescheduleFollowUp, cancelFollowUp,
   unmaskLeadPhone, getLeadTimeline,
@@ -35,6 +35,7 @@ router.use(resolveWorkspace);
 // Export & Import Routes
 router.get('/export', requirePermission('leads.export'), enforceExportGating, exportLeads);
 router.post('/import', requirePermission('leads.create'), checkPlanExpiry, upload.single('file'), importLeads);
+router.get('/import/status/:jobId', requirePermission('leads.view'), getImportStatus);
 
 // Follow-Up & Alarm Endpoints
 router.get('/follow-ups/today', requirePermission('activities.view'), getTodayFollowUps);
