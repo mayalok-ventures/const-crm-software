@@ -5,8 +5,10 @@ import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import { CheckCircle2, Calendar, Sparkles, X, Plus, Building, MessageSquare } from 'lucide-react';
 import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
+import { useModalA11y } from '@/lib/useModalA11y';
 
 export default function FollowUpCompleteModal({ lead, isOpen, onClose, onSuccess }) {
+  const { modalRef } = useModalA11y({ isOpen, onClose });
   const [outcomeNote, setOutcomeNote] = useState('');
   const [siteVisitOutcome, setSiteVisitOutcome] = useState('');
   const [clientFeedback, setClientFeedback] = useState('');
@@ -86,7 +88,14 @@ export default function FollowUpCompleteModal({ lead, isOpen, onClose, onSuccess
 
   return (
     <div className="modal-overlay" onClick={onClose} style={{ zIndex: 10000 }}>
-      <div className="modal-sheet max-w-lg bg-white" onClick={e => e.stopPropagation()}>
+      <div
+        className="modal-sheet max-w-lg bg-white"
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="complete-modal-title"
+        onClick={e => e.stopPropagation()}
+      >
         <div className="modal-handle" />
 
         {/* Header */}
@@ -96,7 +105,7 @@ export default function FollowUpCompleteModal({ lead, isOpen, onClose, onSuccess
               <CheckCircle2 size={19} />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900 m-0">Complete Follow-Up</h3>
+              <h3 id="complete-modal-title" className="text-base font-bold text-slate-900 m-0">Complete Follow-Up</h3>
               <p className="text-xs text-slate-500 m-0">
                 Record outcome for <strong className="text-slate-800">{lead.name}</strong> ({lead.phone})
               </p>

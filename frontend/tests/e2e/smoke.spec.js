@@ -148,4 +148,91 @@ test.describe('E2E Smoke & Mobile Ergonomics Suite (T3 & Group U)', () => {
       }
     }
   });
+
+  test('Ergonomics 6: Save and Confirm modal buttons are never covered by BottomNav on mobile viewports (elementFromPoint proof)', async ({ page }) => {
+    const mobileViewports = [
+      { width: 375, height: 667, name: 'iPhone SE' },
+      { width: 390, height: 844, name: 'iPhone 13/14' },
+    ];
+
+    for (const vp of mobileViewports) {
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.goto('/leads');
+      await page.waitForLoadState('domcontentloaded');
+
+      const bottomNav = page.locator('nav.bottom-nav');
+      await expect(bottomNav).toBeVisible();
+
+      // Trigger modal (Add Lead)
+      const triggerBtn = page.locator('button, a').filter({ hasText: /Add Lead|New Lead|\+/i }).first();
+      if (await triggerBtn.isVisible()) {
+        await triggerBtn.click();
+        const modal = page.locator('[role="dialog"], .modal-sheet, .modal').first();
+        await expect(modal).toBeVisible();
+
+        // Locate primary action button inside modal
+        const submitBtn = modal.locator('button[type="submit"], button.btn-primary, button:has-text("Save"), button:has-text("Add")').first();
+        if (await submitBtn.isVisible()) {
+          // Scroll button into view if needed
+          await submitBtn.scrollIntoViewIfNeeded();
+
+          // Evaluate exact point clickability using elementFromPoint
+          const hitReport = await page.evaluate(() => {
+            const btn = document.querySelector('[role="dialog"] button[type="submit"], [role="dialog"] .btn-primary, .modal-sheet button[type="submit"], .modal-sheet .btn-primary');
+            if (!btn) return { found: false };
+            const rect = btn.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const hitEl = document.elementFromPoint(cx, cy);
+
+            return {
+              found: true,
+              isCoveredByBottomNav: Boolean(hitEl && hitEl.closest('nav.bottom-nav')),
+              hitTag: hitEl?.tagName,
+              hitText: hitEl?.textContent?.trim().slice(0, 30),
+              btnBounds: { top: rect.top, bottom: rect.bottom, height: rect.height },
+              viewportHeight: window.innerHeight,
+            };
+          });
+
+          if (hitReport.found) {
+            // PROOF: Element at the button's center point is NOT intercepted or covered by BottomNav
+            expect(hitReport.isCoveredByBottomNav).toBe(false);
+          }
+        }
+      }
+    }
+  });
+
+  test('Ergonomics 7: Mobile search and filter bars do not clip or induce horizontal scroll blowout', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto('/leads');
+    await page.waitForLoadState('domcontentloaded');
+
+    // Check no horizontal window blowout
+    const overflowReport = await page.evaluate(() => {
+      const docEl = document.documentElement;
+      const body = document.body;
+      const scrollW = Math.max(docEl.scrollWidth, body.scrollWidth);
+      const clientW = docEl.clientWidth;
+      return {
+        scrollWidth: scrollW,
+        clientWidth: clientW,
+        hasHorizontalOverflow: scrollW > clientW + 2,
+      };
+    });
+
+    expect(overflowReport.hasHorizontalOverflow).toBe(false);
+
+    // Verify search bar stays fully within viewport boundaries
+    const searchInput = page.locator('input[type="search"], input[placeholder*="Search" i]').first();
+    if (await searchInput.isVisible()) {
+      const box = await searchInput.boundingBox();
+      expect(box).not.toBeNull();
+      if (box) {
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width).toBeLessThanOrEqual(375 + 1);
+      }
+    }
+  });
 });

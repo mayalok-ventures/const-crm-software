@@ -12,6 +12,7 @@ import { getIndustryDefaults } from '@/lib/industryTemplates';
 import { isLostStage, LOST_REASON_OPTIONS } from '@/components/LostReasonModal';
 import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
 import DynamicFormRenderer, { isFieldVisible as evaluateFieldVisible, isFieldRequired as evaluateFieldRequired } from '@/components/common/DynamicFormRenderer';
+import { useModalA11y } from '@/lib/useModalA11y';
 
 export const STAGE_LABELS = {
   new_lead: '🆕 1. New Lead',
@@ -975,6 +976,7 @@ export function EditLeadModal({ lead, onClose, onUpdated, user }) {
 }
 
 export function ScheduleFollowUpModal({ lead, onClose, onUpdated }) {
+  const { modalRef } = useModalA11y({ isOpen: true, onClose });
   const [followUpDate, setFollowUpDate] = useState(() => {
     if (lead?.followUpDate) {
       return toLocalDatetimeString(lead.followUpDate);
@@ -1023,10 +1025,18 @@ export function ScheduleFollowUpModal({ lead, onClose, onUpdated }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 460, width: '92vw' }}>
+      <div
+        className="modal"
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="schedule-modal-title"
+        onClick={e => e.stopPropagation()}
+        style={{ maxWidth: 460, width: '92vw' }}
+      >
         <div className="modal-header">
           <div>
-            <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h2 id="schedule-modal-title" className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Calendar size={18} color="var(--accent)" /> Schedule Follow-Up
             </h2>
             <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
@@ -1092,6 +1102,7 @@ export function ScheduleFollowUpModal({ lead, onClose, onUpdated }) {
 }
 
 export function CompleteFollowUpModal({ lead, onClose, onCompleted, onPromptScheduleNext }) {
+  const { modalRef } = useModalA11y({ isOpen: true, onClose });
   const [noteText, setNoteText] = useState('');
   const [loading, setLoading] = useState(false);
   const { dismissAlarm } = useAlarm();
@@ -1125,10 +1136,18 @@ export function CompleteFollowUpModal({ lead, onClose, onCompleted, onPromptSche
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 460, width: '92vw' }}>
+      <div
+        className="modal"
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="complete-modal-title"
+        onClick={e => e.stopPropagation()}
+        style={{ maxWidth: 460, width: '92vw' }}
+      >
         <div className="modal-header">
           <div>
-            <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h2 id="complete-modal-title" className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <CheckCircle2 size={18} color="#10b981" /> Complete Follow-Up
             </h2>
             <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
@@ -1180,6 +1199,7 @@ export function CompleteFollowUpModal({ lead, onClose, onCompleted, onPromptSche
 }
 
 export function CancelFollowUpModal({ lead, onClose, onCancelled }) {
+  const { modalRef } = useModalA11y({ isOpen: true, onClose });
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
   const { dismissAlarm } = useAlarm();
@@ -1216,10 +1236,18 @@ export function CancelFollowUpModal({ lead, onClose, onCancelled }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 460, width: '92vw' }}>
+      <div
+        className="modal"
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cancel-modal-title"
+        onClick={e => e.stopPropagation()}
+        style={{ maxWidth: 460, width: '92vw' }}
+      >
         <div className="modal-header">
           <div>
-            <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#e11d48' }}>
+            <h2 id="cancel-modal-title" className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#e11d48' }}>
               <Ban size={18} color="#e11d48" /> Stop Active Follow-Up
             </h2>
             <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>

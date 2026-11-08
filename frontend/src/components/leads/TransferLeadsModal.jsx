@@ -19,6 +19,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { STAGE_LABELS } from '@/components/LeadModals';
+import { useModalA11y } from '@/lib/useModalA11y';
 
 export default function TransferLeadsModal({
   isOpen,
@@ -31,6 +32,7 @@ export default function TransferLeadsModal({
   campaigns = [],
   onTransferred,
 }) {
+  const { modalRef } = useModalA11y({ isOpen, onClose });
   const [assignedToUserId, setAssignedToUserId] = useState('');
   const [targetCampaignId, setTargetCampaignId] = useState('');
   const [applyCampaignAssignmentRule, setApplyCampaignAssignmentRule] = useState(false);
@@ -114,7 +116,13 @@ export default function TransferLeadsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl overflow-hidden my-auto animate-scale-up">
+      <div
+        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl overflow-hidden my-auto animate-scale-up"
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="transfer-leads-title"
+      >
         {/* Modal Header */}
         <div className="flex items-center justify-between px-3.5 sm:px-6 py-3 sm:py-4 border-b border-slate-100 bg-slate-50/70">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
@@ -122,7 +130,7 @@ export default function TransferLeadsModal({
               <ArrowRightLeft size={18} />
             </div>
             <div className="min-w-0">
-              <h2 className="text-sm sm:text-lg font-bold text-slate-900 flex items-center gap-1.5 sm:gap-2 flex-wrap">
+              <h2 id="transfer-leads-title" className="text-sm sm:text-lg font-bold text-slate-900 flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 <span>Transfer Candidate Leads</span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-indigo-100 text-indigo-700">
                   {selectAllFiltered ? `All Filtered (${selectedCount})` : `${selectedCount} Selected`}

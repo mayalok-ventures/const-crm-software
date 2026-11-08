@@ -5,8 +5,10 @@ import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import { Calendar, Clock, X, Check, Sparkles, Building, MapPin } from 'lucide-react';
 import { toLocalDatetimeString, fromLocalDatetimeStringToISO, formatDisplayDateTime } from '@/lib/dateUtils';
+import { useModalA11y } from '@/lib/useModalA11y';
 
 export default function FollowUpSchedulerModal({ lead, isOpen, onClose, onSuccess }) {
+  const { modalRef } = useModalA11y({ isOpen, onClose });
   const [scheduledDate, setScheduledDate] = useState('');
   const [agendaNote, setAgendaNote] = useState('');
   const [followUpType, setFollowUpType] = useState('call');
@@ -89,7 +91,14 @@ export default function FollowUpSchedulerModal({ lead, isOpen, onClose, onSucces
 
   return (
     <div className="modal-overlay" onClick={onClose} style={{ zIndex: 10000 }}>
-      <div className="modal-sheet max-w-lg bg-white" onClick={e => e.stopPropagation()}>
+      <div
+        className="modal-sheet max-w-lg bg-white"
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="scheduler-title"
+        onClick={e => e.stopPropagation()}
+      >
         <div className="modal-handle" />
         
         {/* Header */}
@@ -99,7 +108,7 @@ export default function FollowUpSchedulerModal({ lead, isOpen, onClose, onSucces
               <Calendar size={18} />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900 m-0">Schedule Follow-Up</h3>
+              <h3 id="scheduler-title" className="text-base font-bold text-slate-900 m-0">Schedule Follow-Up</h3>
               <p className="text-xs text-slate-500 m-0">
                 Prospect: <strong className="text-slate-800">{lead.name}</strong> ({lead.phone})
               </p>

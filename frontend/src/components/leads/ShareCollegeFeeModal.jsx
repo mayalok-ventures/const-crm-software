@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   ChevronDown,
 } from 'lucide-react';
+import { useModalA11y } from '@/lib/useModalA11y';
 
 export default function ShareCollegeFeeModal({
   isOpen,
@@ -29,6 +30,7 @@ export default function ShareCollegeFeeModal({
   waStatus,
   onSent,
 }) {
+  const { modalRef } = useModalA11y({ isOpen, onClose });
   const [colleges, setColleges] = useState([]);
   const [loadingColleges, setLoadingColleges] = useState(true);
   const [collegeSearch, setCollegeSearch] = useState('');
@@ -267,6 +269,10 @@ Feel free to reply directly to this message or contact your admission counselor 
     <div className="modal-overlay" onClick={onClose} style={{ zIndex: 10050 }}>
       <div
         className="modal-sheet modal-sheet-dialog max-w-3xl bg-white shadow-2xl border border-slate-200"
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="share-fee-title"
         onClick={e => e.stopPropagation()}
         style={{
           display: 'flex',
@@ -284,7 +290,7 @@ Feel free to reply directly to this message or contact your admission counselor 
               <Building2 size={22} className="text-white" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white m-0 flex items-center gap-2">
+              <h3 id="share-fee-title" className="text-base font-bold text-white m-0 flex items-center gap-2">
                 Share College Fee Structure
                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/20 text-white font-medium">
                   English Template

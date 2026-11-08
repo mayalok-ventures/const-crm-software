@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { X, AlertCircle, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useModalA11y } from '@/lib/useModalA11y';
 
 export const LOST_REASON_OPTIONS = [
   'Price / Budget Constraint',
@@ -27,6 +28,7 @@ export const isLostStage = (stageName) => {
 };
 
 export default function LostReasonModal({ isOpen, targetStage, leadName, onConfirm, onCancel }) {
+  const { modalRef } = useModalA11y({ isOpen, onClose: onCancel });
   const [lostReason, setLostReason] = useState('');
   const [lostReasonDetail, setLostReasonDetail] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -57,6 +59,10 @@ export default function LostReasonModal({ isOpen, targetStage, leadName, onConfi
     <div className="modal-overlay" onClick={onCancel} style={{ zIndex: 10000 }}>
       <div
         className="modal-sheet"
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="lost-reason-title"
         onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: 480, borderTop: '4px solid var(--red)' }}
       >
