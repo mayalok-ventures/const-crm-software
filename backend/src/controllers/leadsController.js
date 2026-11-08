@@ -10,6 +10,7 @@ const PDFDocument = require('pdfkit');
 const csv = require('csv-parser');
 const { Readable } = require('stream');
 const { appendCustomQuestionsNote, formatCustomQuestionsNote } = require('../utils/customQuestionsFormatter');
+const { resolveStageAndStatus } = require('../utils/leadStageStatus');
 
 // Helper to construct query mathematically enforcing Strict Visibility & Privacy Rules:
 // RULE 1: SuperAdmin sees all leads across the platform.
@@ -1593,14 +1594,29 @@ exports.updateLead = async (req, res) => {
       lead.lostReasonDetail = '';
     }
 
-    if (req.body.pipeline_stage !== undefined && req.body.pipelineStage === undefined) {
-      req.body.pipelineStage = req.body.pipeline_stage;
+    // Harmonize pipelineStage and status using leadStageStatus utility to prevent stage ID corruption
+    let pipelineContext = null;
+    const effectivePipelineId = req.body.pipelineId || lead.pipelineId;
+    if (effectivePipelineId) {
+      try {
+        const Pipeline = require('../models/Pipeline');
+        pipelineContext = await Pipeline.findById(effectivePipelineId);
+      } catch (e) {}
     }
-    if (req.body.pipelineStage !== undefined && req.body.status === undefined) {
-      req.body.status = req.body.pipelineStage;
-    }
-    if (req.body.status !== undefined && req.body.pipelineStage === undefined) {
-      req.body.pipelineStage = req.body.status;
+
+    const stageInput = req.body.pipelineStage !== undefined ? req.body.pipelineStage : req.body.pipeline_stage;
+    const statusInput = req.body.status;
+
+    if (stageInput !== undefined || statusInput !== undefined) {
+      const resolved = resolveStageAndStatus({
+        stageId: stageInput,
+        status: statusInput,
+        pipeline: pipelineContext,
+      });
+
+      req.body.pipelineStage = resolved.pipelineStage;
+      req.body.pipeline_stage = resolved.pipeline_stage;
+      req.body.status = resolved.status;
     }
     if (req.body.targetDomain !== undefined && req.body.targetStream === undefined) {
       req.body.targetStream = req.body.targetDomain;

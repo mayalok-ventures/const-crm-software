@@ -49,7 +49,11 @@ function resolveStageAndStatus({ stageId, status, pipeline }) {
       }
     } else if (status) {
       const matched = pipeline.stages.find(
-        (s) => s.stageId === status || s.name.toLowerCase() === status.toLowerCase()
+        (s) =>
+          s.stageId === status ||
+          s.name.toLowerCase() === status.toLowerCase() ||
+          (s.category && s.category.toLowerCase() === status.toLowerCase()) ||
+          mapStageToCanonicalStatus(s) === status.toLowerCase()
       );
       if (matched) {
         resolvedStage = matched.stageId;
