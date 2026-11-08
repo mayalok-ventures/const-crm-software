@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Lead = require('../models/Lead');
 const { buildLeadPermissionQuery } = require('./leadsController');
 const { shouldMaskPhoneForUser, maskPhoneNumber } = require('../utils/phoneMasking');
+const { withTransaction } = require('../utils/withTransaction');
 
 /**
  * @desc  Find candidate duplicate leads by phone, phoneDigits, email, or exact name+location
@@ -148,7 +149,13 @@ exports.getDuplicateCandidates = async (req, res) => {
  */
 exports.mergeLeads = async (req, res) => {
   try {
-    const { primaryLeadId, secondaryLeadId, fieldOverrides = {} } = req.body;
+    const {
+      primaryLeadId,
+      secondaryLeadId,
+      fieldChoices = {},
+      fieldOverrides = {},
+      dryRun = false,
+    } = req.body;
 
     if (
       !primaryLeadId ||
@@ -163,18 +170,84 @@ exports.mergeLeads = async (req, res) => {
       return res.status(400).json({ message: 'Cannot merge a lead into itself' });
     }
 
+    // Permission check for leads.merge
+    const isOwnerOrManager =
+      req.user.role === 'superadmin' ||
+      req.user.isAdmin ||
+      req.user.workStatus === 'company_owner' ||
+      req.user.companyRole === 'owner' ||
+      req.user.role === 'manager' ||
+      req.user.companyRole === 'manager' ||
+      req.membership?.role === 'owner' ||
+      req.membership?.role === 'manager';
+
+    if (!isOwnerOrManager) {
+      let hasMergePerm = false;
+      if (req.membership && typeof req.membership.hasPermission === 'function') {
+        hasMergePerm = await req.membership.hasPermission('leads.merge');
+      } else if (Array.isArray(req.membership?.permissionOverrides)) {
+        const override = req.membership.permissionOverrides.find((o) => o.key === 'leads.merge');
+        if (override) hasMergePerm = Boolean(override.granted);
+      } else if (Array.isArray(req.user.permissions)) {
+        hasMergePerm = req.user.permissions.includes('leads.merge');
+      }
+      if (!hasMergePerm) {
+        return res.status(403).json({ message: 'Permission denied: leads.merge required' });
+      }
+    }
+
     const permissionQuery = await buildLeadPermissionQuery(req.user, false);
     const [primaryLead, secondaryLead] = await Promise.all([
       Lead.findOne({ _id: primaryLeadId, ...permissionQuery }),
       Lead.findOne({ _id: secondaryLeadId, ...permissionQuery }),
     ]);
 
-    if (!primaryLead || !secondaryLead) {
+    if (!primaryLead) {
+      return res.status(404).json({ message: 'Primary lead not found or unauthorized' });
+    }
+
+    if (!secondaryLead) {
+      // Check if secondaryLead was already merged into primaryLead (idempotent repeat merge)
+      const alreadyMergedSecondary = await Lead.findOne({
+        _id: secondaryLeadId,
+        deletedAt: { $ne: null },
+      }).select('_id name status mergedInto deletedAt').lean();
+
+      if (alreadyMergedSecondary && String(alreadyMergedSecondary.mergedInto) === String(primaryLead._id)) {
+        return res.json({
+          success: true,
+          message: 'Leads are already merged',
+          primaryLeadId: primaryLead._id,
+          secondaryLeadId,
+          alreadyMerged: true,
+        });
+      }
       return res.status(404).json({ message: 'One or both leads not found or unauthorized' });
     }
 
-    if (secondaryLead.deletedAt) {
-      return res.status(400).json({ message: 'Secondary lead is already deleted or merged' });
+    // Same-workspace validation check
+    const primaryWs = primaryLead.workspaceId || primaryLead.companyId;
+    const secondaryWs = secondaryLead.workspaceId || secondaryLead.companyId;
+    if (primaryWs && secondaryWs && String(primaryWs) !== String(secondaryWs)) {
+      return res.status(400).json({ message: 'Cannot merge leads from different workspaces' });
+    }
+
+    // Idempotent repeat merge check
+    if (secondaryLead.deletedAt || secondaryLead.status === 'merged') {
+      if (secondaryLead.mergedInto && String(secondaryLead.mergedInto) === String(primaryLead._id)) {
+        return res.json({
+          success: true,
+          message: 'Leads are already merged',
+          primaryLeadId: primaryLead._id,
+          secondaryLeadId: secondaryLead._id,
+          alreadyMerged: true,
+        });
+      }
+      return res.status(400).json({
+        message: secondaryLead.mergedInto
+          ? `Secondary lead was already merged into lead ${secondaryLead.mergedInto}`
+          : 'Secondary lead is already deleted or merged',
+      });
     }
 
     // Lazy load models for relational entity reassignment
@@ -182,72 +255,16 @@ exports.mergeLeads = async (req, res) => {
     const ChatMessage = mongoose.models.ChatMessage || require('../models/ChatMessage');
     const EmailMessage = mongoose.models.EmailMessage || require('../models/EmailMessage');
     const Payment = mongoose.models.Payment || require('../models/Payment');
+    const AdmissionDeal = mongoose.models.AdmissionDeal || require('../models/AdmissionDeal');
     const FeeInstallment = mongoose.models.FeeInstallment || require('../models/FeeInstallment');
     const Recording = mongoose.models.Recording || require('../models/Recording');
+    const Notification = mongoose.models.Notification || require('../models/Notification');
+    const ActivityLog = mongoose.models.ActivityLog || require('../models/ActivityLog');
+    const Group = mongoose.models.Group || require('../models/Group');
+    const AutomationLog = mongoose.models.AutomationLog || require('../models/AutomationLog');
+    const CampaignLog = mongoose.models.CampaignLog || require('../models/CampaignLog');
 
-    // 1. Reassign all child/relational entities
-    await Promise.all([
-      FollowUp.updateMany(
-        { $or: [{ lead_id: secondaryLead._id }, { leadId: secondaryLead._id }] },
-        { $set: { lead_id: primaryLead._id, leadId: primaryLead._id } }
-      ),
-      ChatMessage.updateMany(
-        { leadId: secondaryLead._id },
-        { $set: { leadId: primaryLead._id } }
-      ),
-      EmailMessage.updateMany(
-        { leadId: secondaryLead._id },
-        { $set: { leadId: primaryLead._id } }
-      ),
-      Payment.updateMany(
-        { $or: [{ lead_id: secondaryLead._id }, { leadId: secondaryLead._id }] },
-        { $set: { lead_id: primaryLead._id, leadId: primaryLead._id } }
-      ),
-      FeeInstallment.updateMany(
-        { leadId: secondaryLead._id },
-        { $set: { leadId: primaryLead._id } }
-      ),
-      Recording.updateMany(
-        { leadId: secondaryLead._id },
-        { $set: { leadId: primaryLead._id } }
-      ),
-    ]);
-
-    // 2. Append history and notes to primary lead
-    if (Array.isArray(secondaryLead.leadActivities) && secondaryLead.leadActivities.length > 0) {
-      for (const act of secondaryLead.leadActivities) {
-        primaryLead.leadActivities.push({
-          action: act.action,
-          performedBy: act.performedBy,
-          performerName: act.performerName,
-          details: `[From merged lead ${secondaryLead._id}] ${act.details || ''}`,
-          timestamp: act.timestamp,
-        });
-      }
-    }
-
-    primaryLead.leadActivities.push({
-      action: 'lead_merged',
-      performedBy: req.user._id,
-      performerName: req.user.name || 'Agent',
-      details: `Merged duplicate record '${secondaryLead.name}' (${secondaryLead._id}) into this lead. Reassigned all communications, follow-ups, and payments.`,
-      timestamp: new Date(),
-    });
-
-    if (Array.isArray(secondaryLead.notes) && secondaryLead.notes.length > 0) {
-      if (!Array.isArray(primaryLead.notes)) primaryLead.notes = [];
-      for (const n of secondaryLead.notes) {
-        primaryLead.notes.push({
-          text: `[From merged lead ${secondaryLead._id}]: ${n.text || ''}`,
-          createdBy: n.createdBy || req.user._id,
-          authorName: n.authorName || 'Agent',
-          createdAt: n.createdAt || new Date(),
-        });
-      }
-    }
-
-    // Apply allowed field overrides
-    const allowedOverrides = [
+    const allowedFields = [
       'name',
       'email',
       'phone',
@@ -259,32 +276,230 @@ exports.mergeLeads = async (req, res) => {
       'source',
       'status',
     ];
-    for (const key of allowedOverrides) {
-      if (fieldOverrides[key] !== undefined && fieldOverrides[key] !== null) {
-        if (key === 'courseInterest') {
-          primaryLead.targetCourse = fieldOverrides[key];
-        } else {
-          primaryLead[key] = fieldOverrides[key];
-        }
+
+    // Compute effective field values based on fieldChoices / fieldOverrides
+    const resolvedFieldValues = {};
+    for (const field of allowedFields) {
+      const choice = fieldChoices[field] ?? fieldOverrides[field];
+      if (choice === 'secondary') {
+        resolvedFieldValues[field] = secondaryLead[field] ?? primaryLead[field];
+      } else if (choice === 'primary') {
+        resolvedFieldValues[field] = primaryLead[field];
+      } else if (choice !== undefined && choice !== null) {
+        resolvedFieldValues[field] = choice;
+      } else {
+        // Default: retain primary value, fallback to secondary if primary is empty
+        resolvedFieldValues[field] = (primaryLead[field] !== undefined && primaryLead[field] !== '' && primaryLead[field] !== null)
+          ? primaryLead[field]
+          : secondaryLead[field];
       }
     }
 
-    await primaryLead.save();
+    // dryRun Preview Mode
+    const isDryRun = Boolean(dryRun || req.query?.dryRun === 'true');
+    if (isDryRun) {
+      const [
+        followupsCount,
+        paymentsCount,
+        dealsCount,
+        installmentsCount,
+        chatsCount,
+        emailsCount,
+        recordingsCount,
+        notifsCount,
+        activityLogsCount,
+        groupsCount,
+        autoLogsCount,
+        campLogsCount,
+      ] = await Promise.all([
+        FollowUp.countDocuments({ $or: [{ lead_id: secondaryLead._id }, { leadId: secondaryLead._id }] }),
+        Payment.countDocuments({ $or: [{ lead_id: secondaryLead._id }, { leadId: secondaryLead._id }] }),
+        AdmissionDeal.countDocuments({ $or: [{ leadId: secondaryLead._id }, { lead_id: secondaryLead._id }] }),
+        FeeInstallment.countDocuments({ $or: [{ leadId: secondaryLead._id }, { lead_id: secondaryLead._id }] }),
+        ChatMessage.countDocuments({ leadId: secondaryLead._id }),
+        EmailMessage.countDocuments({ leadId: secondaryLead._id }),
+        Recording.countDocuments({ leadId: secondaryLead._id }),
+        Notification.countDocuments({ leadId: secondaryLead._id }),
+        ActivityLog.countDocuments({
+          $or: [{ entityId: secondaryLead._id }, { target_id: secondaryLead._id }, { targetId: secondaryLead._id }],
+        }),
+        Group.countDocuments({ leadIds: secondaryLead._id }),
+        AutomationLog.countDocuments({ leadId: secondaryLead._id }),
+        CampaignLog.countDocuments({ leadId: secondaryLead._id }),
+      ]);
 
-    // 3. Soft-delete and archive secondary lead
-    secondaryLead.deletedAt = new Date();
-    secondaryLead.deletedBy = req.user._id;
-    secondaryLead.status = 'merged';
-    secondaryLead.mergedInto = primaryLead._id;
-    if (!Array.isArray(secondaryLead.notes)) secondaryLead.notes = [];
-    secondaryLead.notes.push({
-      text: `[MERGED INTO LEAD ${primaryLead._id} on ${new Date().toISOString()} by ${req.user.name || 'User'}]`,
-      createdBy: req.user._id,
-      authorName: req.user.name || 'User',
-      createdAt: new Date(),
+      return res.json({
+        success: true,
+        dryRun: true,
+        message: 'Lead merge preview generated successfully',
+        primaryLead: {
+          _id: primaryLead._id,
+          name: primaryLead.name,
+          phone: primaryLead.phone,
+          email: primaryLead.email,
+          status: primaryLead.status,
+        },
+        secondaryLead: {
+          _id: secondaryLead._id,
+          name: secondaryLead.name,
+          phone: secondaryLead.phone,
+          email: secondaryLead.email,
+          status: secondaryLead.status,
+        },
+        fieldChoicesPreview: resolvedFieldValues,
+        repointSummary: {
+          followups: followupsCount,
+          payments: paymentsCount,
+          admissionDeals: dealsCount,
+          feeInstallments: installmentsCount,
+          chatMessages: chatsCount,
+          emailMessages: emailsCount,
+          recordings: recordingsCount,
+          notifications: notifsCount,
+          activityLogs: activityLogsCount,
+          groups: groupsCount,
+          automationLogs: autoLogsCount,
+          campaignLogs: campLogsCount,
+        },
+      });
+    }
+
+    // Atomic Multi-Document Transaction Execution
+    await withTransaction(async (session) => {
+      const qOpts = session ? { session } : {};
+
+      // 1. Reassign all child/relational entities (snake + camel)
+      // Note: Financial records (Payment, AdmissionDeal, FeeInstallment) are NEVER deleted.
+      await Promise.all([
+        FollowUp.updateMany(
+          { $or: [{ lead_id: secondaryLead._id }, { leadId: secondaryLead._id }] },
+          { $set: { lead_id: primaryLead._id, leadId: primaryLead._id } },
+          qOpts
+        ),
+        Payment.updateMany(
+          { $or: [{ lead_id: secondaryLead._id }, { leadId: secondaryLead._id }] },
+          { $set: { lead_id: primaryLead._id, leadId: primaryLead._id } },
+          qOpts
+        ),
+        AdmissionDeal.updateMany(
+          { $or: [{ leadId: secondaryLead._id }, { lead_id: secondaryLead._id }] },
+          { $set: { leadId: primaryLead._id, lead_id: primaryLead._id } },
+          qOpts
+        ),
+        FeeInstallment.updateMany(
+          { $or: [{ leadId: secondaryLead._id }, { lead_id: secondaryLead._id }] },
+          { $set: { leadId: primaryLead._id, lead_id: primaryLead._id } },
+          qOpts
+        ),
+        ChatMessage.updateMany(
+          { leadId: secondaryLead._id },
+          { $set: { leadId: primaryLead._id } },
+          qOpts
+        ),
+        EmailMessage.updateMany(
+          { leadId: secondaryLead._id },
+          { $set: { leadId: primaryLead._id } },
+          qOpts
+        ),
+        Recording.updateMany(
+          { leadId: secondaryLead._id },
+          { $set: { leadId: primaryLead._id } },
+          qOpts
+        ),
+        Notification.updateMany(
+          { leadId: secondaryLead._id },
+          { $set: { leadId: primaryLead._id } },
+          qOpts
+        ),
+        ActivityLog.updateMany(
+          { $or: [{ entityId: secondaryLead._id }, { target_id: secondaryLead._id }, { targetId: secondaryLead._id }] },
+          { $set: { entityId: primaryLead._id, target_id: primaryLead._id, targetId: primaryLead._id } },
+          qOpts
+        ),
+        Group.updateMany(
+          { leadIds: secondaryLead._id },
+          { $addToSet: { leadIds: primaryLead._id } },
+          qOpts
+        ),
+        AutomationLog.updateMany(
+          { leadId: secondaryLead._id },
+          { $set: { leadId: primaryLead._id } },
+          qOpts
+        ),
+        CampaignLog.updateMany(
+          { leadId: secondaryLead._id },
+          { $set: { leadId: primaryLead._id } },
+          qOpts
+        ),
+      ]);
+
+      await Group.updateMany(
+        { leadIds: secondaryLead._id },
+        { $pull: { leadIds: secondaryLead._id } },
+        qOpts
+      );
+
+      // 2. Append history and notes to primary lead
+      if (Array.isArray(secondaryLead.leadActivities) && secondaryLead.leadActivities.length > 0) {
+        for (const act of secondaryLead.leadActivities) {
+          primaryLead.leadActivities.push({
+            action: act.action,
+            performedBy: act.performedBy,
+            performerName: act.performerName,
+            details: `[From merged lead ${secondaryLead._id}] ${act.details || ''}`,
+            timestamp: act.timestamp,
+          });
+        }
+      }
+
+      primaryLead.leadActivities.push({
+        action: 'lead_merged',
+        performedBy: req.user._id,
+        performerName: req.user.name || 'Agent',
+        details: `Merged duplicate record '${secondaryLead.name}' (${secondaryLead._id}) into this lead. Reassigned all communications, follow-ups, deals, and payments.`,
+        timestamp: new Date(),
+      });
+
+      if (Array.isArray(secondaryLead.notes) && secondaryLead.notes.length > 0) {
+        if (!Array.isArray(primaryLead.notes)) primaryLead.notes = [];
+        for (const n of secondaryLead.notes) {
+          primaryLead.notes.push({
+            text: `[From merged lead ${secondaryLead._id}]: ${n.text || ''}`,
+            createdBy: n.createdBy || req.user._id,
+            authorName: n.authorName || 'Agent',
+            createdAt: n.createdAt || new Date(),
+          });
+        }
+      }
+
+      // Apply field choices
+      for (const [key, val] of Object.entries(resolvedFieldValues)) {
+        if (val !== undefined && val !== null) {
+          if (key === 'courseInterest') {
+            primaryLead.targetCourse = val;
+          } else {
+            primaryLead[key] = val;
+          }
+        }
+      }
+
+      await primaryLead.save(qOpts);
+
+      // 3. Soft-delete and archive secondary lead
+      secondaryLead.deletedAt = new Date();
+      secondaryLead.deletedBy = req.user._id;
+      secondaryLead.status = 'merged';
+      secondaryLead.mergedInto = primaryLead._id;
+      if (!Array.isArray(secondaryLead.notes)) secondaryLead.notes = [];
+      secondaryLead.notes.push({
+        text: `[MERGED INTO LEAD ${primaryLead._id} on ${new Date().toISOString()} by ${req.user.name || 'User'}]`,
+        createdBy: req.user._id,
+        authorName: req.user.name || 'User',
+        createdAt: new Date(),
+      });
+
+      await secondaryLead.save(qOpts);
     });
-
-    await secondaryLead.save();
 
     // 4. Audit Log
     try {
@@ -303,6 +518,7 @@ exports.mergeLeads = async (req, res) => {
           primaryLeadId: String(primaryLead._id),
           secondaryLeadId: String(secondaryLead._id),
           secondaryLeadName: secondaryLead.name,
+          fieldChoices,
           fieldOverrides,
         },
         timestamp: new Date(),

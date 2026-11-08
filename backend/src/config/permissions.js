@@ -15,6 +15,7 @@ const PERMISSIONS = {
   'leads.view_sensitive': { key: 'leads.view_sensitive', category: 'Leads', label: 'View Sensitive Fields', description: 'Access financial notes and confidential marks' },
   'leads.view_documents': { key: 'leads.view_documents', category: 'Leads', label: 'View Student Documents', description: 'Access student marksheets and identity proofs' },
   'leads.view_phone_unmasked': { key: 'leads.view_phone_unmasked', category: 'Leads', label: 'View Unmasked Phone Numbers', description: 'View full raw unmasked student telephone numbers' },
+  'leads.merge': { key: 'leads.merge', category: 'Leads', label: 'Merge Duplicate Leads', description: 'Merge duplicate student profiles with atomic record reassignment' },
 
   // Follow-ups & Activities
   'activities.view': { key: 'activities.view', category: 'Follow-ups', label: 'View Activities', description: 'Read interaction history and call logs' },
@@ -94,6 +95,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
     { key: 'leads.view', scope: 'workspace' },
     { key: 'leads.create', scope: 'workspace' },
     { key: 'leads.edit', scope: 'workspace' },
+    { key: 'leads.merge', scope: 'workspace' },
     { key: 'leads.assign', scope: 'workspace' },
     { key: 'leads.transfer', scope: 'workspace' },
     { key: 'leads.export', scope: 'workspace' },

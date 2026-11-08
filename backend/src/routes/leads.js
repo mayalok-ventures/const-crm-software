@@ -92,7 +92,7 @@ router.post('/:id/installments/:installmentId/pay', requirePermission('deals.cre
 
 // Duplicate Lead Detection & Merge (F3)
 router.get('/:id/duplicate-candidates', requirePermission('leads.view'), getDuplicateCandidates);
-router.post('/merge', requirePermission(['leads.edit', 'leads.delete']), checkPlanExpiry, mergeLeads);
+router.post('/merge', requirePermission('leads.merge'), checkPlanExpiry, mergeLeads);
 
 module.exports = router;
 
