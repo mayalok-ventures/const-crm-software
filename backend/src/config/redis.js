@@ -11,6 +11,24 @@ let isRedisConnected = false;
 
 // In-memory fallback cache when Redis is not running
 const fallbackMemoryCache = new Map();
+const MAX_FALLBACK_CACHE_SIZE = 5000;
+
+function sweepExpiredFallbackKeys() {
+  const now = Date.now();
+  let swept = 0;
+  for (const [key, item] of fallbackMemoryCache.entries()) {
+    if (item.expiresAt && now > item.expiresAt) {
+      fallbackMemoryCache.delete(key);
+      swept++;
+    }
+  }
+  return swept;
+}
+
+const fallbackSweepInterval = setInterval(sweepExpiredFallbackKeys, 60000);
+if (fallbackSweepInterval.unref) {
+  fallbackSweepInterval.unref();
+}
 
 function initRedis() {
   const redisUrl = process.env.REDIS_URL || process.env.REDIS_HOST;
@@ -96,7 +114,11 @@ const cacheService = {
         console.warn(`[Redis set error for ${key}]:`, err.message);
       }
     }
-    // In-memory fallback
+    // In-memory fallback with bounded capacity (evict oldest if full)
+    if (fallbackMemoryCache.size >= MAX_FALLBACK_CACHE_SIZE && !fallbackMemoryCache.has(key)) {
+      const oldestKey = fallbackMemoryCache.keys().next().value;
+      if (oldestKey) fallbackMemoryCache.delete(oldestKey);
+    }
     fallbackMemoryCache.set(key, {
       data,
       expiresAt: ttlSeconds > 0 ? Date.now() + (ttlSeconds * 1000) : null
@@ -178,7 +200,15 @@ const cacheService = {
     if (existing && existing.data === lockValue) {
       fallbackMemoryCache.delete(lockKey);
     }
-  }
+  },
+
+  getMemoryCacheSize() {
+    return fallbackMemoryCache.size;
+  },
+
+  sweepExpiredMemoryKeys() {
+    return sweepExpiredFallbackKeys();
+  },
 };
 
 module.exports = {

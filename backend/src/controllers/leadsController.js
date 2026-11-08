@@ -171,7 +171,27 @@ function invalidateLeadCountCache(workspaceId) {
     }
   }
 }
+
+function sweepExpiredCountCacheKeys() {
+  const now = Date.now();
+  let swept = 0;
+  for (const [key, item] of countCache.entries()) {
+    if (item.expiresAt && now > item.expiresAt) {
+      countCache.delete(key);
+      swept++;
+    }
+  }
+  return swept;
+}
+
+const countCacheSweepInterval = setInterval(sweepExpiredCountCacheKeys, 60000);
+if (countCacheSweepInterval.unref) {
+  countCacheSweepInterval.unref();
+}
+
 exports.invalidateLeadCountCache = invalidateLeadCountCache;
+exports._countCache = countCache;
+exports._sweepExpiredCountCacheKeys = sweepExpiredCountCacheKeys;
 
 // @desc  Get all leads (paginated, filtered, team-aware)
 // @route GET /api/leads
