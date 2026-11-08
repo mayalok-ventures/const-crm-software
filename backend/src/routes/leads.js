@@ -7,7 +7,7 @@ const {
   reassignLead, bulkTransferLeads, releaseLead, exportLeads, importLeads, toggleLeadOrgSharing,
   addChildInquiry, updateChildInquiry, deleteChildInquiry,
   scheduleFollowUp, delayFollowUp, completeFollowUp, rescheduleFollowUp, cancelFollowUp,
-  unmaskLeadPhone,
+  unmaskLeadPhone, getLeadTimeline,
 } = require('../controllers/leadsController');
 const { protect, checkPlanExpiry } = require('../middleware/auth');
 const { resolveWorkspace, requirePermission } = require('../middleware/permission');
@@ -71,6 +71,7 @@ router.route('/:id')
 
 router.post('/:id/notes', requirePermission('activities.create'), checkPlanExpiry, addNote);
 router.post('/:id/unmask-phone', requirePermission('leads.view'), unmaskLeadPhone);
+router.get('/:id/timeline', requirePermission('activities.view'), getLeadTimeline);
 
 module.exports = router;
 

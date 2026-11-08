@@ -3402,5 +3402,281 @@ exports.unmaskLeadPhone = async (req, res) => {
   }
 };
 
+function formatActivityTitle(action) {
+  if (!action) return 'Activity Logged';
+  switch (action) {
+    case 'lead_created': return 'Lead Created';
+    case 'call_initiated': return 'Call Placed';
+    case 'assigned_agent': return 'Agent Assigned';
+    case 'status_change': return 'Stage / Status Changed';
+    case 'note_added': return 'Note Added';
+    case 'lead_updated': return 'Details Updated';
+    default:
+      return String(action)
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+}
+
+// @desc  Get unified omnichannel activity timeline for a lead
+// @route GET /api/leads/:id/timeline
+// @access Private
+exports.getLeadTimeline = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid lead ID format' });
+    }
+
+    const permissionQuery = await buildLeadPermissionQuery(req.user, false);
+    const lead = await Lead.findOne({ _id: id, ...permissionQuery })
+      .select('name phone email status leadActivities createdAt assignedTo workspaceId')
+      .lean();
+
+    if (!lead) {
+      return res.status(404).json({ message: 'Lead not found or unauthorized' });
+    }
+
+    const leadObjectId = new mongoose.Types.ObjectId(id);
+
+    // Concurrently fetch from all omnichannel communication & activity collections
+    const FollowUp = mongoose.models.FollowUp || require('../models/FollowUp');
+    const ChatMessage = mongoose.models.ChatMessage || require('../models/ChatMessage');
+    const EmailMessage = mongoose.models.EmailMessage || require('../models/EmailMessage');
+    const Payment = mongoose.models.Payment || require('../models/Payment');
+    const Recording = mongoose.models.Recording || require('../models/Recording');
+
+    const [followups, chats, emails, payments, recordings] = await Promise.all([
+      FollowUp.find({
+        $or: [{ lead_id: leadObjectId }, { leadId: leadObjectId }],
+      })
+      .populate('agent_id', 'name email usercode')
+      .populate('agentId', 'name email usercode')
+      .lean()
+      .catch(() => []),
+
+      ChatMessage.find({
+        $or: [
+          { leadId: leadObjectId },
+          ...(lead.phone ? [{ phone: lead.phone }] : []),
+        ],
+      })
+      .populate('userId', 'name email')
+      .lean()
+      .catch(() => []),
+
+      EmailMessage.find({
+        $or: [
+          { leadId: leadObjectId },
+          ...(lead.email ? [{ 'to.email': lead.email }, { 'from.email': lead.email }] : []),
+        ],
+      })
+      .populate('userId', 'name email')
+      .lean()
+      .catch(() => []),
+
+      Payment.find({
+        $or: [{ lead_id: leadObjectId }, { leadId: leadObjectId }],
+      })
+      .populate('agent_id', 'name email')
+      .lean()
+      .catch(() => []),
+
+      Recording.find({ leadId: leadObjectId })
+      .populate('userId', 'name email')
+      .lean()
+      .catch(() => []),
+    ]);
+
+    const timelineItems = [];
+
+    // 1. In-lead activity stream
+    if (Array.isArray(lead.leadActivities)) {
+      lead.leadActivities.forEach((act, idx) => {
+        timelineItems.push({
+          id: act._id ? String(act._id) : `lead_act_${idx}`,
+          type: 'lead_activity',
+          action: act.action || 'activity',
+          title: formatActivityTitle(act.action),
+          description: act.details || '',
+          timestamp: act.timestamp ? new Date(act.timestamp).toISOString() : new Date(lead.createdAt).toISOString(),
+          actor: {
+            id: act.performedBy ? String(act.performedBy) : null,
+            name: act.performerName || 'System',
+          },
+          metadata: {
+            action: act.action,
+          },
+        });
+      });
+    }
+
+    // 2. Follow-ups
+    if (Array.isArray(followups)) {
+      followups.forEach((f) => {
+        const agent = f.agent_id || f.agentId;
+        const isCompleted = f.status === 'completed';
+        const isCancelled = f.status === 'cancelled';
+        timelineItems.push({
+          id: String(f._id),
+          type: 'followup',
+          action: isCompleted ? 'followup_completed' : isCancelled ? 'followup_cancelled' : 'followup_scheduled',
+          title: isCompleted ? 'Follow-up Completed' : isCancelled ? 'Follow-up Cancelled' : 'Follow-up Scheduled',
+          description: f.completion_note || f.postpone_remark || f.note || 'Scheduled follow-up reminder',
+          timestamp: new Date(f.completed_at || f.scheduled_at || f.createdAt).toISOString(),
+          actor: {
+            id: agent ? String(agent._id || agent) : null,
+            name: agent?.name || 'Agent',
+          },
+          metadata: {
+            status: f.status,
+            scheduledAt: f.scheduled_at,
+            note: f.note,
+            postponeRemark: f.postpone_remark,
+            completionNote: f.completion_note,
+          },
+        });
+      });
+    }
+
+    // 3. WhatsApp & Chat Messages
+    if (Array.isArray(chats)) {
+      chats.forEach((c) => {
+        const isInbound = c.direction === 'inbound';
+        timelineItems.push({
+          id: String(c._id),
+          type: 'whatsapp',
+          action: isInbound ? 'message_received' : 'message_sent',
+          title: isInbound ? 'WhatsApp Message Received' : 'WhatsApp Message Sent',
+          description: c.text || (c.mediaType ? `[${c.mediaType} Attachment]` : 'WhatsApp Message'),
+          timestamp: new Date(c.createdAt).toISOString(),
+          actor: {
+            id: c.userId ? String(c.userId._id || c.userId) : null,
+            name: isInbound ? (lead.name || 'Student') : (c.senderName || c.userId?.name || 'Agent'),
+          },
+          metadata: {
+            direction: c.direction,
+            phone: c.phone,
+            status: c.status,
+            mediaUrl: c.mediaUrl,
+            mediaType: c.mediaType,
+          },
+        });
+      });
+    }
+
+    // 4. Email Messages
+    if (Array.isArray(emails)) {
+      emails.forEach((e) => {
+        const isInbound = e.direction === 'inbound';
+        timelineItems.push({
+          id: String(e._id),
+          type: 'email',
+          action: isInbound ? 'email_received' : 'email_sent',
+          title: isInbound ? `Email Received: ${e.subject || 'No Subject'}` : `Email Sent: ${e.subject || 'No Subject'}`,
+          description: e.snippet || e.subject || 'Email interaction',
+          timestamp: new Date(e.createdAt).toISOString(),
+          actor: {
+            id: e.userId ? String(e.userId._id || e.userId) : null,
+            name: isInbound ? (lead.name || 'Student') : (e.userId?.name || 'Agent'),
+          },
+          metadata: {
+            subject: e.subject,
+            direction: e.direction,
+            status: e.status,
+          },
+        });
+      });
+    }
+
+    // 5. Payments
+    if (Array.isArray(payments)) {
+      payments.forEach((p) => {
+        const agent = p.agent_id || p.agentId;
+        timelineItems.push({
+          id: String(p._id),
+          type: 'payment',
+          action: p.verified_by_agent ? 'payment_verified' : 'payment_recorded',
+          title: `Payment ${p.verified_by_agent ? 'Verified' : 'Recorded'}: ₹${p.amount}`,
+          description: `₹${p.amount} received via ${p.method || 'bank_transfer'}${p.transaction_id ? ` (Txn ID: ${p.transaction_id})` : ''}`,
+          timestamp: new Date(p.createdAt).toISOString(),
+          actor: {
+            id: agent ? String(agent._id || agent) : null,
+            name: agent?.name || 'Finance Agent',
+          },
+          metadata: {
+            amount: p.amount,
+            method: p.method,
+            transactionId: p.transaction_id || p.transactionId,
+            verified: p.verified_by_agent,
+          },
+        });
+      });
+    }
+
+    // 6. Call Recordings
+    if (Array.isArray(recordings)) {
+      recordings.forEach((r) => {
+        timelineItems.push({
+          id: String(r._id),
+          type: 'recording',
+          action: 'call_recording_saved',
+          title: `Call Recording (${r.duration ? `${r.duration}s` : 'Audio'})`,
+          description: `Call recording logged. Duration: ${r.duration || 0} seconds`,
+          timestamp: new Date(r.createdAt).toISOString(),
+          actor: {
+            id: r.userId ? String(r.userId._id || r.userId) : null,
+            name: r.userId?.name || 'Agent',
+          },
+          metadata: {
+            duration: r.duration,
+            filename: r.filename,
+          },
+        });
+      });
+    }
+
+    // Sort chronologically descending
+    timelineItems.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    // Filter by cursor 'before' if specified
+    const { before, limit = 20, page } = req.query;
+    let filteredItems = timelineItems;
+    if (before) {
+      const beforeDate = new Date(before);
+      if (!isNaN(beforeDate.getTime())) {
+        filteredItems = filteredItems.filter((item) => new Date(item.timestamp) < beforeDate);
+      }
+    }
+
+    const totalCount = filteredItems.length;
+    const parsedLimit = Math.min(Math.max(1, parseInt(limit, 10) || 20), 100);
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+    const skip = page ? (parsedPage - 1) * parsedLimit : 0;
+
+    const paginatedItems = filteredItems.slice(skip, skip + parsedLimit);
+    const hasMore = skip + parsedLimit < totalCount;
+    const nextCursor = hasMore && paginatedItems.length > 0 ? paginatedItems[paginatedItems.length - 1].timestamp : null;
+
+    res.json({
+      success: true,
+      leadId: lead._id,
+      leadName: lead.name,
+      timeline: paginatedItems,
+      total: timelineItems.length,
+      pagination: {
+        total: totalCount,
+        count: paginatedItems.length,
+        limit: parsedLimit,
+        hasMore,
+        nextCursor,
+      },
+    });
+  } catch (error) {
+    console.error('getLeadTimeline error:', error);
+    res.status(500).json({ message: 'Server error retrieving lead timeline' });
+  }
+};
+
 exports.buildLeadPermissionQuery = buildLeadPermissionQuery;
 
