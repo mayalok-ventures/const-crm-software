@@ -563,16 +563,33 @@ exports.getUserPaymentRequest = async (req, res) => {
   }
 };
 
-// @desc  Get all payment requests for admin panel
+// @desc  Get all payment requests for admin panel (paginated & indexed)
 // @route GET /api/payments/admin
 // @access AdminOnly
 exports.getAdminPaymentRequests = async (req, res) => {
   try {
-    const { status } = req.query;
+    const { status, page = 1, limit = 50 } = req.query;
     const query = {};
     if (status) query.status = status;
 
-    const requests = await PaymentRequest.find(query).sort({ createdAt: -1 }).lean();
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [total, requests] = await Promise.all([
+      PaymentRequest.countDocuments(query),
+      PaymentRequest.find(query)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+    ]);
+
+    res.setHeader('X-Total-Count', total);
+    res.setHeader('X-Page', pageNum);
+    res.setHeader('X-Limit', limitNum);
+    res.setHeader('X-Total-Pages', Math.ceil(total / limitNum) || 1);
+
     res.json(requests);
   } catch (error) {
     res.status(500).json({ message: 'Server error' });

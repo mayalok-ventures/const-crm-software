@@ -52,5 +52,7 @@ const paymentRequestSchema = new mongoose.Schema({
 
 paymentRequestSchema.index({ userId: 1 });
 paymentRequestSchema.index({ status: 1 });
+paymentRequestSchema.index({ status: 1, createdAt: -1 });
+paymentRequestSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('PaymentRequest', paymentRequestSchema);
