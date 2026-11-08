@@ -232,6 +232,7 @@ const leadSchema = new mongoose.Schema({
   deletedAt: { type: Date, default: null, index: true },
   deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   mergedInto: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead', default: null, index: true },
+  idempotencyKey: { type: String, trim: true, default: null },
 
   // Candidate Budget & Package Range
   budget: { type: String, default: '' },

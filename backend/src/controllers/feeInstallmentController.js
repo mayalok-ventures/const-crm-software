@@ -234,6 +234,25 @@ exports.recordInstallmentPayment = async (req, res) => {
       return res.status(400).json({ message: 'Payment amount must be greater than zero' });
     }
 
+    const idempotencyKey = req.body.idempotencyKey || req.headers?.['idempotency-key'];
+    if (idempotencyKey) {
+      const existingPayment = await Payment.findOne({
+        lead_id: lead._id,
+        idempotencyKey: String(idempotencyKey).trim(),
+        ...(wsId ? { $or: [{ workspaceId: wsId }, { companyId: wsId }] } : {}),
+      });
+      if (existingPayment) {
+        const currentInst = await FeeInstallment.findById(installmentId);
+        return res.status(200).json({
+          success: true,
+          message: 'Payment recorded against installment (idempotent)',
+          idempotent: true,
+          installment: currentInst || installment,
+          payment: existingPayment,
+        });
+      }
+    }
+
     let result = null;
 
     await withTransaction(async (session) => {
@@ -268,6 +287,7 @@ exports.recordInstallmentPayment = async (req, res) => {
           verified_at: new Date(),
           verifiedAt: new Date(),
           status: 'completed',
+          idempotencyKey: idempotencyKey ? String(idempotencyKey).trim() : null,
         };
 
         if (session) {

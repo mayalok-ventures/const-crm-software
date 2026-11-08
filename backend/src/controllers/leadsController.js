@@ -629,6 +629,43 @@ exports.scheduleFollowUp = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Lead not found or unauthorized' });
     }
 
+    // Idempotency check: prevent duplicate follow-ups under network retry or rapid double-submit
+    const idempotencyKey = (
+      req.headers['idempotency-key'] ||
+      req.headers['x-idempotency-key'] ||
+      req.body.idempotencyKey ||
+      req.body.idempotency_key ||
+      ''
+    ).trim();
+
+    const FollowUp = require('../models/FollowUp');
+    let existingFup = null;
+
+    if (idempotencyKey) {
+      existingFup = await FollowUp.findOne({
+        $or: [{ lead_id: lead._id }, { leadId: lead._id }],
+        idempotencyKey,
+      });
+    } else {
+      const fiveSecondsAgo = new Date(Date.now() - 5000);
+      existingFup = await FollowUp.findOne({
+        $or: [{ lead_id: lead._id }, { leadId: lead._id }],
+        scheduled_at: parsedDate,
+        status: 'open',
+        createdAt: { $gte: fiveSecondsAgo },
+      });
+    }
+
+    if (existingFup) {
+      return res.status(200).json({
+        success: true,
+        message: `${(type || 'call') === 'site_visit' ? 'Site visit' : 'Follow-up'} already scheduled (idempotent replay) ⏰`,
+        lead,
+        followUp: existingFup,
+        idempotent: true,
+      });
+    }
+
     const followUpType = type || 'call';
     const cleanSiteVisitDetails = (followUpType === 'site_visit' && siteVisitDetails && typeof siteVisitDetails === 'object')
       ? {
@@ -698,6 +735,7 @@ exports.scheduleFollowUp = async (req, res) => {
         companyId: lead.companyId || req.user.companyId || req.user._id,
         createdBy: req.user._id,
         creatorName: req.user.name,
+        idempotencyKey: idempotencyKey || undefined,
       });
     } catch (fuErr) {
       console.warn('[FollowUp Audit] Non-blocking audit record notice:', fuErr.message);
@@ -1251,6 +1289,14 @@ exports.createLead = async (req, res) => {
     const cleanPhone = phone ? String(phone).replace(/\D/g, '') : '';
     const resolvedName = (name && String(name).trim()) || (cleanPhone ? `Lead (${cleanPhone})` : `Lead #${Date.now().toString().slice(-4)}`);
 
+    const clientTxnId = (
+      req.headers['idempotency-key'] ||
+      req.headers['x-idempotency-key'] ||
+      req.body.idempotencyKey ||
+      req.body.idempotency_key ||
+      ''
+    ).trim();
+
     const isOwner = req.user.workStatus === 'company_owner' || req.user.companyRole === 'owner';
     const companyId = req.user.companyId || (isOwner ? req.user._id : null);
 
@@ -1262,6 +1308,13 @@ exports.createLead = async (req, res) => {
 
       const phoneExists = await Lead.findOne(duplicateQuery);
       if (phoneExists) {
+        if (clientTxnId && phoneExists.idempotencyKey === clientTxnId) {
+          return res.status(200).json({
+            message: 'Lead already created (idempotent replay)',
+            lead: phoneExists,
+            idempotent: true,
+          });
+        }
         return res.status(409).json({
           message: companyId
             ? "This phone number already exists in your company's database."
@@ -1379,6 +1432,7 @@ exports.createLead = async (req, res) => {
       userId: req.user._id,
       companyId: resolvedCompanyId,
       workspaceId: resolvedWorkspaceId,
+      idempotencyKey: clientTxnId || undefined,
       assignedTo: targetAssignedTo,
       assignedToName: targetAssignedToName,
       name: resolvedName,

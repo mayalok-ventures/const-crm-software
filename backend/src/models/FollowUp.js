@@ -145,6 +145,12 @@ const followUpSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  idempotencyKey: {
+    type: String,
+    trim: true,
+    index: true,
+    sparse: true,
+  },
 }, { timestamps: true });
 
 followUpSchema.pre('save', function (next) {

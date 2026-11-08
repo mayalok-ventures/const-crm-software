@@ -110,6 +110,11 @@ const paymentSchema = new mongoose.Schema({
     default: '',
     trim: true,
   },
+  idempotencyKey: {
+    type: String,
+    trim: true,
+    default: null,
+  },
 }, {
   timestamps: true,
   writeConcern: {
