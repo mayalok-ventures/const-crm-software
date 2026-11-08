@@ -340,6 +340,9 @@ const leadSchema = new mongoose.Schema({
   followUpStatus: { type: String, enum: ['none', 'scheduled', 'due', 'completed', 'postponed', 'cancelled'], default: 'none' },
   followUpDelayCount: { type: Number, default: 0, min: 0, max: 2 },
   followUpNotified: { type: Boolean, default: false },
+  followUpClaimStatus: { type: String, enum: ['idle', 'processing', 'dispatched', 'failed'], default: 'idle' },
+  followUpClaimedAt: { type: Date, default: null },
+  followUpDispatchedAt: { type: Date, default: null },
   lastContactedAt: { type: Date, default: null },
   
   // Activity Audit Trail

@@ -82,6 +82,46 @@ async function runTest() {
   assert.strictEqual(resSecond.processedCount, 0, 'Second run must process 0 leads (already claimed)');
   console.log('✅ Step 2: Atomic CAS claim prevented duplicate sweep.');
 
+  // Step 3: Stale claim recovery
+  // Simulate a worker crash where followUpClaimStatus was 'processing' 10 minutes ago but never finished
+  const leadCrashed = await Lead.create({
+    name: 'Crashed Worker Lead',
+    phone: '9888800004',
+    workspaceId: ws._id,
+    userId: user._id,
+    assignedTo: user._id,
+    targetDomain: 'Engineering',
+    followUpDate: new Date(now - 10 * 60 * 1000), // 10 mins ago
+    followUpNotified: false,
+    followUpClaimStatus: 'processing',
+    followUpClaimedAt: new Date(now - 10 * 60 * 1000), // Stale claim (> 5 min timeout)
+    followUpStatus: 'due',
+  });
+
+  // Also simulate existing doc without the field from 5 days ago (no followUpNotified field at all)
+  const leadLegacyHistorical = await Lead.create({
+    name: 'Legacy Historical Lead',
+    phone: '9888800005',
+    workspaceId: ws._id,
+    userId: user._id,
+    assignedTo: user._id,
+    targetDomain: 'Engineering',
+    followUpDate: new Date(now - 5 * 24 * 60 * 60 * 1000), // 5 days ago
+    followUpStatus: 'scheduled',
+  });
+
+  const resStale = await sweepDueFollowUps();
+  assert.strictEqual(resStale.processedCount, 1, 'Stale claim must be recovered and processed');
+
+  const updatedCrashed = await Lead.findById(leadCrashed._id);
+  assert.strictEqual(updatedCrashed.followUpNotified, true, 'Recovered lead must be marked notified');
+  assert.strictEqual(updatedCrashed.followUpClaimStatus, 'dispatched', 'Status must be dispatched');
+
+  const updatedLegacy = await Lead.findById(leadLegacyHistorical._id);
+  assert.strictEqual(updatedLegacy.followUpNotified, false, '5-day old legacy lead must remain unnotified without spamming');
+  assert.strictEqual(updatedLegacy.followUpClaimStatus, 'idle', 'Legacy lead claim status remains idle');
+  console.log('✅ Step 3: Stale-claim recovery successfully rescued reminder and legacy historical leads were untouched.');
+
   await mongoose.disconnect();
   await mongod.stop();
   console.log('🎉 ALL R5 FOLLOW-UP CRON LOOKBACK TESTS PASSED!');

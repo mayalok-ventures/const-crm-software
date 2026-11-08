@@ -136,6 +136,15 @@ const followUpSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  claimStatus: {
+    type: String,
+    enum: ['idle', 'processing', 'dispatched', 'failed'],
+    default: 'idle',
+  },
+  claimedAt: {
+    type: Date,
+    default: null,
+  },
 }, { timestamps: true });
 
 followUpSchema.pre('save', function (next) {

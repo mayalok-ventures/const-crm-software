@@ -28,6 +28,9 @@ const sweepDueFollowUps = async () => {
   const cutoff = new Date(now.getTime() + 30000);
   let processedCount = 0;
 
+  const CLAIM_TIMEOUT_MS = parseInt(process.env.FOLLOWUP_CLAIM_TIMEOUT_MS, 10) || 5 * 60 * 1000;
+  const staleClaimThreshold = new Date(now.getTime() - CLAIM_TIMEOUT_MS);
+
   try {
     // ── 1. SWEEP LEADS COLLECTION ──────────────────────────────────────────
     const dueLeads = await Lead.find({
@@ -42,21 +45,30 @@ const sweepDueFollowUps = async () => {
           'converted', 'not_interested',
         ],
       },
+      $or: [
+        { followUpClaimStatus: { $in: [null, undefined, 'idle', 'failed'] } },
+        { followUpClaimStatus: 'processing', followUpClaimedAt: { $lt: staleClaimThreshold } },
+      ],
     })
       .limit(100)
       .lean();
 
     for (const lead of dueLeads) {
-      // Atomic compare-and-swap lock on the lead document
+      // Atomic compare-and-swap lock on the lead document with stale claim recovery
       const locked = await Lead.findOneAndUpdate(
         {
           _id: lead._id,
           followUpNotified: { $ne: true },
           followUpStatus: { $nin: ['completed', 'cancelled'] },
+          $or: [
+            { followUpClaimStatus: { $in: [null, undefined, 'idle', 'failed'] } },
+            { followUpClaimStatus: 'processing', followUpClaimedAt: { $lt: staleClaimThreshold } },
+          ],
         },
         {
           $set: {
-            followUpNotified: true,
+            followUpClaimStatus: 'processing',
+            followUpClaimedAt: now,
             followUpStatus: 'due',
             'activeFollowUp.status': 'due',
           },
@@ -75,28 +87,46 @@ const sweepDueFollowUps = async () => {
       const agendaNote = lead.followUpNote || lead.activeFollowUp?.note || 'Scheduled counseling follow-up call';
       const isOverdue = lead.followUpDate && new Date(lead.followUpDate) < new Date(now.getTime() - 15 * 60 * 1000);
 
-      await dispatchNotification({
-        userId: recipientId,
-        workspaceId: lead.workspaceId || null,
-        companyId: lead.companyId || null,
-        leadId: lead._id,
-        leadName: lead.name || 'Candidate',
-        title: isOverdue ? `🚨 OVERDUE Follow-Up: ${lead.name || 'Candidate'}` : `⏰ Follow-Up Due: ${lead.name || 'Candidate'}`,
-        message: `${lead.name || 'Candidate'} (${lead.phone || 'Phone'}) — Agenda: ${agendaNote}`,
-        type: isOverdue ? 'follow_up_overdue' : 'follow_up',
-        priority: isOverdue ? 'urgent' : 'high',
-        category: 'reminder',
-        entityType: 'Lead',
-        entityId: lead._id,
-        dueAt: lead.followUpDate || now,
-        dedupKey,
-        channels: ['in_app', 'push', 'sse'],
-        pushPayload: {
-          url: `/leads/${lead._id}`,
-        },
-      });
+      try {
+        await dispatchNotification({
+          userId: recipientId,
+          workspaceId: lead.workspaceId || null,
+          companyId: lead.companyId || null,
+          leadId: lead._id,
+          leadName: lead.name || 'Candidate',
+          title: isOverdue ? `🚨 OVERDUE Follow-Up: ${lead.name || 'Candidate'}` : `⏰ Follow-Up Due: ${lead.name || 'Candidate'}`,
+          message: `${lead.name || 'Candidate'} (${lead.phone || 'Phone'}) — Agenda: ${agendaNote}`,
+          type: isOverdue ? 'follow_up_overdue' : 'follow_up',
+          priority: isOverdue ? 'urgent' : 'high',
+          category: 'reminder',
+          entityType: 'Lead',
+          entityId: lead._id,
+          dueAt: lead.followUpDate || now,
+          dedupKey,
+          channels: ['in_app', 'push', 'sse'],
+          pushPayload: {
+            url: `/leads/${lead._id}`,
+          },
+        });
 
-      processedCount++;
+        await Lead.updateOne(
+          { _id: lead._id },
+          {
+            $set: {
+              followUpNotified: true,
+              followUpClaimStatus: 'dispatched',
+              followUpDispatchedAt: new Date(),
+            },
+          }
+        );
+        processedCount++;
+      } catch (dispErr) {
+        console.error(`[FollowUpScheduler] Dispatch error on lead ${lead._id}:`, dispErr.message);
+        await Lead.updateOne(
+          { _id: lead._id },
+          { $set: { followUpClaimStatus: 'failed', followUpNotified: false } }
+        );
+      }
     }
 
     // ── 2. SWEEP FOLLOWUPS COLLECTION (Enterprise sub-record model) ─────────
@@ -107,6 +137,10 @@ const sweepDueFollowUps = async () => {
       ],
       status: 'open',
       notified: { $ne: true },
+      $or: [
+        { claimStatus: { $in: [null, undefined, 'idle', 'failed'] } },
+        { claimStatus: 'processing', claimedAt: { $lt: staleClaimThreshold } },
+      ],
     })
       .populate('leadId', 'name phone workspaceId companyId')
       .limit(100)
@@ -114,8 +148,21 @@ const sweepDueFollowUps = async () => {
 
     for (const fup of dueFollowUps) {
       const lockedFup = await FollowUp.findOneAndUpdate(
-        { _id: fup._id, status: 'open', notified: { $ne: true } },
-        { $set: { notified: true, notifiedAt: new Date() } },
+        {
+          _id: fup._id,
+          status: 'open',
+          notified: { $ne: true },
+          $or: [
+            { claimStatus: { $in: [null, undefined, 'idle', 'failed'] } },
+            { claimStatus: 'processing', claimedAt: { $lt: staleClaimThreshold } },
+          ],
+        },
+        {
+          $set: {
+            claimStatus: 'processing',
+            claimedAt: now,
+          },
+        },
         { new: true }
       );
 
@@ -128,28 +175,40 @@ const sweepDueFollowUps = async () => {
       const scheduledDate = fup.scheduled_at || fup.scheduledAt || now;
       const dedupKey = `fup_doc_due_${fup._id}_${new Date(scheduledDate).getTime()}`;
 
-      await dispatchNotification({
-        userId: recipientId,
-        workspaceId: fup.workspaceId || lead.workspaceId || null,
-        companyId: fup.companyId || lead.companyId || null,
-        leadId: lead._id || fup.lead_id || null,
-        leadName: lead.name || 'Candidate',
-        title: `⏰ Follow-Up Reminder: ${lead.name || 'Candidate'}`,
-        message: `${lead.name || 'Student'} (${lead.phone || 'Phone'}) — Note: ${fup.note || 'Follow-up call'}`,
-        type: 'follow_up',
-        priority: 'high',
-        category: 'reminder',
-        entityType: 'FollowUp',
-        entityId: fup._id,
-        dueAt: scheduledDate,
-        dedupKey,
-        channels: ['in_app', 'push', 'sse'],
-        pushPayload: {
-          url: lead._id ? `/leads/${lead._id}` : '/follow-ups',
-        },
-      });
+      try {
+        await dispatchNotification({
+          userId: recipientId,
+          workspaceId: fup.workspaceId || lead.workspaceId || null,
+          companyId: fup.companyId || lead.companyId || null,
+          leadId: lead._id || fup.lead_id || null,
+          leadName: lead.name || 'Candidate',
+          title: `⏰ Follow-Up Reminder: ${lead.name || 'Candidate'}`,
+          message: `${lead.name || 'Student'} (${lead.phone || 'Phone'}) — Note: ${fup.note || 'Follow-up call'}`,
+          type: 'follow_up',
+          priority: 'high',
+          category: 'reminder',
+          entityType: 'FollowUp',
+          entityId: fup._id,
+          dueAt: scheduledDate,
+          dedupKey,
+          channels: ['in_app', 'push', 'sse'],
+          pushPayload: {
+            url: lead._id ? `/leads/${lead._id}` : '/follow-ups',
+          },
+        });
 
-      processedCount++;
+        await FollowUp.updateOne(
+          { _id: fup._id },
+          { $set: { notified: true, notifiedAt: new Date(), claimStatus: 'dispatched' } }
+        );
+        processedCount++;
+      } catch (dispErr) {
+        console.error(`[FollowUpScheduler] Dispatch error on fup ${fup._id}:`, dispErr.message);
+        await FollowUp.updateOne(
+          { _id: fup._id },
+          { $set: { claimStatus: 'failed', notified: false } }
+        );
+      }
     }
 
     lastSweepTimestamp = new Date();
