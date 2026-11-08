@@ -1484,25 +1484,31 @@ exports.updateLead = async (req, res) => {
       req.body.closedDealAmount = paymentAmount;
       req.body.payment_method = String(rawMethod).trim();
 
-      // Atomically create Payment record
+      // Atomically create Payment record using transaction helper
       const Payment = require('../models/Payment');
-      const existingPayment = await Payment.findOne({ lead_id: lead._id, amount: paymentAmount, status: 'completed' });
-      if (!existingPayment) {
-        await Payment.create({
-          lead_id: lead._id,
-          leadId: lead._id,
-          workspaceId: lead.workspaceId || req.workspaceId || null,
-          companyId: lead.companyId || req.user.companyId || null,
-          agent_id: lead.assignedTo || req.user._id,
-          agentId: lead.assignedTo || req.user._id,
-          amount: paymentAmount,
-          method: String(rawMethod).trim(),
-          transaction_id: req.body.transaction_id || `TXN-MANUAL-${Date.now()}`,
-          status: 'completed',
-          verified_by_agent: true,
-          verified_at: new Date(),
-        }).catch(err => console.warn('[Payment] Manual payment record warning:', err.message));
-      }
+      const { withTransaction } = require('../utils/withTransaction');
+      await withTransaction(async (session) => {
+        const qOpts = session ? { session } : {};
+        const existingPayment = await Payment.findOne({ lead_id: lead._id, amount: paymentAmount, status: 'completed' }, null, qOpts);
+        if (!existingPayment) {
+          await Payment.create([
+            {
+              lead_id: lead._id,
+              leadId: lead._id,
+              workspaceId: lead.workspaceId || req.workspaceId || null,
+              companyId: lead.companyId || req.user.companyId || null,
+              agent_id: lead.assignedTo || req.user._id,
+              agentId: lead.assignedTo || req.user._id,
+              amount: paymentAmount,
+              method: String(rawMethod).trim(),
+              transaction_id: req.body.transaction_id || `TXN-MANUAL-${Date.now()}`,
+              status: 'completed',
+              verified_by_agent: true,
+              verified_at: new Date(),
+            }
+          ], qOpts);
+        }
+      }).catch(err => console.warn('[Payment] Manual payment record warning:', err.message));
 
       // Trigger split incentive calculation dynamically on WON status conversion (safely isolated)
       try {

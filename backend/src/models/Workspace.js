@@ -83,40 +83,48 @@ workspaceSchema.statics.findOrCreateSoloWorkspace = async function(user) {
     return existingMembership.workspaceId;
   }
 
-  // Check if workspace already exists where user is owner
-  let workspace = await this.findOne({ ownerId: user._id, deletedAt: null });
+  const { withTransaction } = require('../utils/withTransaction');
+  return await withTransaction(async (session) => {
+    const opts = session ? { session } : {};
 
-  if (!workspace) {
-    const wsName = user.companyInfo?.companyName || `${user.name || 'Counselor'}'s Workspace`;
-    workspace = await this.create({
-      name: wsName,
-      ownerId: user._id,
-      industryType: user.industryType || 'Education',
-      subProfile: user.educationSubProfile || 'admission_consultants',
-      plan: user.plan || 'free',
-      planEndDate: user.planEndDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-      settings: {
-        showFollowUpOnCreate: user.showFollowUpOnCreate !== false,
+    // Check if workspace already exists where user is owner
+    let workspace = await this.findOne({ ownerId: user._id, deletedAt: null }, null, opts);
+
+    if (!workspace) {
+      const wsName = user.companyInfo?.companyName || `${user.name || 'Counselor'}'s Workspace`;
+      const created = await this.create([
+        {
+          name: wsName,
+          ownerId: user._id,
+          industryType: user.industryType || 'Education',
+          subProfile: user.educationSubProfile || 'admission_consultants',
+          plan: user.plan || 'free',
+          planEndDate: user.planEndDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          settings: {
+            showFollowUpOnCreate: user.showFollowUpOnCreate !== false,
+          },
+        }
+      ], opts);
+      workspace = created[0];
+    }
+
+    // Ensure owner membership exists
+    await WorkspaceMembership.findOneAndUpdate(
+      { workspaceId: workspace._id, userId: user._id },
+      {
+        $set: {
+          workspaceId: workspace._id,
+          userId: user._id,
+          role: 'owner',
+          status: 'active',
+        },
+        $setOnInsert: { joinedAt: new Date() }
       },
-    });
-  }
+      { upsert: true, new: true, ...opts }
+    );
 
-  // Ensure owner membership exists
-  await WorkspaceMembership.findOneAndUpdate(
-    { workspaceId: workspace._id, userId: user._id },
-    {
-      $set: {
-        workspaceId: workspace._id,
-        userId: user._id,
-        role: 'owner',
-        status: 'active',
-      },
-      $setOnInsert: { joinedAt: new Date() }
-    },
-    { upsert: true, new: true }
-  );
-
-  return workspace;
+    return workspace;
+  });
 };
 
 workspaceSchema.post(['save', 'findOneAndUpdate', 'findByIdAndUpdate', 'updateOne'], function (doc) {
