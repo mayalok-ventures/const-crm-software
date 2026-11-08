@@ -4,6 +4,7 @@ const Lead = require('../models/Lead');
 const Notification = require('../models/Notification');
 const { processSubscriptionLifecycle } = require('../services/subscriptionWorker');
 const { runTestPrepFeeAlertsCron } = require('../services/automationHandlers');
+const { withDistributedLock } = require('./distributedLock');
 
 let scheduledTasks = [];
 let isSchedulerStarted = false;
@@ -31,7 +32,7 @@ const startFollowUpCron = () => {
     if (!isDbReady() || isFollowUpRunning) return;
     isFollowUpRunning = true;
     try {
-      await sweepDueFollowUps();
+      await withDistributedLock('cron_sweep_due_followups', 50000, () => sweepDueFollowUps());
     } catch (err) {
       console.error('[Cron] Follow-up alarm error:', err.message);
     } finally {
@@ -61,7 +62,7 @@ const startFollowUpCron = () => {
     isDelayedSweepRunning = true;
     try {
       const AutomationEngine = require('../services/automationEngine');
-      await AutomationEngine.sweepPendingDelayedAutomations();
+      await withDistributedLock('cron_sweep_pending_delayed_automations', 50000, () => AutomationEngine.sweepPendingDelayedAutomations());
     } catch (err) {
       console.error('[Cron] Delayed automation sweep error:', err.message);
     } finally {
@@ -96,7 +97,7 @@ const startFollowUpCron = () => {
     if (!isDbReady() || isSubCronRunning) return;
     isSubCronRunning = true;
     try {
-      await processSubscriptionLifecycle();
+      await withDistributedLock('cron_process_subscription_lifecycle', 14 * 60 * 1000, () => processSubscriptionLifecycle());
     } catch (err) {
       console.error('[Cron] Subscription lifecycle worker error:', err.message);
     } finally {

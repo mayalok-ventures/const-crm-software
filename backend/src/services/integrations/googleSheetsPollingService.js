@@ -322,6 +322,8 @@ class GoogleSheetsPollingService {
    * Periodic scheduler: runs every 5 minutes across all active sheets integrations
    */
   async sweepAll() {
+    const { withDistributedLock } = require('../../utils/distributedLock');
+    return withDistributedLock('sheets_polling_sweep_all', 4 * 60 * 1000, async () => {
     try {
       const activeSheetsIntegrations = await Integration.find({
         provider: 'sheets',
@@ -342,6 +344,7 @@ class GoogleSheetsPollingService {
     } catch (err) {
       console.error('[Sheets Polling SweepAll Error]:', err.message);
     }
+    });
   }
 }
 
