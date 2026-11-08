@@ -1491,6 +1491,8 @@ exports.updateLead = async (req, res) => {
         await Payment.create({
           lead_id: lead._id,
           leadId: lead._id,
+          workspaceId: lead.workspaceId || req.workspaceId || null,
+          companyId: lead.companyId || req.user.companyId || null,
           agent_id: lead.assignedTo || req.user._id,
           agentId: lead.assignedTo || req.user._id,
           amount: paymentAmount,

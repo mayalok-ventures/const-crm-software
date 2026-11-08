@@ -72,6 +72,12 @@ const paymentSchema = new mongoose.Schema({
     default: null,
     index: true,
   },
+  workspaceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Workspace',
+    default: null,
+    index: true,
+  },
   plan_id: {
     type: String,
     default: null,
@@ -126,6 +132,7 @@ paymentSchema.pre('save', function (next) {
 });
 
 paymentSchema.index({ companyId: 1, status: 1, amount: 1 });
+paymentSchema.index({ workspaceId: 1, createdAt: -1 });
 paymentSchema.index({ lead_id: 1, createdAt: -1 });
 paymentSchema.index({ agent_id: 1 });
 paymentSchema.index(

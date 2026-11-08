@@ -58,13 +58,15 @@ exports.uploadRecording = async (req, res) => {
     }
 
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' ? req.user._id : null);
-    const leadPermission = {
-      _id: req.params.leadId,
-      $or: [
-        { userId: req.user._id },
-        ...(companyId ? [{ companyId }, { userId: companyId }] : [])
-      ]
-    };
+    const leadPermission = req.workspaceId
+      ? { _id: req.params.leadId, workspaceId: req.workspaceId }
+      : {
+          _id: req.params.leadId,
+          $or: [
+            { userId: req.user._id },
+            ...(companyId ? [{ companyId }, { userId: companyId }] : [])
+          ]
+        };
 
     const lead = await Lead.findOne(leadPermission).lean();
     if (!lead) {
@@ -93,6 +95,7 @@ exports.uploadRecording = async (req, res) => {
     if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
 
     const recording = await Recording.create({
+      workspaceId: lead.workspaceId || req.workspaceId || null,
       leadId: req.params.leadId,
       userId: req.user._id,
       filename: uploadResult.secure_url, // Storing full URL in filename for frontend compatibility
@@ -115,18 +118,27 @@ exports.uploadRecording = async (req, res) => {
 exports.getRecordings = async (req, res) => {
   try {
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' ? req.user._id : null);
-    const leadPermission = {
-      _id: req.params.leadId,
-      $or: [
-        { userId: req.user._id },
-        ...(companyId ? [{ companyId }, { userId: companyId }] : [])
-      ]
-    };
+    const leadPermission = req.workspaceId
+      ? { _id: req.params.leadId, workspaceId: req.workspaceId }
+      : {
+          _id: req.params.leadId,
+          $or: [
+            { userId: req.user._id },
+            ...(companyId ? [{ companyId }, { userId: companyId }] : [])
+          ]
+        };
 
     const lead = await Lead.findOne(leadPermission).lean();
     if (!lead) return res.status(404).json({ message: 'Lead not found or unauthorized' });
 
-    const recordings = await Recording.find({ leadId: req.params.leadId })
+    const recordingQuery = {
+      leadId: req.params.leadId,
+      ...(req.workspaceId ? {
+        $or: [{ workspaceId: req.workspaceId }, { workspaceId: null }]
+      } : {}),
+    };
+
+    const recordings = await Recording.find(recordingQuery)
       .sort({ createdAt: -1 })
       .lean();
 
@@ -142,13 +154,20 @@ exports.getRecordings = async (req, res) => {
 exports.deleteRecording = async (req, res) => {
   try {
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' ? req.user._id : null);
-    const recording = await Recording.findOne({
-      _id: req.params.id,
-      $or: [
-        { userId: req.user._id },
-        ...(companyId ? [{ userId: { $in: [req.user._id, companyId] } }] : [])
-      ]
-    });
+    const recordingQuery = req.workspaceId
+      ? {
+          _id: req.params.id,
+          $or: [{ workspaceId: req.workspaceId }, { workspaceId: null }]
+        }
+      : {
+          _id: req.params.id,
+          $or: [
+            { userId: req.user._id },
+            ...(companyId ? [{ userId: { $in: [req.user._id, companyId] } }] : [])
+          ]
+        };
+
+    const recording = await Recording.findOne(recordingQuery);
     if (!recording) return res.status(404).json({ message: 'Recording not found or unauthorized' });
 
     // Delete from Cloudinary if publicId exists, otherwise fall back to local disk
