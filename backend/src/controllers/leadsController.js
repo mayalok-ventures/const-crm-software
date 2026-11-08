@@ -171,9 +171,9 @@ const buildLeadPermissionQuery = async (user, isUnclaimed = false) => {
   };
 };
 
-// Bounded in-memory count cache for pagination (TTL 30s)
+// Bounded in-memory count cache for pagination (TTL 60s)
 const countCache = new Map();
-const COUNT_CACHE_TTL = 30000;
+const COUNT_CACHE_TTL = 60000;
 function getCachedCount(key) {
   const item = countCache.get(key);
   if (!item) return null;
@@ -197,7 +197,7 @@ function invalidateLeadCountCache(workspaceId) {
   }
   const prefix = String(workspaceId);
   for (const key of countCache.keys()) {
-    if (key.startsWith(prefix)) {
+    if (key.includes(prefix)) {
       countCache.delete(key);
     }
   }
@@ -392,8 +392,12 @@ exports.getLeads = async (req, res) => {
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
     const skip = (parsedPage - 1) * cap;
 
-    const countCacheKey = `${req.workspaceId || req.tenantId || req.user?._id}_${JSON.stringify(query)}`;
-    const cachedTotal = getCachedCount(countCacheKey);
+    const skipCount = req.query.includeTotal === 'false' || req.query.skipCount === 'true' || req.headers['x-skip-total-count'] === 'true';
+    const isDefaultQuery = !status && !tag && !search && !projectId && !assignedTo && !source && !primarySource && !unclaimed && !platform && !connectionId && !campaignId && !startDate && !endDate && (isTest === undefined || isTest === '' || isTest === 'all');
+    const tenantKey = req.workspaceId || req.tenantId || req.user?.workspaceId || req.user?._id;
+    const countCacheKey = isDefaultQuery
+      ? `default_cnt_${tenantKey}`
+      : `${tenantKey}_${JSON.stringify(query)}`;
 
     const isPipelineView = req.query.view === 'pipeline' || req.query.fields === 'pipeline';
     let queryBuilder = Lead.find(query);
@@ -409,20 +413,27 @@ exports.getLeads = async (req, res) => {
         .populate('assignedTo', 'name usercode email');
     }
 
-    const leadsPromise = queryBuilder
+    const leads = await queryBuilder
       .sort({ updatedAt: -1, _id: -1 })
       .skip(skip)
       .limit(cap)
       .lean();
 
-    const countPromise = (cachedTotal !== null)
-      ? Promise.resolve(cachedTotal)
-      : Lead.countDocuments(query).then((cnt) => {
-          setCachedCount(countCacheKey, cnt);
-          return cnt;
-        });
-
-    const [leads, total] = await Promise.all([leadsPromise, countPromise]);
+    let total;
+    if (skipCount) {
+      total = -1;
+    } else {
+      const cachedTotal = getCachedCount(countCacheKey);
+      if (cachedTotal !== null && cachedTotal !== undefined) {
+        total = cachedTotal;
+      } else if (parsedPage === 1 && leads.length < cap) {
+        total = leads.length;
+        setCachedCount(countCacheKey, total);
+      } else {
+        total = await Lead.countDocuments(query);
+        setCachedCount(countCacheKey, total);
+      }
+    }
 
     const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
     if (shouldMask && Array.isArray(leads)) {
@@ -1560,6 +1571,7 @@ exports.createLead = async (req, res) => {
       metadata: { source: lead.source, status: lead.status },
     });
 
+    invalidateLeadCountCache(resolvedWorkspaceId || resolvedCompanyId);
 
     res.status(201).json(lead);
   } catch (error) {
@@ -3350,6 +3362,10 @@ exports.importLeads = async (req, res) => {
     job.importedCount = totalImported;
     job.skippedCount = skippedCount;
     await job.save().catch(() => {});
+
+    if (totalImported > 0) {
+      invalidateLeadCountCache(req.user.workspaceId || req.workspaceId || companyId);
+    }
 
     if (totalImported === 0) {
       return res.status(400).json({

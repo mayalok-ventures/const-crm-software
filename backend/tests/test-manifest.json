@@ -133,6 +133,7 @@
     "f1_soft_delete_orphans.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 soft delete cascade cleanup and orphan skipping" },
     "f1_optimistic_concurrency.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 optimistic concurrency control on lead updates" },
     "f1_idempotency_retry.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 idempotency keys and double-submit retry guards" },
-    "f1_resumable_import.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 resumable and idempotent ImportJob" }
+    "f1_resumable_import.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 resumable and idempotent ImportJob" },
+    "f2_count_optimization.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 lead list countDocuments optimization and caching" }
   }
 }
