@@ -2768,15 +2768,22 @@ exports.exportLeads = async (req, res) => {
 
       let currentY = tableTop + 20;
       let idx = 0;
+      const MAX_PDF_EXPORT_ROWS = 2000;
 
       const cursor = Lead.find(query)
         .populate('projectId', 'name location basePrice')
         .populate('assignedTo', 'name usercode email')
         .sort({ createdAt: -1 })
+        .limit(MAX_PDF_EXPORT_ROWS)
         .cursor();
 
       for await (const lead of cursor) {
         idx++;
+        // Yield event loop every 25 rows to keep server responsive during large exports
+        if (idx % 25 === 0) {
+          await new Promise((r) => setImmediate(r));
+        }
+
         if (currentY > 740) {
           doc.addPage();
           currentY = 40;
