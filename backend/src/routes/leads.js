@@ -23,10 +23,29 @@ const { protect, checkPlanExpiry } = require('../middleware/auth');
 const { resolveWorkspace, requirePermission } = require('../middleware/permission');
 const { enforceExportGating } = require('../middleware/antiFraud');
 
-// Multer in-memory storage for Excel/CSV parsing
+const os = require('os');
+const fs = require('fs');
+const path = require('path');
+
+const tempUploadDir = path.join(os.tmpdir(), 'crm_lead_uploads');
+if (!fs.existsSync(tempUploadDir)) {
+  try { fs.mkdirSync(tempUploadDir, { recursive: true }); } catch (_) {}
+}
+
+// Multer disk storage for off-heap streaming Excel/CSV parsing (F2.4)
+const uploadStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, tempUploadDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '');
+    cb(null, `import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
+  },
+});
+
 const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB file size limit
+  storage: uploadStorage,
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB file size limit
 });
 
 router.use(protect);

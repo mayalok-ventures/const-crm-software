@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const crypto = require('crypto');
+const fs = require('fs');
 const Lead = require('../models/Lead');
 const User = require('../models/User');
 const Campaign = require('../models/Campaign');
@@ -2836,6 +2837,16 @@ exports.exportLeads = async (req, res) => {
 
     const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
 
+    // Escape CSV / Spreadsheet formula injection characters (=, +, -, @, \t, \r)
+    const escapeFormula = (val) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (/^[=\+\-@\t\r]/.test(str)) {
+        return "'" + str;
+      }
+      return str;
+    };
+
     // ── 1. STREAMING CSV EXPORT (Zero-Memory Pipeline) ──
     if (format.toLowerCase() === 'csv') {
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -2861,27 +2872,27 @@ exports.exportLeads = async (req, res) => {
         idx++;
         const row = [
           idx,
-          l.name || '',
+          escapeFormula(l.name || ''),
           shouldMask ? maskPhoneNumber(l.phone) : (l.phone || ''),
-          l.email || '',
-          l.company || '',
-          l.status || '',
+          escapeFormula(l.email || ''),
+          escapeFormula(l.company || ''),
+          escapeFormula(l.status || ''),
           l.followUpDate ? new Date(l.followUpDate).toISOString().slice(0, 10) : '',
-          l.projectId?.name || l.project || '',
-          l.propertyType || '',
-          l.budget || '',
+          escapeFormula(l.projectId?.name || l.project || ''),
+          escapeFormula(l.propertyType || ''),
+          escapeFormula(l.budget || ''),
           l.closedDealAmount ? `${userCurrency}${Number(l.closedDealAmount).toLocaleString()}` : '',
-          l.location || '',
+          escapeFormula(l.location || ''),
           l.siteVisitDate ? new Date(l.siteVisitDate).toISOString().slice(0, 16) : '',
-          l.assignedToName || l.assignedTo?.name || 'Common Pool',
-          Array.isArray(l.tags) ? l.tags.join('; ') : '',
+          escapeFormula(l.assignedToName || l.assignedTo?.name || 'Common Pool'),
+          Array.isArray(l.tags) ? l.tags.map(escapeFormula).join('; ') : '',
           l.createdAt ? new Date(l.createdAt).toISOString().slice(0, 10) : '',
-          l.source || '',
-          l.utmCampaign || '',
-          l.utmMedium || '',
-          l.utmSource || '',
-          l.lostReason || '',
-          l.lostReasonDetail || '',
+          escapeFormula(l.source || ''),
+          escapeFormula(l.utmCampaign || ''),
+          escapeFormula(l.utmMedium || ''),
+          escapeFormula(l.utmSource || ''),
+          escapeFormula(l.lostReason || ''),
+          escapeFormula(l.lostReasonDetail || ''),
         ];
 
         res.write(row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',') + '\n');
@@ -2993,33 +3004,33 @@ exports.exportLeads = async (req, res) => {
       const customFields = {};
       if (l.customData && typeof l.customData === 'object') {
         for (const [k, v] of Object.entries(l.customData)) {
-          customFields[`Custom: ${k}`] = v;
+          customFields[`Custom: ${escapeFormula(k)}`] = escapeFormula(v);
         }
       }
 
       rows.push({
         '#': index,
-        'Name': l.name || '',
+        'Name': escapeFormula(l.name || ''),
         'Phone': shouldMask ? maskPhoneNumber(l.phone) : (l.phone || ''),
-        'Email': l.email || '',
-        'Company': l.company || '',
-        'Status / Stage': l.status || '',
+        'Email': escapeFormula(l.email || ''),
+        'Company': escapeFormula(l.company || ''),
+        'Status / Stage': escapeFormula(l.status || ''),
         'Next Follow-Up': l.followUpDate ? new Date(l.followUpDate).toISOString().slice(0, 10) : '',
-        'Offering / Project': l.projectId?.name || l.project || '',
-        'Tier / Variant': l.propertyType || '',
-        'Deal Value / Budget': l.budget || '',
+        'Offering / Project': escapeFormula(l.projectId?.name || l.project || ''),
+        'Tier / Variant': escapeFormula(l.propertyType || ''),
+        'Deal Value / Budget': escapeFormula(l.budget || ''),
         [`Closed Deal Amount (${userCurrency})`]: l.closedDealAmount ? `${userCurrency}${Number(l.closedDealAmount).toLocaleString()}` : '',
-        'Location / Market': l.location || '',
+        'Location / Market': escapeFormula(l.location || ''),
         'Scheduled Demo / Meeting': l.siteVisitDate ? new Date(l.siteVisitDate).toISOString().slice(0, 16) : '',
-        'Assigned Representative': l.assignedToName || l.assignedTo?.name || 'Common Pool',
-        'Tags': Array.isArray(l.tags) ? l.tags.join(', ') : '',
+        'Assigned Representative': escapeFormula(l.assignedToName || l.assignedTo?.name || 'Common Pool'),
+        'Tags': Array.isArray(l.tags) ? l.tags.map(escapeFormula).join(', ') : '',
         'Created At': l.createdAt ? new Date(l.createdAt).toISOString().slice(0, 10) : '',
-        'Source': l.source || '',
-        'UTM Campaign': l.utmCampaign || '',
-        'UTM Medium': l.utmMedium || '',
-        'UTM Source': l.utmSource || '',
-        'Lost Reason': l.lostReason || '',
-        'Lost Details': l.lostReasonDetail || '',
+        'Source': escapeFormula(l.source || ''),
+        'UTM Campaign': escapeFormula(l.utmCampaign || ''),
+        'UTM Medium': escapeFormula(l.utmMedium || ''),
+        'UTM Source': escapeFormula(l.utmSource || ''),
+        'Lost Reason': escapeFormula(l.lostReason || ''),
+        'Lost Details': escapeFormula(l.lostReasonDetail || ''),
         ...customFields,
       });
     }
@@ -3044,7 +3055,7 @@ exports.exportLeads = async (req, res) => {
 // @access Private
 exports.importLeads = async (req, res) => {
   try {
-    if (!req.file || !req.file.buffer) {
+    if (!req.file || (!req.file.buffer && !req.file.path)) {
       return res.status(400).json({ message: 'Please upload a valid Excel (.xlsx, .xls) or CSV (.csv) file' });
     }
 
@@ -3091,7 +3102,13 @@ exports.importLeads = async (req, res) => {
     // ─────────────────────────────────────────────────────────────
     // IMPORT JOB TRACKING & RESUMABILITY (F1.6)
     // ─────────────────────────────────────────────────────────────
-    const fileHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
+    let fileHash;
+    if (req.file.buffer) {
+      fileHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
+    } else {
+      const fileBytes = fs.readFileSync(req.file.path);
+      fileHash = crypto.createHash('sha256').update(fileBytes).digest('hex');
+    }
     const passedJobId = req.body.importJobId || req.headers['x-import-job-id'];
     let job = null;
     if (passedJobId && mongoose.Types.ObjectId.isValid(passedJobId)) {
@@ -3341,20 +3358,30 @@ exports.importLeads = async (req, res) => {
     };
 
     if (isCSV) {
-      for await (const row of Readable.from(req.file.buffer).pipe(csv())) {
+      const inputStream = req.file.path ? fs.createReadStream(req.file.path) : Readable.from(req.file.buffer);
+      for await (const row of inputStream.pipe(csv())) {
         await processRow(row);
       }
       await flushChunk();
     } else {
-      const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+      const workbook = req.file.path
+        ? xlsx.readFile(req.file.path, { cellDates: true, dense: true })
+        : xlsx.read(req.file.buffer, { type: 'buffer' });
       const sheetName = workbook.SheetNames[0];
-      if (!sheetName) return res.status(400).json({ message: 'Uploaded file contains no worksheets' });
+      if (!sheetName) {
+        if (req.file.path) try { fs.unlinkSync(req.file.path); } catch (_) {}
+        return res.status(400).json({ message: 'Uploaded file contains no worksheets' });
+      }
 
       const rawRows = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
       for (const row of rawRows) {
         await processRow(row);
       }
       await flushChunk();
+    }
+
+    if (req.file.path) {
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
     }
 
     job.status = 'completed';
@@ -3394,6 +3421,9 @@ exports.importLeads = async (req, res) => {
       jobId: job._id,
     });
   } catch (error) {
+    if (req.file?.path) {
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
+    }
     console.error('importLeads streaming error:', error);
     res.status(500).json({ message: error.message || 'Failed to stream import leads' });
   }

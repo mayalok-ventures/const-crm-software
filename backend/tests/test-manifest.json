@@ -136,6 +136,7 @@
     "f1_resumable_import.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 resumable and idempotent ImportJob" },
     "f2_count_optimization.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 lead list countDocuments optimization and caching" },
     "f2_prune_indexes.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 lead index pruning and limit compliance" },
-    "f2_chat_polling.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 lighter chat polling with ETag and since cursor" }
+    "f2_chat_polling.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 lighter chat polling with ETag and since cursor" },
+    "f2_disk_streaming_import.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 disk storage streaming import and CSV formula escaping" }
   }
 }
