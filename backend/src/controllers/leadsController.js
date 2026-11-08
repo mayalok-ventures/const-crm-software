@@ -1484,13 +1484,33 @@ exports.updateLead = async (req, res) => {
       req.body.closedDealAmount = paymentAmount;
       req.body.payment_method = String(rawMethod).trim();
 
-      // Atomically create Payment record using transaction helper
+      // Atomically create Payment record using transaction helper with request-level idempotency
       const Payment = require('../models/Payment');
       const { withTransaction } = require('../utils/withTransaction');
+      const clientTxnId = (req.body.transaction_id || req.body.transactionId || req.body.idempotencyKey || '').trim();
+      const txnIdentifier = clientTxnId || `TXN-MANUAL-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
       await withTransaction(async (session) => {
         const qOpts = session ? { session } : {};
-        const existingPayment = await Payment.findOne({ lead_id: lead._id, amount: paymentAmount, status: 'completed' }, null, qOpts);
-        if (!existingPayment) {
+        // Request-level idempotency: if client provided transaction_id/idempotencyKey, dedup on that exact key.
+        // If not provided, dedup only against duplicate submissions within the last 2 minutes for the same lead, amount, and method.
+        let isDuplicate = false;
+        if (clientTxnId) {
+          const existingByKey = await Payment.findOne({ lead_id: lead._id, transaction_id: clientTxnId }, null, qOpts);
+          if (existingByKey) isDuplicate = true;
+        } else {
+          const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+          const recentPayment = await Payment.findOne({
+            lead_id: lead._id,
+            amount: paymentAmount,
+            method: String(rawMethod).trim(),
+            status: 'completed',
+            createdAt: { $gte: twoMinutesAgo },
+          }, null, qOpts);
+          if (recentPayment) isDuplicate = true;
+        }
+
+        if (!isDuplicate) {
           await Payment.create([
             {
               lead_id: lead._id,
@@ -1501,7 +1521,7 @@ exports.updateLead = async (req, res) => {
               agentId: lead.assignedTo || req.user._id,
               amount: paymentAmount,
               method: String(rawMethod).trim(),
-              transaction_id: req.body.transaction_id || `TXN-MANUAL-${Date.now()}`,
+              transaction_id: txnIdentifier,
               status: 'completed',
               verified_by_agent: true,
               verified_at: new Date(),
