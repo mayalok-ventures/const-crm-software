@@ -2,7 +2,7 @@
 
 **Branch**: `fix/audit-batch-3`
 **Base Commit**: `b18fc5a` (HEAD of `fix/audit-batch-2`)
-**Current Stage**: Stage 3 Complete (Waiting for User "Continue" to begin Stage 4: Missing Features Part 1: F1, F2)
+**Current Stage**: Stage 4 Complete (Ready for Stage 5: Missing Features Part 2: F4, F3, F5 + Phase C & Final Report)
 
 ---
 
@@ -13,8 +13,8 @@
 | **Stage 1** | Precondition, Phase 0 Follow-ups & Phase A Plan | ✅ DONE | All Phase 0 Addendum items resolved, 6 follow-up commits landed, plan written to `audit_batch_3_plan.md`. |
 | **Stage 2** | Testing Infrastructure: T1, T2, T3 | ✅ DONE | T1 runner guard & manifest (111 tests), T2 won/converted/idempotency tests, T3 Vitest (18/18 pass) & Playwright (15/15 pass). |
 | **Stage 3** | UI/UX Frontend: U1–U5 | ✅ DONE | U1 bottom nav safe area & dirty form guard, U4 iOS 16px font-size, U3 WCAG AA badge contrast, U5 modal a11y focus trap, U2 accordion cards. |
-| **Stage 4** | Missing Features: F1, F2 | ⏳ PENDING | Will begin upon user "Continue". |
-| **Stage 5** | Missing Features: F4, F3, F5 + Phase C & Final Report | ⏳ PENDING | Will execute after Stage 4. |
+| **Stage 4** | Missing Features: F1, F2 | ✅ DONE | F1 role-based phone masking & unmask audit logging, F2 unified omnichannel timeline API with cursor pagination. |
+| **Stage 5** | Missing Features: F4, F3, F5 + Phase C & Final Report | ⏳ PENDING | Will begin upon user "Continue". |
 
 ---
 
@@ -53,7 +53,16 @@
 
 ---
 
-## 5. Current Test Suite Status Summary
+## 5. Stage 4 Missing Features Part 1 Commits Tracker
+
+| Commit Hash | Conventional Commit Message | Key Verification |
+| :---: | :--- | :--- |
+| `f0f8350` | `feat(leads): add role-based phone number masking and unmask audit logging` | **F1**: Added `leads.view_phone_unmasked` permission. Counselors/agents receive masked phone numbers (`+9198765*****` and `isPhoneMasked: true`) in `getLead` and `getLeads`. Added `POST /api/leads/:id/unmask-phone` endpoint logging `LEAD_PHONE_UNMASKED` to `AuditLog`. Verified via `backend/tests/lead_phone_masking.test.js` (3 passing). |
+| `f9b5d2a` | `feat(leads): add unified omnichannel activity timeline endpoint with cursor pagination` | **F2**: Added `GET /api/leads/:id/timeline` aggregating interactions across `leadActivities`, `FollowUp`, `ChatMessage`, `EmailMessage`, `Payment`, and `Recording` with chronological sorting (`timestamp: -1`) and cursor-based pagination (`before`, `limit`). Strictly enforces workspace tenant boundary. Verified via `backend/tests/lead_omnichannel_timeline.test.js` (3 passing). |
+
+---
+
+## 6. Current Test Suite Status Summary
 
 - **Backend Test Guard & Runner**:
   - `safetyGuard.js`: Enforces in-memory Mongo test environment; blocks localhost production/staging ports (27017) or cloud URIs.
