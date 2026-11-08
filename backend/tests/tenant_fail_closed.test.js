@@ -53,8 +53,30 @@ async function runTest() {
   const transitionalQuery = await buildLeadPermissionQuery(userWithoutWs);
   assert.ok(transitionalQuery.$or, 'Transitional mode should produce fallback $or query');
   console.log('✅ Step 3: Transitional mode produces legacy fallback when explicitly enabled.');
-
   delete process.env.ALLOW_UNSCOPED_LEGACY_LEADS;
+
+  // 4. Verify ALLOW_UNSCOPED_TENANT_READS alias works identically
+  process.env.ALLOW_UNSCOPED_TENANT_READS = 'true';
+  const aliasQuery = await buildLeadPermissionQuery(userWithoutWs);
+  assert.ok(aliasQuery.$or, 'ALLOW_UNSCOPED_TENANT_READS alias should produce fallback $or query');
+  console.log('✅ Step 4: ALLOW_UNSCOPED_TENANT_READS alias properly recognized.');
+  delete process.env.ALLOW_UNSCOPED_TENANT_READS;
+
+  // 5. Solo user without workspaceId auto-resolves their solo workspace and is NOT locked out
+  const soloUser = await User.create({
+    name: 'Solo Consultant',
+    email: 'solo@crm.local',
+    password: 'Password123!',
+    phone: '9876543219',
+    role: 'counsellor',
+    companyRole: 'owner',
+  });
+  // Initially soloUser has no workspaceId
+  assert.strictEqual(soloUser.workspaceId, undefined);
+  const soloQuery = await buildLeadPermissionQuery(soloUser);
+  assert.ok(soloUser.workspaceId, 'Solo user should have auto-resolved their solo workspace');
+  assert.strictEqual(soloQuery.workspaceId.toString(), soloUser.workspaceId.toString());
+  console.log('✅ Step 5: Solo user auto-resolves workspace and avoids lockouts.');
   await mongoose.disconnect();
   await mongod.stop();
   console.log('🎉 ALL TENANT FAIL-CLOSED ASSERTIONS PASSED!');

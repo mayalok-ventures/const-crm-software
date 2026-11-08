@@ -17,6 +17,13 @@ const { resolveStageAndStatus } = require('../utils/leadStageStatus');
 // RULE 2: Workspace Isolation - queries are strictly scoped to user's verified active workspace.
 // RULE 3: Counsellor Scope - counsellors see leads assigned to/claimed by them within their workspace (or unclaimed pool).
 // RULE 4: Owner/Manager/Solo - see all leads within their workspace.
+function isUnscopedLegacyAllowed() {
+  return (
+    process.env.ALLOW_UNSCOPED_TENANT_READS === 'true' ||
+    process.env.ALLOW_UNSCOPED_LEGACY_LEADS === 'true'
+  );
+}
+
 // RULE 5: Legacy/Solo fallback - exclusively own their own leads.
 const buildLeadPermissionQuery = async (user, isUnclaimed = false) => {
   if (!user) {
@@ -26,7 +33,7 @@ const buildLeadPermissionQuery = async (user, isUnclaimed = false) => {
   // SuperAdmin bypass - if operating within an explicit workspace context, isolate strictly to that workspace
   if (user.role === 'superadmin' || user.isAdmin) {
     if (user.workspaceId) {
-      if (process.env.ALLOW_UNSCOPED_LEGACY_LEADS === 'true') {
+      if (isUnscopedLegacyAllowed()) {
         return {
           $or: [
             { workspaceId: user.workspaceId },
@@ -39,11 +46,26 @@ const buildLeadPermissionQuery = async (user, isUnclaimed = false) => {
     return {};
   }
 
+  // Ensure solo users or users missing workspaceId on the instance resolve their solo workspace
+  if (!user.workspaceId && user._id && user.role !== 'superadmin' && !user.isAdmin) {
+    try {
+      const Workspace = require('../models/Workspace');
+      if (typeof Workspace.findOrCreateSoloWorkspace === 'function') {
+        const soloWs = await Workspace.findOrCreateSoloWorkspace(user);
+        if (soloWs && soloWs._id) {
+          user.workspaceId = soloWs._id;
+        }
+      }
+    } catch (wsErr) {
+      // Fail closed gracefully below if resolution is unavailable
+    }
+  }
+
   const workspaceId = user.workspaceId;
   const role = user.workspaceRole || user.companyRole;
 
   if (workspaceId) {
-    const allowLegacy = process.env.ALLOW_UNSCOPED_LEGACY_LEADS === 'true';
+    const allowLegacy = isUnscopedLegacyAllowed();
 
     if (role === 'counsellor' || role === 'counselor') {
       if (isUnclaimed) {
@@ -107,7 +129,7 @@ const buildLeadPermissionQuery = async (user, isUnclaimed = false) => {
   }
 
   // Fail-closed tenant security: if legacy transitional mode is not enabled, requests without an active workspace context must return zero leads
-  if (process.env.ALLOW_UNSCOPED_LEGACY_LEADS !== 'true') {
+  if (!isUnscopedLegacyAllowed()) {
     return { workspaceId: new mongoose.Types.ObjectId() };
   }
 
