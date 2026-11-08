@@ -2,7 +2,7 @@
 
 **Branch**: `fix/audit-batch-3`
 **Base Commit**: `b18fc5a` (HEAD of `fix/audit-batch-2`)
-**Current Stage**: Stage 4 Complete (Ready for Stage 5: Missing Features Part 2: F4, F3, F5 + Phase C & Final Report)
+**Current Stage**: All Stages Complete (Stages 1–5 Fully Implemented, Verified & Reported) ✅
 
 ---
 
@@ -11,10 +11,10 @@
 | Stage | Scope | Status | Notes |
 | :---: | :--- | :---: | :--- |
 | **Stage 1** | Precondition, Phase 0 Follow-ups & Phase A Plan | ✅ DONE | All Phase 0 Addendum items resolved, 6 follow-up commits landed, plan written to `audit_batch_3_plan.md`. |
-| **Stage 2** | Testing Infrastructure: T1, T2, T3 | ✅ DONE | T1 runner guard & manifest (111 tests), T2 won/converted/idempotency tests, T3 Vitest (18/18 pass) & Playwright (15/15 pass). |
+| **Stage 2** | Testing Infrastructure: T1, T2, T3 | ✅ DONE | T1 runner guard & manifest (115 tests), T2 won/converted/idempotency tests, T3 Vitest (21/21 pass) & Playwright (15/15 pass). |
 | **Stage 3** | UI/UX Frontend: U1–U5 | ✅ DONE | U1 bottom nav safe area & dirty form guard, U4 iOS 16px font-size, U3 WCAG AA badge contrast, U5 modal a11y focus trap, U2 accordion cards. |
 | **Stage 4** | Missing Features: F1, F2 | ✅ DONE | F1 role-based phone masking & unmask audit logging, F2 unified omnichannel timeline API with cursor pagination. |
-| **Stage 5** | Missing Features: F4, F3, F5 + Phase C & Final Report | ⏳ PENDING | Will begin upon user "Continue". |
+| **Stage 5** | Missing Features: F4, F3, F5 + Phase C & Final Report | ✅ DONE | F4 fee installments tracking, F3 duplicate candidate search & atomic merge, F5 commission forensic report, Phase C regression tests & `audit_batch_3_final_report.md`. |
 
 ---
 
@@ -62,14 +62,26 @@
 
 ---
 
-## 6. Current Test Suite Status Summary
+## 6. Stage 5 Missing Features Part 2 & Forensic Commits Tracker
+
+| Commit Hash | Conventional Commit Message | Key Verification |
+| :---: | :--- | :--- |
+| `46a5136` | `feat(finance): add fee installment schedule tracking and payment linkage` | **F4**: Created `FeeInstallment` model (`installmentNumber`, `amount`, `dueDate`, `gracePeriodDays`, `status`). Added endpoints for schedule creation, retrieval with auto-overdue detection, and verified payment linkage. Verified via `backend/tests/lead_fee_installments.test.js` (3 passing). |
+| `b26a6ab` | `feat(leads): add duplicate lead detection and atomic record merge endpoint` | **F3**: Added `GET /api/leads/:id/duplicate-candidates` (ranked by confidence) and `POST /api/leads/merge` (atomically reassigning follow-ups, messages, payments, and recordings, combining notes, soft-deleting secondary lead, and recording `LEAD_MERGED` to `AuditLog`). Verified via `backend/tests/lead_duplicate_merge.test.js` (2 passing). |
+| `d7200f9` | `docs(audit): publish forensic commission and agency ledger analysis report` | **F5**: Authored forensic architecture report in `docs/FORENSIC_COMMISSION_AGENCY_MODULE.md` proving university commissions are fully operational via `AdmissionDeal.js` and `dealController.js`, and contextualizing legacy single-user stubs in `adminController.js`. |
+
+---
+
+## 7. Current Test Suite Status Summary
 
 - **Backend Test Guard & Runner**:
   - `safetyGuard.js`: Enforces in-memory Mongo test environment; blocks localhost production/staging ports (27017) or cloud URIs.
-  - Manifest: 111 backend tests cataloged with tags (`audit-batch-1`, `audit-batch-2`, `audit-batch-3`).
-- **Frontend Unit & Component Tests (Vitest)**:
+  - Manifest: 115 backend tests cataloged with categories (`core`, `batch-suites`, `quarantined`) and verified zero-orphan synchronization via `test_runner_safety.test.js`.
+- **Frontend Unit & Component Tests (Vitest 2.1)**:
   - Total Suites: 7 (`shared_ui`, `dirty_form`, `lead_card`, `lead_form`, `bottom_nav`, `offline_banner`, `modal_accessibility`)
   - Total Tests: 21 passed (0 failed)
 - **Frontend E2E Smoke Tests (Playwright)**:
   - Total Test Runs: 15 passed across 3 projects (`Mobile Pixel 7`, `Mobile iPhone 14 Viewport`, `Desktop Chrome`)
   - Coverage: Lead list loading & scrolling, BottomNav tap target compliance (height >= 44px), Accessible modal opening, WhatsApp wa.me link generation, mobile input font-size >= 16px enforcement.
+- **Final Report**:
+  - Authored comprehensive documentation in `audit_batch_3_final_report.md`.
