@@ -1012,21 +1012,36 @@ export default function LeadDetailPage() {
       return;
     }
 
+    const abortController = new AbortController();
     setLoading(true);
+    // Reset form state immediately on lead switch to prevent cross-lead state bleeding (F3.2)
+    setLead(null);
+    setForm({});
+
     Promise.all([
-      api.get(`/leads/${activeId}`),
-      api.get('/projects').catch(() => ({ data: [] })),
-      api.get('/whatsapp/status').catch(() => ({ data: null })),
+      api.get(`/leads/${activeId}`, { signal: abortController.signal }),
+      api.get('/projects', { signal: abortController.signal }).catch(() => ({ data: [] })),
+      api.get('/whatsapp/status', { signal: abortController.signal }).catch(() => ({ data: null })),
     ]).then(([leadRes, projRes, waRes]) => {
+      if (abortController.signal.aborted) return;
       setLead(leadRes.data);
       setForm(leadRes.data);
       setProjects(projRes.data || []);
       setWaStatus(waRes.data);
-    }).catch(() => {
+    }).catch((err) => {
+      if (abortController.signal.aborted || err.name === 'CanceledError' || err.code === 'ERR_CANCELED') {
+        return;
+      }
       toast.error('Lead not found');
     }).finally(() => {
-      setLoading(false);
+      if (!abortController.signal.aborted) {
+        setLoading(false);
+      }
     });
+
+    return () => {
+      abortController.abort();
+    };
   }, [id, leadId, reloadTrigger]);
 
   const industryDefaults = getIndustryDefaults(currentUser?.industryType);

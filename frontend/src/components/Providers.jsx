@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { persistQueryClient } from '@tanstack/react-query-persist-client';
 import { createDexiePersister, localDb } from '@/lib/db';
+import { initOfflineSyncWorker } from '@/lib/offlineSyncWorker';
 
 let globalQueryClient = null;
 
@@ -68,7 +69,12 @@ export default function Providers({ children }) {
         }
       };
       window.addEventListener('user-updated', handleUserUpdate);
-      return () => window.removeEventListener('user-updated', handleUserUpdate);
+      const cleanupOfflineWorker = initOfflineSyncWorker();
+
+      return () => {
+        window.removeEventListener('user-updated', handleUserUpdate);
+        cleanupOfflineWorker();
+      };
     } catch (e) {
       console.warn('[Dexie Cache Persistence Notice]:', e.message);
     }
