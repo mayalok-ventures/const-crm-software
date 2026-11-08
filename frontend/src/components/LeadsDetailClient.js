@@ -10,7 +10,7 @@ import {
   Play, Pause, Send, Plus, X, Check, Calendar, AlertTriangle, ExternalLink,
   Image as ImageIcon, Video as VideoIcon, File as FileIcon, CheckCheck, RefreshCw,
   Paperclip, Copy, Package, UserCheck, ShieldCheck, History, Activity, Sparkles, Briefcase,
-  GraduationCap, BookOpen, Clock, Building2, ChevronRight, FileText, CheckCircle2
+  GraduationCap, BookOpen, Clock, Building2, ChevronRight, ChevronDown, FileText, CheckCircle2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import dynamic from 'next/dynamic';
@@ -958,6 +958,10 @@ export default function LeadDetailPage() {
   const [mobileTab, setMobileTab] = useState('details');
   const [activeRightTab, setActiveRightTab] = useState('chat'); // 'chat' | 'notes' | 'memos' | 'audit'
   const [editTab, setEditTab] = useState('academics'); // 'academics' | 'entrance' | 'preferences' | 'personal' | 'milestones'
+  const [collapsedSections, setCollapsedSections] = useState({
+    personal: true,
+    milestones: false,
+  });
 
   const { confirmNavigation } = useDirtyFormWarning({
     isDirty: editing,
@@ -2340,10 +2344,19 @@ export default function LeadDetailPage() {
 
                   {/* View Section 4: Personal & Family Dossier */}
                   <div className="bg-slate-50/60 rounded-xl p-3 border border-slate-100">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wide text-indigo-700 flex items-center gap-1.5 mb-2.5">
-                      👤 Personal & Family Dossier
-                    </span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setCollapsedSections(prev => ({ ...prev, personal: !prev.personal }))}
+                      className="w-full flex items-center justify-between text-left cursor-pointer"
+                    >
+                      <span className="text-[11px] font-extrabold uppercase tracking-wide text-indigo-700 flex items-center gap-1.5">
+                        👤 Personal & Family Dossier
+                      </span>
+                      <span className="lg:hidden text-slate-400 p-0.5">
+                        <ChevronDown size={14} className={`transform transition-transform ${collapsedSections.personal ? '' : 'rotate-180'}`} />
+                      </span>
+                    </button>
+                    <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs mt-2.5 ${collapsedSections.personal ? 'hidden lg:grid' : 'grid'}`}>
                       <div>
                         <span className="text-[10px] uppercase font-bold text-slate-400 block">Phone</span>
                         <span className="font-semibold text-slate-800 text-xs">📞 {lead.phone}</span>
