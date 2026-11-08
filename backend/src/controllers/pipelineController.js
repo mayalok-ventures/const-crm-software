@@ -1,5 +1,6 @@
 const Pipeline = require('../models/Pipeline');
 const Lead = require('../models/Lead');
+const { mapStageToCanonicalStatus } = require('../utils/leadStageStatus');
 
 /**
  * Get all pipelines for workspace
@@ -220,17 +221,59 @@ exports.deletePipeline = async (req, res) => {
         return res.status(400).json({ success: false, message: 'Target pipeline for reassignment does not exist' });
       }
 
-      // Reassign leads to the first stage of the target pipeline
-      const defaultStageId = targetPipeline.stages[0]?.stageId || 'new_lead';
+      // Reassign leads to target pipeline preserving category semantics:
+      // won leads -> target won stage, lost leads -> target lost stage, open leads -> target default open stage
+      const openStage = targetPipeline.stages.find(s => s.category === 'open') || targetPipeline.stages[0];
+      const wonStage = targetPipeline.stages.find(s => s.category === 'won') || openStage;
+      const lostStage = targetPipeline.stages.find(s => s.category === 'lost') || openStage;
+
+      // 1. Won leads
       await Lead.updateMany(
-        { workspaceId, pipelineId: pipeline._id },
+        {
+          workspaceId,
+          pipelineId: pipeline._id,
+          status: { $in: ['won', 'converted', 'closed won', 'Admission Confirmed'] },
+        },
         {
           $set: {
             pipelineId: targetPipeline._id,
-            pipelineStage: defaultStageId,
-            pipeline_stage: defaultStageId,
-            status: defaultStageId,
-          }
+            pipelineStage: wonStage.stageId,
+            pipeline_stage: wonStage.stageId,
+            status: 'won',
+          },
+        }
+      );
+
+      // 2. Lost leads
+      await Lead.updateMany(
+        {
+          workspaceId,
+          pipelineId: pipeline._id,
+          status: { $in: ['lost', 'dead', 'dropped', 'closed lost', 'not_interested', 'Not Interested'] },
+        },
+        {
+          $set: {
+            pipelineId: targetPipeline._id,
+            pipelineStage: lostStage.stageId,
+            pipeline_stage: lostStage.stageId,
+            status: 'lost',
+          },
+        }
+      );
+
+      // 3. Remaining open leads
+      await Lead.updateMany(
+        {
+          workspaceId,
+          pipelineId: pipeline._id,
+        },
+        {
+          $set: {
+            pipelineId: targetPipeline._id,
+            pipelineStage: openStage.stageId,
+            pipeline_stage: openStage.stageId,
+            status: mapStageToCanonicalStatus(openStage),
+          },
         }
       );
     }
@@ -280,6 +323,8 @@ exports.remapStageLeads = async (req, res) => {
       return res.status(400).json({ success: false, message: `Target stage '${toStageId}' does not exist in pipeline` });
     }
 
+    const canonicalStatus = mapStageToCanonicalStatus(targetStage);
+
     const result = await Lead.updateMany(
       {
         workspaceId,
@@ -294,7 +339,7 @@ exports.remapStageLeads = async (req, res) => {
         $set: {
           pipelineStage: toStageId,
           pipeline_stage: toStageId,
-          status: toStageId,
+          status: canonicalStatus,
         },
       }
     );
