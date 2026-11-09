@@ -147,9 +147,12 @@ class GoogleSheetsService {
       try {
         return await reqFn();
       } catch (err) {
-        if (err.response?.status === 429 && attempt < maxRetries) {
-          const delay = Math.pow(2, attempt) * 1500; // 1.5s, 3s, 6s
-          console.warn(`[Sheets API 429 Rate Limited]: backing off for ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+        const status = err.response?.status;
+        const isTransient = status === 429 || (status >= 500 && status <= 504) || err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT';
+        if (isTransient && attempt < maxRetries) {
+          const jitter = Math.floor(Math.random() * 400);
+          const delay = Math.pow(2, attempt) * 1000 + jitter;
+          console.warn(`[Sheets API ${status || err.code}]: backing off for ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
           await new Promise((r) => setTimeout(r, delay));
           attempt++;
           continue;
@@ -199,6 +202,7 @@ class GoogleSheetsService {
       const config = {
         headers: authHeader ? { Authorization: authHeader } : {},
         params: !authHeader && apiKey ? { key: apiKey } : {},
+        timeout: 15000,
       };
 
       const res = await this._requestWithBackoff(() => axios.get(url, config));
@@ -292,6 +296,7 @@ class GoogleSheetsService {
       const config = {
         headers: authHeader ? { Authorization: authHeader } : {},
         params: !authHeader && apiKey ? { key: apiKey } : {},
+        timeout: 15000,
       };
 
       const res = await this._requestWithBackoff(() => axios.get(url, config));

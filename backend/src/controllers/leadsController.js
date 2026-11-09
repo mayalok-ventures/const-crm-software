@@ -3143,6 +3143,13 @@ exports.importLeads = async (req, res) => {
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         return res.status(400).json({ message: 'Failed to read file signature.' });
       }
+    } else if (isCSV) {
+      const { validateCsvMagicBytes } = require('../utils/fileMagicBytes');
+      const isValidCsv = validateCsvMagicBytes(req.file.path || req.file.buffer);
+      if (!isValidCsv) {
+        if (req.file.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.status(400).json({ message: 'Invalid CSV file format. File contains binary executable data or invalid characters.' });
+      }
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -3410,17 +3417,22 @@ exports.importLeads = async (req, res) => {
       }
       await flushChunk();
     } else {
-      const workbook = req.file.path
-        ? xlsx.readFile(req.file.path, { cellDates: true, dense: true })
-        : xlsx.read(req.file.buffer, { type: 'buffer' });
-      const sheetName = workbook.SheetNames[0];
-      if (!sheetName) {
-        if (req.file.path) try { fs.unlinkSync(req.file.path); } catch (_) {}
-        return res.status(400).json({ message: 'Uploaded file contains no worksheets' });
+      const { parseXlsxInWorker } = require('../utils/xlsxWorker');
+      const parsed = await parseXlsxInWorker({
+        filePath: req.file.path,
+        buffer: req.file.buffer,
+        maxRows: 50000,
+      });
+
+      if (!parsed.success) {
+        if (req.file.path && fs.existsSync(req.file.path)) try { fs.unlinkSync(req.file.path); } catch (_) {}
+        if (parsed.code === 'FILE_TOO_LARGE') {
+          return res.status(413).json({ message: parsed.error, rowCount: parsed.rowCount });
+        }
+        return res.status(400).json({ message: parsed.error || 'Failed to parse workbook' });
       }
 
-      const rawRows = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
-      for (const row of rawRows) {
+      for (const row of parsed.rows) {
         await processRow(row);
       }
       await flushChunk();

@@ -23,22 +23,27 @@ cloudinary.config({
 // Audio files use resource_type: 'video' — this is Cloudinary's classification
 // for any media with an audio track (not a mistake).
 //
-// Retry logic: 3 total attempts (initial + 2 retries) with 1s delay between attempts.
+const { validateAudioMagicBytes } = require('../utils/fileMagicBytes');
+
+// Retry logic: 3 total attempts (initial + 2 retries) with exponential backoff and jitter.
 // If all attempts fail, the local temp file is cleaned up and a 500 is returned.
 // Local temp file is ALWAYS deleted after upload (success or fail) to prevent disk bloat.
-const uploadToCloudinaryWithRetry = async (filePath, options, retries = 2) => {
+const uploadToCloudinaryWithRetry = async (filePath, options = {}, retries = 2) => {
   let attempt = 0;
+  const uploadOptions = { timeout: 30000, ...options };
   while (attempt <= retries) {
     try {
-      const result = await cloudinary.uploader.upload(filePath, options);
+      const result = await cloudinary.uploader.upload(filePath, uploadOptions);
       return result;
     } catch (err) {
       attempt++;
       if (attempt > retries) {
         throw err;
       }
-      console.warn(`[Cloudinary Recording] Upload failed, retrying (${attempt}/${retries}). Error: ${err.message}`);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const jitter = Math.floor(Math.random() * 300);
+      const delay = (1000 * Math.pow(2, attempt - 1)) + jitter;
+      console.warn(`[Cloudinary Recording] Upload failed, retrying in ${delay}ms (${attempt}/${retries}). Error: ${err.message}`);
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
 };
@@ -55,6 +60,12 @@ exports.uploadRecording = async (req, res) => {
     if (req.file.size > MAX_SIZE) {
       if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
       return res.status(400).json({ message: 'File too large. Max size is 20MB.' });
+    }
+
+    // Verify binary magic bytes to prevent executable/disguised uploads
+    if (!validateAudioMagicBytes(req.file.path)) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(400).json({ message: 'Invalid audio file format. File content does not match allowed audio formats (MP3, WAV, OGG, M4A, WEBM).' });
     }
 
     const companyId = req.user.companyId || (req.user.companyRole === 'owner' ? req.user._id : null);
