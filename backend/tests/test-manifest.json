@@ -556,6 +556,10 @@
     "rc2_connection_write_concern.test.js": {
       "category": "batch-suites",
       "reason": "Production Readiness B1: Connection-level journaled majority write concern and throughput verification"
+    },
+    "rc2_index_sync_and_pruning.test.js": {
+      "category": "batch-suites",
+      "reason": "Production Readiness B2: Safe index sync, duplicate detection precheck, and explain-guarded pruning"
     }
   }
 }
