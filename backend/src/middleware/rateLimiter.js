@@ -86,11 +86,36 @@ const handleAbuse = async (req, type, detail) => {
   }
 };
 
+// Standard user-keyed identifier: extracts authenticated user id, falling back to client IP
+const getUserOrIpKey = (req) => {
+  if (req.user && (req.user._id || req.user.id)) {
+    return `user:${(req.user._id || req.user.id).toString()}`;
+  }
+  if (req.headers && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    const rawToken = req.headers.authorization.split(' ')[1];
+    if (rawToken) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.decode(rawToken);
+        if (decoded && (decoded.id || decoded._id || decoded.userId)) {
+          return `user:${decoded.id || decoded._id || decoded.userId}`;
+        }
+      } catch {}
+    }
+  }
+  return `ip:${req.ip || '127.0.0.1'}`;
+};
+
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 400,
+  max: (req) => {
+    const key = getUserOrIpKey(req);
+    if (key.startsWith('user:')) return 18000; // 1,200 req/min for authenticated counselors
+    return 400; // 400 req / 15 min for unauthenticated
+  },
+  keyGenerator: getUserOrIpKey,
   skip: (req) => {
-    if (process.env.NODE_ENV === 'test') return true;
+    if (process.env.NODE_ENV === 'test' && !req.headers['x-test-rate-limit']) return true;
     if (req.headers['x-test-bypass'] === 'crm-local-test') return true;
     if (process.env.NODE_ENV !== 'production' && (req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1')) return true;
     return false;
@@ -170,9 +195,42 @@ const websiteFormLimiter = rateLimit({
   },
 });
 
-const adminLimiter = rateLimit({
+// Generous user-keyed rate limiter for daily manager & admin operations (>=300 req/min/user)
+const adminWorkLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute rolling window
+  max: (req) => {
+    const key = getUserOrIpKey(req);
+    // Authenticated managers and admins get 600 req/min (= 10 req/sec)
+    if (key.startsWith('user:')) return 600;
+    return 60; // 60 req/min unauthenticated
+  },
+  keyGenerator: getUserOrIpKey,
+  skip: (req) => {
+    if (process.env.NODE_ENV === 'test' && !req.headers['x-test-rate-limit']) return true;
+    if (req.headers['x-test-bypass'] === 'crm-local-test') return true;
+    return false;
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+  message: {
+    code: 'ADMIN_WORK_RATE_LIMITED',
+    message: 'Too many operational requests. Please wait a moment before continuing.',
+  },
+  handler: (req, res) => {
+    res.status(429).json({
+      code: 'ADMIN_WORK_RATE_LIMITED',
+      message: 'Too many operational requests. Please wait a moment before continuing.',
+      retryAfterSeconds: 60,
+    });
+  }
+});
+
+// Bounded limiter for sensitive/infrastructure superadmin operations
+const superAdminLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes window
-  max: 120, // 120 requests per 15 minutes (~8 req/min for administrative actions)
+  max: 120, // 120 requests per 15 minutes (~8 req/min for sensitive actions)
+  keyGenerator: getUserOrIpKey,
   skip: (req) => {
     if (process.env.NODE_ENV === 'test' && !req.headers['x-test-rate-limit']) return true;
     if (req.headers['x-test-bypass'] === 'crm-local-test') return true;
@@ -183,7 +241,7 @@ const adminLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
   message: {
     code: 'ADMIN_RATE_LIMITED',
-    message: 'Too many administrative requests from this connection. Please wait before retrying.',
+    message: 'Too many administrative requests from this user. Please wait before retrying.',
   },
   handler: (req, res) => {
     const resetTime = req.rateLimit?.resetTime ? new Date(req.rateLimit.resetTime) : new Date(Date.now() + 15 * 60 * 1000);
@@ -192,11 +250,23 @@ const adminLimiter = rateLimit({
 
     res.status(429).json({
       code: 'ADMIN_RATE_LIMITED',
-      message: `Too many administrative requests. Please wait ${remainingMinutes} minute${remainingMinutes > 1 ? 's' : ''} before trying again.`,
+      message: `Too many sensitive administrative requests. Please wait ${remainingMinutes} minute${remainingMinutes > 1 ? 's' : ''} before trying again.`,
       retryAfterMinutes: remainingMinutes,
       resetTime: resetTime.toISOString(),
     });
   }
 });
 
-module.exports = { apiLimiter, authLimiter, bulkSendGuard, websiteFormLimiter, adminLimiter };
+// Backward compatibility alias: adminLimiter defaults to bounded superAdminLimiter (120 req / 15 min)
+const adminLimiter = superAdminLimiter;
+
+module.exports = {
+  apiLimiter,
+  authLimiter,
+  bulkSendGuard,
+  websiteFormLimiter,
+  adminLimiter,
+  adminWorkLimiter,
+  superAdminLimiter,
+  getUserOrIpKey,
+};

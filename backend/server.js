@@ -32,7 +32,7 @@ const helmet = require('helmet');
 const mongoose = require('mongoose');
 
 const connectDB = require('./src/config/db');
-const { apiLimiter, adminLimiter } = require('./src/middleware/rateLimiter');
+const { apiLimiter, adminWorkLimiter, superAdminLimiter } = require('./src/middleware/rateLimiter');
 const { startFollowUpCron, stopFollowUpCron } = require('./src/utils/cron');
 
 // Route imports
@@ -69,8 +69,16 @@ const app = express();
 // Performance Timing Instrumentation (active if PERF_DEBUG=1)
 app.use(perfTimingMiddleware);
 
-// Trust reverse proxy (Nginx & Cloudflare) for accurate client IP identification and rate-limiting
-app.set('trust proxy', 1);
+// Trust reverse proxy (Cloudflare, Render Load Balancer, Nginx)
+// Configurable via TRUST_PROXY_HOPS (e.g., '1' for Render LB, '2' for Cloudflare + Render LB, 'false')
+const getTrustProxyConfig = () => {
+  const envVal = process.env.TRUST_PROXY_HOPS;
+  if (!envVal || envVal === 'true') return 1;
+  if (envVal === 'false') return false;
+  const num = parseInt(envVal, 10);
+  return Number.isNaN(num) ? envVal : num;
+};
+app.set('trust proxy', getTrustProxyConfig());
 
 // Security & CORS Configuration
 app.use(helmet({
@@ -276,7 +284,7 @@ app.use('/api/templates', templatesRoutes);
 app.use('/api/recordings', recordingsRoutes);
 app.use('/api/groups', groupsRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/admin', adminLimiter, adminRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/whatsapp/meta', metaWhatsAppRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/campaigns', campaignRoutes);
@@ -301,10 +309,10 @@ const { getBootstrapData } = require('./src/controllers/bootstrapController');
 app.get('/api/bootstrap', protectAuth, resolveWs, getBootstrapData);
 
 const superAdminRoutes = require('./src/superadmin/routes/superAdminRoutes');
-app.use('/api/super-admin', adminLimiter, superAdminRoutes);
-app.use('/api/superadmin', adminLimiter, superAdminRoutes);
-app.use('/super-admin', adminLimiter, superAdminRoutes);
-app.use('/superadmin', adminLimiter, superAdminRoutes);
+app.use('/api/super-admin', superAdminLimiter, superAdminRoutes);
+app.use('/api/superadmin', superAdminLimiter, superAdminRoutes);
+app.use('/super-admin', superAdminLimiter, superAdminRoutes);
+app.use('/superadmin', superAdminLimiter, superAdminRoutes);
 
 // Public Dynamic Plan Catalog
 const planCatalogController = require('./src/superadmin/controllers/planCatalogController');

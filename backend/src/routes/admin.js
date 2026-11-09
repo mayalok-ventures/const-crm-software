@@ -5,11 +5,22 @@ const monitoringController = require('../monitoring/controllers/monitoringContro
 const planCatalogController = require('../superadmin/controllers/planCatalogController');
 const couponController = require('../superadmin/controllers/couponController');
 const healthController = require('../monitoring/controllers/healthController').default || require('../monitoring/controllers/healthController');
-const { protect, adminOnly, managerOrAdminOnly, superAdminOnly } = require('../middleware/auth');
+const { protect, adminOnly, managerOrAdminOnly, superAdminOnly: baseSuperAdminOnly } = require('../middleware/auth');
 const { resolveWorkspace } = require('../middleware/permission');
+const { adminWorkLimiter, superAdminLimiter } = require('../middleware/rateLimiter');
+
+// Rate-limited superAdmin middleware: enforces bounded limits on sensitive / platform operations
+const superAdminOnly = (req, res, next) => {
+  superAdminLimiter(req, res, (err) => {
+    if (err) return next(err);
+    baseSuperAdminOnly(req, res, next);
+  });
+};
 
 router.use(protect);
 router.use(resolveWorkspace);
+// Default generous rate limiter for daily manager & admin operations (>=300 req/min/user)
+router.use(adminWorkLimiter);
 
 // 1. Overview / Dashboard
 router.get('/metrics', adminOnly, adminController.getOverviewMetrics);
