@@ -560,6 +560,10 @@
     "rc2_index_sync_and_pruning.test.js": {
       "category": "batch-suites",
       "reason": "Production Readiness B2: Safe index sync, duplicate detection precheck, and explain-guarded pruning"
+    },
+    "rc2_migration_safety.test.js": {
+      "category": "batch-suites",
+      "reason": "Production Readiness B3: Database migration safety, idempotency, and dry-run verification"
     }
   }
 }

@@ -36,6 +36,9 @@ async function runReconciliation(options = {}) {
 
   for await (const pay of cursor) {
     totalScanned++;
+    if (totalScanned % 500 === 0) {
+      console.log(`  ⏳ Processed ${totalScanned} payments (Drifted: ${driftedCount})...`);
+    }
     const updates = {};
     let needsUpdate = false;
 

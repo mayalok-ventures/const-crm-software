@@ -33,7 +33,12 @@ async function runBackfill(options = {}) {
   let recUnresolved = 0;
 
   const recCursor = Recording.find(query).cursor();
+  let recScanned = 0;
   for await (const rec of recCursor) {
+    recScanned++;
+    if (recScanned % 500 === 0) {
+      console.log(`  ⏳ Processed ${recScanned}/${totalRecordings} recordings...`);
+    }
     if (rec.leadId) {
       const lead = await Lead.findById(rec.leadId).select('workspaceId').lean();
       if (lead && lead.workspaceId) {
@@ -57,7 +62,12 @@ async function runBackfill(options = {}) {
   let payUnresolved = 0;
 
   const payCursor = Payment.find(query).cursor();
+  let payScanned = 0;
   for await (const pay of payCursor) {
+    payScanned++;
+    if (payScanned % 500 === 0) {
+      console.log(`  ⏳ Processed ${payScanned}/${totalPayments} payments...`);
+    }
     const parentLeadId = pay.leadId || pay.lead_id;
     if (parentLeadId) {
       const lead = await Lead.findById(parentLeadId).select('workspaceId').lean();

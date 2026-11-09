@@ -44,8 +44,13 @@ async function runBackfill(options = {}) {
   const workspaceMemo = new Map(); // ownerId/userId -> workspaceId
 
   const cursor = Lead.find(query).cursor();
+  let scannedCount = 0;
 
   for await (const lead of cursor) {
+    scannedCount++;
+    if (scannedCount % 500 === 0) {
+      console.log(`  ⏳ Processed ${scannedCount}/${totalUnscoped} leads (Resolved: ${resolvedCount}, Unresolved: ${unresolvedCount})...`);
+    }
     let targetWsId = null;
 
     // 1. Try resolving via lead.companyId (Company Owner's primary workspace)
