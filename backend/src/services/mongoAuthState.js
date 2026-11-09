@@ -1,14 +1,79 @@
 const { initAuthCreds, BufferJSON, proto } = require('@whiskeysockets/baileys');
+const crypto = require('crypto');
+
+/**
+ * Resolves the 32-byte encryption key for WhatsApp Auth State credentials.
+ * Supports 64-char hex strings or arbitrary passphrases hashed via SHA-256.
+ */
+function getEncryptionKey() {
+  const rawKey = (process.env.WA_ENCRYPTION_KEY || process.env.ENCRYPTION_KEY || process.env.INTEGRATION_ENCRYPTION_KEY || '').trim();
+  if (!rawKey) return null;
+  if (rawKey.length === 64 && /^[0-9a-fA-F]+$/.test(rawKey)) {
+    return Buffer.from(rawKey, 'hex');
+  }
+  return crypto.createHash('sha256').update(rawKey, 'utf8').digest();
+}
+
+/**
+ * Encrypts a serialized auth string with AES-256-GCM.
+ * Output format: enc:v1:<iv_hex>:<authTag_hex>:<ciphertext_hex>
+ */
+function encryptAuthState(plaintext) {
+  if (!plaintext || typeof plaintext !== 'string') return plaintext;
+  const key = getEncryptionKey();
+  if (!key) return plaintext; // Store unencrypted if no key configured
+
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  let ciphertext = cipher.update(plaintext, 'utf8', 'hex');
+  ciphertext += cipher.final('hex');
+  const authTag = cipher.getAuthTag();
+
+  return `enc:v1:${iv.toString('hex')}:${authTag.toString('hex')}:${ciphertext}`;
+}
+
+/**
+ * Decrypts an AES-256-GCM encrypted auth string.
+ * Transparently falls back to plaintext if the string does not have the enc:v1: prefix.
+ */
+function decryptAuthState(storedData) {
+  if (!storedData || typeof storedData !== 'string') return storedData;
+  if (!storedData.startsWith('enc:v1:')) {
+    // Unencrypted legacy format (backward compatibility)
+    return storedData;
+  }
+
+  const parts = storedData.split(':');
+  if (parts.length !== 5) {
+    throw new Error('Malformed encrypted auth state token');
+  }
+
+  const key = getEncryptionKey();
+  if (!key) {
+    throw new Error('Encountered encrypted WhatsApp auth state but WA_ENCRYPTION_KEY is not configured');
+  }
+
+  const [, , ivHex, tagHex, cipherHex] = parts;
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(tagHex, 'hex');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(authTag);
+
+  let decrypted = decipher.update(cipherHex, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
 
 /**
  * Custom High-Performance MongoDB Auth State Adapter for Baileys
  * 
  * Implements:
- * 1. BufferJSON serialization & deserialization for cryptographic keys.
- * 2. Protobuf app-state-sync-key object rehydration to prevent state sync crashes.
- * 3. Batch find in keys.get to eliminate round-trip latency.
- * 4. Atomic bulkWrite in keys.set for fast, non-blocking key persistence.
- * 5. Corrupted document resilience with safe try/catch error boundaries.
+ * 1. AES-256-GCM at-rest credential encryption with backward-compatible plaintext read fallback.
+ * 2. BufferJSON serialization & deserialization for cryptographic keys.
+ * 3. Protobuf app-state-sync-key object rehydration to prevent state sync crashes.
+ * 4. Batch find in keys.get to eliminate round-trip latency.
+ * 5. Atomic bulkWrite in keys.set for fast, non-blocking key persistence.
+ * 6. Corrupted document resilience with safe try/catch error boundaries.
  */
 const useMongoDBAuthState = async (modelOrCollection, sessionId) => {
   const WhatsAppAuth = modelOrCollection;
@@ -17,9 +82,10 @@ const useMongoDBAuthState = async (modelOrCollection, sessionId) => {
   const writeData = async (key, data) => {
     try {
       const serialized = JSON.stringify(data, BufferJSON.replacer);
+      const payload = encryptAuthState(serialized);
       await WhatsAppAuth.findOneAndUpdate(
         { sessionId: sId, key },
-        { $set: { data: serialized } },
+        { $set: { data: payload } },
         { upsert: true }
       );
     } catch (err) {
@@ -31,7 +97,8 @@ const useMongoDBAuthState = async (modelOrCollection, sessionId) => {
     try {
       const doc = await WhatsAppAuth.findOne({ sessionId: sId, key }).lean();
       if (!doc || !doc.data) return null;
-      return JSON.parse(doc.data, BufferJSON.reviver);
+      const decrypted = decryptAuthState(doc.data);
+      return JSON.parse(decrypted, BufferJSON.reviver);
     } catch (err) {
       console.error(`[MongoAuth] Error reading key ${key} for session ${sId}:`, err.message);
       return null;
@@ -75,7 +142,8 @@ const useMongoDBAuthState = async (modelOrCollection, sessionId) => {
               const id = keyMap.get(doc.key);
               if (!id) continue;
               try {
-                let val = JSON.parse(doc.data, BufferJSON.reviver);
+                const decrypted = decryptAuthState(doc.data);
+                let val = JSON.parse(decrypted, BufferJSON.reviver);
                 if (type === 'app-state-sync-key' && val) {
                   val = proto.Message.AppStateSyncKeyData.fromObject(val);
                 }
@@ -99,10 +167,11 @@ const useMongoDBAuthState = async (modelOrCollection, sessionId) => {
               if (val) {
                 try {
                   const serialized = JSON.stringify(val, BufferJSON.replacer);
+                  const payload = encryptAuthState(serialized);
                   bulkOps.push({
                     updateOne: {
                       filter: { sessionId: sId, key },
-                      update: { $set: { data: serialized } },
+                      update: { $set: { data: payload } },
                       upsert: true,
                     },
                   });
@@ -140,4 +209,9 @@ const useMongoDBAuthState = async (modelOrCollection, sessionId) => {
   };
 };
 
-module.exports = { useMongoDBAuthState };
+module.exports = {
+  useMongoDBAuthState,
+  encryptAuthState,
+  decryptAuthState,
+  getEncryptionKey,
+};

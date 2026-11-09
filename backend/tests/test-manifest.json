@@ -568,6 +568,10 @@
     "rc2_soft_delete_purge.test.js": {
       "category": "batch-suites",
       "reason": "Production Readiness B4: Soft-delete retention purge script and transactional cascade cleanup"
+    },
+    "rc2_wa_auth_encryption.test.js": {
+      "category": "batch-suites",
+      "reason": "Production Readiness C1: AES-256-GCM encryption for Baileys auth state and plaintext fallback"
     }
   }
 }
