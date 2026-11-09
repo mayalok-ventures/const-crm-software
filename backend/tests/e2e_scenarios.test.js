@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const dotenv = require('dotenv');
 dotenv.config();
 
-const BASE_URL = 'http://localhost:5000/api';
+const BASE_URL = process.env.TEST_BASE_URL ? `${process.env.TEST_BASE_URL}/api` : 'http://localhost:5000/api';
 const JWT_SECRET = process.env.JWT_SECRET || 'crm_jwt_secret_dev_key_2026';
 
 const runE2ETests = async () => {

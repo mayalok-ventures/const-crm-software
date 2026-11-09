@@ -359,7 +359,8 @@ const { seedPlans } = require('./src/utils/seedPlans');
 // Bind HTTP listener: Render injects process.env.PORT. Fallback to Catalyst port or local dev 5000
 const PORT = Number(process.env.PORT || process.env.X_ZOHO_CATALYST_LISTEN_PORT || 5000);
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🚀 Admission Consultants CRM Backend running on http://0.0.0.0:${PORT}`);
+  const actualPort = (server && server.address() && typeof server.address() === 'object') ? server.address().port : PORT;
+  console.log(`\n🚀 Admission Consultants CRM Backend running on http://0.0.0.0:${actualPort}`);
   console.log(`📦 Environment: ${process.env.NODE_ENV || 'development'}\n`);
   
   // Start event loop & memory monitor if PERF_DEBUG=1

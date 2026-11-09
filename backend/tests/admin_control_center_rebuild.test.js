@@ -7,8 +7,14 @@ const { getOverviewMetrics, getAdminLeads } = require('../src/controllers/adminC
 describe('Admin Control Center Rebuild Test Suite', () => {
   let orgAdminUser;
   let testCompanyId;
+  let mongod = null;
 
   beforeAll(async () => {
+    if (mongoose.connection.readyState === 0) {
+      const { MongoMemoryServer } = require('mongodb-memory-server');
+      mongod = await MongoMemoryServer.create();
+      await mongoose.connect(mongod.getUri());
+    }
     testCompanyId = new mongoose.Types.ObjectId();
     orgAdminUser = {
       _id: new mongoose.Types.ObjectId(),
@@ -19,6 +25,13 @@ describe('Admin Control Center Rebuild Test Suite', () => {
       workStatus: 'company_owner',
       companyRole: 'owner',
     };
+  });
+
+  afterAll(async () => {
+    if (mongod) {
+      await mongoose.disconnect();
+      await mongod.stop();
+    }
   });
 
   describe('Multi-Tenant Metrics Aggregation Engine', () => {

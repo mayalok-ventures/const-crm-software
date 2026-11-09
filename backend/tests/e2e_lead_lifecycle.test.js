@@ -4,7 +4,7 @@
 
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 const axios = require('axios');
-const BASE_URL = 'http://localhost:5000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:5000';
 
 const runE2ETests = async () => {
   console.log('\n🌟 ========================================================');

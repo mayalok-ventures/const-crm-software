@@ -71,6 +71,33 @@ if (!global.describe) {
   global.beforeEach = beforeEach;
   global.afterEach = afterEach;
 
+  if (!global.expect) {
+    const assert = require('assert');
+    global.expect = function (actual) {
+      return {
+        toBe(expected) { assert.strictEqual(actual, expected); },
+        toEqual(expected) { assert.deepStrictEqual(actual, expected); },
+        toBeDefined() { assert.notStrictEqual(actual, undefined); },
+        toBeUndefined() { assert.strictEqual(actual, undefined); },
+        toBeNull() { assert.strictEqual(actual, null); },
+        toBeTruthy() { assert.ok(actual); },
+        toBeFalsy() { assert.ok(!actual); },
+        toBeGreaterThan(expected) { assert.ok(actual > expected); },
+        toBeGreaterThanOrEqual(expected) { assert.ok(actual >= expected); },
+        toBeLessThan(expected) { assert.ok(actual < expected); },
+        toBeLessThanOrEqual(expected) { assert.ok(actual <= expected); },
+        toContain(item) {
+          if (Array.isArray(actual) || typeof actual === 'string') {
+            assert.ok(actual.includes(item));
+          } else {
+            assert.ok(item in actual);
+          }
+        },
+        toHaveLength(len) { assert.strictEqual(actual?.length, len); },
+      };
+    };
+  }
+
   function invokeFn(fn, ctx) {
     return new Promise((resolve, reject) => {
       if (!fn || typeof fn !== 'function') return resolve();
