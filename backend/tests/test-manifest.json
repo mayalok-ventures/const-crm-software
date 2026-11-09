@@ -564,6 +564,10 @@
     "rc2_migration_safety.test.js": {
       "category": "batch-suites",
       "reason": "Production Readiness B3: Database migration safety, idempotency, and dry-run verification"
+    },
+    "rc2_soft_delete_purge.test.js": {
+      "category": "batch-suites",
+      "reason": "Production Readiness B4: Soft-delete retention purge script and transactional cascade cleanup"
     }
   }
 }
