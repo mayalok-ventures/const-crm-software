@@ -369,6 +369,22 @@
       "category": "batch-suites",
       "reason": "Audit Batch 1 call recordings workspace isolation"
     },
+    "rc1_jwt_token_version.test.js": {
+      "category": "batch-suites",
+      "reason": "Release RC1 Gate: JWT tokenVersion lifecycle, backward compatibility & multi-device revocation"
+    },
+    "rc1_index_pruning_and_write_concern.test.js": {
+      "category": "batch-suites",
+      "reason": "Release RC1 Gate: Top 10 queries explain IXSCAN verification & majority write concern throughput"
+    },
+    "rc1_outbound_resilience.test.js": {
+      "category": "batch-suites",
+      "reason": "Release RC1 Gate: XLSX worker offloading, file magic bytes & outbound jittered retry"
+    },
+    "rc1_security_hardening.test.js": {
+      "category": "batch-suites",
+      "reason": "Release RC1 Gate: Cross-tenant route isolation & mass-assignment allowlist protection"
+    },
     "render_deployment_compatibility.test.js": {
       "category": "core",
       "reason": "Render environment compatibility checks"

@@ -182,3 +182,4 @@ describe('RC1 Gate: Index Pruning & Write Concern Durability', function () {
     assert.ok(docsPerSec > 200, `Write throughput (${docsPerSec} docs/sec) must exceed 200 docs/sec baseline`);
   });
 });
+
