@@ -588,6 +588,10 @@
     "rc2_share_token_security.test.js": {
       "category": "batch-suites",
       "reason": "Production Readiness C5: Public share token expiry, phone masking, and scraping rate limits"
+    },
+    "rc2_fail_safe_config.test.js": {
+      "category": "batch-suites",
+      "reason": "Production Readiness D1: Fail-safe production environment validator and secret gating"
     }
   }
 }

@@ -20,6 +20,12 @@ services:
         generateValue: true
       - key: INTEGRATION_ENCRYPTION_KEY
         generateValue: true
+      - key: WA_ENCRYPTION_KEY
+        generateValue: true
+      - key: STRICT_ENV_EXIT
+        value: "true"
+      - key: ALLOW_PUBLIC_SHEETS
+        value: "true"
       - key: ALLOWED_ORIGINS
         value: https://app.sahyak.com,https://crm.sahyak.com
       - key: FRONTEND_URL
