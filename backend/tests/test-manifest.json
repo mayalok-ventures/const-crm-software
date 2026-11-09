@@ -405,6 +405,10 @@
       "category": "batch-suites",
       "reason": "Release RC3 Gate: Streaming CSV export (>=2k rows/s), chunked bulk transfer, and high-throughput deduplicated bulk import"
     },
+    "rc3_chaos_matrix.test.js": {
+      "category": "batch-suites",
+      "reason": "Release RC3 Gate: Chaos matrix testing mongod restart, 3P mock latency/errors, Redis down fallback, ENOSPC disk full & SIGTERM in-flight drain"
+    },
     "render_deployment_compatibility.test.js": {
       "category": "core",
       "reason": "Render environment compatibility checks"
