@@ -28,12 +28,12 @@ The table below separates **Local Pre-Flight Evidence** (gathered on local devel
 
 | Gate # | Invariant / Requirement | Mandatory Staging Threshold ($\ge$72h Soak) | Local Pre-Flight Evidence (AMD Ryzen 7 PRO 5850U) | Staging Gate Status | Staging Verification Telemetry Source |
 | :---: | :--- | :--- | :--- | :---: | :--- |
-| **G-01** | **System HTTP Error Rate** | 5xx error rate $< 0.1\%$ across all human counselor routes | **0.00% 5xx errors** (546/546 requests passed cleanly in local concurrent load harness) | ⏳ **PENDING STAGING SOAK** | Render / Datadog APM HTTP response codes across $\ge 72$ hours |
-| **G-02** | **API Latency (p95)** | p95 $< 300\text{ ms}$ for list, detail, and fast save under 50 concurrent users | **p50 = 6.09 ms, p95 = 7.33 ms** (Cached Count list); **p50 = 42.67 ms, p95 = 52.31 ms** (Full Count) | ⏳ **PENDING STAGING SOAK** | CloudWatch / Datadog route p95 metrics under real counselor concurrency |
-| **G-03** | **Event-Loop Lag (p99)** | Event-loop lag p99 $< 100\text{ ms}$ on API nodes | **p50 = 14 ms, p95 = 78 ms, p99 = 111 ms** (Under local concurrent load); **$< 10\text{ ms}$** in `xlsxWorker.js` | ⏳ **PENDING STAGING SOAK** | Node.js `perf_hooks` event-loop lag monitor sampled at 100ms intervals |
-| **G-04** | **Runtime Memory Profile** | Zero unbounded heap or RSS growth over $\ge 72\text{ hours}$ (flat memory curve) | **RSS stabilized at 180MB - 398MB** across 25,000 lead operations; 0 unhandled rejections | ⏳ **PENDING STAGING SOAK** | Prometheus / Datadog process RSS & `nodejs_heap_size_used_bytes` time-series |
+| **G-01** | **System HTTP Error Rate** | 5xx error rate $< 0.1\%$ across all human counselor routes | **0.00% 5xx errors** (0/131,724 requests failed in 30.1-minute local soak test) | ⏳ **PENDING STAGING SOAK** | Render / Datadog APM HTTP response codes across $\ge 72$ hours |
+| **G-02** | **API Latency (p95)** | p95 $< 300\text{ ms}$ for list, detail, and fast save under 50 concurrent users | **p50 = 6.09 ms, p95 = 7.33 ms** (Cached Count list); **p50 = 42.67 ms, p95 = 52.31 ms** (Full Count); **73.1 reqs/sec throughput** | ⏳ **PENDING STAGING SOAK** | CloudWatch / Datadog route p95 metrics under real counselor concurrency |
+| **G-03** | **Event-Loop Lag (p99)** | Event-loop lag p99 $< 100\text{ ms}$ on API nodes | **p50 = 82 ms, p95 = 160 ms, p99 = 211 ms, max = 629 ms** (30.1-min soak, 50 virtual users in single process; CPU profile: BSON serialization + Mongoose document instantiation); **$< 10\text{ ms}$** in `xlsxWorker.js` off-heap | ⏳ **PENDING STAGING SOAK** | Node.js `perf_hooks` event-loop lag monitor sampled at 100ms intervals |
+| **G-04** | **Runtime Memory Profile** | Zero unbounded heap or RSS growth over $\ge 72\text{ hours}$ (flat memory curve) | **RSS: 339 MB $\to$ 486 MB peak**; **Heap: 143 MB $\to$ 225 MB** (flat/stabilized over 30.1 mins, 131,724 requests; 0 unhandled rejections) | ⏳ **PENDING STAGING SOAK** | Prometheus / Datadog process RSS & `nodejs_heap_size_used_bytes` time-series |
 | **G-05** | **WhatsApp Messaging Fencing** | Zero duplicate message dispatches; exactly one instance owns session lease | **Verified via dual-instance test**: non-owner returns HTTP 503 `WA_SESSION_OWNED_BY_ANOTHER_INSTANCE` | ⏳ **PENDING STAGING SOAK** | Distributed lease lock audit logs and recipient WhatsApp delivery receipts |
-| **G-06** | **Acknowledged Write Durability** | Zero acknowledged writes lost; write ledger matches database state 100% | **0 lost writes detected** across 1,000 concurrent mutations and bulk transfer writes | ⏳ **PENDING STAGING SOAK** | Production write ledger comparison against MongoDB Atlas change streams |
+| **G-06** | **Acknowledged Write Durability** | Zero acknowledged writes lost; write ledger matches database state 100% | **0 lost writes** (2,000/2,000 acknowledged writes durably verified in MongoDB after 30.1-min soak; 40/40 writes verified in live chaos test) | ⏳ **PENDING STAGING SOAK** | Production write ledger comparison against MongoDB Atlas change streams |
 | **G-07** | **Disaster Recovery / Restore** | Full restore from `mongodump` completed with 100% checksum and count match | **Documented in Runbook & Tested**: verified local dump/restore sequence and checksum script | ⏳ **PENDING STAGING SOAK** | Real rehearsal of backup capture and restore to isolated staging test database |
 | **G-08** | **Session Rollout / tokenVersion** | Pre-deploy JWT sessions remain active; zero mass logout; logout invalidates current session | **Verified in test**: tokens lacking `tokenVersion` tolerated with 30s grace; logout revokes session | ⏳ **PENDING STAGING SOAK** | Auth token refresh logs during rolling blue-green deploy on staging cluster |
 | **G-09** | **Bulk Pipeline Performance** | 5,000-row CSV export $\ge 2,000\text{ rows/s}$; bulk import $\ge 1,000\text{ rows/s}$; XLSX capped | **CSV Export: 7,961 rows/s (628ms)**; **CSV Import: 2,118 rows/s**; **XLSX capped at 10k rows (HTTP 413)** | ⏳ **PENDING STAGING SOAK** | File upload/download latency telemetry on staging S3/Cloudinary/temp disk |
@@ -65,15 +65,18 @@ The 12 High and Critical risks identified across Audits Round 1, 2, and 3 are ad
 ## 4. Staging Soak Plan & Exit Criteria
 
 ### 4.1 Topology Requirements on Staging
-1. **Compute Nodes**: Minimum 2 Web instances (`crm-web-1`, `crm-web-2`) behind a reverse proxy/load balancer, and 1 Worker instance (`crm-worker`).
+1. **Compute Topology**: Single unified web+worker instance (`crm-app`, `RUN_BACKGROUND_WORKERS=true`, `INSTANCE_COUNT=1`) behind a reverse proxy.
+   > [!WARNING]
+   > **Horizontal Scaling Warning**: Do NOT scale beyond 1 instance until an inter-process RPC layer or dedicated messaging broker exists for Baileys WhatsApp sessions. In multi-instance deployments without RPC, inbound/outbound WhatsApp traffic routing to a non-leaseholding node returns HTTP 503 (`WA_SESSION_OWNED_BY_ANOTHER_INSTANCE`).
 2. **Database**: 3-node MongoDB Atlas replica set (tier M10 or higher) with replica set connection string.
 3. **Cache**: Redis instance (TLS enabled) configured via `REDIS_URL`.
 4. **Environment Configuration**:
-   - `NODE_ENV=production`
-   - `INSTANCE_COUNT=2`
+   - `NODE_ENV=staging` (or `production`)
+   - `INSTANCE_COUNT=1`
+   - `RUN_BACKGROUND_WORKERS=true`
    - `TRUST_PROXY_HOPS=1`
-   - `WA_ENCRYPTION_KEY=<32-byte-hex>`
-   - `JWT_SECRET=<32-byte-secure-random>`
+   - `WA_ENCRYPTION_KEY=<64-char-hex-32-bytes>`
+   - `JWT_SECRET=<32-char-min-secure-random>`
 
 ### 4.2 Mandatory 72-Hour Load Profile
 During the 72-hour staging soak, the system must support active counselor daily operations combined with automated background jobs:
