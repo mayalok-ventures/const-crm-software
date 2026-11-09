@@ -221,6 +221,13 @@ const userSchema = new mongoose.Schema({
 
   shareToken: { type: String, default: null },
   shareTokenEnabled: { type: Boolean, default: false },
+  shareTokenExpiresAt: { type: Date, default: null },
+  workspaceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Workspace',
+    default: null,
+    index: true,
+  },
 
   // Agency & Team Management Fields
   roleId: {

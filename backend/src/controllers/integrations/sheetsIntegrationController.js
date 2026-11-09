@@ -137,6 +137,9 @@ exports.inspectSheet = async (req, res) => {
       hasWriteAccess: metaResult.hasWriteAccess,
       isPublic: Boolean(metaResult.isPublic || metaResult.isPublicFallback || metaResult.accessMethod === 'public_csv'),
       isPublicFallback: Boolean(metaResult.isPublicFallback),
+      securityWarning: Boolean(metaResult.isPublic || metaResult.isPublicFallback || metaResult.accessMethod === 'public_csv')
+        ? 'PUBLIC_SHEET_EXPOSURE_RISK: Anyone with the link can view or export leads from this Google Sheet. Sharing directly with the CRM Service Account is strongly recommended for production.'
+        : null,
       hasDataRows: (dataResult.totalRowsDetected || 0) > 0,
       isEmpty: Boolean(dataResult.isEmpty),
       headers: dataResult.headers || [],
@@ -269,6 +272,15 @@ exports.connectSheet = async (req, res) => {
     if (!hasPhoneOrEmail) {
       return res.status(400).json({
         error: 'Phone Number OR Email Address must be mapped to a CRM field',
+      });
+    }
+
+    // Policy check for public Google Sheets
+    const isPublic = accessMethod === 'public_csv';
+    if (isPublic && process.env.ALLOW_PUBLIC_SHEETS === 'false') {
+      return res.status(403).json({
+        error: 'PUBLIC_SHEETS_PROHIBITED',
+        message: 'Connecting public Google Sheets is disabled by security policy. Please share the sheet specifically with the CRM Service Account instead.',
       });
     }
 

@@ -12,9 +12,13 @@ exports.getShareDashboard = async (req, res) => {
     const user = await User.findOne({ shareToken: token, shareTokenEnabled: true }).lean();
     if (!user) return res.status(404).json({ message: 'Invalid or expired share link' });
 
+    if (user.shareTokenExpiresAt && new Date(user.shareTokenExpiresAt) < new Date()) {
+      return res.status(404).json({ message: 'Invalid or expired share link' });
+    }
+
     const [leads, byStatus] = await Promise.all([
       Lead.find({ userId: user._id })
-        .select('name phone company status tags followUpDate createdAt')
+        .select('name phone company status tags followUpDate createdAt workspaceId')
         .sort({ updatedAt: -1 })
         .limit(50)
         .lean(),
@@ -27,10 +31,22 @@ exports.getShareDashboard = async (req, res) => {
     const stats = { new: 0, contacted: 0, follow_up: 0, closed: 0 };
     byStatus.forEach((s) => { if (stats[s._id] !== undefined) stats[s._id] = s.count; });
 
-    if (user.workspaceId) {
+    let targetWorkspaceId = user.workspaceId;
+    if (!targetWorkspaceId && leads.length > 0 && leads[0].workspaceId) {
+      targetWorkspaceId = leads[0].workspaceId;
+    }
+    if (!targetWorkspaceId) {
+      try {
+        const WorkspaceMembership = require('../models/WorkspaceMembership');
+        const mem = await WorkspaceMembership.findOne({ userId: user._id, status: 'active' }).select('workspaceId').lean();
+        if (mem) targetWorkspaceId = mem.workspaceId;
+      } catch (_) {}
+    }
+
+    if (targetWorkspaceId) {
       try {
         const Workspace = require('../models/Workspace');
-        const ws = await Workspace.findById(user.workspaceId).select('settings').lean();
+        const ws = await Workspace.findById(targetWorkspaceId).select('settings').lean();
         if (ws?.settings?.maskLeadPhones) {
           leads.forEach((l) => {
             if (l.phone) l.phone = maskPhoneNumber(l.phone);
