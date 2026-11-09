@@ -397,6 +397,10 @@
       "category": "batch-suites",
       "reason": "Release RC3 Gate: Dual-instance topology, once-only jobs & WhatsApp lease fencing HTTP 503 verification"
     },
+    "rc3_wa_auth_encryption_rotation.test.js": {
+      "category": "batch-suites",
+      "reason": "Release RC3 Gate: WhatsApp auth encryption, key rotation, lazy re-encryption and migration"
+    },
     "render_deployment_compatibility.test.js": {
       "category": "core",
       "reason": "Render environment compatibility checks"

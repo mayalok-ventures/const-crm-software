@@ -39,7 +39,7 @@ describe('RC-2 WhatsApp Auth State AES-256-GCM Encryption', () => {
 
     const rawDoc = await WhatsAppAuth.findOne({ sessionId, key: 'creds' }).lean();
     assert.ok(rawDoc, 'Raw doc should be persisted');
-    assert.ok(rawDoc.data.startsWith('enc:v1:'), `Expected data to start with enc:v1:, got: ${rawDoc.data.slice(0, 20)}`);
+    assert.ok(rawDoc.data.startsWith('enc:v1:') || rawDoc.data.startsWith('enc:k1:'), `Expected data to start with enc:v1: or enc:k1:, got: ${rawDoc.data.slice(0, 20)}`);
 
     const parts = rawDoc.data.split(':');
     assert.strictEqual(parts.length, 5, 'Encrypted format must be enc:v1:<iv>:<tag>:<ciphertext>');

@@ -31,10 +31,11 @@ function validateEnvironment() {
       errors.push('ENCRYPTION_KEY / INTEGRATION_ENCRYPTION_KEY: Must be configured in production with min 32 chars.');
     }
 
-    // 4. WhatsApp Auth Encryption Key Validation
-    const waKey = process.env.WA_ENCRYPTION_KEY || encKey;
-    if (!waKey || waKey.length < 32) {
-      errors.push('WA_ENCRYPTION_KEY: Must be configured in production with min 32 chars or 64 hex chars for Baileys auth at-rest encryption.');
+    // 4. WhatsApp Auth Encryption Key Validation (Dedicated key, NO fallback to INTEGRATION_ENCRYPTION_KEY)
+    const isWhatsAppEnabled = process.env.RUN_BACKGROUND_WORKERS !== 'false';
+    const waKey = (process.env.WA_ENCRYPTION_KEY || '').trim();
+    if (isWhatsAppEnabled && (!waKey || waKey.length < 32)) {
+      errors.push('WA_ENCRYPTION_KEY: Dedicated WhatsApp auth encryption key (min 32 chars or 64 hex chars) is required in production when WhatsApp is enabled.');
     }
 
     // 5. Inbound Webhook Secrets Validation (Fail-Closed Notice)
