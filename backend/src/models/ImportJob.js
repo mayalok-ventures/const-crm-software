@@ -75,7 +75,14 @@ const ImportJobSchema = new mongoose.Schema(
       type: Date,
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    writeConcern: {
+      w: 'majority',
+      j: true,
+      wtimeout: 10000,
+    },
+  }
 );
 
 module.exports = mongoose.models.ImportJob || mongoose.model('ImportJob', ImportJobSchema);

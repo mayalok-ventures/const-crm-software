@@ -427,6 +427,11 @@ const leadSchema = new mongoose.Schema({
 
 }, {
   timestamps: true,
+  writeConcern: {
+    w: 'majority',
+    j: true,
+    wtimeout: 10000,
+  },
   toJSON: { virtuals: true },
   toObject: { virtuals: true },
 });

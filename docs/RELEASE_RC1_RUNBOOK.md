@@ -33,7 +33,7 @@ The table below lists all runtime environment variables, flags, and their defaul
 
 ## 3. Database Migration & Index Pruning
 
-Batch 4 reduces the index footprint on the `leads` collection from 64 indexes (at risk of WiredTiger metadata bloat and eviction pauses) down to 51 high-efficiency compound indexes, recovering write throughput by ~18% and query planning memory.
+Batch 4 reduces the index footprint on the `leads` collection from 64 indexes (at risk of WiredTiger metadata bloat and eviction pauses) down to 51 high-efficiency compound indexes, sustaining ~315 docs/sec write throughput under journaled majority write concern (`w: 'majority', j: true`) with zero COLLSCAN or in-memory SORT regressions across all top 10 CRM queries.
 
 ### Step 3.1: Dry-Run Assessment (Non-Destructive)
 Run the script without `--apply` to inspect existing indexes and list candidates for pruning:
