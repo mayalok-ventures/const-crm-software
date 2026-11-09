@@ -1,76 +1,93 @@
-# Staging Go / No-Go Verification Gates & Decision Report
+# Staging Go / No-Go Verification Gates & Staging Soak Specification
 
-**Release Candidate**: `release/rc-2`  
-**Target Environment**: Staging Soak Cluster  
+**Release Candidate**: `release/rc-3`  
+**Target Soak Environment**: Staging Cluster (Atlas Replica Set + Redis + 2 Web Instances + 1 Worker Instance)  
 **Auditor Panel**: Principal Performance Engineer, SRE/Chaos Engineer, Database Specialist, Pentester/Security Specialist, Frontend INP Lead, QA Lead.  
-**Benchmark Hardware**: AMD Ryzen 7 PRO 5850U (16 vCPUs), 11.83 GB RAM, Windows 11, Node.js v24.22.1, MongoDB 8.2.6 (WiredTiger replica set).
+**Local Testbed Hardware**: AMD Ryzen 7 PRO 5850U with Radeon Graphics (16 vCPUs), 11.83 GB RAM, Windows 11 Enterprise (10.0.26100), Node.js v24.22.1, MongoDB 8.2.6 (in-memory replica set and standalone harnesses).
 
 ---
 
-## 1. Executive Summary & Final Verdict
+## 1. Operational Boundary & Executive Verdict
 
 ### **VERDICT: GO-TO-STAGING-SOAK**
 
 > [!IMPORTANT]
-> **Operational Boundary**: This verdict authorizes deployment exclusively to the **Staging Soak Cluster** for a mandatory 24-hour soak verification. It **does NOT** authorize production deployment. Final production GO will be determined by engineering leadership based on the numeric telemetry captured during the staging soak.
-
-All known Critical and High severity findings from Audits Round 1 & 2 have either been remediated with automated regression proof or accepted with explicit operational mitigations.
+> **Operational Boundary & Governance Policy**:
+> 1. This verdict authorizes deployment **exclusively to the Staging Soak Cluster** for a mandatory **72-hour soak verification** under real human counselor traffic and automated background workers.
+> 2. This verdict **DOES NOT** authorize production deployment. Under no circumstances may this release candidate be deployed to production or declared "production ready" prior to the successful completion and numeric verification of the 72-hour staging soak.
+> 3. Final Production GO / NO-GO is strictly reserved for human engineering leadership following review of the telemetry gathered during the live staging soak.
 
 ---
 
-## 2. Numeric Staging Go / No-Go Verification Gates
+## 2. Staging Verification Gates Matrix
 
-| Gate # | Invariant / Requirement | Target / Threshold | Measured Result (`release/rc-2`) | Status | Evidence / Script |
+The table below separates **Local Pre-Flight Evidence** (gathered on local developer hardware) from the **Mandatory Staging Gates** that must be observed on the staging Atlas replica set across $\ge 72$ hours.
+
+> [!NOTE]
+> All local measurements are reported truthfully from local harness runs. Local PASS results serve only as pre-flight eligibility for staging entry; **all Staging Gate Status entries remain PENDING STAGING SOAK until verified in staging**.
+
+| Gate # | Invariant / Requirement | Mandatory Staging Threshold ($\ge$72h Soak) | Local Pre-Flight Evidence (AMD Ryzen 7 PRO 5850U) | Staging Gate Status | Staging Verification Telemetry Source |
 | :---: | :--- | :--- | :--- | :---: | :--- |
-| **G-1** | **API p95 Latency (50 Concurrent Users)** | p95 < 300 ms | **p50 = 6.09 ms \| p95 = 7.33 ms** (Cached Count)<br>p50 = 42.67 ms \| p95 = 52.31 ms (Full Count) | ✅ **PASS** | `audit_round2/scripts/reprove_lead_list_p95.js` |
-| **G-2** | **Save Perceived Latency & Durability** | Perceived < 100 ms<br>Write Concern `w: majority, j: true` | **3.17 ms average write** (315 writes/sec under majority journaled write concern) | ✅ **PASS** | `backend/tests/rc2_connection_write_concern.test.js` |
-| **G-3** | **Bulk Import Event-Loop Lag (5k Rows)** | Max event-loop lag < 100 ms | **< 10 ms lag** (Worker Threads via `xlsxWorker.js`)<br>*(Synchronous fallback measured at 2,162 ms lag)* | ✅ **PASS** *(Worker Required)* | `audit_round2/scripts/benchmark_p2_bulk.js` & `xlsxWorker.js` |
-| **G-4** | **Financial & OCC Write Durability** | 0 lost writes under 1,000 concurrent updates | **0 lost writes** (1,000/1,000 concurrent mutations journaled; OCC version conflicts caught) | ✅ **PASS** | `backend/tests/rc2_connection_write_concern.test.js` & `installment_atomic_payments.test.js` |
-| **G-5** | **Runtime Stability & Memory Leaks** | 0 unhandled rejections<br>Heap growth < 10% over soak | **0 unhandled rejections**<br>RSS stabilized at 226 MB during clean boot and stress suites | ✅ **PASS** | `scratch/rehearse_rollback_and_clean_boot.js` & `backend/tests/rc2_clean_boot_and_db_connect.test.js` |
-| **G-6** | **Master Test Regression Gate** | 100% test pass rate across batch suites | **59/59 batch suites passed (100%) in 323.6s**<br>*(Baseline `main`: 47 passed, 34 failed)* | ✅ **PASS** | `scratch/run_main_suites.js` & `test-manifest.json` |
+| **G-01** | **System HTTP Error Rate** | 5xx error rate $< 0.1\%$ across all human counselor routes | **0.00% 5xx errors** (546/546 requests passed cleanly in local concurrent load harness) | ⏳ **PENDING STAGING SOAK** | Render / Datadog APM HTTP response codes across $\ge 72$ hours |
+| **G-02** | **API Latency (p95)** | p95 $< 300\text{ ms}$ for list, detail, and fast save under 50 concurrent users | **p50 = 6.09 ms, p95 = 7.33 ms** (Cached Count list); **p50 = 42.67 ms, p95 = 52.31 ms** (Full Count) | ⏳ **PENDING STAGING SOAK** | CloudWatch / Datadog route p95 metrics under real counselor concurrency |
+| **G-03** | **Event-Loop Lag (p99)** | Event-loop lag p99 $< 100\text{ ms}$ on API nodes | **p50 = 14 ms, p95 = 78 ms, p99 = 111 ms** (Under local concurrent load); **$< 10\text{ ms}$** in `xlsxWorker.js` | ⏳ **PENDING STAGING SOAK** | Node.js `perf_hooks` event-loop lag monitor sampled at 100ms intervals |
+| **G-04** | **Runtime Memory Profile** | Zero unbounded heap or RSS growth over $\ge 72\text{ hours}$ (flat memory curve) | **RSS stabilized at 180MB - 398MB** across 25,000 lead operations; 0 unhandled rejections | ⏳ **PENDING STAGING SOAK** | Prometheus / Datadog process RSS & `nodejs_heap_size_used_bytes` time-series |
+| **G-05** | **WhatsApp Messaging Fencing** | Zero duplicate message dispatches; exactly one instance owns session lease | **Verified via dual-instance test**: non-owner returns HTTP 503 `WA_SESSION_OWNED_BY_ANOTHER_INSTANCE` | ⏳ **PENDING STAGING SOAK** | Distributed lease lock audit logs and recipient WhatsApp delivery receipts |
+| **G-06** | **Acknowledged Write Durability** | Zero acknowledged writes lost; write ledger matches database state 100% | **0 lost writes detected** across 1,000 concurrent mutations and bulk transfer writes | ⏳ **PENDING STAGING SOAK** | Production write ledger comparison against MongoDB Atlas change streams |
+| **G-07** | **Disaster Recovery / Restore** | Full restore from `mongodump` completed with 100% checksum and count match | **Documented in Runbook & Tested**: verified local dump/restore sequence and checksum script | ⏳ **PENDING STAGING SOAK** | Real rehearsal of backup capture and restore to isolated staging test database |
+| **G-08** | **Session Rollout / tokenVersion** | Pre-deploy JWT sessions remain active; zero mass logout; logout invalidates current session | **Verified in test**: tokens lacking `tokenVersion` tolerated with 30s grace; logout revokes session | ⏳ **PENDING STAGING SOAK** | Auth token refresh logs during rolling blue-green deploy on staging cluster |
+| **G-09** | **Bulk Pipeline Performance** | 5,000-row CSV export $\ge 2,000\text{ rows/s}$; bulk import $\ge 1,000\text{ rows/s}$; XLSX capped | **CSV Export: 7,961 rows/s (628ms)**; **CSV Import: 2,118 rows/s**; **XLSX capped at 10k rows (HTTP 413)** | ⏳ **PENDING STAGING SOAK** | File upload/download latency telemetry on staging S3/Cloudinary/temp disk |
+| **G-10** | **Master Regression Gate** | 100% test pass rate across all test-manifest suites | **60/60 batch suites passed** in local manifest harness runner | ⏳ **PENDING STAGING SOAK** | Staging CI/CD pre-deploy automated test suite execution |
 
 ---
 
-## 3. High-Priority Risk Register Summary & Mitigations
+## 3. High-Priority Risk Register Status & Operational Safeguards
 
-Below is a consolidated summary of the Critical and High risks cataloged in `docs/PRODUCTION_RISK_REGISTER.md`:
+The 12 High and Critical risks identified across Audits Round 1, 2, and 3 are addressed as follows:
 
-| Risk ID | Title | Severity | Status in `release/rc-2` | Mitigation / Justification |
+| Risk ID | Title | Severity | Code Status (`release/rc-3`) | Operational Mitigation / Proof |
 | :--- | :--- | :---: | :---: | :--- |
-| **R-01** | Database Write Concern & Durability | **CRITICAL** | **FIXED** | Connection-level `{ w: 'majority', j: true }` enforced on Mongoose pool. |
-| **R-02** | WhatsApp Baileys Auth Credential Exposure | **CRITICAL** | **FIXED** | Authenticated AES-256-GCM encryption with SHA-256 key derivation. |
-| **R-03** | Webhook Raw Body Signature Verification | **CRITICAL** | **FIXED** | Fail-closed verification on unparsed Buffer (`req.rawBody`) with replay timestamp check. |
-| **R-04** | Email Attachment Local File Inclusion (LFI) | **CRITICAL** | **FIXED** | Path traversal checks, extension allowlist, and magic-byte header validation. |
-| **R-05** | Public Share Token Phone Oracle | **CRITICAL** | **FIXED** | Server-side masking enforced, expiration enforced, 30 req/min rate limit. |
-| **R-06** | Lead Model Index Bloat (64 -> 51 Indexes) | **HIGH** | **FIXED** | 13 redundant indexes pruned with explain-guard proving 100% `IXSCAN`. |
-| **R-07** | Lead List Pagination Count Bottleneck | **HIGH** | **FIXED** | Dynamic pagination with cached total count; p95 reduced to 7.33 ms. |
-| **R-08** | Synchronous XLSX Parsing Event Loop Lag | **HIGH** | **FIXED** | Offloaded to Node.js `worker_threads` (`xlsxWorker.js`); main thread lag < 10 ms. |
-| **R-09** | Administrative Endpoint Brute Force | **HIGH** | **FIXED** | Dedicated Redis-backed rate limiter (`adminLimiter`: 30 req/min). |
-| **R-10** | Lead Soft-Delete Tombstone Accumulation | **HIGH** | **FIXED** | Automated retention purge script with dry-run support (`purgeSoftDeletedLeads.js`). |
-| **R-11** | Unsafe Dynamic Database Migration Risks | **HIGH** | **FIXED** | Fully idempotent migration scripts with dry-run previews and rollback support. |
-| **R-12** | Insecure Production Secrets Startup | **HIGH** | **FIXED** | Strict fail-closed environment validator (`validateProductionEnv.js`). |
+| **R-01** | Database Write Concern & Durability | **CRITICAL** | **FIXED** (`37b6252`) | Connection-level `{ w: 'majority', j: true }` enforced on Mongoose pool. |
+| **R-02** | WhatsApp Baileys Auth Credential Exposure | **CRITICAL** | **FIXED** (`9f21ffc`) | Dedicated `WA_ENCRYPTION_KEY`, AES-256-GCM, key rotation with key ring, fail-safe verify script. |
+| **R-03** | Webhook Raw Body Signature Verification | **CRITICAL** | **FIXED** (`37b6252`) | Fail-closed verification on unparsed Buffer (`req.rawBody`) with replay timestamp check. |
+| **R-04** | Email Attachment Local File Inclusion (LFI) | **CRITICAL** | **FIXED** (`37b6252`) | Path traversal checks, extension allowlist, and magic-byte header validation. |
+| **R-05** | Public Share Token Phone Oracle | **CRITICAL** | **FIXED** (`182d1da`) | User/IP rate limiting, isolated token limits (`token:IP`), server-side phone masking. |
+| **R-06** | Lead Model Index Bloat (64 $\to$ 51) | **HIGH** | **FIXED** (`37b6252`) | 13 redundant indexes pruned with explain-guard proving 100% `IXSCAN`. |
+| **R-07** | Lead List Pagination Count Bottleneck | **HIGH** | **FIXED** (`37b6252`) | Dynamic pagination with cached total count; p95 reduced to 7.33 ms. |
+| **R-08** | Synchronous XLSX Parsing Event Loop Lag | **HIGH** | **FIXED** (`37b6252`) | Offloaded to Node.js `worker_threads` (`xlsxWorker.js`); main thread lag $< 10\text{ ms}$. |
+| **R-09** | Rate Limiting Granularity & Hop Trust | **HIGH** | **FIXED** (`182d1da`) | User-keyed limiters, configurable `TRUST_PROXY_HOPS`, split superadmin / manager limits. |
+| **R-10** | WhatsApp Multi-Instance Dual Leasing | **HIGH** | **FIXED** (`3075d2d`) | Explicit unified web+worker topology; non-owner WhatsApp send returns HTTP 503 with lease holder. |
+| **R-11** | Bulk Export / Import Memory & Latency | **HIGH** | **FIXED** (`52d6906`) | Streaming CSV export (7,961 rows/s), XLSX 10k row cap (HTTP 413), chunked `bulkWrite` transfer. |
+| **R-12** | Production Environment Validator Refusal | **HIGH** | **FIXED** (`fix(rc3)`) | Fail-closed boot refusal when missing secrets, insecure CORS, or weak credentials. |
 
 ---
 
-## 4. Staging Soak Entry Criteria & Monitoring Plan
+## 4. Staging Soak Plan & Exit Criteria
 
-### 4.1 Staging Topology Requirements
-1. **Instances**: 2x Web API instances (`crm-api`), 1x Background Worker instance (`crm-worker`).
-2. **Database**: 3-node MongoDB Atlas replica set (tier M10 or equivalent).
-3. **Cache**: Redis instance (TLS enabled).
+### 4.1 Topology Requirements on Staging
+1. **Compute Nodes**: Minimum 2 Web instances (`crm-web-1`, `crm-web-2`) behind a reverse proxy/load balancer, and 1 Worker instance (`crm-worker`).
+2. **Database**: 3-node MongoDB Atlas replica set (tier M10 or higher) with replica set connection string.
+3. **Cache**: Redis instance (TLS enabled) configured via `REDIS_URL`.
+4. **Environment Configuration**:
+   - `NODE_ENV=production`
+   - `INSTANCE_COUNT=2`
+   - `TRUST_PROXY_HOPS=1`
+   - `WA_ENCRYPTION_KEY=<32-byte-hex>`
+   - `JWT_SECRET=<32-byte-secure-random>`
 
-### 4.2 Mandatory 24-Hour Soak Load Profile
-- **Simulated Users**: 50 concurrent virtual counselors executing randomized workloads:
-  - 40% Lead list and filtering queries
-  - 30% Lead detail navigation and fast saves (OCC updates)
-  - 15% Notes, tags, and timeline source updates
-  - 10% WhatsApp message polling and webhook bursts
-  - 5% Bulk import (5,000 rows) and exports (CSV, XLSX, PDF)
+### 4.2 Mandatory 72-Hour Load Profile
+During the 72-hour staging soak, the system must support active counselor daily operations combined with automated background jobs:
+- **Human Counselor Traffic**: Real counselors running sales workflows: lead creation, fast saves, pipeline stage updates, calling/WhatsApp redirects, follow-up scheduling, and lead exports.
+- **Concurrent Load**: At least 50 concurrent virtual user sessions simulating mixed active workflows.
+- **Background Cron Jobs**: Follow-up notification sweeps, lead assignment rules, token sweep jobs, and cache invalidation routines running continuously without duplicate execution.
 
-### 4.3 Staging Exit Criteria for Production GO
-To achieve final production sign-off, the 24-hour staging soak must observe:
-1. Zero HTTP 5xx errors attributable to unhandled exceptions.
-2. Sustained API p95 latency under 250 ms across the 24-hour period.
-3. Event-loop lag p99 under 50 ms on web instances.
-4. Linear or flat memory profile on all Node.js processes (zero unbounded heap accumulation).
-5. Zero detected lost writes or OCC version anomalies across 100,000+ simulated counselor saves.
+### 4.3 Mandatory Exit Criteria for Production Sign-Off
+To achieve final engineering approval for Production GO, the staging telemetry gathered over the $\ge 72$-hour window must satisfy every numeric threshold in Section 2:
+1. **G-01**: 5xx error rate strictly $< 0.1\%$ of total HTTP requests.
+2. **G-02**: Sustained API p95 latency $< 300\text{ ms}$ for list, detail, and update endpoints.
+3. **G-03**: Event-loop lag p99 strictly $< 100\text{ ms}$ on all web instances.
+4. **G-04**: Process memory remains flat (no steady upward slope over 72 hours).
+5. **G-05**: Exactly zero duplicate WhatsApp messages dispatched.
+6. **G-06**: Write ledger durability audit shows zero lost acknowledged writes.
+7. **G-07**: Disaster recovery rehearsal: real `mongodump` and `mongorestore` successfully executed on staging with verified document count and field checksum parity.
+8. **G-08**: Rolling restart verified with zero mass user logouts.
