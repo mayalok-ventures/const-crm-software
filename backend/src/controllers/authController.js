@@ -8,6 +8,7 @@ const Notification = require('../models/Notification');
 const AbuseLog = require('../models/AbuseLog');
 const Coupon = require('../models/Coupon');
 const { generateToken, generateTemp2FAToken } = require('../middleware/auth');
+const { invalidateUserAuthCache } = require('../utils/authCache');
 const { generateUniqueUsername } = require('../utils/generateUsername');
 const { generateUniqueUsercode } = require('../utils/generateUsercode');
 const { getIndustryDefaults } = require('../utils/industryTemplates');
@@ -216,7 +217,7 @@ exports.register = async (req, res) => {
       }
     });
 
-    const token = generateToken(user._id);
+    const token = generateToken(user._id, user.tokenVersion || 0);
 
     // Record Immutable Audit Log
     auditService.record({
@@ -408,7 +409,7 @@ exports.login = async (req, res) => {
       await user.save();
     }
 
-    const token = generateToken(user._id);
+    const token = generateToken(user._id, user.tokenVersion || 0);
     const resolvedRole = user.role || 'agent';
 
     // Record Immutable Audit Log
@@ -486,7 +487,7 @@ exports.verify2FA = async (req, res) => {
 
     if (!user.twoFactorSecret) {
       // Fallback: If 2FA was not fully initialized, unlock session
-      const token = generateToken(user._id);
+      const token = generateToken(user._id, user.tokenVersion || 0);
       return res.json({
         _id: user._id,
         name: user.name,
@@ -556,7 +557,7 @@ exports.verify2FA = async (req, res) => {
       });
     }
 
-    const token = generateToken(user._id);
+    const token = generateToken(user._id, user.tokenVersion || 0);
     const resolvedRole = user.role || 'agent';
 
     // Record Immutable Audit Log
@@ -1263,7 +1264,9 @@ exports.changePassword = async (req, res) => {
     }
 
     user.password = newPassword;
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
     await user.save();
+    invalidateUserAuthCache(user._id);
 
     // Record Immutable Audit Log
     auditService.record({
@@ -1329,6 +1332,30 @@ exports.applyCoupon = async (req, res) => {
   } catch (error) {
     console.error('applyCoupon error:', error);
     res.status(500).json({ message: error.message || 'Failed to apply coupon' });
+  }
+};
+
+// @desc  Log out current session (Single-device session termination)
+// @route POST /api/auth/logout
+// @access Private
+exports.logout = async (req, res) => {
+  res.json({ success: true, message: 'Logged out successfully' });
+};
+
+// @desc  Log out all sessions and revoke all active tokens across devices
+// @route POST /api/auth/logout-all
+// @access Private
+exports.logoutAll = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (user) {
+      user.tokenVersion = (user.tokenVersion || 0) + 1;
+      await user.save();
+      invalidateUserAuthCache(user._id);
+    }
+    res.json({ success: true, message: 'All active sessions revoked across all devices' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error revoking sessions' });
   }
 };
 

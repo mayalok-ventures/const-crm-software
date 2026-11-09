@@ -9,137 +9,537 @@
     "quarantined": "Pre-existing failing or obsolete test suites documented and isolated from CI failure"
   },
   "suites": {
-    "admin_control_center_rebuild.test.js": { "category": "core", "reason": "Admin dashboard rebuild checks" },
-    "admin_lead_flow.test.js": { "category": "core", "reason": "Admin lead lifecycle flow" },
-    "admin_payment_requests_pagination.test.js": { "category": "batch-suites", "reason": "Audit Batch 1 & 2 payment requests pagination" },
-    "admin_rebuild_acceptance.test.js": { "category": "core", "reason": "Admin acceptance test suite" },
-    "agent_performance_n_plus_one.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 agent performance aggregation" },
-    "alert_incident_engine.test.js": { "category": "core", "reason": "Monitoring incident engine tests" },
-    "api_key_management.test.js": { "category": "core", "reason": "API key creation and revocation tests" },
-    "appsail_health_and_deployment.test.js": { "category": "core", "reason": "AppSail deployment compatibility checks" },
-    "assignment_max_active_leads.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 max active leads round robin guard" },
-    "audit_logging_immutability.test.js": { "category": "core", "reason": "Audit logging immutability verification" },
-    "auth_2fa_hardening.test.js": { "category": "batch-suites", "reason": "Audit Batch 1 2FA emergency bypass removal" },
-    "auth_reliability_phase1.test.js": { "category": "core", "reason": "Auth reliability and token validation" },
-    "auth_token_extraction.test.js": { "category": "batch-suites", "reason": "Audit Batch 1 token extraction hardening" },
-    "automation_builder_and_registry.test.js": { "category": "core", "reason": "Automation rule registry tests" },
-    "automation_deep_audit.test.js": { "category": "core", "reason": "Automation execution deep checks" },
-    "automations_engine.test.js": { "category": "core", "reason": "Automation engine trigger and action flows" },
-    "backup_monitoring.test.js": { "category": "core", "reason": "Database backup telemetry tests" },
-    "billing_reconciliation_production.test.js": { "category": "core", "reason": "Billing reconciliation tests" },
-    "billing_reconciliation_v2_hardening.test.js": { "category": "core", "reason": "Billing reconciliation v2 hardening" },
-    "cache_capacity_and_eviction.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 in-memory cache capacity and sweep" },
-    "campaign_routing_and_assignment.test.js": { "category": "core", "reason": "Campaign routing logic" },
-    "coupon_atomic_redemption.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 atomic coupon usage counter" },
-    "crm_admin.test.js": { "category": "core", "reason": "General CRM admin flows" },
-    "crm_forensic_fixes.test.js": { "category": "core", "reason": "CRM forensic test verification" },
-    "custom_roles_and_resend.test.js": { "category": "core", "reason": "Custom roles permissions and invite resend" },
-    "database_monitoring.test.js": { "category": "core", "reason": "Database connection and slow query monitoring" },
-    "deals_counselor_search.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 deals counselor search role-scoping" },
-    "deployment_monitoring.test.js": { "category": "core", "reason": "Deployment version telemetry" },
-    "deployments_releases_tracking.test.js": { "category": "core", "reason": "Release tracking tests" },
-    "distributed_lock.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 MongoDB distributed lock for crons" },
-    "dual_instance_concurrency.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 dual instance concurrency & lease single-holder" },
-    "dynamic_form_builder.test.js": { "category": "core", "reason": "Dynamic lead capture forms" },
-    "dynamic_permissions_and_multi_account.test.js": { "category": "core", "reason": "Dynamic permissions and multi-account switching" },
-    "e2e_lead_lifecycle.test.js": { "category": "needs-live-server", "reason": "Full HTTP lead creation to conversion lifecycle" },
-    "e2e_scenarios.test.js": { "category": "needs-live-server", "reason": "End-to-end integration scenarios" },
-    "education_automations.test.js": { "category": "core", "reason": "Education sector automation workflows" },
-    "education_subprofile.test.js": { "category": "core", "reason": "Education candidate subprofile fields" },
-    "email_formatting_and_mime.test.js": { "category": "core", "reason": "Email MIME generation and formatting" },
-    "email_module_comprehensive.test.js": { "category": "core", "reason": "Email IMAP/SMTP provider adapters and threads" },
-    "external_integration_monitoring.test.js": { "category": "core", "reason": "External webhook and health monitoring" },
-    "fastify_and_redis_phase2.test.js": { "category": "quarantined", "reason": "Requires standalone live Redis instance on 6379" },
-    "followup_cron_lookback_cap.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 follow-up cron 24h lookback and stale claim recovery" },
-    "followup_postpone_validation.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 follow-up postpone remark validation" },
-    "followup_workflow.test.js": { "category": "core", "reason": "Follow-up scheduling and reminders" },
-    "hybrid_catalogue.test.js": { "category": "core", "reason": "Colleges, degrees, and fee catalogue management" },
-    "integration_architecture_audit.test.js": { "category": "core", "reason": "Integration subsystem architecture" },
-    "integrations_comprehensive.test.js": { "category": "core", "reason": "Comprehensive integration suite" },
-    "integrations_phase3.test.js": { "category": "core", "reason": "Phase 3 integration providers" },
-    "lead_duplicate_merge.test.js": { "category": "batch-suites", "reason": "Audit Batch 3 F3 duplicate lead detection and atomic merge" },
-    "lead_fee_installments.test.js": { "category": "batch-suites", "reason": "Audit Batch 3 F4 fee installment schedule tracking and payment linkage" },
-    "lead_fee_installments_hardening.test.js": { "category": "batch-suites", "reason": "Audit Batch 3 F4 UTC-safe overdue calculation and golden payment analytics invariance" },
-    "lead_merge_transaction_rollback.test.js": { "category": "batch-suites", "reason": "Audit Batch 3 F3 transaction rollback on injected merge failure" },
-    "lead_omnichannel_timeline.test.js": { "category": "batch-suites", "reason": "Audit Batch 3 F2 omnichannel activity timeline API and cursor pagination" },
-    "lead_payment_idempotency.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 request-level payment idempotency" },
-    "lead_phone_masking.test.js": { "category": "batch-suites", "reason": "Audit Batch 3 F1 role-based phone masking and unmask audit logging" },
-    "lead_phone_masking_comprehensive.test.js": { "category": "batch-suites", "reason": "Audit Batch 3 F1 15-path phone masking coverage and server-mediated redirects" },
-    "lead_presave_tenant_fix.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 pre-save companyId resolution & memo scoping" },
-    "lead_profile_comprehensive_edit.test.js": { "category": "core", "reason": "Lead profile editing and validations" },
-    "lead_profile_no_assumed_data.test.js": { "category": "core", "reason": "Lead profile data boundary enforcement" },
-    "lead_profile_whatsapp_and_forms.test.js": { "category": "core", "reason": "Lead profile form data and WhatsApp links" },
-    "lead_soft_delete_and_cascade.test.js": { "category": "batch-suites", "reason": "Audit Batch 1 soft delete and cascade cleanup" },
-    "lead_soft_delete_partial_index.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 soft delete partial unique index" },
-    "lead_stage_status_sync.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 lead stage and canonical status sync" },
-    "lead_status_won_flow.test.js": { "category": "batch-suites", "reason": "Audit Batch 1 & 3 lead won conversion and payment creation" },
-    "lead_tenant_resolution_perf.test.js": { "category": "batch-suites", "reason": "Audit Batch 1 tenant pre-save resolution performance" },
-    "lead_transfer_and_automation.test.js": { "category": "core", "reason": "Lead ownership transfer and automation triggers" },
-    "leads_pagination_tiebreaker.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 deterministic pagination tiebreaker" },
-    "meta_leadads_hardened_unit.test.js": { "category": "core", "reason": "Meta Lead Ads webhook payload parser unit tests" },
-    "meta_leadads_integration.test.js": { "category": "core", "reason": "Meta Lead Ads integration flow" },
-    "meta_webhook_security.test.js": { "category": "batch-suites", "reason": "Audit Batch 1 Meta webhook signature verification" },
-    "meta_whatsapp_comprehensive.test.js": { "category": "core", "reason": "Meta Cloud API WhatsApp integration tests" },
-    "monitoring.test.js": { "category": "core", "reason": "System monitoring metrics and alerts" },
-    "multi_tenant_isolation.test.js": { "category": "core", "reason": "Multi-tenant workspace isolation checks" },
-    "multi_tenant_usage_monitoring.test.js": { "category": "core", "reason": "Workspace storage and lead limits" },
-    "oauth_popup_flow.test.js": { "category": "core", "reason": "OAuth popup callback messaging" },
-    "owner_2fa_verification.test.js": { "category": "core", "reason": "Owner TOTP 2FA verification" },
-    "payment_dual_field_sync.test.js": { "category": "batch-suites", "reason": "Audit Batch 1 payment snake_case and camelCase sync" },
-    "pdf_export_event_loop.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 PDF export event loop yielding" },
-    "perf_and_speed_phase2.test.js": { "category": "core", "reason": "API throughput and response latency" },
-    "perf_round2_verification.test.js": { "category": "core", "reason": "Round 2 performance benchmarks" },
-    "permission_matrix_and_ui_lifecycle.test.js": { "category": "core", "reason": "Role permission matrix enforcement" },
-    "permission_parity_and_escalation_hardening.test.js": { "category": "core", "reason": "Privilege escalation prevention" },
-    "phase1_phase2_first_touch.test.js": { "category": "core", "reason": "First touch channel routing" },
-    "phase1_phase2_verification.test.js": { "category": "core", "reason": "Phase 1 & 2 integration verification" },
-    "phase1_security_scope_verification.test.js": { "category": "core", "reason": "Security scoping rules" },
-    "pipeline_remap_status_integrity.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 pipeline deletion and remapping integrity" },
-    "platform_health_score_engine.test.js": { "category": "core", "reason": "Health score calculation tests" },
-    "production_health_framework.test.js": { "category": "core", "reason": "Health check /health and /live endpoints" },
-    "queue_processing.test.js": { "category": "core", "reason": "In-memory task queue tests" },
-    "recording_workspace_isolation.test.js": { "category": "batch-suites", "reason": "Audit Batch 1 call recordings workspace isolation" },
-    "render_deployment_compatibility.test.js": { "category": "core", "reason": "Render environment compatibility checks" },
-    "schema_validation.test.js": { "category": "quarantined", "reason": "Pre-existing test asserting deprecated legacy schema field names" },
-    "security_abuse_detection.test.js": { "category": "core", "reason": "Rate limiting and IP brute-force abuse protection" },
-    "security_hardening_and_lifecycle.test.js": { "category": "core", "reason": "Security middleware and CORS rules" },
-    "security_rbac_and_payment_remediation.test.js": { "category": "core", "reason": "RBAC payment access controls" },
-    "self_service_integrations.test.js": { "category": "core", "reason": "Self-service webhook connectors" },
-    "self_service_lead_integration.test.js": { "category": "core", "reason": "Self-service lead ingestion endpoints" },
-    "system_observability_suite.test.js": { "category": "core", "reason": "System telemetry, heap and event loop metrics" },
-    "system_qa_acceptance.test.js": { "category": "core", "reason": "QA acceptance scenarios" },
-    "tenant_fail_closed.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 fail-closed tenant scoping without legacy flag" },
-    "tenant_isolation_leads.test.js": { "category": "batch-suites", "reason": "Audit Batch 1 strict tenant scoping on leads" },
-    "tenant_lifecycle_production.test.js": { "category": "core", "reason": "Tenant onboarding and subscription lifecycle" },
-    "tenant_workflow_phases.test.js": { "category": "core", "reason": "Multi-tenant CRM workflow phases" },
-    "test_coupon_system.test.js": { "category": "core", "reason": "Coupon creation and validation" },
-    "test_email_folders_flow.js": { "category": "core", "reason": "Email folder operations" },
-    "test_email_placeholders.js": { "category": "core", "reason": "Dynamic email placeholder replacement" },
-    "test_google_sheets_v2_e2e.js": { "category": "needs-external-service", "reason": "Requires real Google Cloud Sheets service credentials" },
-    "test_plan_catalog_entitlements.test.js": { "category": "core", "reason": "Public plan catalog entitlements" },
-    "test_runner_safety.test.js": { "category": "batch-suites", "reason": "Audit Batch 3 test runner safety guard and manifest orphan check" },
-    "test_sheets_flow.js": { "category": "core", "reason": "Sheets webhook flow tests" },
-    "test_superadmin_plan_override.test.js": { "category": "core", "reason": "SuperAdmin plan override tests" },
-    "test_totp_resilience.test.js": { "category": "core", "reason": "TOTP MFA clock skew resilience" },
-    "transaction_rollback.test.js": { "category": "batch-suites", "reason": "Audit Batch 1 withTransaction helper rollback" },
-    "uncaught_exception_resilience.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 uncaughtException graceful shutdown" },
-    "verify_form_and_nav.test.js": { "category": "core", "reason": "Form builder navigation and field validation" },
-    "whatsapp_and_notifications_reliability.test.js": { "category": "quarantined", "reason": "Pre-existing test with legacy single-process socket mocks" },
-    "whatsapp_comprehensive_suite.test.js": { "category": "core", "reason": "WhatsApp Baileys & Meta message formatting" },
-    "whatsapp_distributed_lease.test.js": { "category": "batch-suites", "reason": "Audit Batch 2 WhatsApp lease & 440 reconnect loop prevention" },
-    "workspace_rbac_and_isolation.test.js": { "category": "core", "reason": "Workspace RBAC and data isolation" },
-    "f1_installment_race.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 atomic installment payment race condition" },
-    "f1_write_concern.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 explicit majority and journal write concern" },
-    "f1_soft_delete_orphans.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 soft delete cascade cleanup and orphan skipping" },
-    "f1_optimistic_concurrency.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 optimistic concurrency control on lead updates" },
-    "f1_idempotency_retry.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 idempotency keys and double-submit retry guards" },
-    "f1_resumable_import.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 resumable and idempotent ImportJob" },
-    "f2_count_optimization.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 lead list countDocuments optimization and caching" },
-    "f2_prune_indexes.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 lead index pruning and limit compliance" },
-    "f2_chat_polling.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 lighter chat polling with ETag and since cursor" },
-    "f2_disk_streaming_import.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 disk storage streaming import and CSV formula escaping" },
-    "f3_offline_queue_worker.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 offline mutation queue worker replay" },
-    "f4_cron_distributed_lock.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 distributed locks and lease timeouts for crons and workers" },
-    "f5_security_masking_oracle.test.js": { "category": "batch-suites", "reason": "Audit Batch 4 security hardening and phone masking oracles" }
+    "admin_control_center_rebuild.test.js": {
+      "category": "core",
+      "reason": "Admin dashboard rebuild checks"
+    },
+    "admin_lead_flow.test.js": {
+      "category": "core",
+      "reason": "Admin lead lifecycle flow"
+    },
+    "admin_payment_requests_pagination.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 & 2 payment requests pagination"
+    },
+    "admin_rebuild_acceptance.test.js": {
+      "category": "core",
+      "reason": "Admin acceptance test suite"
+    },
+    "agent_performance_n_plus_one.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 agent performance aggregation"
+    },
+    "alert_incident_engine.test.js": {
+      "category": "core",
+      "reason": "Monitoring incident engine tests"
+    },
+    "api_key_management.test.js": {
+      "category": "core",
+      "reason": "API key creation and revocation tests"
+    },
+    "appsail_health_and_deployment.test.js": {
+      "category": "core",
+      "reason": "AppSail deployment compatibility checks"
+    },
+    "assignment_max_active_leads.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 max active leads round robin guard"
+    },
+    "audit_logging_immutability.test.js": {
+      "category": "core",
+      "reason": "Audit logging immutability verification"
+    },
+    "auth_2fa_hardening.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 2FA emergency bypass removal"
+    },
+    "auth_reliability_phase1.test.js": {
+      "category": "core",
+      "reason": "Auth reliability and token validation"
+    },
+    "auth_token_extraction.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 token extraction hardening"
+    },
+    "automation_builder_and_registry.test.js": {
+      "category": "core",
+      "reason": "Automation rule registry tests"
+    },
+    "automation_deep_audit.test.js": {
+      "category": "core",
+      "reason": "Automation execution deep checks"
+    },
+    "automations_engine.test.js": {
+      "category": "core",
+      "reason": "Automation engine trigger and action flows"
+    },
+    "backup_monitoring.test.js": {
+      "category": "core",
+      "reason": "Database backup telemetry tests"
+    },
+    "billing_reconciliation_production.test.js": {
+      "category": "core",
+      "reason": "Billing reconciliation tests"
+    },
+    "billing_reconciliation_v2_hardening.test.js": {
+      "category": "core",
+      "reason": "Billing reconciliation v2 hardening"
+    },
+    "cache_capacity_and_eviction.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 in-memory cache capacity and sweep"
+    },
+    "campaign_routing_and_assignment.test.js": {
+      "category": "core",
+      "reason": "Campaign routing logic"
+    },
+    "coupon_atomic_redemption.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 atomic coupon usage counter"
+    },
+    "crm_admin.test.js": {
+      "category": "core",
+      "reason": "General CRM admin flows"
+    },
+    "crm_forensic_fixes.test.js": {
+      "category": "core",
+      "reason": "CRM forensic test verification"
+    },
+    "custom_roles_and_resend.test.js": {
+      "category": "core",
+      "reason": "Custom roles permissions and invite resend"
+    },
+    "database_monitoring.test.js": {
+      "category": "core",
+      "reason": "Database connection and slow query monitoring"
+    },
+    "deals_counselor_search.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 deals counselor search role-scoping"
+    },
+    "deployment_monitoring.test.js": {
+      "category": "core",
+      "reason": "Deployment version telemetry"
+    },
+    "deployments_releases_tracking.test.js": {
+      "category": "core",
+      "reason": "Release tracking tests"
+    },
+    "distributed_lock.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 MongoDB distributed lock for crons"
+    },
+    "dual_instance_concurrency.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 dual instance concurrency & lease single-holder"
+    },
+    "dynamic_form_builder.test.js": {
+      "category": "core",
+      "reason": "Dynamic lead capture forms"
+    },
+    "dynamic_permissions_and_multi_account.test.js": {
+      "category": "core",
+      "reason": "Dynamic permissions and multi-account switching"
+    },
+    "e2e_lead_lifecycle.test.js": {
+      "category": "needs-live-server",
+      "reason": "Full HTTP lead creation to conversion lifecycle"
+    },
+    "e2e_scenarios.test.js": {
+      "category": "needs-live-server",
+      "reason": "End-to-end integration scenarios"
+    },
+    "education_automations.test.js": {
+      "category": "core",
+      "reason": "Education sector automation workflows"
+    },
+    "education_subprofile.test.js": {
+      "category": "core",
+      "reason": "Education candidate subprofile fields"
+    },
+    "email_formatting_and_mime.test.js": {
+      "category": "core",
+      "reason": "Email MIME generation and formatting"
+    },
+    "email_module_comprehensive.test.js": {
+      "category": "core",
+      "reason": "Email IMAP/SMTP provider adapters and threads"
+    },
+    "external_integration_monitoring.test.js": {
+      "category": "core",
+      "reason": "External webhook and health monitoring"
+    },
+    "fastify_and_redis_phase2.test.js": {
+      "category": "quarantined",
+      "reason": "Requires standalone live Redis instance on 6379"
+    },
+    "followup_cron_lookback_cap.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 follow-up cron 24h lookback and stale claim recovery"
+    },
+    "followup_postpone_validation.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 follow-up postpone remark validation"
+    },
+    "followup_workflow.test.js": {
+      "category": "core",
+      "reason": "Follow-up scheduling and reminders"
+    },
+    "hybrid_catalogue.test.js": {
+      "category": "core",
+      "reason": "Colleges, degrees, and fee catalogue management"
+    },
+    "integration_architecture_audit.test.js": {
+      "category": "core",
+      "reason": "Integration subsystem architecture"
+    },
+    "integrations_comprehensive.test.js": {
+      "category": "core",
+      "reason": "Comprehensive integration suite"
+    },
+    "integrations_phase3.test.js": {
+      "category": "core",
+      "reason": "Phase 3 integration providers"
+    },
+    "lead_duplicate_merge.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 3 F3 duplicate lead detection and atomic merge"
+    },
+    "lead_fee_installments.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 3 F4 fee installment schedule tracking and payment linkage"
+    },
+    "lead_fee_installments_hardening.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 3 F4 UTC-safe overdue calculation and golden payment analytics invariance"
+    },
+    "lead_merge_transaction_rollback.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 3 F3 transaction rollback on injected merge failure"
+    },
+    "lead_omnichannel_timeline.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 3 F2 omnichannel activity timeline API and cursor pagination"
+    },
+    "lead_payment_idempotency.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 request-level payment idempotency"
+    },
+    "lead_phone_masking.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 3 F1 role-based phone masking and unmask audit logging"
+    },
+    "lead_phone_masking_comprehensive.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 3 F1 15-path phone masking coverage and server-mediated redirects"
+    },
+    "lead_presave_tenant_fix.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 pre-save companyId resolution & memo scoping"
+    },
+    "lead_profile_comprehensive_edit.test.js": {
+      "category": "core",
+      "reason": "Lead profile editing and validations"
+    },
+    "lead_profile_no_assumed_data.test.js": {
+      "category": "core",
+      "reason": "Lead profile data boundary enforcement"
+    },
+    "lead_profile_whatsapp_and_forms.test.js": {
+      "category": "core",
+      "reason": "Lead profile form data and WhatsApp links"
+    },
+    "lead_soft_delete_and_cascade.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 soft delete and cascade cleanup"
+    },
+    "lead_soft_delete_partial_index.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 soft delete partial unique index"
+    },
+    "lead_stage_status_sync.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 lead stage and canonical status sync"
+    },
+    "lead_status_won_flow.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 & 3 lead won conversion and payment creation"
+    },
+    "lead_tenant_resolution_perf.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 tenant pre-save resolution performance"
+    },
+    "lead_transfer_and_automation.test.js": {
+      "category": "core",
+      "reason": "Lead ownership transfer and automation triggers"
+    },
+    "leads_pagination_tiebreaker.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 deterministic pagination tiebreaker"
+    },
+    "meta_leadads_hardened_unit.test.js": {
+      "category": "core",
+      "reason": "Meta Lead Ads webhook payload parser unit tests"
+    },
+    "meta_leadads_integration.test.js": {
+      "category": "core",
+      "reason": "Meta Lead Ads integration flow"
+    },
+    "meta_webhook_security.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 Meta webhook signature verification"
+    },
+    "meta_whatsapp_comprehensive.test.js": {
+      "category": "core",
+      "reason": "Meta Cloud API WhatsApp integration tests"
+    },
+    "monitoring.test.js": {
+      "category": "core",
+      "reason": "System monitoring metrics and alerts"
+    },
+    "multi_tenant_isolation.test.js": {
+      "category": "core",
+      "reason": "Multi-tenant workspace isolation checks"
+    },
+    "multi_tenant_usage_monitoring.test.js": {
+      "category": "core",
+      "reason": "Workspace storage and lead limits"
+    },
+    "oauth_popup_flow.test.js": {
+      "category": "core",
+      "reason": "OAuth popup callback messaging"
+    },
+    "owner_2fa_verification.test.js": {
+      "category": "core",
+      "reason": "Owner TOTP 2FA verification"
+    },
+    "payment_dual_field_sync.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 payment snake_case and camelCase sync"
+    },
+    "pdf_export_event_loop.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 PDF export event loop yielding"
+    },
+    "perf_and_speed_phase2.test.js": {
+      "category": "core",
+      "reason": "API throughput and response latency"
+    },
+    "perf_round2_verification.test.js": {
+      "category": "core",
+      "reason": "Round 2 performance benchmarks"
+    },
+    "permission_matrix_and_ui_lifecycle.test.js": {
+      "category": "core",
+      "reason": "Role permission matrix enforcement"
+    },
+    "permission_parity_and_escalation_hardening.test.js": {
+      "category": "core",
+      "reason": "Privilege escalation prevention"
+    },
+    "phase1_phase2_first_touch.test.js": {
+      "category": "core",
+      "reason": "First touch channel routing"
+    },
+    "phase1_phase2_verification.test.js": {
+      "category": "core",
+      "reason": "Phase 1 & 2 integration verification"
+    },
+    "phase1_security_scope_verification.test.js": {
+      "category": "core",
+      "reason": "Security scoping rules"
+    },
+    "pipeline_remap_status_integrity.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 pipeline deletion and remapping integrity"
+    },
+    "platform_health_score_engine.test.js": {
+      "category": "core",
+      "reason": "Health score calculation tests"
+    },
+    "production_health_framework.test.js": {
+      "category": "core",
+      "reason": "Health check /health and /live endpoints"
+    },
+    "queue_processing.test.js": {
+      "category": "core",
+      "reason": "In-memory task queue tests"
+    },
+    "recording_workspace_isolation.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 call recordings workspace isolation"
+    },
+    "render_deployment_compatibility.test.js": {
+      "category": "core",
+      "reason": "Render environment compatibility checks"
+    },
+    "schema_validation.test.js": {
+      "category": "quarantined",
+      "reason": "Pre-existing test asserting deprecated legacy schema field names"
+    },
+    "security_abuse_detection.test.js": {
+      "category": "core",
+      "reason": "Rate limiting and IP brute-force abuse protection"
+    },
+    "security_hardening_and_lifecycle.test.js": {
+      "category": "core",
+      "reason": "Security middleware and CORS rules"
+    },
+    "security_rbac_and_payment_remediation.test.js": {
+      "category": "core",
+      "reason": "RBAC payment access controls"
+    },
+    "self_service_integrations.test.js": {
+      "category": "core",
+      "reason": "Self-service webhook connectors"
+    },
+    "self_service_lead_integration.test.js": {
+      "category": "core",
+      "reason": "Self-service lead ingestion endpoints"
+    },
+    "system_observability_suite.test.js": {
+      "category": "core",
+      "reason": "System telemetry, heap and event loop metrics"
+    },
+    "system_qa_acceptance.test.js": {
+      "category": "core",
+      "reason": "QA acceptance scenarios"
+    },
+    "tenant_fail_closed.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 fail-closed tenant scoping without legacy flag"
+    },
+    "tenant_isolation_leads.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 strict tenant scoping on leads"
+    },
+    "tenant_lifecycle_production.test.js": {
+      "category": "core",
+      "reason": "Tenant onboarding and subscription lifecycle"
+    },
+    "tenant_workflow_phases.test.js": {
+      "category": "core",
+      "reason": "Multi-tenant CRM workflow phases"
+    },
+    "test_coupon_system.test.js": {
+      "category": "core",
+      "reason": "Coupon creation and validation"
+    },
+    "test_email_folders_flow.js": {
+      "category": "core",
+      "reason": "Email folder operations"
+    },
+    "test_email_placeholders.js": {
+      "category": "core",
+      "reason": "Dynamic email placeholder replacement"
+    },
+    "test_google_sheets_v2_e2e.js": {
+      "category": "needs-external-service",
+      "reason": "Requires real Google Cloud Sheets service credentials"
+    },
+    "test_plan_catalog_entitlements.test.js": {
+      "category": "core",
+      "reason": "Public plan catalog entitlements"
+    },
+    "test_runner_safety.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 3 test runner safety guard and manifest orphan check"
+    },
+    "test_sheets_flow.js": {
+      "category": "core",
+      "reason": "Sheets webhook flow tests"
+    },
+    "test_superadmin_plan_override.test.js": {
+      "category": "core",
+      "reason": "SuperAdmin plan override tests"
+    },
+    "test_totp_resilience.test.js": {
+      "category": "core",
+      "reason": "TOTP MFA clock skew resilience"
+    },
+    "transaction_rollback.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 withTransaction helper rollback"
+    },
+    "uncaught_exception_resilience.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 uncaughtException graceful shutdown"
+    },
+    "verify_form_and_nav.test.js": {
+      "category": "core",
+      "reason": "Form builder navigation and field validation"
+    },
+    "whatsapp_and_notifications_reliability.test.js": {
+      "category": "quarantined",
+      "reason": "Pre-existing test with legacy single-process socket mocks"
+    },
+    "whatsapp_comprehensive_suite.test.js": {
+      "category": "core",
+      "reason": "WhatsApp Baileys & Meta message formatting"
+    },
+    "whatsapp_distributed_lease.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 WhatsApp lease & 440 reconnect loop prevention"
+    },
+    "workspace_rbac_and_isolation.test.js": {
+      "category": "core",
+      "reason": "Workspace RBAC and data isolation"
+    },
+    "f1_installment_race.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 atomic installment payment race condition"
+    },
+    "f1_write_concern.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 explicit majority and journal write concern"
+    },
+    "f1_soft_delete_orphans.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 soft delete cascade cleanup and orphan skipping"
+    },
+    "f1_optimistic_concurrency.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 optimistic concurrency control on lead updates"
+    },
+    "f1_idempotency_retry.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 idempotency keys and double-submit retry guards"
+    },
+    "f1_resumable_import.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 resumable and idempotent ImportJob"
+    },
+    "f2_count_optimization.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 lead list countDocuments optimization and caching"
+    },
+    "f2_prune_indexes.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 lead index pruning and limit compliance"
+    },
+    "f2_chat_polling.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 lighter chat polling with ETag and since cursor"
+    },
+    "f2_disk_streaming_import.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 disk storage streaming import and CSV formula escaping"
+    },
+    "f3_offline_queue_worker.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 offline mutation queue worker replay"
+    },
+    "f4_cron_distributed_lock.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 distributed locks and lease timeouts for crons and workers"
+    },
+    "f5_security_masking_oracle.test.js": {
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 security hardening and phone masking oracles"
+    },
+    "rc1_jwt_token_version.test.js": {
+      "category": "batch-suites",
+      "reason": "RC1 Gate: JWT tokenVersion lifecycle, backward compatibility and multi-device revocation test"
+    }
   }
 }

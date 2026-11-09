@@ -23,6 +23,7 @@ const { generateUniqueUsercode } = require('../utils/generateUsercode');
 const Workspace = require('../models/Workspace');
 const WorkspaceMembership = require('../models/WorkspaceMembership');
 const { auditService } = require('../monitoring/audit/auditService');
+const { invalidateUserAuthCache } = require('../utils/authCache');
 
 // Helper: Immutable Universal Activity Logging
 const logActivity = async ({
@@ -3012,7 +3013,11 @@ exports.toggleUserStatus = async (req, res) => {
     const newStatus = (user.userStatus === 'active' || user.isActive) ? 'disabled' : 'active';
     user.userStatus = newStatus;
     user.isActive = newStatus === 'active';
+    if (newStatus === 'disabled') {
+      user.tokenVersion = (user.tokenVersion || 0) + 1;
+    }
     await user.save();
+    invalidateUserAuthCache(user._id);
 
     await logActivity({
       userId: req.user._id,

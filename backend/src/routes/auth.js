@@ -16,6 +16,8 @@ const {
   getMe,
   updateProfile,
   changePassword,
+  logout,
+  logoutAll,
   applyCoupon,
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
@@ -40,6 +42,8 @@ router.get('/form-schema', protect, getFormSchema);
 router.put('/form-schema', protect, updateFormSchema || updateCustomFields);
 router.put('/custom-fields', protect, updateCustomFields);
 router.put('/change-password', protect, changePassword);
+router.post('/logout', protect, logout);
+router.post('/logout-all', protect, logoutAll);
 router.post('/apply-coupon', protect, applyCoupon);
 
 module.exports = router;

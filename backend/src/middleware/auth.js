@@ -120,8 +120,10 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ message: 'Not authorized, account inactive' });
     }
 
-    // Token version check: reject stale/revoked JWT tokens immediately
-    if (decoded.tokenVersion !== undefined && user.tokenVersion !== undefined && decoded.tokenVersion < user.tokenVersion) {
+    // Token version check: reject stale/revoked JWT tokens immediately (RC1 Gate)
+    const tokenVer = decoded.tokenVersion !== undefined ? Number(decoded.tokenVersion) : 0;
+    const userVer = Number(user.tokenVersion || 0);
+    if (tokenVer < userVer) {
       return res.status(401).json({ message: 'Token has been revoked or invalidated' });
     }
 
@@ -360,8 +362,20 @@ const checkPlanExpiry = async (req, res, next) => {
   next();
 };
 
-const generateToken = (userId) => {
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: '30d' });
+const generateToken = (userId, tokenVersion = 0) => {
+  let uId = userId;
+  let tVer = Number(tokenVersion || 0);
+
+  if (userId && typeof userId === 'object') {
+    if (userId._id && userId.tokenVersion !== undefined) {
+      uId = userId._id;
+      tVer = Number(userId.tokenVersion || 0);
+    } else if (userId._id || userId.id) {
+      uId = userId._id || userId.id;
+    }
+  }
+
+  return jwt.sign({ id: String(uId), tokenVersion: tVer }, process.env.JWT_SECRET, { expiresIn: '30d' });
 };
 
 const generateTemp2FAToken = (userId) => {
