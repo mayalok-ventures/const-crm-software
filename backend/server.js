@@ -584,6 +584,11 @@ const gracefulShutdown = async (signal, exitCode = 0) => {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('message', (msg) => {
+  if (msg === 'shutdown' || msg?.type === 'shutdown') {
+    gracefulShutdown('IPC_SHUTDOWN');
+  }
+});
 process.once('SIGUSR2', async () => {
   await gracefulShutdown('SIGUSR2');
   process.kill(process.pid, 'SIGUSR2');
