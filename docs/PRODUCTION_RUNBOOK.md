@@ -1,39 +1,51 @@
 # Production Deployment, Operations & Disaster Recovery Runbook
 
-**Target Release**: `release/rc-2`  
-**Platform**: Render (Web Service + Dedicated Background Worker) / MongoDB Atlas Replica Set / Cloudflare CDN  
+**Target Release**: `release/rc-3`  
+**Platform**: Render Web Service / MongoDB Atlas Replica Set / Redis / Cloudflare CDN  
 **Verification Target**: Enterprise-grade CRM with strict financial durability, real-time counselor speed, and fail-safe configuration.
 
 ---
 
-## 1. Release Overview & Architecture
+## 1. Production Topology & Architecture
 
-### 1.1 Architecture & Separation of Concerns
-To ensure counselor interactions achieve sub-100ms response times without interference from resource-intensive background processing, production workloads are split into two decoupled Render services sharing a common MongoDB Atlas Replica Set and Redis instance:
+### 1.1 Default Production Topology: Unified Web+Worker Process
+The production runtime requires an active WhatsApp Baileys engine where persistent in-memory WebSocket connections are tied to the local Node.js process memory.
 
 ```mermaid
 flowchart TD
     CF["Cloudflare Edge CDN (PWA Static Hosting & SSL)"] --> ALB["Render Load Balancer (Reverse Proxy)"]
-    ALB --> WEB1["Web Instance 1 (RUN_BACKGROUND_WORKERS=false)"]
-    ALB --> WEB2["Web Instance 2 (RUN_BACKGROUND_WORKERS=false)"]
-    WEB1 --> ATLAS[("MongoDB Atlas Replica Set (Primary + Secondaries)")]
-    WEB2 --> ATLAS
-    WEB1 --> REDIS[("Redis Cache & Rate Limiting")]
-    WEB2 --> REDIS
+    ALB --> MAIN["Primary Web+Worker Instance (RUN_BACKGROUND_WORKERS=true)\n- Serves HTTP REST API\n- Owns WhatsApp Baileys Sockets\n- Runs Background Crons & Campaign Workers"]
+    MAIN --> ATLAS[("MongoDB Atlas Replica Set (Primary + Secondaries)")]
+    MAIN --> REDIS[("Redis Cache & Rate Limiting")]
+    MAIN --> WA["WhatsApp Servers (Persistent Baileys WebSockets)"]
 
-    WORKER["Render Background Worker Service\n(RUN_BACKGROUND_WORKERS=true, RUN_CRON_WORKERS=true)"] --> ATLAS
-    WORKER --> REDIS
-    WORKER --> WA["Meta / WhatsApp Cloud API & Baileys Sockets"]
+    ALB -.-> API2["Optional Secondary API Nodes (RUN_BACKGROUND_WORKERS=false)\n- Serves Read-Heavy HTTP Traffic\n- WhatsApp Sends Return HTTP 503 (No Inter-Process RPC)"]
+    API2 -.-> ATLAS
+    API2 -.-> REDIS
 ```
 
-1. **`crm-api` (Render Web Service)**:
-   - Configured with `RUN_BACKGROUND_WORKERS=false`.
-   - Dedicated solely to processing REST API endpoints, user authentication, live counselor searches, lead detail views, and fast saves.
-   - Zero cron jobs or heavy background pollers run on this tier, guaranteeing uninhibited event-loop availability.
-2. **`crm-worker` (Render Background Worker Service)**:
-   - Configured with `RUN_BACKGROUND_WORKERS=true` and `RUN_CRON_WORKERS=true`.
-   - Runs scheduled crons (`followUpReminders`, `campaignWorker`, `googleSheetsPollingService`, soft-delete purges).
-   - Coordinates multi-instance cron execution using MongoDB distributed locks (`CronLock` collection with automatic TTL expiry).
+- **Default & Recommended Topology**: A **single combined Web+Worker instance** (`RUN_BACKGROUND_WORKERS=true`).
+  - Processes all inbound REST API requests, counselor saves, searches, and leads views.
+  - Owns all active WhatsApp Baileys WebSocket sockets directly in process memory.
+  - Runs all scheduled background cron jobs (`followUpReminders`, `campaignWorker`, `googleSheetsPollingService`, soft-delete purges).
+
+### 1.2 Multi-Instance Scaling Limitation & Web/Worker Split Truth
+> [!WARNING]
+> **CRITICAL ARCHITECTURAL BOUNDARY**:
+> A decoupled web/worker multi-instance split with cross-node WhatsApp sending is **NOT currently supported**.
+> - In-memory Baileys WebSockets live exclusively in the heap of the process that established the session.
+> - There is currently **no inter-process RPC or distributed message bus** (e.g. BullMQ / Redis PubSub RPC) forwarding outbound sends from API instances to the worker instance.
+> - If secondary API instances are spun up with `RUN_BACKGROUND_WORKERS=false`, any outbound WhatsApp send request hitting those instances will receive an explicit HTTP 503:
+>   ```json
+>   {
+>     "code": "WA_SESSION_OWNED_BY_ANOTHER_INSTANCE",
+>     "message": "WhatsApp session is owned by another cluster worker (worker-node-id).",
+>     "leaseOwner": "worker-node-id"
+>   }
+>   ```
+> - **Operational Requirement**: Until an RPC layer is implemented, any deployment requiring outbound WhatsApp must either:
+>   1. Use sticky session routing directing WhatsApp callers to the socket-holding node, OR
+>   2. Operate as a single high-spec Web+Worker container (e.g. Render Standard 2GB/1CPU).
 
 ---
 
@@ -48,28 +60,28 @@ All production nodes execute the strict environment validator (`validateProducti
 | `MONGODB_URI` / `MONGO_URI` | Both | MongoDB URI (`mongodb+srv://...`) | *None* | Must point to MongoDB Atlas replica set. Connection-level write concern `{ w: 'majority', j: true }` is enforced by Mongoose. |
 | `JWT_SECRET` | Both | Hex / Base64 (min 32 chars) | *None* | Primary cryptographic key for HMAC-SHA256 user authentication tokens. **Never regenerate on active deploy**. |
 | `INTEGRATION_ENCRYPTION_KEY` | Both | 64-char Hex (32 bytes) | *None* | AES-256-GCM symmetric key used to encrypt OAuth tokens and integration credentials in database. |
-| `WHATSAPP_AUTH_ENCRYPTION_KEY`| Both | 64-char Hex (32 bytes) | *Fallback to INTEGRATION*| Dedicated key for encrypting Baileys auth tokens (`WhatsAppAuthCredential`). |
+| `WA_ENCRYPTION_KEY` | Both | 64-char Hex (32 bytes) | *Required if WA enabled* | Dedicated AES-256-GCM symmetric key for encrypting Baileys auth credentials (`mongoAuthState.js`). |
 | `REDIS_URL` | Both | Redis URI (`redis://...`) | *None* | Redis instance for multi-instance distributed rate limiting and token blacklists. |
-| `RUN_BACKGROUND_WORKERS` | Global | Boolean (`true`/`false`) | `true` | Set to `false` on `crm-api` (web service); set to `true` on `crm-worker` (worker service). |
-| `RUN_CRON_WORKERS` | Worker | Boolean (`true`/`false`) | `true` | Secondary switch for cron workers. Active on worker tier. |
-| `RUN_WHATSAPP_WORKER` | Worker | Boolean (`true`/`false`) | `true` | Enables WhatsApp background listener loops on the worker service. |
+| `RUN_BACKGROUND_WORKERS` | Global | Boolean (`true`/`false`) | `true` | Set to `true` on primary instance (owns WhatsApp & crons); set to `false` on secondary read-heavy API instances. |
+| `TRUST_PROXY_HOPS` | API | Integer / Boolean | `1` | Reverse proxy hop depth (`1` for Render LB, `2` for Cloudflare + Render LB). |
 | `ALLOWED_ORIGINS` | API | Comma-delimited URLs | *See db.js* | Permitted CORS origins (e.g., `https://crm.sahyak.com,https://app.sahyak.com`). |
 | `RAZORPAY_KEY_ID` | Both | String | *Optional* | Razorpay API key ID for payment link generation. |
 | `RAZORPAY_KEY_SECRET` | Both | String | *Optional* | Razorpay API key secret. |
 | `RAZORPAY_WEBHOOK_SECRET` | Both | String | *Optional* | Secret used to verify raw HMAC SHA256 signatures on inbound webhook events. |
 | `META_APP_SECRET` | Both | String | *Optional* | Meta App Secret for validating `X-Hub-Signature-256` on WhatsApp / Lead Ads webhooks. |
-| `PUBLIC_SHARE_RATE_LIMIT_MAX` | API | Integer | `30` | Max public share link requests per IP per minute. |
-| `ADMIN_RATE_LIMIT_MAX` | API | Integer | `30` | Max administrative operations per IP per minute. |
+| `PUBLIC_SHARE_RATE_LIMIT_MAX` | API | Integer | `30` | Max public share link requests per token+IP per 15 minutes. |
+| `ADMIN_RATE_LIMIT_MAX` | API | Integer | `120` | Max administrative operations per IP/user per 15 minutes. |
 | `IMPORT_CONCURRENCY` | Worker | Integer | `4` | Max parallel chunks for background CSV/XLSX imports. |
 | `MAX_IMPORT_FILE_SIZE_BYTES` | API | Integer | `52428800` | 50MB ceiling for uploaded import files. |
 
 ---
 
+
 ## 3. Pre-Flight Deployment Checklist
 
 Before triggering a deployment to staging or production:
 
-- [ ] **1. Secrets Backup**: Verify that `JWT_SECRET`, `INTEGRATION_ENCRYPTION_KEY`, and `WHATSAPP_AUTH_ENCRYPTION_KEY` are safely archived in team 1Password / HashiCorp Vault.
+- [ ] **1. Secrets Backup**: Verify that `JWT_SECRET`, `INTEGRATION_ENCRYPTION_KEY`, and `WA_ENCRYPTION_KEY` are safely archived in team 1Password / HashiCorp Vault.
 - [ ] **2. Database Connectivity & IP Access**: Ensure MongoDB Atlas Network Access whitelist contains Render outbound egress IPs or `0.0.0.0/0` with strong SCRAM-SHA-256 credentials.
 - [ ] **3. Replica Set Health**: Confirm MongoDB Atlas cluster status is green with 0 replication lag and primary node healthy.
 - [ ] **4. Backup Confirmation**: Verify Atlas automated continuous backup snapshot was completed within the last 15 minutes.

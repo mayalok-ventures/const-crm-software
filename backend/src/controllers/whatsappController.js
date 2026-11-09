@@ -167,7 +167,12 @@ exports.sendText = async (req, res) => {
     res.json({ message: 'Message sent successfully' });
   } catch (err) {
     console.error('sendText error:', err);
-    res.status(500).json({ message: err.message || 'Failed to send WhatsApp message' });
+    const statusCode = err.statusCode || (err.code === 'WA_SESSION_OWNED_BY_ANOTHER_INSTANCE' ? 503 : 500);
+    res.status(statusCode).json({
+      code: err.code || 'WA_SEND_FAILED',
+      message: err.message || 'Failed to send WhatsApp message',
+      leaseOwner: err.leaseOwner || null,
+    });
   }
 };
 
@@ -198,7 +203,12 @@ exports.sendMedia = async (req, res) => {
     res.json({ message: 'Media sent successfully' });
   } catch (err) {
     console.error('sendMedia error:', err);
-    res.status(500).json({ message: err.message || 'Failed to send media via WhatsApp' });
+    const statusCode = err.statusCode || (err.code === 'WA_SESSION_OWNED_BY_ANOTHER_INSTANCE' ? 503 : 500);
+    res.status(statusCode).json({
+      code: err.code || 'WA_MEDIA_SEND_FAILED',
+      message: err.message || 'Failed to send media via WhatsApp',
+      leaseOwner: err.leaseOwner || null,
+    });
   }
 };
 

@@ -393,6 +393,10 @@
       "category": "batch-suites",
       "reason": "Release RC3 Gate: User-keyed rate limiting, proxy hops, role-split admin limits & share-token isolation"
     },
+    "rc3_dual_instance_topology.test.js": {
+      "category": "batch-suites",
+      "reason": "Release RC3 Gate: Dual-instance topology, once-only jobs & WhatsApp lease fencing HTTP 503 verification"
+    },
     "render_deployment_compatibility.test.js": {
       "category": "core",
       "reason": "Render environment compatibility checks"
