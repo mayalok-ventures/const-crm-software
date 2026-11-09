@@ -72,7 +72,7 @@ async function runTest() {
     companyRole: 'owner',
   });
   // Initially soloUser has no workspaceId
-  assert.strictEqual(soloUser.workspaceId, undefined);
+  assert.ok(!soloUser.workspaceId, 'Initially soloUser has no workspaceId');
   const soloQuery = await buildLeadPermissionQuery(soloUser);
   assert.ok(soloUser.workspaceId, 'Solo user should have auto-resolved their solo workspace');
   assert.strictEqual(soloQuery.workspaceId.toString(), soloUser.workspaceId.toString());

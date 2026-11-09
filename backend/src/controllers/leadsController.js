@@ -2952,7 +2952,7 @@ exports.exportLeads = async (req, res) => {
         ];
 
         const line = row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',') + '\n';
-        if (!res.write(line)) {
+        if (!res.write(line) && typeof res.once === 'function') {
           await new Promise((r) => res.once('drain', r));
         }
       }
