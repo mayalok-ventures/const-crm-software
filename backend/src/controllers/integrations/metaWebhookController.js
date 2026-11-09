@@ -588,9 +588,13 @@ function verifySignature(req) {
   const [algorithm, hash] = signature.split('=');
   if (algorithm !== 'sha256' || !hash) return false;
 
+  if (!req.rawBody) return false;
+
   const rawPayload = Buffer.isBuffer(req.rawBody)
     ? req.rawBody
-    : Buffer.from(typeof req.rawBody === 'string' ? req.rawBody : JSON.stringify(req.body || {}));
+    : Buffer.from(typeof req.rawBody === 'string' ? req.rawBody : '', 'utf8');
+
+  if (rawPayload.length === 0) return false;
 
   const expected = crypto
     .createHmac('sha256', appSecret)

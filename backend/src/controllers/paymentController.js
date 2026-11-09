@@ -337,13 +337,23 @@ exports.handleRazorpayWebhook = async (req, res) => {
       return res.status(400).json({ message: 'Missing Razorpay webhook signature header' });
     }
 
-    const rawBody = typeof req.rawBody === 'string' ? req.rawBody : (Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : JSON.stringify(req.body));
+    if (!req.rawBody) {
+      return res.status(400).json({ message: 'Missing raw request body for webhook verification' });
+    }
+
+    const rawBody = Buffer.isBuffer(req.rawBody)
+      ? req.rawBody
+      : Buffer.from(typeof req.rawBody === 'string' ? req.rawBody : '', 'utf8');
+
+    if (rawBody.length === 0) {
+      return res.status(400).json({ message: 'Empty raw request body for webhook verification' });
+    }
 
     const event = req.body?.event;
-    console.log(`[Webhook] Received verified Razorpay event: ${event}`);
 
     // Centralized Webhook & Reconciliation Engine (Processes Idempotency, Payments, Subscriptions & Lifecycle)
     const reconciliationResult = await reconcileWebhookEvent(event, req.body.payload, signature, rawBody);
+    console.log(`[Webhook] Received verified Razorpay event: ${event}`);
     if (reconciliationResult.idempotent) {
       return res.status(200).json({ status: 'ok', message: 'Already processed' });
     }
@@ -484,7 +494,8 @@ exports.handleRazorpayWebhook = async (req, res) => {
     res.json({ status: 'ok' });
   } catch (error) {
     console.error('[Payments Webhook] Error processing webhook:', error);
-    res.status(500).json({ message: 'Webhook processing error' });
+    const status = error.statusCode || (error.code === 'INVALID_SIGNATURE' ? 400 : 500);
+    res.status(status).json({ message: error.message || 'Webhook processing error' });
   }
 };
 

@@ -580,6 +580,10 @@
     "rc2_email_security_timeouts.test.js": {
       "category": "batch-suites",
       "reason": "Production Readiness C3: Email attachment security allowlist and transport connection timeouts"
+    },
+    "rc2_webhook_signature_hardening.test.js": {
+      "category": "batch-suites",
+      "reason": "Production Readiness C4: Fail-closed raw body webhook signature verification and replay guards"
     }
   }
 }
