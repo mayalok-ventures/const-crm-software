@@ -1,0 +1,21 @@
+{
+  "hardware": "AMD Ryzen 7 PRO 5850U with Radeon Graphics (16 vCPUs, 11.83 GB RAM)",
+  "os": "Windows 11 Enterprise (10.0.26100)",
+  "scenario1_mongod_restart": {
+    "serverPid": 5700,
+    "recoveryDurationMs": 1998,
+    "serverCrashed": false,
+    "acknowledgedWrites": 20,
+    "lostAcknowledgedWrites": 0,
+    "verdict": "PASS"
+  },
+  "scenario2_sigterm_drain": {
+    "exitCode": 0,
+    "exitSignal": null,
+    "cleanExit": true,
+    "postTermRejected": true,
+    "acknowledgedWrites": 20,
+    "lostAcknowledgedWrites": 0,
+    "verdict": "PASS"
+  }
+}

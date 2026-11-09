@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Rate Limiter User-Keying Isolation",
+    "targetFile": "backend/src/middleware/rateLimiter.js",
+    "baseline": "PASS",
+    "mutationDetected": "YES (FAILED AS EXPECTED)",
+    "status": "PASS",
+    "errorSnippet": "Fatal rate limiter test failure: AssertionError [ERR_ASSERTION]: Expected values to be strictly equal: + actual - expected "
+  },
+  {
+    "name": "Dual-Instance Topology & WhatsApp 503 Fencing",
+    "targetFile": "backend/src/services/waSession.js",
+    "baseline": "PASS",
+    "mutationDetected": "YES (FAILED AS EXPECTED)",
+    "status": "PASS",
+    "errorSnippet": "[WA-Cluster] Session 6af1d80528f87ae81ce3be29 is active in another worker (worker-node-primary-01). Skipping socket bind in current process. sendText error: Error: WhatsApp session is owned by another"
+  },
+  {
+    "name": "WhatsApp Auth Encryption Tag Verification",
+    "targetFile": "backend/src/services/mongoAuthState.js",
+    "baseline": "PASS",
+    "mutationDetected": "YES (FAILED AS EXPECTED)",
+    "status": "PASS",
+    "errorSnippet": "❌ supports key rotation across multiple key IDs via key ring FAILED: Decryption failed for keyId \"k1\": authentication tag mismatch or corrupted ciphertext ❌ [Migration Error] Failed to process doc 6af"
+  },
+  {
+    "name": "Bulk Performance XLSX Row Limit Enforcement",
+    "targetFile": "backend/src/controllers/leadsController.js",
+    "baseline": "PASS",
+    "mutationDetected": "YES (FAILED AS EXPECTED)",
+    "status": "PASS",
+    "errorSnippet": "❌ XLSX Export Row Cap: rejects queries exceeding MAX_XLSX_EXPORT_ROWS with explicit HTTP 413 FAILED: Unexpected token 'P', \"PK\u0003\u0004\u0014\u0000\u0000\u0000\u0000\u0000\"... is not valid JSON"
+  },
+  {
+    "name": "Strict Environment Validator Fail-Closed CORS Check",
+    "targetFile": "backend/src/config/envValidator.js",
+    "baseline": "PASS",
+    "mutationDetected": "YES (FAILED AS EXPECTED)",
+    "status": "PASS",
+    "errorSnippet": "⚠️ [EnvValidator] META_APP_SECRET is not configured. Inbound Meta webhooks will fail closed. ⚠️ [EnvValidator] META_APP_SECRET is not configured. Inbound Meta webhooks will fail closed. "
+  }
+]

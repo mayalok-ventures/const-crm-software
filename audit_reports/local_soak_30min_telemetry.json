@@ -1,0 +1,516 @@
+{
+  "durationSec": 1803.1,
+  "durationMinutes": 30.1,
+  "concurrentCounselors": 50,
+  "totalRequests": 131724,
+  "s2xx": 131724,
+  "s4xx": 0,
+  "s5xx": 0,
+  "errorRate5xx": 0,
+  "reqsPerSec": 73.1,
+  "eventLoopLag": {
+    "p50": 82,
+    "p95": 160,
+    "p99": 211,
+    "max": 629
+  },
+  "memoryTrend": {
+    "initialHeapMb": 143,
+    "finalHeapMb": 225,
+    "heapGrowthMb": 82,
+    "heapGrowthPercent": 57.3,
+    "initialRssMb": 339,
+    "finalRssMb": 486,
+    "snapshots": [
+      {
+        "minute": 0,
+        "elapsedSec": 0,
+        "rssMb": 339,
+        "heapUsedMb": 143,
+        "heapTotalMb": 267,
+        "eventLoopLagMs": {
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "max": 0
+        },
+        "reqCount": 0,
+        "errors5xx": 0
+      },
+      {
+        "minute": 1,
+        "elapsedSec": 60,
+        "rssMb": 521,
+        "heapUsedMb": 183,
+        "heapTotalMb": 290,
+        "eventLoopLagMs": {
+          "p50": 115,
+          "p95": 190,
+          "p99": 292,
+          "max": 501
+        },
+        "reqCount": 2662,
+        "errors5xx": 0
+      },
+      {
+        "minute": 2,
+        "elapsedSec": 120,
+        "rssMb": 533,
+        "heapUsedMb": 165,
+        "heapTotalMb": 317,
+        "eventLoopLagMs": {
+          "p50": 98,
+          "p95": 173,
+          "p99": 244,
+          "max": 559
+        },
+        "reqCount": 6792,
+        "errors5xx": 0
+      },
+      {
+        "minute": 3,
+        "elapsedSec": 180,
+        "rssMb": 557,
+        "heapUsedMb": 80,
+        "heapTotalMb": 320,
+        "eventLoopLagMs": {
+          "p50": 99,
+          "p95": 168,
+          "p99": 234,
+          "max": 559
+        },
+        "reqCount": 11072,
+        "errors5xx": 0
+      },
+      {
+        "minute": 4,
+        "elapsedSec": 240,
+        "rssMb": 527,
+        "heapUsedMb": 137,
+        "heapTotalMb": 325,
+        "eventLoopLagMs": {
+          "p50": 100,
+          "p95": 169,
+          "p99": 234,
+          "max": 559
+        },
+        "reqCount": 14959,
+        "errors5xx": 0
+      },
+      {
+        "minute": 5,
+        "elapsedSec": 300,
+        "rssMb": 511,
+        "heapUsedMb": 131,
+        "heapTotalMb": 325,
+        "eventLoopLagMs": {
+          "p50": 103,
+          "p95": 171,
+          "p99": 231,
+          "max": 559
+        },
+        "reqCount": 18522,
+        "errors5xx": 0
+      },
+      {
+        "minute": 6,
+        "elapsedSec": 360,
+        "rssMb": 505,
+        "heapUsedMb": 153,
+        "heapTotalMb": 322,
+        "eventLoopLagMs": {
+          "p50": 105,
+          "p95": 173,
+          "p99": 233,
+          "max": 559
+        },
+        "reqCount": 22009,
+        "errors5xx": 0
+      },
+      {
+        "minute": 7,
+        "elapsedSec": 420,
+        "rssMb": 507,
+        "heapUsedMb": 188,
+        "heapTotalMb": 324,
+        "eventLoopLagMs": {
+          "p50": 102,
+          "p95": 170,
+          "p99": 228,
+          "max": 559
+        },
+        "reqCount": 26313,
+        "errors5xx": 0
+      },
+      {
+        "minute": 8,
+        "elapsedSec": 480,
+        "rssMb": 505,
+        "heapUsedMb": 154,
+        "heapTotalMb": 329,
+        "eventLoopLagMs": {
+          "p50": 100,
+          "p95": 170,
+          "p99": 223,
+          "max": 559
+        },
+        "reqCount": 30594,
+        "errors5xx": 0
+      },
+      {
+        "minute": 9,
+        "elapsedSec": 540,
+        "rssMb": 493,
+        "heapUsedMb": 83,
+        "heapTotalMb": 322,
+        "eventLoopLagMs": {
+          "p50": 103,
+          "p95": 173,
+          "p99": 229,
+          "max": 559
+        },
+        "reqCount": 33773,
+        "errors5xx": 0
+      },
+      {
+        "minute": 10,
+        "elapsedSec": 601,
+        "rssMb": 482,
+        "heapUsedMb": 126,
+        "heapTotalMb": 319,
+        "eventLoopLagMs": {
+          "p50": 106,
+          "p95": 186,
+          "p99": 245,
+          "max": 629
+        },
+        "reqCount": 36390,
+        "errors5xx": 0
+      },
+      {
+        "minute": 11,
+        "elapsedSec": 661,
+        "rssMb": 478,
+        "heapUsedMb": 200,
+        "heapTotalMb": 326,
+        "eventLoopLagMs": {
+          "p50": 108,
+          "p95": 187,
+          "p99": 247,
+          "max": 629
+        },
+        "reqCount": 39459,
+        "errors5xx": 0
+      },
+      {
+        "minute": 12,
+        "elapsedSec": 721,
+        "rssMb": 487,
+        "heapUsedMb": 189,
+        "heapTotalMb": 323,
+        "eventLoopLagMs": {
+          "p50": 106,
+          "p95": 185,
+          "p99": 244,
+          "max": 629
+        },
+        "reqCount": 43457,
+        "errors5xx": 0
+      },
+      {
+        "minute": 13,
+        "elapsedSec": 781,
+        "rssMb": 489,
+        "heapUsedMb": 197,
+        "heapTotalMb": 327,
+        "eventLoopLagMs": {
+          "p50": 103,
+          "p95": 182,
+          "p99": 238,
+          "max": 629
+        },
+        "reqCount": 48428,
+        "errors5xx": 0
+      },
+      {
+        "minute": 14,
+        "elapsedSec": 841,
+        "rssMb": 466,
+        "heapUsedMb": 139,
+        "heapTotalMb": 330,
+        "eventLoopLagMs": {
+          "p50": 104,
+          "p95": 184,
+          "p99": 243,
+          "max": 629
+        },
+        "reqCount": 51771,
+        "errors5xx": 0
+      },
+      {
+        "minute": 15,
+        "elapsedSec": 901,
+        "rssMb": 481,
+        "heapUsedMb": 100,
+        "heapTotalMb": 327,
+        "eventLoopLagMs": {
+          "p50": 103,
+          "p95": 184,
+          "p99": 238,
+          "max": 629
+        },
+        "reqCount": 55692,
+        "errors5xx": 0
+      },
+      {
+        "minute": 16,
+        "elapsedSec": 961,
+        "rssMb": 470,
+        "heapUsedMb": 164,
+        "heapTotalMb": 327,
+        "eventLoopLagMs": {
+          "p50": 101,
+          "p95": 181,
+          "p99": 237,
+          "max": 629
+        },
+        "reqCount": 60007,
+        "errors5xx": 0
+      },
+      {
+        "minute": 17,
+        "elapsedSec": 1021,
+        "rssMb": 485,
+        "heapUsedMb": 113,
+        "heapTotalMb": 324,
+        "eventLoopLagMs": {
+          "p50": 98,
+          "p95": 178,
+          "p99": 234,
+          "max": 629
+        },
+        "reqCount": 65339,
+        "errors5xx": 0
+      },
+      {
+        "minute": 18,
+        "elapsedSec": 1081,
+        "rssMb": 485,
+        "heapUsedMb": 158,
+        "heapTotalMb": 322,
+        "eventLoopLagMs": {
+          "p50": 95,
+          "p95": 176,
+          "p99": 232,
+          "max": 629
+        },
+        "reqCount": 70664,
+        "errors5xx": 0
+      },
+      {
+        "minute": 19,
+        "elapsedSec": 1141,
+        "rssMb": 484,
+        "heapUsedMb": 198,
+        "heapTotalMb": 323,
+        "eventLoopLagMs": {
+          "p50": 94,
+          "p95": 176,
+          "p99": 231,
+          "max": 629
+        },
+        "reqCount": 74804,
+        "errors5xx": 0
+      },
+      {
+        "minute": 20,
+        "elapsedSec": 1201,
+        "rssMb": 484,
+        "heapUsedMb": 232,
+        "heapTotalMb": 327,
+        "eventLoopLagMs": {
+          "p50": 92,
+          "p95": 174,
+          "p99": 229,
+          "max": 629
+        },
+        "reqCount": 79870,
+        "errors5xx": 0
+      },
+      {
+        "minute": 21,
+        "elapsedSec": 1261,
+        "rssMb": 483,
+        "heapUsedMb": 145,
+        "heapTotalMb": 323,
+        "eventLoopLagMs": {
+          "p50": 89,
+          "p95": 172,
+          "p99": 226,
+          "max": 629
+        },
+        "reqCount": 85742,
+        "errors5xx": 0
+      },
+      {
+        "minute": 22,
+        "elapsedSec": 1321,
+        "rssMb": 487,
+        "heapUsedMb": 142,
+        "heapTotalMb": 324,
+        "eventLoopLagMs": {
+          "p50": 87,
+          "p95": 170,
+          "p99": 223,
+          "max": 629
+        },
+        "reqCount": 91512,
+        "errors5xx": 0
+      },
+      {
+        "minute": 23,
+        "elapsedSec": 1381,
+        "rssMb": 487,
+        "heapUsedMb": 169,
+        "heapTotalMb": 324,
+        "eventLoopLagMs": {
+          "p50": 84,
+          "p95": 168,
+          "p99": 222,
+          "max": 629
+        },
+        "reqCount": 97188,
+        "errors5xx": 0
+      },
+      {
+        "minute": 24,
+        "elapsedSec": 1441,
+        "rssMb": 484,
+        "heapUsedMb": 125,
+        "heapTotalMb": 325,
+        "eventLoopLagMs": {
+          "p50": 83,
+          "p95": 166,
+          "p99": 219,
+          "max": 629
+        },
+        "reqCount": 102539,
+        "errors5xx": 0
+      },
+      {
+        "minute": 25,
+        "elapsedSec": 1501,
+        "rssMb": 448,
+        "heapUsedMb": 107,
+        "heapTotalMb": 326,
+        "eventLoopLagMs": {
+          "p50": 82,
+          "p95": 164,
+          "p99": 217,
+          "max": 629
+        },
+        "reqCount": 107983,
+        "errors5xx": 0
+      },
+      {
+        "minute": 26,
+        "elapsedSec": 1561,
+        "rssMb": 486,
+        "heapUsedMb": 114,
+        "heapTotalMb": 327,
+        "eventLoopLagMs": {
+          "p50": 82,
+          "p95": 163,
+          "p99": 216,
+          "max": 629
+        },
+        "reqCount": 112839,
+        "errors5xx": 0
+      },
+      {
+        "minute": 27,
+        "elapsedSec": 1621,
+        "rssMb": 485,
+        "heapUsedMb": 200,
+        "heapTotalMb": 323,
+        "eventLoopLagMs": {
+          "p50": 82,
+          "p95": 162,
+          "p99": 215,
+          "max": 629
+        },
+        "reqCount": 117355,
+        "errors5xx": 0
+      },
+      {
+        "minute": 28,
+        "elapsedSec": 1681,
+        "rssMb": 485,
+        "heapUsedMb": 207,
+        "heapTotalMb": 313,
+        "eventLoopLagMs": {
+          "p50": 81,
+          "p95": 161,
+          "p99": 213,
+          "max": 629
+        },
+        "reqCount": 122337,
+        "errors5xx": 0
+      },
+      {
+        "minute": 29,
+        "elapsedSec": 1741,
+        "rssMb": 487,
+        "heapUsedMb": 140,
+        "heapTotalMb": 316,
+        "eventLoopLagMs": {
+          "p50": 82,
+          "p95": 161,
+          "p99": 212,
+          "max": 629
+        },
+        "reqCount": 126240,
+        "errors5xx": 0
+      },
+      {
+        "minute": 30,
+        "elapsedSec": 1801,
+        "rssMb": 485,
+        "heapUsedMb": 204,
+        "heapTotalMb": 317,
+        "eventLoopLagMs": {
+          "p50": 82,
+          "p95": 160,
+          "p99": 211,
+          "max": 629
+        },
+        "reqCount": 131043,
+        "errors5xx": 0
+      },
+      {
+        "minute": 30,
+        "elapsedSec": 1803,
+        "rssMb": 486,
+        "heapUsedMb": 225,
+        "heapTotalMb": 317,
+        "eventLoopLagMs": {
+          "p50": 82,
+          "p95": 160,
+          "p99": 211,
+          "max": 629
+        },
+        "reqCount": 131043,
+        "errors5xx": 0
+      }
+    ]
+  },
+  "writeLedger": {
+    "acknowledged": 2000,
+    "verified": 2000,
+    "lost": 0
+  },
+  "hardware": "AMD Ryzen 7 PRO 5850U with Radeon Graphics (16 vCPUs, 11.83 GB RAM)",
+  "os": "Windows 11 Enterprise (10.0.26100)",
+  "runtime": "Node.js v24.22.1, MongoDB 8.2.6",
+  "verdict": "WARN_P99_LAG"
+}
