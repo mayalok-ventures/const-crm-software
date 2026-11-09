@@ -385,6 +385,10 @@
       "category": "batch-suites",
       "reason": "Release RC1 Gate: Cross-tenant route isolation & mass-assignment allowlist protection"
     },
+    "rc2_clean_boot_and_db_connect.test.js": {
+      "category": "batch-suites",
+      "reason": "Release RC2 Production Ready: Clean database boot, dynamic port resolution & health readiness"
+    },
     "render_deployment_compatibility.test.js": {
       "category": "core",
       "reason": "Render environment compatibility checks"

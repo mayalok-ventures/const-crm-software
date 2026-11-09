@@ -109,9 +109,15 @@ const connectDB = async () => {
 
     // If targeting local MongoDB in non-production, ensure MongoDB is actively running
     if (isLocal && process.env.NODE_ENV !== 'production') {
-      const portActive = await isPortActive(27017);
+      let targetPort = 27017;
+      try {
+        const parsedUrl = new URL(mongoUri.replace('mongodb://', 'http://').replace('mongodb+srv://', 'http://'));
+        if (parsedUrl.port) targetPort = parseInt(parsedUrl.port, 10);
+      } catch {}
+
+      const portActive = await isPortActive(targetPort);
       if (!portActive) {
-        console.log('[MongoDB] Port 27017 inactive. Automatically launching embedded MongoDB engine...');
+        console.log(`[MongoDB] Port ${targetPort} inactive. Automatically launching embedded MongoDB engine...`);
         try {
           const { ensureLocalMongoRunning } = require('./embeddedMongo');
           await ensureLocalMongoRunning();
