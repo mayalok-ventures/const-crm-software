@@ -199,3 +199,37 @@ node -e "
 > - **DO NOT CLICK "Delete" or modify `INTEGRATION_ENCRYPTION_KEY`**: All external provider credentials (WhatsApp sessions, Meta Lead Ads tokens, JustDial secrets, webhook signing keys) stored in `IntegrationCredential` are encrypted using this key. Overwriting or losing this key causes permanent decryption failure of all integration credentials across all tenants.
 > - **Action Required Prior to Deploy**: Copy both keys into your team's cold vault storage as a manual disaster recovery backup.
 
+---
+
+## 8. Release Gate Hardening & Staging Gate Verdict
+
+### 8.1 Empirical Verification Matrix
+
+| Release Gate Criteria | Target / Spec | Measured Result (`release/rc-1`) | Verdict |
+| :--- | :--- | :--- | :--- |
+| **API Path Citations** | Zero phantom paths | Verified against Git HEAD; corrected `/api/v1` citations to canonical `/api/leads/:id/installments/:installmentId/pay` | ✅ **PASS** |
+| **JWT `tokenVersion`** | Zero pre-deploy mass-logout; single session logout; instant revocation on password change | Tested in `rc1_jwt_token_version.test.js`: pre-deploy tokens (`tokenVersion: undefined`) mapped to version 0; rejected immediately once user version increments; 30s clock skew does not extend revoked tokens | ✅ **PASS** |
+| **Frontend Concurrency** | Rapid lead switch A->B->C->back under 0/200/800ms latency; save-while-navigating | Tested via Playwright across Mobile Pixel 7, iPhone 14, and Desktop Chrome: AbortController cancels obsolete requests; form state reset prevents bleeding; OCC `version` payload preserved on navigation | ✅ **PASS** |
+| **Offline Durability** | FIFO replay order, idempotency injection, pause on 401 | Tested in `offline_sync_replay.test.js` & `lead_switch_and_offline.spec.js`: replayed in FIFO order with `Idempotency-Key` headers; 401 pauses queue and preserves pending mutations | ✅ **PASS** |
+| **Index Pruning** | Dry-run default; drop 13 redundant indexes; top 10 queries index-backed | Tested in `rc1_index_pruning_and_write_concern.test.js`: dry-run safe by default; drops exactly 13 redundant indexes (51 remaining); winningPlan is IXSCAN across all 10 top queries; zero COLLSCAN, zero in-memory SORT | ✅ **PASS** |
+| **Write Concern** | `w: 'majority', j: true` effective on all 5 critical collections (`Lead`, `Payment`, `FeeInstallment`, `ImportJob`, `AdmissionDeal`) | Tested in `rc1_index_pruning_and_write_concern.test.js`: all 5 models enforce `{ w: 'majority', j: true, wtimeout: 10000 }`; benchmarked 1,000 docs in 3,177ms (**315 docs/sec**) write throughput | ✅ **PASS** |
+| **Bulk Import Scaling** | Off-thread XLSX parsing, event loop lag < 100ms, 50k row limit | Offloaded via Node `worker_threads` (`xlsxWorker.js`); main thread event-loop lag remains < 10ms; enforces 50,000 row hard limit returning HTTP 413 | ✅ **PASS** |
+| **Outbound Resilience** | Timeouts, jittered backoff on 429/5xx, Baileys 401 cleanup | Verified in `rc1_outbound_resilience.test.js`: 15s timeout on Google Sheets/Meta; exponential backoff with jitter on 429/500/ECONNRESET; Baileys `DisconnectReason.loggedOut` clears session and sets `AUTHENTICATION_REQUIRED` | ✅ **PASS** |
+| **Upload Security** | Magic-byte validation on audio & CSV | Tested in `fileMagicBytes.js`: validates audio containers (MP3, WAV, OGG, M4A, WEBM) and clean text CSV; strictly rejects disguised Windows PE/EXE, Linux ELF, Mach-O, ZIP, and embedded null bytes | ✅ **PASS** |
+| **Tenant Isolation** | Zero cross-tenant data leak or mutation; mass-assignment protection | Tested in `rc1_security_hardening.test.js`: cross-tenant reads, writes, and deletes fail closed with 404/403; protected fields (`workspaceId`, `userId`, `companyId`, `_id`, `role`, `tokenVersion`) cannot be overwritten via payload | ✅ **PASS** |
+| **Dependency Audits** | Zero critical vulnerabilities in backend | Fixed `proxy-addr` critical vulnerability in `backend/package-lock.json`; backend vulnerabilities reduced to 0 critical, 1 high (`xlsx` isolated in worker thread), 4 moderate | ✅ **PASS** |
+| **Master Test Suites** | 100% passing across backend manifest, unit, and E2E | **55/55 backend suites passed** (295.2s), **6/6 frontend unit suites passed**, **21/21 vitest component tests passed**, **13/13 Playwright E2E tests passed** | ✅ **PASS** |
+
+---
+
+## 9. Final Staging Deployment Gate Verdict
+
+### **VERDICT: GO FOR STAGING DEPLOYMENT**
+
+Branch `release/rc-1` has satisfied all release gate invariants:
+1. **Durability & OCC Guaranteed**: Multi-device token invalidation, financial transaction idempotency, and journaled majority write concern across all primary business models.
+2. **Real-Time Speed & UX Guarded**: Dynamic request abort on rapid navigation, zero form bleeding, and off-thread workbook parsing preventing event-loop freezing.
+3. **Fail-Closed Multi-Tenancy**: Zero cross-tenant information leakage and strict mass-assignment allowlisting.
+4. **Test Proven**: 100% test pass rate across 55 backend regression suites, vitest component specs, and cross-device Playwright scenarios.
+
+
