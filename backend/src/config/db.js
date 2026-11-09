@@ -44,6 +44,12 @@ const attachConnectionListeners = (activeUri) => {
               minPoolSize: 5,
               serverSelectionTimeoutMS: 10000,
               socketTimeoutMS: 45000,
+              autoIndex: process.env.NODE_ENV !== 'production',
+              writeConcern: {
+                w: 'majority',
+                j: true,
+                wtimeoutMS: 10000,
+              },
             });
             console.log('✅ [MongoDB] Reconnection successful!');
           }
@@ -122,8 +128,10 @@ const connectDB = async () => {
         minPoolSize: 5,
         serverSelectionTimeoutMS: isLocal ? 8000 : 15000,
         socketTimeoutMS: 45000,
+        autoIndex: process.env.NODE_ENV !== 'production',
         writeConcern: {
           w: 'majority',
+          j: true,
           wtimeoutMS: 10000,
         },
       });
@@ -157,8 +165,10 @@ const connectDB = async () => {
         minPoolSize: 5,
         serverSelectionTimeoutMS: 10000,
         socketTimeoutMS: 45000,
+        autoIndex: process.env.NODE_ENV !== 'production',
         writeConcern: {
           w: 'majority',
+          j: true,
           wtimeoutMS: 10000,
         },
       });
