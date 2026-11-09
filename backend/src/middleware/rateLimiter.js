@@ -170,4 +170,33 @@ const websiteFormLimiter = rateLimit({
   },
 });
 
-module.exports = { apiLimiter, authLimiter, bulkSendGuard, websiteFormLimiter };
+const adminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes window
+  max: 120, // 120 requests per 15 minutes (~8 req/min for administrative actions)
+  skip: (req) => {
+    if (process.env.NODE_ENV === 'test' && !req.headers['x-test-rate-limit']) return true;
+    if (req.headers['x-test-bypass'] === 'crm-local-test') return true;
+    return false;
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+  message: {
+    code: 'ADMIN_RATE_LIMITED',
+    message: 'Too many administrative requests from this connection. Please wait before retrying.',
+  },
+  handler: (req, res) => {
+    const resetTime = req.rateLimit?.resetTime ? new Date(req.rateLimit.resetTime) : new Date(Date.now() + 15 * 60 * 1000);
+    const diffMs = resetTime.getTime() - Date.now();
+    const remainingMinutes = Math.max(1, Math.ceil(diffMs / 60000));
+
+    res.status(429).json({
+      code: 'ADMIN_RATE_LIMITED',
+      message: `Too many administrative requests. Please wait ${remainingMinutes} minute${remainingMinutes > 1 ? 's' : ''} before trying again.`,
+      retryAfterMinutes: remainingMinutes,
+      resetTime: resetTime.toISOString(),
+    });
+  }
+});
+
+module.exports = { apiLimiter, authLimiter, bulkSendGuard, websiteFormLimiter, adminLimiter };

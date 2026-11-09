@@ -32,7 +32,7 @@ const helmet = require('helmet');
 const mongoose = require('mongoose');
 
 const connectDB = require('./src/config/db');
-const { apiLimiter } = require('./src/middleware/rateLimiter');
+const { apiLimiter, adminLimiter } = require('./src/middleware/rateLimiter');
 const { startFollowUpCron, stopFollowUpCron } = require('./src/utils/cron');
 
 // Route imports
@@ -276,7 +276,7 @@ app.use('/api/templates', templatesRoutes);
 app.use('/api/recordings', recordingsRoutes);
 app.use('/api/groups', groupsRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/admin', adminLimiter, adminRoutes);
 app.use('/api/whatsapp/meta', metaWhatsAppRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/campaigns', campaignRoutes);
@@ -301,10 +301,10 @@ const { getBootstrapData } = require('./src/controllers/bootstrapController');
 app.get('/api/bootstrap', protectAuth, resolveWs, getBootstrapData);
 
 const superAdminRoutes = require('./src/superadmin/routes/superAdminRoutes');
-app.use('/api/super-admin', superAdminRoutes);
-app.use('/api/superadmin', superAdminRoutes);
-app.use('/super-admin', superAdminRoutes);
-app.use('/superadmin', superAdminRoutes);
+app.use('/api/super-admin', adminLimiter, superAdminRoutes);
+app.use('/api/superadmin', adminLimiter, superAdminRoutes);
+app.use('/super-admin', adminLimiter, superAdminRoutes);
+app.use('/superadmin', adminLimiter, superAdminRoutes);
 
 // Public Dynamic Plan Catalog
 const planCatalogController = require('./src/superadmin/controllers/planCatalogController');

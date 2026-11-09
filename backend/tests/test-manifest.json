@@ -572,6 +572,10 @@
     "rc2_wa_auth_encryption.test.js": {
       "category": "batch-suites",
       "reason": "Production Readiness C1: AES-256-GCM encryption for Baileys auth state and plaintext fallback"
+    },
+    "rc2_admin_rate_limiter.test.js": {
+      "category": "batch-suites",
+      "reason": "Production Readiness C2: Dedicated rate limiting for administrative endpoints"
     }
   }
 }
