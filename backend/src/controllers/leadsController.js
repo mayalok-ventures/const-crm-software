@@ -1290,6 +1290,12 @@ exports.createLead = async (req, res) => {
     // Dynamic Form Schema Backend Validation (Conditional & Custom Fields)
     const { validateFormData } = require('../utils/formValidator');
     const { getIndustryDefaults } = require('../utils/industryTemplates');
+
+    if (!req.body.targetDomain && req.body.targetStream) {
+      req.body.targetDomain = req.body.targetStream;
+    } else if (!req.body.targetStream && req.body.targetDomain) {
+      req.body.targetStream = req.body.targetDomain;
+    }
     
     let activeLeadSchema = req.user?.leadFormSchema;
     if ((!activeLeadSchema || activeLeadSchema.length === 0) && req.user.companyId) {
@@ -2552,7 +2558,7 @@ exports.bulkTransferLeads = async (req, res) => {
           { email: sRegex },
         ];
       }
-      targetLeads = await Lead.find(mergedQuery);
+      targetLeads = await Lead.find(mergedQuery).select('_id status').lean();
     } else {
       if (!Array.isArray(leadIds) || leadIds.length === 0) {
         return res.status(400).json({
@@ -2563,7 +2569,7 @@ exports.bulkTransferLeads = async (req, res) => {
       targetLeads = await Lead.find({
         _id: { $in: leadIds },
         ...tenantFilter,
-      });
+      }).select('_id status').lean();
     }
 
     if (!targetLeads || targetLeads.length === 0) {
@@ -2624,10 +2630,12 @@ exports.bulkTransferLeads = async (req, res) => {
     let updatedCount = 0;
     let poolIndex = 0;
 
-    // High-load performance optimization: chunk updates into parallel batches of 25
-    const BATCH_SIZE = 25;
-    for (let i = 0; i < targetLeads.length; i += BATCH_SIZE) {
-      const batch = targetLeads.slice(i, i + BATCH_SIZE);
+    // High-load performance optimization: chunked bulkWrite in batches of 500 (zero N-save overhead)
+    const BULK_BATCH_SIZE = 500;
+    for (let i = 0; i < targetLeads.length; i += BULK_BATCH_SIZE) {
+      const batch = targetLeads.slice(i, i + BULK_BATCH_SIZE);
+      const writeOps = [];
+
       for (const lead of batch) {
         let finalAssignee = assignee;
 
@@ -2637,31 +2645,34 @@ exports.bulkTransferLeads = async (req, res) => {
           poolIndex++;
         }
 
+        const setFields = { updatedAt: now };
+        const pushFields = {};
+
         if (finalAssignee) {
-          lead.assignedTo = finalAssignee._id;
-          lead.assignedToName = finalAssignee.name;
-          lead.assignmentReason = `Transferred by ${performerName}: ${transferNote || 'Manual Reassignment'}`;
+          setFields.assignedTo = finalAssignee._id;
+          setFields.assignedToName = finalAssignee.name;
+          setFields.assignmentReason = `Transferred by ${performerName}: ${transferNote || 'Manual Reassignment'}`;
         }
 
         if (campaign) {
-          lead.campaignId = campaign._id;
-          lead.campaignName = campaign.displayName || campaign.name;
-          if (!lead.leadSource) lead.leadSource = {};
-          lead.leadSource.campaignId = String(campaign._id);
-          lead.leadSource.campaignName = campaign.displayName || campaign.name;
+          setFields.campaignId = campaign._id;
+          setFields.campaignName = campaign.displayName || campaign.name;
+          setFields['leadSource.campaignId'] = String(campaign._id);
+          setFields['leadSource.campaignName'] = campaign.displayName || campaign.name;
         }
 
         if (newStage && String(newStage).trim()) {
           const oldStage = lead.status;
-          lead.status = String(newStage).trim();
-          if (oldStage !== lead.status) {
-            lead.stageHistory = lead.stageHistory || [];
-            lead.stageHistory.push({
-              fromStage: oldStage,
-              toStage: lead.status,
-              changedBy: req.user._id,
-              changedAt: now,
-            });
+          const nextStage = String(newStage).trim();
+          setFields.status = nextStage;
+          if (oldStage !== nextStage) {
+            pushFields.editHistory = {
+              updatedAt: now,
+              updatedBy: req.user._id,
+              changes: {
+                status: { from: oldStage, to: nextStage },
+              },
+            };
           }
         }
 
@@ -2673,24 +2684,38 @@ exports.bulkTransferLeads = async (req, res) => {
           transferNote ? `Note: "${transferNote}"` : null,
         ].filter(Boolean).join(' • ');
 
-        lead.leadActivities = lead.leadActivities || [];
-        lead.leadActivities.push({
+        pushFields.leadActivities = {
           action: 'lead_transferred',
           performerName,
           details: `Bulk Transfer: ${activityDetails}`,
           timestamp: now,
+        };
+
+        const updateDoc = { $set: setFields };
+        if (Object.keys(pushFields).length > 0) {
+          updateDoc.$push = pushFields;
+        }
+
+        writeOps.push({
+          updateOne: {
+            filter: { _id: lead._id },
+            update: updateDoc,
+          },
         });
       }
 
-      await Promise.all(batch.map((l) => l.save()));
+      if (writeOps.length > 0) {
+        await Lead.bulkWrite(writeOps, { ordered: false });
+      }
+
       if (newStage && String(newStage).trim()) {
+        const nextStage = String(newStage).trim();
         batch.forEach((l) => {
-          const prevStage = l.stageHistory?.[l.stageHistory.length - 1]?.fromStage || '';
-          if (prevStage !== l.status) {
+          if (l.status !== nextStage) {
             emitCRMEvent(CRM_EVENTS.LEAD_STAGE_CHANGED, {
-              lead: l,
-              oldStage: prevStage,
-              newStage: l.status,
+              lead: { _id: l._id, status: nextStage },
+              oldStage: l.status,
+              newStage: nextStage,
               user: req.user,
             });
           }
@@ -2879,10 +2904,10 @@ exports.exportLeads = async (req, res) => {
       res.setHeader('Content-Disposition', `attachment; filename="leads_export_${timestamp}.csv"`);
 
       const cursor = Lead.find(query)
-        .populate('projectId', 'name location basePrice')
-        .populate('assignedTo', 'name usercode email')
+        .select('name phone email company status followUpDate projectId project propertyType budget closedDealAmount location siteVisitDate assignedToName tags createdAt source utmCampaign utmMedium utmSource lostReason lostReasonDetail')
         .sort({ createdAt: -1 })
-        .cursor();
+        .lean()
+        .cursor({ batchSize: 2500 });
 
       // Write CSV Header
       const baseHeaders = [
@@ -2896,6 +2921,11 @@ exports.exportLeads = async (req, res) => {
       let idx = 0;
       for await (const l of cursor) {
         idx++;
+        // Yield event loop periodically to keep event loop lag < 20ms
+        if (idx % 1000 === 0) {
+          await new Promise((r) => setImmediate(r));
+        }
+
         const row = [
           idx,
           escapeFormula(l.name || ''),
@@ -2904,13 +2934,13 @@ exports.exportLeads = async (req, res) => {
           escapeFormula(l.company || ''),
           escapeFormula(l.status || ''),
           l.followUpDate ? new Date(l.followUpDate).toISOString().slice(0, 10) : '',
-          escapeFormula(l.projectId?.name || l.project || ''),
+          escapeFormula(l.project || l.projectId || ''),
           escapeFormula(l.propertyType || ''),
           escapeFormula(l.budget || ''),
           l.closedDealAmount ? `${userCurrency}${Number(l.closedDealAmount).toLocaleString()}` : '',
           escapeFormula(l.location || ''),
           l.siteVisitDate ? new Date(l.siteVisitDate).toISOString().slice(0, 16) : '',
-          escapeFormula(l.assignedToName || l.assignedTo?.name || 'Common Pool'),
+          escapeFormula(l.assignedToName || 'Common Pool'),
           Array.isArray(l.tags) ? l.tags.map(escapeFormula).join('; ') : '',
           l.createdAt ? new Date(l.createdAt).toISOString().slice(0, 10) : '',
           escapeFormula(l.source || ''),
@@ -2921,7 +2951,10 @@ exports.exportLeads = async (req, res) => {
           escapeFormula(l.lostReasonDetail || ''),
         ];
 
-        res.write(row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',') + '\n');
+        const line = row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',') + '\n';
+        if (!res.write(line)) {
+          await new Promise((r) => res.once('drain', r));
+        }
       }
 
       return res.end();
@@ -3016,17 +3049,32 @@ exports.exportLeads = async (req, res) => {
     }
 
     // ── 3. CHUNKED EXCEL EXPORT (.xlsx) ──
+    const MAX_XLSX_EXPORT_ROWS = 10000;
+    const totalCount = await Lead.countDocuments(query);
+    if (totalCount > MAX_XLSX_EXPORT_ROWS) {
+      return res.status(413).json({
+        success: false,
+        code: 'EXPORT_TOO_LARGE',
+        message: `XLSX export is capped at ${MAX_XLSX_EXPORT_ROWS.toLocaleString()} rows to prevent server memory exhaustion. Found ${totalCount.toLocaleString()} leads. Please use CSV export for unlimited rows or refine your filters.`,
+        totalCount,
+        maxRows: MAX_XLSX_EXPORT_ROWS,
+      });
+    }
+
     const cursor = Lead.find(query)
-      .populate('projectId', 'name location basePrice')
-      .populate('assignedTo', 'name usercode email')
+      .select('name phone email company status followUpDate projectId project propertyType budget closedDealAmount location siteVisitDate assignedToName tags createdAt source utmCampaign utmMedium utmSource lostReason lostReasonDetail customData')
       .sort({ createdAt: -1 })
-      .cursor();
+      .lean()
+      .cursor({ batchSize: 2500 });
 
     const rows = [];
     let index = 0;
 
     for await (const l of cursor) {
       index++;
+      if (index % 500 === 0) {
+        await new Promise((r) => setImmediate(r));
+      }
       const customFields = {};
       if (l.customData && typeof l.customData === 'object') {
         for (const [k, v] of Object.entries(l.customData)) {
@@ -3365,41 +3413,74 @@ exports.importLeads = async (req, res) => {
         }
       }
 
-      try {
-        const inserted = await Lead.insertMany(currentBatch, { ordered: false });
-        totalImported += inserted.length;
-        for (const doc of inserted) {
-          if (doc.phone) {
-            alreadyProcessedSet.add(doc.phone);
-            job.processedRowHashes.push(doc.phone);
-          }
+      // 1. Efficient batch duplicate phone check in single query ($in)
+      const chunkPhones = currentBatch.map((d) => d.phone).filter(Boolean);
+      const tenantMatch = companyId
+        ? { companyId }
+        : (req.user.workspaceId || req.workspaceId ? { workspaceId: req.user.workspaceId || req.workspaceId } : { userId: req.user._id });
+
+      const existingLeads = await Lead.find({
+        ...tenantMatch,
+        phone: { $in: chunkPhones },
+      }).select('phone').lean();
+      const existingPhoneSet = new Set(existingLeads.map((e) => e.phone));
+
+      const toInsert = [];
+      const now = new Date();
+      for (let i = 0; i < currentBatch.length; i++) {
+        const doc = currentBatch[i];
+        if (existingPhoneSet.has(doc.phone)) {
+          skippedCount++;
+          job.errorRows.push({
+            rowNumber: (job.processedRows || 0) + i + 1,
+            reason: 'Duplicate phone in workspace',
+            phone: doc.phone,
+          });
+        } else {
+          doc._id = new mongoose.Types.ObjectId();
+          doc.createdAt = now;
+          doc.updatedAt = now;
+          toInsert.push(doc);
         }
-      } catch (err) {
-        if (err.insertedDocs) {
-          totalImported += err.insertedDocs.length;
-          skippedCount += (currentBatch.length - err.insertedDocs.length);
-          for (const doc of err.insertedDocs) {
+      }
+
+      if (toInsert.length > 0) {
+        try {
+          const inserted = await Lead.insertMany(toInsert, { ordered: false, lean: true });
+          totalImported += inserted.length;
+          for (const doc of toInsert) {
             if (doc.phone) {
               alreadyProcessedSet.add(doc.phone);
               job.processedRowHashes.push(doc.phone);
             }
           }
-        } else if (err.writeErrors) {
-          const insertedCount = currentBatch.length - err.writeErrors.length;
-          totalImported += Math.max(0, insertedCount);
-          skippedCount += err.writeErrors.length;
-          for (const we of err.writeErrors) {
-            const failedDoc = currentBatch[we.index];
-            if (failedDoc) {
-              job.errorRows.push({
-                rowNumber: we.index + 1,
-                reason: we.errmsg || 'Write error',
-                phone: failedDoc.phone,
-              });
+        } catch (err) {
+          if (err.insertedDocs) {
+            totalImported += err.insertedDocs.length;
+            skippedCount += (toInsert.length - err.insertedDocs.length);
+            for (const doc of err.insertedDocs) {
+              if (doc.phone) {
+                alreadyProcessedSet.add(doc.phone);
+                job.processedRowHashes.push(doc.phone);
+              }
             }
+          } else if (err.writeErrors) {
+            const insertedCount = toInsert.length - err.writeErrors.length;
+            totalImported += Math.max(0, insertedCount);
+            skippedCount += err.writeErrors.length;
+            for (const we of err.writeErrors) {
+              const failedDoc = toInsert[we.index];
+              if (failedDoc) {
+                job.errorRows.push({
+                  rowNumber: we.index + 1,
+                  reason: we.errmsg || 'Write error',
+                  phone: failedDoc.phone,
+                });
+              }
+            }
+          } else {
+            skippedCount += toInsert.length;
           }
-        } else {
-          skippedCount += currentBatch.length;
         }
       }
 
@@ -3408,6 +3489,9 @@ exports.importLeads = async (req, res) => {
       job.processedRows = (job.processedRows || 0) + currentBatch.length;
       job.lastChunkIndex = (job.lastChunkIndex || 0) + 1;
       await job.save().catch(() => {});
+
+      // Yield event loop between chunks to keep event loop lag < 50ms
+      await new Promise((r) => setImmediate(r));
     };
 
     if (isCSV) {

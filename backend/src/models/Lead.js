@@ -361,7 +361,7 @@ const leadSchema = new mongoose.Schema({
       'MANUAL', 'USER_SIGNUP', 'ADS', 'WEBHOOK',
       'meta', 'google', 'facebook', 'instagram', 'google_ads', 'meta_ads',
       'website', 'organic', 'referral', 'partner', 'import', 'bulk_import', 'spreadsheet', 'sheets',
-      'custom', 'custom_webhook',
+      'custom', 'custom_webhook', 'meta_ads_webhook', 'google_ads_webhook',
       'signup', 'agent_manual', 'manual', 'other', 'platform_registration',
       'auto-signup', 'meta_webhook', 'google_webhook', 'api', 'webhook',
       'website_form', 'whatsapp_inbound', 'whatsapp',
