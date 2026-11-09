@@ -124,4 +124,8 @@ function getConfigurationErrors() {
   return configErrors;
 }
 
+if (require.main === module) {
+  validateEnvironment();
+}
+
 module.exports = { validateEnvironment, getConfigurationErrors };
