@@ -108,7 +108,7 @@ curl -f -s https://<your-crm-api>/health | jq .
 
 ### Check 2: Financial Atomic Installment Idempotency
 ```bash
-curl -X POST https://<your-crm-api>/api/v1/fee-installments/<installmentId>/payments \
+curl -X POST https://<your-crm-api>/api/leads/<leadId>/installments/<installmentId>/pay \
   -H "Authorization: Bearer <ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: canary-test-001" \
@@ -118,7 +118,7 @@ curl -X POST https://<your-crm-api>/api/v1/fee-installments/<installmentId>/paym
 
 ### Check 3: Lead List Count & Pagination Optimization
 ```bash
-curl -s -w "\nTime: %{time_total}s\n" https://<your-crm-api>/api/v1/leads?page=1&limit=25 \
+curl -s -w "\nTime: %{time_total}s\n" https://<your-crm-api>/api/leads?page=1&limit=25 \
   -H "Authorization: Bearer <AGENT_TOKEN>"
 ```
 *Expected*: Response contains `cachedCount: true` or total inferencing, and total response time is under 150ms.
@@ -126,13 +126,13 @@ curl -s -w "\nTime: %{time_total}s\n" https://<your-crm-api>/api/v1/leads?page=1
 ### Check 4: Phone Masking Security Enforcement
 Log in with a user lacking `leads.view_phone_unmasked` in a workspace with `maskLeadPhones: true`:
 ```bash
-curl -s https://<your-crm-api>/api/v1/leads?page=1 \
+curl -s https://<your-crm-api>/api/leads?page=1 \
   -H "Authorization: Bearer <MASKED_AGENT_TOKEN>" | jq '.leads[0].phone'
 ```
 *Expected*: Masked string (e.g., `+91 ••••• •4321`).
 Attempt full-phone search:
 ```bash
-curl -s https://<your-crm-api>/api/v1/leads?search=9876543210 \
+curl -s https://<your-crm-api>/api/leads?search=9876543210 \
   -H "Authorization: Bearer <MASKED_AGENT_TOKEN>" | jq .
 ```
 *Expected*: HTTP 400 Bad Request (`Full phone search is restricted when phone masking is enabled`).
