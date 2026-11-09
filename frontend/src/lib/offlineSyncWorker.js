@@ -40,10 +40,15 @@ export async function replayOfflineMutationQueue() {
       try {
         await localDb.offlineMutationQueue.update(item.id, { status: 'replaying' });
 
+        const idempotencyKey = item.idempotencyKey || item.clientTxnId || item.id;
         await api.request({
           url: item.endpoint,
           method: item.method || 'PUT',
           data: item.payload,
+          headers: {
+            'Idempotency-Key': String(idempotencyKey),
+            'X-Idempotency-Key': String(idempotencyKey),
+          },
         });
 
         await localDb.offlineMutationQueue.delete(item.id);
@@ -51,7 +56,15 @@ export async function replayOfflineMutationQueue() {
         console.log(`[Offline Sync Worker] Successfully replayed mutation ${item.id} -> ${item.endpoint}`);
       } catch (err) {
         const status = err.response?.status;
-        if (status === 409 || status === 404 || status === 400) {
+        if (status === 401) {
+          // Auth expired or invalid: pause replay immediately, preserve pending mutation, and await re-authentication
+          console.warn('[Offline Sync Worker] Auth expired during replay. Pausing queue to preserve mutations.');
+          await localDb.offlineMutationQueue.update(item.id, { status: 'pending' });
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('auth-expired', { detail: { action: 'offline_replay_paused' } }));
+          }
+          break;
+        } else if (status === 409 || status === 404 || status === 400) {
           // Conflict / Already updated or non-recoverable client error
           console.warn(`[Offline Sync Worker] Mutation ${item.id} skipped with status ${status}:`, err.message);
           await localDb.offlineMutationQueue.delete(item.id);

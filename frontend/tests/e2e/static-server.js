@@ -10,6 +10,7 @@ const MIME_TYPES = {
   '.js': 'application/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.svg': 'image/svg+xml',
@@ -55,6 +56,24 @@ const server = http.createServer((req, res) => {
   // Try appending .html
   if (fs.existsSync(fullPath + '.html')) {
     return serveFile(res, fullPath + '.html');
+  }
+
+  // Handle dynamic prefix rewrites matching Cloudflare _redirects
+  const dynamicPrefixes = ['leads', 'campaigns', 'colleges', 'catalogue', 'invite', 'share'];
+  for (const prefix of dynamicPrefixes) {
+    if (pathname.startsWith(`/${prefix}/`)) {
+      if (pathname.endsWith('.txt')) {
+        const placeholderTxt = path.join(OUT_DIR, prefix, 'placeholder.txt');
+        if (fs.existsSync(placeholderTxt)) {
+          return serveFile(res, placeholderTxt);
+        }
+      } else {
+        const placeholderHtml = path.join(OUT_DIR, prefix, 'placeholder.html');
+        if (fs.existsSync(placeholderHtml)) {
+          return serveFile(res, placeholderHtml);
+        }
+      }
+    }
   }
 
   // Fallback to 404.html

@@ -294,7 +294,10 @@ function WhatsAppChatSection({ lead, waStatus, onOpenTemplates, onOpenShareFee, 
       if (res.headers?.etag) {
         lastEtagRef.current = res.headers.etag;
       }
-      setMessages(res.data || []);
+      const msgList = Array.isArray(res.data)
+        ? res.data
+        : (Array.isArray(res.data?.messages) ? res.data.messages : (Array.isArray(res.data?.data) ? res.data.data : []));
+      setMessages(msgList);
       if (!silent) setLoading(false);
     } catch {
       if (!silent) setLoading(false);
@@ -991,12 +994,14 @@ export default function LeadDetailPage() {
     message: 'You have unsaved changes to this candidate profile. Are you sure you want to discard them?',
   });
 
+  const resolvedParamId = getResolvedRouteParam(params, 'id', 'leads', isValidEntityId);
+
   useEffect(() => {
-    if (!leadId) {
-      const resolved = getResolvedRouteParam(params, 'id', 'leads', isValidEntityId);
-      if (resolved) setLeadId(resolved);
+    const nextId = (isValidEntityId(id) ? id : null) || resolvedParamId;
+    if (nextId && nextId !== leadId) {
+      setLeadId(nextId);
     }
-  }, [params, leadId]);
+  }, [id, resolvedParamId, leadId]);
 
   useEffect(() => {
     try {
@@ -1006,8 +1011,8 @@ export default function LeadDetailPage() {
   }, []);
 
   useEffect(() => {
-    const activeId = leadId || getResolvedRouteParam(params, 'id', 'leads', isValidEntityId);
-    if (!activeId || activeId === '[id]' || activeId === 'placeholder' || activeId === 'undefined' || activeId === 'null' || !/^[0-9a-fA-F]{24}$/.test(activeId)) {
+    const activeId = (isValidEntityId(id) ? id : null) || leadId || resolvedParamId;
+    if (!activeId || !isValidEntityId(activeId)) {
       setLoading(false);
       return;
     }
@@ -1042,7 +1047,7 @@ export default function LeadDetailPage() {
     return () => {
       abortController.abort();
     };
-  }, [id, leadId, reloadTrigger]);
+  }, [id, leadId, resolvedParamId, reloadTrigger]);
 
   const industryDefaults = getIndustryDefaults(currentUser?.industryType);
 
@@ -1200,6 +1205,7 @@ export default function LeadDetailPage() {
         dob: form.dob ? new Date(form.dob) : null,
         campusVisitDate: form.campusVisitDate ? new Date(form.campusVisitDate) : null,
         siteVisitDate: form.campusVisitDate ? new Date(form.campusVisitDate) : (form.siteVisitDate ? new Date(form.siteVisitDate) : null),
+        version: lead?.__v ?? form?.__v,
       };
       const { data } = await api.put(`/leads/${id}`, payload);
       setLead(data);

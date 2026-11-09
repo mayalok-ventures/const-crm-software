@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node tests/helpers.test.js && node tests/dexie_and_virtualization.test.js && node tests/navigation_responsiveness.test.js && node tests/performance_and_isolation.test.js && node tests/oauth_popup.test.js",
+    "test": "node tests/helpers.test.js && node tests/dexie_and_virtualization.test.js && node tests/navigation_responsiveness.test.js && node tests/performance_and_isolation.test.js && node tests/oauth_popup.test.js && node tests/offline_sync_replay.test.js",
     "test:unit": "vitest run --config vitest.config.mjs",
     "test:e2e": "playwright test --config playwright.config.js"
   },
