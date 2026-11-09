@@ -576,6 +576,10 @@
     "rc2_admin_rate_limiter.test.js": {
       "category": "batch-suites",
       "reason": "Production Readiness C2: Dedicated rate limiting for administrative endpoints"
+    },
+    "rc2_email_security_timeouts.test.js": {
+      "category": "batch-suites",
+      "reason": "Production Readiness C3: Email attachment security allowlist and transport connection timeouts"
     }
   }
 }

@@ -6,6 +6,7 @@ const User = require('../../models/User');
 const Workspace = require('../../models/Workspace');
 const { resolvePlaceholders, getPlaceholderRegistry } = require('../../utils/placeholderResolver');
 const { getProviderAdapter, formatEmailHtml, generatePlainText } = require('./emailProviderAdapters');
+const { validateEmailAttachments } = require('../../utils/attachmentValidator');
 const crypto = require('crypto');
 
 /**
@@ -271,6 +272,11 @@ class EmailService {
     }
     if (!to || (Array.isArray(to) && to.length === 0)) {
       throw new Error('Recipient email (To) is required');
+    }
+
+    // Strict attachment security validation (Extension, MIME, magic bytes, LFI prevention)
+    if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+      validateEmailAttachments(attachments);
     }
 
     const account = await EmailAccount.findOne({ _id: accountId, workspaceId })

@@ -1,5 +1,6 @@
 const EmailService = require('../services/email/emailService');
 const { renderOAuthPopupBridge } = require('../utils/oauthPopupBridge');
+const { validateEmailAttachments } = require('../utils/attachmentValidator');
 
 /**
  * Controller handling all incoming HTTP requests for the CRM Email module
@@ -186,6 +187,10 @@ exports.sendEmail = async (req, res) => {
       }));
     } else if (req.body.attachments && Array.isArray(req.body.attachments)) {
       attachments = req.body.attachments;
+    }
+
+    if (attachments.length > 0) {
+      validateEmailAttachments(attachments);
     }
 
     const message = await EmailService.sendEmail({

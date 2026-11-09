@@ -293,7 +293,7 @@ class GmailAdapter {
         client_secret: clientSecret,
         refresh_token: refreshToken,
         grant_type: 'refresh_token',
-      });
+      }, { timeout: 15000 });
 
       const { access_token, expires_in } = res.data;
       account.setTokens({ accessToken: access_token, expiresIn: expires_in });
@@ -323,6 +323,7 @@ class GmailAdapter {
     const token = await this.getValidToken(account);
     const res = await axios.get('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
       headers: { Authorization: `Bearer ${token}` },
+      timeout: 15000,
     });
     return {
       connected: true,
@@ -371,6 +372,8 @@ class GmailAdapter {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        timeout: 15000,
+        timeout: 15000,
       }
     );
 
@@ -637,7 +640,7 @@ class OutlookAdapter {
     params.append('refresh_token', refreshToken);
     params.append('grant_type', 'refresh_token');
 
-    const res = await axios.post(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, params);
+    const res = await axios.post(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, params, { timeout: 15000 });
     const { access_token, expires_in } = res.data;
     account.setTokens({ accessToken: access_token, expiresIn: expires_in });
     await account.save();
@@ -656,6 +659,7 @@ class OutlookAdapter {
     const token = await this.getValidToken(account);
     const res = await axios.get('https://graph.microsoft.com/v1.0/me', {
       headers: { Authorization: `Bearer ${token}` },
+      timeout: 15000,
     });
     return {
       connected: true,
@@ -702,6 +706,7 @@ class OutlookAdapter {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        timeout: 15000,
       }
     );
 
