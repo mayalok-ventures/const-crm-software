@@ -413,6 +413,10 @@
       "category": "batch-suites",
       "reason": "Release RC3 Gate: Backup & restore verification drill with BSON dump/restore throughput and SHA-256 field checksum parity"
     },
+    "rc3_env_validator_strict.test.js": {
+      "category": "batch-suites",
+      "reason": "Release RC3 Gate: Strict production environment validator refusing boot on weak secrets, unscoped reads, CORS wildcards, and missing Redis"
+    },
     "render_deployment_compatibility.test.js": {
       "category": "core",
       "reason": "Render environment compatibility checks"
