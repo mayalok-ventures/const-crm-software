@@ -12,6 +12,7 @@ validateEnvironment();
 
 // Process-level uncaught exception & unhandled rejection resilience
 let unhandledRejectionsCount = 0;
+let gracefulShutdown;
 process.on('uncaughtException', (err) => {
   console.error('💥 [Fatal] Uncaught Exception:', err.stack || err.message);
   if (typeof gracefulShutdown === 'function') {
@@ -514,7 +515,7 @@ connectDB().then(async (conn) => {
 });
 
 let isShuttingDown = false;
-const gracefulShutdown = async (signal, exitCode = 0) => {
+gracefulShutdown = async (signal, exitCode = 0) => {
   if (isShuttingDown) return;
   isShuttingDown = true;
   console.log(`\n🛑 [Shutdown] Received ${signal}. Starting graceful shutdown...`);
@@ -584,11 +585,6 @@ const gracefulShutdown = async (signal, exitCode = 0) => {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-process.on('message', (msg) => {
-  if (msg === 'shutdown' || msg?.type === 'shutdown') {
-    gracefulShutdown('IPC_SHUTDOWN');
-  }
-});
 process.once('SIGUSR2', async () => {
   await gracefulShutdown('SIGUSR2');
   process.kill(process.pid, 'SIGUSR2');

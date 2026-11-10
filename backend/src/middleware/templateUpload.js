@@ -1,7 +1,12 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const sharp = require('sharp');
+let sharp;
+try {
+  sharp = require('sharp');
+} catch (e) {
+  // Graceful fallback if native platform binary is missing
+}
 const cloudinary = require('cloudinary').v2;
 
 const hasCloudinary = Boolean(
