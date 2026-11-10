@@ -12,6 +12,7 @@ validateEnvironment();
 
 // Process-level uncaught exception & unhandled rejection resilience
 let unhandledRejectionsCount = 0;
+let isShuttingDown = false;
 let gracefulShutdown;
 process.on('uncaughtException', (err) => {
   console.error('💥 [Fatal] Uncaught Exception:', err.stack || err.message);
@@ -211,6 +212,10 @@ app.use((req, res, next) => {
   if (req.body) sanitizeNoSql(req.body);
   if (req.query) sanitizeNoSql(req.query);
   if (req.params) sanitizeNoSql(req.params);
+  if (isShuttingDown && !req.path.startsWith('/health')) {
+    res.set('Connection', 'close');
+    return res.status(503).json({ error: 'Server is shutting down', status: 503 });
+  }
   next();
 });
 
@@ -514,7 +519,6 @@ connectDB().then(async (conn) => {
   console.error('Failed to initialize database:', err.message);
 });
 
-let isShuttingDown = false;
 gracefulShutdown = async (signal, exitCode = 0) => {
   if (isShuttingDown) return;
   isShuttingDown = true;
@@ -527,6 +531,11 @@ gracefulShutdown = async (signal, exitCode = 0) => {
   forceTimer.unref();
 
   try {
+    // 1. Immediately initiate HTTP server close so new TCP connections are rejected
+    const serverClosePromise = (server && typeof server.close === 'function')
+      ? new Promise((resolve) => server.close(resolve))
+      : Promise.resolve();
+
     stopEventLoopMonitor();
     if (sheetsPollInterval) clearInterval(sheetsPollInterval);
     stopFollowUpCron();
@@ -558,10 +567,8 @@ gracefulShutdown = async (signal, exitCode = 0) => {
       }
     }
 
-    if (server && typeof server.close === 'function') {
-      await new Promise((resolve) => server.close(resolve));
-      console.log('✅ [Shutdown] HTTP server closed.');
-    }
+    await serverClosePromise;
+    console.log('✅ [Shutdown] HTTP server closed.');
 
     if (mongoose.connection.readyState !== 0) {
       await mongoose.connection.close(false);
