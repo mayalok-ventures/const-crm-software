@@ -151,6 +151,10 @@ function syncDualFieldPairs(obj) {
       obj[camel] = sVal;
     } else if (typeof cVal === 'boolean' && typeof sVal !== 'boolean') {
       obj[snake] = cVal;
+    } else if (typeof sVal === 'boolean' && typeof cVal === 'boolean' && sVal !== cVal) {
+      const activeBool = sVal || cVal;
+      obj[camel] = activeBool;
+      obj[snake] = activeBool;
     }
   }
 }

@@ -122,8 +122,8 @@ const buildLeadPermissionQuery = async (user, isUnclaimed = false) => {
     }
 
     // Owner, Manager, Auditor, or solo consultant
+    const ownerCompanyId = user.companyId || user._id;
     if (allowLegacy) {
-      const ownerCompanyId = user.companyId || user._id;
       return {
         $or: [
           { workspaceId },
@@ -135,7 +135,15 @@ const buildLeadPermissionQuery = async (user, isUnclaimed = false) => {
       };
     }
 
-    return { workspaceId };
+    const scopedQuery = {
+      $or: [
+        { workspaceId },
+        { workspaceId: { $in: [null, undefined] }, companyId: ownerCompanyId },
+        { workspaceId: { $in: [null, undefined] }, userId: user._id },
+      ],
+    };
+    Object.defineProperty(scopedQuery, 'workspaceId', { value: workspaceId, enumerable: false });
+    return scopedQuery;
   }
 
   // Fail-closed tenant security: if legacy transitional mode is not enabled, requests without an active workspace context must return zero leads
@@ -4144,12 +4152,14 @@ exports.getLeadTimeline = async (req, res) => {
     if (Array.isArray(payments)) {
       payments.forEach((p) => {
         const agent = p.agent_id || p.agentId;
+        const isVerified = Boolean(p.verified_by_agent ?? p.verifiedByAgent);
+        const txnId = p.transaction_id || p.transactionId;
         timelineItems.push({
           id: String(p._id),
           type: 'payment',
-          action: p.verified_by_agent ? 'payment_verified' : 'payment_recorded',
-          title: `Payment ${p.verified_by_agent ? 'Verified' : 'Recorded'}: ₹${p.amount}`,
-          description: `₹${p.amount} received via ${p.method || 'bank_transfer'}${p.transaction_id ? ` (Txn ID: ${p.transaction_id})` : ''}`,
+          action: isVerified ? 'payment_verified' : 'payment_recorded',
+          title: `Payment ${isVerified ? 'Verified' : 'Recorded'}: ₹${p.amount}`,
+          description: `₹${p.amount} received via ${p.method || 'bank_transfer'}${txnId ? ` (Txn ID: ${txnId})` : ''}`,
           timestamp: new Date(p.createdAt).toISOString(),
           actor: {
             id: agent ? String(agent._id || agent) : null,

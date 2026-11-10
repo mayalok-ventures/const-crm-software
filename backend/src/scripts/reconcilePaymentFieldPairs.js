@@ -61,6 +61,11 @@ async function runReconciliation(options = {}) {
       } else if (typeof camelVal === 'boolean' && typeof snakeVal !== 'boolean') {
         updates[snake] = camelVal;
         needsUpdate = true;
+      } else if (typeof snakeVal === 'boolean' && typeof camelVal === 'boolean' && snakeVal !== camelVal) {
+        const activeBool = snakeVal || camelVal;
+        updates[camel] = activeBool;
+        updates[snake] = activeBool;
+        needsUpdate = true;
       }
     }
 

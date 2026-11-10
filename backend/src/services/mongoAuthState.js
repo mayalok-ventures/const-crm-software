@@ -152,7 +152,7 @@ const useMongoDBAuthState = async (modelOrCollection, sessionId) => {
       const doc = await WhatsAppAuth.findOne({ sessionId: sId, key }).lean();
       if (!doc || !doc.data) return null;
       const decrypted = decryptAuthState(doc.data);
-      return JSON.parse(decrypted, BufferJSON.reviver);
+      return typeof decrypted === 'string' ? JSON.parse(decrypted, BufferJSON.reviver) : decrypted;
     } catch (err) {
       console.error(`[MongoAuth] Error reading key ${key} for session ${sId}:`, err.message);
       return null;
@@ -197,7 +197,7 @@ const useMongoDBAuthState = async (modelOrCollection, sessionId) => {
               if (!id) continue;
               try {
                 const decrypted = decryptAuthState(doc.data);
-                let val = JSON.parse(decrypted, BufferJSON.reviver);
+                let val = typeof decrypted === 'string' ? JSON.parse(decrypted, BufferJSON.reviver) : decrypted;
                 if (type === 'app-state-sync-key' && val) {
                   val = proto.Message.AppStateSyncKeyData.fromObject(val);
                 }
