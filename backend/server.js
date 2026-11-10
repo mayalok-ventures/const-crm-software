@@ -89,74 +89,10 @@ app.use(helmet({
 }));
 
 // Bulletproof Universal CORS Configuration
-const getAllowedOrigins = () => {
-  const envOrigins = (process.env.ALLOWED_ORIGINS || '')
-    .split(',')
-    .map(o => o.trim())
-    .filter(Boolean);
-
-  const defaultOrigins = [
-    'https://app.sahyak.com',
-    'https://crm.sahyak.com',
-  ];
-
-  if (process.env.NODE_ENV !== 'production') {
-    defaultOrigins.push(
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      'http://localhost:5000',
-      'http://127.0.0.1:5000'
-    );
-  }
-
-  return Array.from(new Set([...defaultOrigins, ...envOrigins]));
-};
-
-const isOriginAllowed = (origin) => {
-  if (!origin) return true; // Allow non-browser requests, webhooks (Meta, Google, Razorpay)
-  const allowed = getAllowedOrigins();
-  if (allowed.includes(origin)) return true;
-  // Allow all sahyak.com subdomains (app.sahyak.com, crm.sahyak.com, etc.)
-  if (/^https:\/\/([a-zA-Z0-9-]+\.)*sahyak\.com$/.test(origin)) return true;
-  // Allow Cloudflare Pages deployments (e.g. const-crm-software.pages.dev and branch previews)
-  if (/^https:\/\/([a-zA-Z0-9-]+\.)*pages\.dev$/.test(origin)) return true;
-  // Allow Render deployed frontends and preview URLs (e.g. *.onrender.com)
-  if (/^https:\/\/([a-zA-Z0-9-]+\.)*onrender\.com$/.test(origin)) return true;
-  // Allow Catalyst AppSail container URLs
-  if (/^https:\/\/([a-zA-Z0-9-]+\.)*catalystappsail\.[a-z]+$/.test(origin)) return true;
-  if (process.env.NODE_ENV !== 'production') {
-    // In development, allow localhost with any port or local private LAN IPs
-    if (/^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)) {
-      return true;
-    }
-  }
-  return false;
-};
+const { isOriginAllowed, corsMiddleware } = require('./src/utils/corsConfig');
 
 // Custom CORS and Preflight handler
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin) {
-    if (isOriginAllowed(origin)) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-    }
-  } else {
-    // Server-to-server or curl requests
-    res.setHeader('Access-Control-Allow-Origin', '*');
-  }
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Workspace-Id, X-Request-Id');
-  res.setHeader('Access-Control-Max-Age', '7200'); // 2 hours browser preflight cache
-  
-  if (req.method === 'OPTIONS') {
-    if (origin && !isOriginAllowed(origin) && process.env.NODE_ENV === 'production') {
-      return res.status(403).json({ error: 'CORS policy: Origin not allowed' });
-    }
-    return res.status(204).end();
-  }
-  next();
-});
+app.use(corsMiddleware);
 
 app.use(cors({
   origin: (origin, callback) => {
