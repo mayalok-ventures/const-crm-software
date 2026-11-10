@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { securityTracker } = require('../monitoring/security/securityTracker');
-const { userCache, subscriptionLifecycleCache, tokenVerificationCache, invalidateUserAuthCache } = require('../utils/authCache');
+const { userCache, subscriptionLifecycleCache, tokenVerificationCache, invalidateUserAuthCache, hashToken, isTokenRevoked } = require('../utils/authCache');
 
 /**
  * Calculates the multi-tenant subscription lifecycle:
@@ -98,10 +98,22 @@ const protect = async (req, res, next) => {
     }
     if (!token) return res.status(401).json({ message: 'Not authorized, no token' });
 
-    let decoded = tokenVerificationCache.get(token);
-    if (!decoded) {
+    const tokenHash = hashToken(token);
+    if (!tokenHash || isTokenRevoked(token)) {
+      return res.status(401).json({ message: 'Token has been revoked or invalidated' });
+    }
+
+    let cached = tokenVerificationCache.get(tokenHash);
+    let decoded;
+    if (cached && cached.decoded) {
+      decoded = cached.decoded;
+    } else {
       decoded = jwt.verify(token, process.env.JWT_SECRET, { clockTolerance: 30 });
-      tokenVerificationCache.set(token, decoded, 10000);
+      tokenVerificationCache.set(tokenHash, {
+        decoded,
+        userId: String(decoded.id),
+        tokenVersion: Number(decoded.tokenVersion || 0),
+      }, 10000);
     }
     if (decoded.pending2FA) {
       return res.status(401).json({ message: 'Two-Factor Authentication required to access this endpoint.' });
@@ -121,6 +133,7 @@ const protect = async (req, res, next) => {
     }
 
     if (!user || !user.isActive) {
+      tokenVerificationCache.del(tokenHash);
       return res.status(401).json({ message: 'Not authorized, account inactive' });
     }
 
@@ -128,6 +141,7 @@ const protect = async (req, res, next) => {
     const tokenVer = decoded.tokenVersion !== undefined ? Number(decoded.tokenVersion) : 0;
     const userVer = Number(user.tokenVersion || 0);
     if (tokenVer < userVer) {
+      tokenVerificationCache.del(tokenHash);
       return res.status(401).json({ message: 'Token has been revoked or invalidated' });
     }
 

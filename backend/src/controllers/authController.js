@@ -8,7 +8,7 @@ const Notification = require('../models/Notification');
 const AbuseLog = require('../models/AbuseLog');
 const Coupon = require('../models/Coupon');
 const { generateToken, generateTemp2FAToken } = require('../middleware/auth');
-const { invalidateUserAuthCache } = require('../utils/authCache');
+const { invalidateUserAuthCache, revokeToken } = require('../utils/authCache');
 const { generateUniqueUsername } = require('../utils/generateUsername');
 const { generateUniqueUsercode } = require('../utils/generateUsercode');
 const { getIndustryDefaults } = require('../utils/industryTemplates');
@@ -1339,6 +1339,14 @@ exports.applyCoupon = async (req, res) => {
 // @route POST /api/auth/logout
 // @access Private
 exports.logout = async (req, res) => {
+  try {
+    const rawToken = req.headers.authorization?.startsWith('Bearer ')
+      ? req.headers.authorization.split(' ')[1]
+      : null;
+    if (rawToken) {
+      revokeToken(rawToken);
+    }
+  } catch (_) {}
   res.json({ success: true, message: 'Logged out successfully' });
 };
 
