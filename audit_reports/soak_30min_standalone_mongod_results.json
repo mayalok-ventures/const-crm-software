@@ -1,0 +1,510 @@
+{
+  "test": "30-Minute Soak Test with Standalone mongod Process & Server CPU Profile",
+  "targetBranch": "release/rc-5",
+  "date": "2026-11-10T05:57:26.688Z",
+  "hardware": "AMD Ryzen 7 PRO 5850U with Radeon Graphics (16 CPUs, 11.83 GB RAM)",
+  "architecture": {
+    "databaseProcess": "Standalone mongod-x64-win32-8.2.6 (Process 1, port 27099, wiredTiger)",
+    "serverProcess": "Standalone Express on Node.js v24.22.1 (Process 2)",
+    "loadGeneratorProcess": "50 Virtual Counselors (Process 3)"
+  },
+  "durationMinutes": 30,
+  "virtualCounselors": 50,
+  "metricsSummary": {
+    "totalRequests": 110350,
+    "successfulRequests": 110347,
+    "clientErrors4xx": 3,
+    "serverErrors5xx": 0,
+    "connectionDrops": 0,
+    "acknowledgedWrites": 60470,
+    "verifiedPersistedWrites": 60470,
+    "lostWrites": 0,
+    "durabilityPercentage": 100,
+    "p99EventLoopViolationsOver100ms": 26,
+    "verdict": "FAIL"
+  },
+  "perMinuteTelemetry": [
+    {
+      "minute": 1,
+      "timestamp": "2026-11-10T05:27:39.776Z",
+      "rssMb": 413.75,
+      "heapUsedMb": 95.84,
+      "heapTotalMb": 313.51,
+      "elP50": 10,
+      "elP95": 33,
+      "elP99": 54,
+      "elMax": 214
+    },
+    {
+      "minute": 2,
+      "timestamp": "2026-11-10T05:28:39.892Z",
+      "rssMb": 447.94,
+      "heapUsedMb": 137.66,
+      "heapTotalMb": 322.51,
+      "elP50": 20,
+      "elP95": 81,
+      "elP99": 141,
+      "elMax": 232
+    },
+    {
+      "minute": 3,
+      "timestamp": "2026-11-10T05:29:39.984Z",
+      "rssMb": 467.49,
+      "heapUsedMb": 196.33,
+      "heapTotalMb": 310.76,
+      "elP50": 20,
+      "elP95": 49,
+      "elP99": 68,
+      "elMax": 140
+    },
+    {
+      "minute": 4,
+      "timestamp": "2026-11-10T05:30:40.098Z",
+      "rssMb": 487.49,
+      "heapUsedMb": 186.26,
+      "heapTotalMb": 315.26,
+      "elP50": 33,
+      "elP95": 63,
+      "elP99": 86,
+      "elMax": 143
+    },
+    {
+      "minute": 5,
+      "timestamp": "2026-11-10T05:31:40.194Z",
+      "rssMb": 491.5,
+      "heapUsedMb": 128.59,
+      "heapTotalMb": 321.01,
+      "elP50": 44,
+      "elP95": 91,
+      "elP99": 120,
+      "elMax": 203
+    },
+    {
+      "minute": 6,
+      "timestamp": "2026-11-10T05:32:40.360Z",
+      "rssMb": 494.59,
+      "heapUsedMb": 234.02,
+      "heapTotalMb": 317.01,
+      "elP50": 44,
+      "elP95": 76,
+      "elP99": 95,
+      "elMax": 113
+    },
+    {
+      "minute": 7,
+      "timestamp": "2026-11-10T05:33:40.498Z",
+      "rssMb": 494.88,
+      "heapUsedMb": 107.1,
+      "heapTotalMb": 319.01,
+      "elP50": 50,
+      "elP95": 94,
+      "elP99": 134,
+      "elMax": 207
+    },
+    {
+      "minute": 8,
+      "timestamp": "2026-11-10T05:34:40.670Z",
+      "rssMb": 501.89,
+      "heapUsedMb": 135.6,
+      "heapTotalMb": 323.26,
+      "elP50": 54,
+      "elP95": 95,
+      "elP99": 122,
+      "elMax": 159
+    },
+    {
+      "minute": 9,
+      "timestamp": "2026-11-10T05:35:40.758Z",
+      "rssMb": 503.65,
+      "heapUsedMb": 156.63,
+      "heapTotalMb": 326.26,
+      "elP50": 53,
+      "elP95": 90,
+      "elP99": 114,
+      "elMax": 213
+    },
+    {
+      "minute": 10,
+      "timestamp": "2026-11-10T05:36:40.866Z",
+      "rssMb": 509.27,
+      "heapUsedMb": 168.91,
+      "heapTotalMb": 326.01,
+      "elP50": 60,
+      "elP95": 103,
+      "elP99": 127,
+      "elMax": 502
+    },
+    {
+      "minute": 11,
+      "timestamp": "2026-11-10T05:37:41.009Z",
+      "rssMb": 510.3,
+      "heapUsedMb": 155.77,
+      "heapTotalMb": 333.01,
+      "elP50": 67,
+      "elP95": 118,
+      "elP99": 138,
+      "elMax": 181
+    },
+    {
+      "minute": 12,
+      "timestamp": "2026-11-10T05:38:41.207Z",
+      "rssMb": 488.13,
+      "heapUsedMb": 215.8,
+      "heapTotalMb": 326.26,
+      "elP50": 71,
+      "elP95": 131,
+      "elP99": 202,
+      "elMax": 299
+    },
+    {
+      "minute": 13,
+      "timestamp": "2026-11-10T05:39:41.529Z",
+      "rssMb": 485.05,
+      "heapUsedMb": 111.88,
+      "heapTotalMb": 329.01,
+      "elP50": 76,
+      "elP95": 136,
+      "elP99": 189,
+      "elMax": 217
+    },
+    {
+      "minute": 14,
+      "timestamp": "2026-11-10T05:40:41.707Z",
+      "rssMb": 486.93,
+      "heapUsedMb": 198.64,
+      "heapTotalMb": 323.76,
+      "elP50": 79,
+      "elP95": 141,
+      "elP99": 167,
+      "elMax": 263
+    },
+    {
+      "minute": 15,
+      "timestamp": "2026-11-10T05:41:41.910Z",
+      "rssMb": 459.93,
+      "heapUsedMb": 115.39,
+      "heapTotalMb": 328.26,
+      "elP50": 86,
+      "elP95": 143,
+      "elP99": 184,
+      "elMax": 206
+    },
+    {
+      "minute": 16,
+      "timestamp": "2026-11-10T05:42:42.037Z",
+      "rssMb": 495.29,
+      "heapUsedMb": 121.82,
+      "heapTotalMb": 327.01,
+      "elP50": 92,
+      "elP95": 158,
+      "elP99": 198,
+      "elMax": 375
+    },
+    {
+      "minute": 17,
+      "timestamp": "2026-11-10T05:43:42.191Z",
+      "rssMb": 498.34,
+      "heapUsedMb": 173.03,
+      "heapTotalMb": 330.51,
+      "elP50": 88,
+      "elP95": 154,
+      "elP99": 217,
+      "elMax": 229
+    },
+    {
+      "minute": 18,
+      "timestamp": "2026-11-10T05:44:42.322Z",
+      "rssMb": 501.4,
+      "heapUsedMb": 171.05,
+      "heapTotalMb": 329.76,
+      "elP50": 95,
+      "elP95": 154,
+      "elP99": 203,
+      "elMax": 265
+    },
+    {
+      "minute": 19,
+      "timestamp": "2026-11-10T05:45:42.599Z",
+      "rssMb": 494.72,
+      "heapUsedMb": 126.87,
+      "heapTotalMb": 288.01,
+      "elP50": 101,
+      "elP95": 166,
+      "elP99": 205,
+      "elMax": 265
+    },
+    {
+      "minute": 20,
+      "timestamp": "2026-11-10T05:46:42.781Z",
+      "rssMb": 503.29,
+      "heapUsedMb": 157.46,
+      "heapTotalMb": 317.76,
+      "elP50": 100,
+      "elP95": 188,
+      "elP99": 229,
+      "elMax": 320
+    },
+    {
+      "minute": 21,
+      "timestamp": "2026-11-10T05:47:43.000Z",
+      "rssMb": 504.8,
+      "heapUsedMb": 106.29,
+      "heapTotalMb": 320.01,
+      "elP50": 115,
+      "elP95": 202,
+      "elP99": 266,
+      "elMax": 298
+    },
+    {
+      "minute": 22,
+      "timestamp": "2026-11-10T05:48:43.286Z",
+      "rssMb": 505.36,
+      "heapUsedMb": 252.74,
+      "heapTotalMb": 330.76,
+      "elP50": 113,
+      "elP95": 182,
+      "elP99": 235,
+      "elMax": 301
+    },
+    {
+      "minute": 23,
+      "timestamp": "2026-11-10T05:49:43.518Z",
+      "rssMb": 506.52,
+      "heapUsedMb": 203.82,
+      "heapTotalMb": 324.01,
+      "elP50": 114,
+      "elP95": 210,
+      "elP99": 276,
+      "elMax": 331
+    },
+    {
+      "minute": 24,
+      "timestamp": "2026-11-10T05:50:43.768Z",
+      "rssMb": 508.43,
+      "heapUsedMb": 119,
+      "heapTotalMb": 293.51,
+      "elP50": 114,
+      "elP95": 187,
+      "elP99": 237,
+      "elMax": 334
+    },
+    {
+      "minute": 25,
+      "timestamp": "2026-11-10T05:51:44.096Z",
+      "rssMb": 511.09,
+      "heapUsedMb": 76.67,
+      "heapTotalMb": 309.76,
+      "elP50": 117,
+      "elP95": 222,
+      "elP99": 276,
+      "elMax": 329
+    },
+    {
+      "minute": 26,
+      "timestamp": "2026-11-10T05:52:44.400Z",
+      "rssMb": 512.3,
+      "heapUsedMb": 183.05,
+      "heapTotalMb": 309.26,
+      "elP50": 125,
+      "elP95": 228,
+      "elP99": 285,
+      "elMax": 399
+    },
+    {
+      "minute": 27,
+      "timestamp": "2026-11-10T05:53:44.615Z",
+      "rssMb": 486.56,
+      "heapUsedMb": 133.9,
+      "heapTotalMb": 308.01,
+      "elP50": 120,
+      "elP95": 221,
+      "elP99": 287,
+      "elMax": 506
+    },
+    {
+      "minute": 28,
+      "timestamp": "2026-11-10T05:54:44.842Z",
+      "rssMb": 514.38,
+      "heapUsedMb": 234.55,
+      "heapTotalMb": 318.51,
+      "elP50": 126,
+      "elP95": 218,
+      "elP99": 332,
+      "elMax": 437
+    },
+    {
+      "minute": 29,
+      "timestamp": "2026-11-10T05:55:45.111Z",
+      "rssMb": 514.63,
+      "heapUsedMb": 193.21,
+      "heapTotalMb": 309.76,
+      "elP50": 133,
+      "elP95": 227,
+      "elP99": 290,
+      "elMax": 324
+    },
+    {
+      "minute": 30,
+      "timestamp": "2026-11-10T05:56:45.375Z",
+      "rssMb": 528.14,
+      "heapUsedMb": 135.5,
+      "heapTotalMb": 314.76,
+      "elP50": 133,
+      "elP95": 228,
+      "elP99": 288,
+      "elMax": 357
+    }
+  ],
+  "topCpuFunctions": [
+    {
+      "hits": 50169,
+      "function": "deserializeObject",
+      "file": "bson.cjs",
+      "line": 3071
+    },
+    {
+      "hits": 38852,
+      "function": "(idle)",
+      "file": "",
+      "line": -1
+    },
+    {
+      "hits": 37099,
+      "function": "writeBuffer",
+      "file": "",
+      "line": -1
+    },
+    {
+      "hits": 33184,
+      "function": "stringify",
+      "file": "response.js",
+      "line": 1154
+    },
+    {
+      "hits": 22161,
+      "function": "hexSlice",
+      "file": "",
+      "line": -1
+    },
+    {
+      "hits": 19515,
+      "function": "(garbage collector)",
+      "file": "",
+      "line": -1
+    },
+    {
+      "hits": 17533,
+      "function": "deserializeObject",
+      "file": "bson.cjs",
+      "line": 3071
+    },
+    {
+      "hits": 13648,
+      "function": "runMicrotasks",
+      "file": "",
+      "line": -1
+    },
+    {
+      "hits": 13191,
+      "function": "_getPathsToValidate",
+      "file": "document.js",
+      "line": 2720
+    },
+    {
+      "hits": 11975,
+      "function": "deserializeObject",
+      "file": "bson.cjs",
+      "line": 3071
+    },
+    {
+      "hits": 10413,
+      "function": "(program)",
+      "file": "",
+      "line": -1
+    },
+    {
+      "hits": 9695,
+      "function": "internalDeserialize",
+      "file": "bson.cjs",
+      "line": 3049
+    },
+    {
+      "hits": 9240,
+      "function": "exec",
+      "file": "query.js",
+      "line": 4571
+    },
+    {
+      "hits": 7488,
+      "function": "writev",
+      "file": "",
+      "line": -1
+    },
+    {
+      "hits": 7303,
+      "function": "(anonymous)",
+      "file": "document.js",
+      "line": 3097
+    },
+    {
+      "hits": 6333,
+      "function": "applyDefaults",
+      "file": "applyDefaults.js",
+      "line": 4
+    },
+    {
+      "hits": 6294,
+      "function": "processTicksAndRejections",
+      "file": "task_queues",
+      "line": 71
+    },
+    {
+      "hits": 6263,
+      "function": "exec",
+      "file": "query.js",
+      "line": 4571
+    },
+    {
+      "hits": 6243,
+      "function": "stringify",
+      "file": "response.js",
+      "line": 1154
+    },
+    {
+      "hits": 5890,
+      "function": "defaultPrepareStackTrace",
+      "file": "errors",
+      "line": 95
+    },
+    {
+      "hits": 5828,
+      "function": "getModelsMapForPopulate",
+      "file": "getModelsMapForPopulate.js",
+      "line": 20
+    },
+    {
+      "hits": 5100,
+      "function": "_getPathsToValidate",
+      "file": "document.js",
+      "line": 2720
+    },
+    {
+      "hits": 5071,
+      "function": "writev",
+      "file": "",
+      "line": -1
+    },
+    {
+      "hits": 4921,
+      "function": "ParallelSaveError",
+      "file": "parallelSave.js",
+      "line": 18
+    },
+    {
+      "hits": 4906,
+      "function": "exports.updateLead",
+      "file": "leadsController.js",
+      "line": 1624
+    }
+  ]
+}
