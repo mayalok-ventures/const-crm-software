@@ -91,6 +91,7 @@ class StructuredLogger {
         }
     }
     printToConsole(entry) {
+        if (process.env.SUPPRESS_CONSOLE_LOG === 'true') return;
         const timeStr = entry.timestamp.toISOString().split('T')[1].replace('Z', '');
         let colorPrefix = '\x1b[32m'; // green for INFO
         if (entry.level === 'DEBUG')

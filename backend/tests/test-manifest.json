@@ -417,6 +417,10 @@
       "category": "batch-suites",
       "reason": "Release RC3 Gate: Strict production environment validator refusing boot on weak secrets, unscoped reads, CORS wildcards, and missing Redis"
     },
+    "rc4_wa_lease_handoff.test.js": {
+      "category": "batch-suites",
+      "reason": "Release RC4 WhatsApp session lease handoff and retry-acquire tests"
+    },
     "render_deployment_compatibility.test.js": {
       "category": "core",
       "reason": "Render environment compatibility checks"

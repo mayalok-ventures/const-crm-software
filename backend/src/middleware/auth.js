@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { securityTracker } = require('../monitoring/security/securityTracker');
-const { userCache, subscriptionLifecycleCache, invalidateUserAuthCache } = require('../utils/authCache');
+const { userCache, subscriptionLifecycleCache, tokenVerificationCache, invalidateUserAuthCache } = require('../utils/authCache');
 
 /**
  * Calculates the multi-tenant subscription lifecycle:
@@ -98,7 +98,11 @@ const protect = async (req, res, next) => {
     }
     if (!token) return res.status(401).json({ message: 'Not authorized, no token' });
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET, { clockTolerance: 30 });
+    let decoded = tokenVerificationCache.get(token);
+    if (!decoded) {
+      decoded = jwt.verify(token, process.env.JWT_SECRET, { clockTolerance: 30 });
+      tokenVerificationCache.set(token, decoded, 10000);
+    }
     if (decoded.pending2FA) {
       return res.status(401).json({ message: 'Two-Factor Authentication required to access this endpoint.' });
     }

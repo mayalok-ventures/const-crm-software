@@ -63,6 +63,7 @@ class BoundedTtlCache {
 const userCache = new BoundedTtlCache(3000, 30000);
 const workspaceContextCache = new BoundedTtlCache(3000, 30000);
 const subscriptionLifecycleCache = new BoundedTtlCache(3000, 30000);
+const tokenVerificationCache = new BoundedTtlCache(5000, 10000); // 10s token decode cache to eliminate hot HMAC re-computation
 
 /**
  * Invalidate all cached data related to a user (auth, workspace context, lifecycle)
@@ -72,6 +73,7 @@ function invalidateUserAuthCache(userId) {
   const idStr = String(userId);
   userCache.del(idStr);
   subscriptionLifecycleCache.del(idStr);
+  tokenVerificationCache.clear();
   workspaceContextCache.deleteMatching((k) => k.startsWith(idStr));
 }
 
@@ -92,6 +94,7 @@ module.exports = {
   userCache,
   workspaceContextCache,
   subscriptionLifecycleCache,
+  tokenVerificationCache,
   invalidateUserAuthCache,
   invalidateWorkspaceCache,
 };

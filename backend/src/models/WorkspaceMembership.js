@@ -88,12 +88,19 @@ workspaceMembershipSchema.index({ workspaceId: 1, role: 1, status: 1 });
  * 5. Per-member explicit permissionOverrides (granted: true / false)
  */
 workspaceMembershipSchema.methods.getEffectivePermissions = async function() {
+  if (this._effectivePermissions && Date.now() < (this._effectivePermissionsExp || 0)) {
+    return this._effectivePermissions;
+  }
+
   const { PERMISSIONS } = require('../config/permissions');
   const Workspace = mongoose.models.Workspace || require('./Workspace');
   const Role = mongoose.models.Role || require('./Role');
 
   if (this.role === 'owner') {
-    return Object.keys(PERMISSIONS).map(key => ({ key, scope: 'workspace' }));
+    const ownerPerms = Object.keys(PERMISSIONS).map(key => ({ key, scope: 'workspace' }));
+    this._effectivePermissions = ownerPerms;
+    this._effectivePermissionsExp = Date.now() + 30000;
+    return ownerPerms;
   }
 
   let basePermissions = [];
@@ -149,9 +156,14 @@ workspaceMembershipSchema.methods.getEffectivePermissions = async function() {
       }
     }
 
-    return Array.from(permMap.values());
+    const finalPerms = Array.from(permMap.values());
+    this._effectivePermissions = finalPerms;
+    this._effectivePermissionsExp = Date.now() + 30000;
+    return finalPerms;
   }
 
+  this._effectivePermissions = basePermissions;
+  this._effectivePermissionsExp = Date.now() + 30000;
   return basePermissions;
 };
 
