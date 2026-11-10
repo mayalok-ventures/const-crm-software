@@ -92,144 +92,120 @@ Before triggering a deployment to staging or production:
 - [ ] **2. Database Connectivity & IP Access**: Ensure MongoDB Atlas Network Access whitelist contains Render outbound egress IPs or `0.0.0.0/0` with strong SCRAM-SHA-256 credentials.
 - [ ] **3. Replica Set Health**: Confirm MongoDB Atlas cluster status is green with 0 replication lag and primary node healthy.
 - [ ] **4. Backup Confirmation**: Verify Atlas automated continuous backup snapshot was completed within the last 15 minutes.
-- [ ] **5. Environment Audit**: Run environment validator script locally against target environment variables:
+- [ ] **5. Environment Audit (Render Shell Only)**: Run the environment validator inside the active Render container shell (**NEVER** run locally with developer workstation envs):
   ```bash
-  node backend/src/config/envValidator.js
+  # Inside Render Dashboard -> crm-app -> Shell:
+  node src/config/envValidator.js
   ```
 
 ---
 
-## 4. Database Migration Sequencing
+## 4. Phase 1: Pre-Deploy Additive Database Backfills
 
-Database migrations in `release/rc-3` are strictly **idempotent**, supporting non-destructive dry-run previews before execution.
+> [!IMPORTANT]
+> **Additive & Backward-Compatible Execution**:
+> All migrations in Phase 1 are strictly **additive** and non-destructive. They MUST be executed in the Render Shell **prior to triggering the new application code deployment**.
+> Running these additive backfills before deploy ensures that when the new backend boots, all database documents are already compatible, while existing running instances continue operating without interruption.
+>
+> **DATA RETENTION ISOLATION NOTICE**:
+> `purgeSoftDeletedLeads.js` must **NEVER** be executed in the deployment pipeline. Soft-deleted lead purge is strictly an asynchronous, off-peak data retention lifecycle job (>90 days) run independently via scheduled cron, completely decoupled from releases.
 
 ```mermaid
 flowchart TD
-    M1["1. syncIndexes.js (--apply)"] --> M2["2. backfillTokenVersion.js (--apply)"]
-    M2 --> M3["3. backfillLegacyLeadWorkspaceId.js (--apply)"]
-    M3 --> M4["4. backfillWorkspaceIdForRecordingsAndPayments.js (--apply)"]
-    M4 --> M5["5. reconcilePaymentFieldPairs.js (--apply)"]
-    M5 --> M6["6. pruneRedundantLeadIndexes.js (--apply)"]
-    M6 --> M7["7. migrateWaAuthEncryption.js (--apply)"]
-    M7 --> M8["8. purgeSoftDeletedLeads.js (--apply)"]
-    M8 --> M9["9. backupRestoreVerification.js (drill)"]
+    subgraph PreDeploy ["Phase 1: Pre-Deploy Additive Backfills (Render Shell)"]
+        M1["1. syncIndexes.js (--apply)"] --> M2["2. backfillTokenVersion.js (--apply)"]
+        M2 --> M3["3. backfillLegacyLeadWorkspaceId.js (--apply)"]
+        M3 --> M4["4. backfillWorkspaceIdForRecordingsAndPayments.js (--apply)"]
+        M4 --> M5["5. reconcilePaymentFieldPairs.js (--apply)"]
+    end
+    subgraph Deploy ["Phase 2 & 4: Application Deployment"]
+        D1["Backend Service Deploy (crm-app)"] --> D2["Smoke Verification (/health/ready)"]
+        D2 --> D3["Frontend Static PWA Deploy (Cloudflare Pages)"]
+    end
+    subgraph PostDeploy ["Phase 5 & 6: Off-Peak Cutover (Day 2+)"]
+        P1["Day 2 Off-Peak: pruneRedundantLeadIndexes.js (--apply)"]
+        P2["Day 2+ (>=24h Stable): migrateWaAuthEncryption.js (--apply)"]
+    end
+    PreDeploy --> Deploy
+    Deploy --> PostDeploy
 ```
 
 ### Step 4.1: Synchronize Base Indexes
 Executes model index declarations safely with duplicate pre-checks:
 ```bash
 # Preview
-node backend/src/scripts/syncIndexes.js
+node src/scripts/syncIndexes.js
 # Apply
-node backend/src/scripts/syncIndexes.js --apply
+node src/scripts/syncIndexes.js --apply
 ```
 
 ### Step 4.2: Backfill User `tokenVersion`
-Initializes `tokenVersion: 0` for all legacy user documents missing this field:
+Initializes `tokenVersion: 0` for all legacy user documents missing this field (additive, backward-compatible with pre-rc-3 code):
 ```bash
 # Preview
-node backend/src/scripts/backfillTokenVersion.js
+node src/scripts/backfillTokenVersion.js
 # Apply
-node backend/src/scripts/backfillTokenVersion.js --apply
+node src/scripts/backfillTokenVersion.js --apply
 ```
 
 ### Step 4.3: Backfill Workspace Isolation Identifiers
 Ensures all orphaned leads, recordings, and payments are scoped to valid workspaces:
 ```bash
-# Preview
-node backend/src/scripts/backfillLegacyLeadWorkspaceId.js
-# Apply
-node backend/src/scripts/backfillLegacyLeadWorkspaceId.js --apply
+# Preview & Apply Leads
+node src/scripts/backfillLegacyLeadWorkspaceId.js
+node src/scripts/backfillLegacyLeadWorkspaceId.js --apply
 
-# Preview
-node backend/src/scripts/backfillWorkspaceIdForRecordingsAndPayments.js
-# Apply
-node backend/src/scripts/backfillWorkspaceIdForRecordingsAndPayments.js --apply
+# Preview & Apply Recordings & Payments
+node src/scripts/backfillWorkspaceIdForRecordingsAndPayments.js
+node src/scripts/backfillWorkspaceIdForRecordingsAndPayments.js --apply
 ```
 
 ### Step 4.4: Reconcile Payment Field Pairs
-Normalizes camelCase and snake_case payment schema inconsistencies:
+Normalizes camelCase and snake_case payment schema inconsistencies (additive copy):
 ```bash
 # Preview
-node backend/src/scripts/reconcilePaymentFieldPairs.js
+node src/scripts/reconcilePaymentFieldPairs.js
 # Apply
-node backend/src/scripts/reconcilePaymentFieldPairs.js --apply
-```
-
-### Step 4.5: Prune Redundant Indexes with Explain-Guard
-Drops redundant indexes on `leads` collection while verifying that all top query shapes remain index-backed (`IXSCAN`):
-```bash
-# Preview
-node backend/src/scripts/pruneRedundantLeadIndexes.js
-# Apply
-node backend/src/scripts/pruneRedundantLeadIndexes.js --apply
-```
-
-### Step 4.6: Migrate WhatsApp Auth State Encryption
-Re-encrypts historical WhatsApp session credentials with dedicated `WA_ENCRYPTION_KEY`:
-```bash
-# Preview / Verify Only
-node backend/src/scripts/migrateWaAuthEncryption.js --verify-only
-# Apply
-node backend/src/scripts/migrateWaAuthEncryption.js --apply
-```
-
-### Step 4.7: Purge Expired Soft-Deleted Leads
-Purges leads soft-deleted >90 days ago inside an atomic transaction:
-```bash
-# Preview
-node backend/src/scripts/purgeSoftDeletedLeads.js
-# Apply
-node backend/src/scripts/purgeSoftDeletedLeads.js --apply --retention-days 90
+node src/scripts/reconcilePaymentFieldPairs.js --apply
 ```
 
 ---
 
-## 5. Step-by-Step Single-Instance Staging & Production Deployment
+## 5. End-to-End Staging & Production Deployment Playbook
 
 > [!IMPORTANT]
-> Both Staging and Production MUST be deployed as a **single unified Web+Worker service** (`RUN_BACKGROUND_WORKERS=true`).
-> Do NOT create separate `crm-worker` and `crm-api` services in Render until distributed RPC is implemented.
+> Both Staging and Production MUST be deployed as a **single unified Web+Worker service** (`RUN_BACKGROUND_WORKERS=true`, `INSTANCE_COUNT=1`).
+> Do NOT scale beyond 1 instance or split services until distributed inter-process RPC is implemented.
 
-### Step 5.1: Configure Render Web Service
-1. In Render Dashboard, create or select the Web Service (`crm-backend`).
-2. Set Environment Variables:
-   - `NODE_ENV`: `production`
+### Step 5.1: Execute Pre-Deploy Additive Backfills
+In Render Dashboard -> `crm-app` -> **Shell**, verify environment and run Phase 1 migrations:
+```bash
+node src/config/envValidator.js
+node src/scripts/syncIndexes.js --apply
+node src/scripts/backfillTokenVersion.js --apply
+node src/scripts/backfillLegacyLeadWorkspaceId.js --apply
+node src/scripts/backfillWorkspaceIdForRecordingsAndPayments.js --apply
+node src/scripts/reconcilePaymentFieldPairs.js --apply
+```
+
+### Step 5.2: Deploy Backend Web Service (`crm-app`)
+1. In Render Dashboard, select `crm-backend` (or `crm-app`).
+2. Verify Environment Variables:
+   - `NODE_ENV`: `production` (or `staging`)
    - `RUN_BACKGROUND_WORKERS`: `true`
    - `INSTANCE_COUNT`: `1`
    - `TRUST_PROXY_HOPS`: `1` (or `2` if behind Cloudflare)
-   - `MONGODB_URI`: Atlas connection string
-   - `JWT_SECRET`: Min 32-character secret
+   - `MONGODB_URI`: Atlas replica set connection string
+   - `JWT_SECRET`: Min 32-character cryptographically secure secret
    - `INTEGRATION_ENCRYPTION_KEY`: 64-char hex key
    - `WA_ENCRYPTION_KEY`: Dedicated 64-char hex key
-   - `ALLOWED_ORIGINS`: Frontend URL(s)
-3. Configure Health Check:
-   - Health Check Path: `/health/ready`
-4. Build & Start Commands:
-   - Build Command: `cd backend && npm install --production`
-   - Start Command: `cd backend && node server.js`
+   - `ALLOWED_ORIGINS`: Comma-separated production frontend domains
+3. Click **Manual Deploy -> Deploy Latest Commit (`release/rc-4`)**.
+4. Render boots the new container and tests `/health/ready`.
+5. Once `/health/ready` returns HTTP 200, traffic routes to the new container. The previous container receives `SIGTERM`, gracefully drains in-flight requests, and terminates.
 
-### Step 5.2: Execute Pre-Flight Validation & Migrations
-Before directing user traffic to the release:
-```bash
-# 1. Validate environment configuration
-node backend/src/config/envValidator.js
-
-# 2. Execute database migrations sequentially
-node backend/src/scripts/syncIndexes.js --apply
-node backend/src/scripts/backfillTokenVersion.js --apply
-node backend/src/scripts/backfillLegacyLeadWorkspaceId.js --apply
-node backend/src/scripts/backfillWorkspaceIdForRecordingsAndPayments.js --apply
-node backend/src/scripts/reconcilePaymentFieldPairs.js --apply
-node backend/src/scripts/pruneRedundantLeadIndexes.js --apply
-node backend/src/scripts/migrateWaAuthEncryption.js --apply
-```
-
-### Step 5.3: Trigger Zero-Downtime Rolling Deploy
-1. In Render Dashboard, click **Manual Deploy -> Deploy Latest Commit (`release/rc-3`)**.
-2. Render starts the new container and performs readiness probes against `/health/ready`.
-3. Once the instance responds with `HTTP 200 {"ready": true, "status": "HEALTHY", "checks": {"mongodb": {"status": "HEALTHY"}, "storage": {"status": "HEALTHY"}}}`, Render switches routing to the new container.
-4. The previous container receives `SIGTERM`, flushes in-flight writes within the 10-second drain window, and terminates cleanly.
+### Step 5.3: Post-Backend Smoke Verification
+Before updating the frontend, execute the smoke verification probes defined in Section 6 (`/health/ready`, `/health/live`, `/health/database`, webhook signature checks).
 
 ### Step 5.4: Deploy Frontend Static PWA (Cloudflare Pages / Vercel)
 1. Build frontend static export:
@@ -237,8 +213,42 @@ node backend/src/scripts/migrateWaAuthEncryption.js --apply
    cd frontend
    npm run build
    ```
-2. Deploy the `out/` directory to Cloudflare Pages.
-3. Users reloading the PWA will receive the updated Serwist service worker, caching new static assets and invalidating obsolete bundles.
+2. Deploy the `out/` directory to Cloudflare Pages / Vercel CDN.
+3. Users reloading the PWA receive the updated Serwist service worker, caching new static assets and invalidating obsolete bundles.
+
+---
+
+## 6. Off-Peak Maintenance & Cutover (Day 2+)
+
+These steps MUST NOT be executed during the initial deploy window. They are performed off-peak after proving release stability.
+
+### Step 6.1: Day 2 Off-Peak Lead Index Pruning
+Drops redundant indexes on the `leads` collection while verifying that all top query shapes remain index-backed (`IXSCAN`):
+- **Schedule**: Day 2 off-peak maintenance window (e.g., 02:00 UTC) after observing $\ge 24\text{ hours}$ of normal production traffic.
+- **Execution** (via Render Shell):
+  ```bash
+  # Preview explain plans
+  node src/scripts/pruneRedundantLeadIndexes.js
+  # Apply pruning
+  node src/scripts/pruneRedundantLeadIndexes.js --apply
+  ```
+
+### Step 6.2: Day 2+ WhatsApp Auth State Encryption Migration
+Re-encrypts historical WhatsApp session credentials with dedicated `WA_ENCRYPTION_KEY`:
+
+> [!CAUTION]
+> **IRREVERSIBLE CODE DEPENDENCY / CUTOVER POINT**:
+> 1. **Prerequisites**: Minimum 24 hours of stable production operations with ZERO rollbacks or regressions, AND a fresh Atlas snapshot taken immediately prior to execution.
+> 2. **Rollback Consequence**: **YOU CANNOT ROLL BACK TO PRE-RC-3 APPLICATION CODE AFTER THIS STEP.** Pre-rc-3 code lacks AES-256-GCM Baileys authentication state decryption and will fail to establish WhatsApp sessions.
+> 3. If a rollback is ever required after this step, you MUST restore MongoDB Atlas from the pre-migration snapshot taken in prerequisite 1.
+
+```bash
+# 1. Preview and verify existing sessions
+node src/scripts/migrateWaAuthEncryption.js --verify-only
+
+# 2. Apply migration (only after 24h stability and fresh backup)
+node src/scripts/migrateWaAuthEncryption.js --apply
+```
 
 ---
 
@@ -311,24 +321,39 @@ Configure alerts in Render / Datadog / BetterStack with the following numeric tr
 
 In the event of an unrecoverable runtime regression or critical service degradation:
 
-### 8.1 Application Code Rollback
-Render supports instant one-click rollback to any prior release build:
-1. Navigate to Render Dashboard -> `crm-backend` -> **Deploys**.
-2. Select the previous stable commit (e.g. `release/rc-1` or `fix/audit-batch-3`).
+### 8.1 Application Code Rollback Targets & Cutover Rules
+
+> [!WARNING]
+> **Rollback Target Policy Based on Migration Cutover Stage**:
+>
+> 1. **Scenario A: Rollback BEFORE Phase 6 (WA Auth Encryption Migration)**:
+>    - You can safely roll back code in Render to previous stable releases (e.g. `release/rc-3` or `release/rc-2`).
+>    - Phase 1 additive backfills (`tokenVersion`, `workspaceId`, reconciled payment field pairs) are fully backward-compatible and safely ignored by older application code.
+>    - If redundant lead indexes were already pruned in Phase 5, restore any missing indexes immediately by running `node src/scripts/syncIndexes.js --apply` in the Render shell.
+>
+> 2. **Scenario B: Rollback AFTER Phase 6 (WA Auth Encryption Migration)**:
+>    - **ROLLBACK TO PRE-RC-3 CODE IS STRICTLY FORBIDDEN WITHOUT DATABASE RESTORE.**
+>    - Older codebases (pre-rc-3) lack AES-256-GCM Baileys authentication state decryption and will fail to establish WhatsApp sessions.
+>    - **Option 1 (Code-only rollback)**: Roll back only to `release/rc-3` (which contains full AES-256-GCM Baileys decryption support).
+>    - **Option 2 (Full rollback to pre-rc-3 code)**: You MUST restore MongoDB Atlas from the pre-Phase 6 backup snapshot taken immediately prior to executing `migrateWaAuthEncryption.js --apply`.
+
+#### Executing Render Code Rollback:
+1. Navigate to Render Dashboard -> `crm-app` (or `crm-backend`) -> **Deploys**.
+2. Select the target release commit based on the Cutover Rules above.
 3. Click **Rollback to this deploy**.
 *Rollback execution time: < 90 seconds (zero downtime)*.
 
 ### 8.2 Database Migration Rollback (DOWN Execution)
-If a schema or data migration requires reversal:
-- **User `tokenVersion`**:
-  ```bash
-  # Reverts tokenVersion to uninitialized state
-  node backend/src/scripts/backfillTokenVersion.js --rollback
-  ```
+If a schema or index migration requires reversal in Render Shell:
 - **Index Restoration**:
   If pruned indexes need to be recreated immediately:
   ```bash
-  node backend/src/scripts/syncIndexes.js --apply
+  node src/scripts/syncIndexes.js --apply
+  ```
+- **User `tokenVersion`**:
+  ```bash
+  # Reverts tokenVersion to uninitialized state
+  node src/scripts/backfillTokenVersion.js --rollback
   ```
 
 ### 8.3 Disaster Recovery: Database Point-in-Time Restore (PITR)
