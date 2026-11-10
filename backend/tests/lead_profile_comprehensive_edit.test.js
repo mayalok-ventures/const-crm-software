@@ -7,7 +7,13 @@ const { updateLead, getLead } = require('../src/controllers/leadsController');
 async function runTest() {
   console.log('--- Starting Lead Profile Comprehensive Edit QA Test ---');
 
-  const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mobile-crm';
+  let mongod;
+  let mongoUri = process.env.MONGO_URI;
+  if (!mongoUri) {
+    const { MongoMemoryServer } = require('mongodb-memory-server');
+    mongod = await MongoMemoryServer.create();
+    mongoUri = mongod.getUri();
+  }
   await mongoose.connect(mongoUri);
 
   // Setup test user
@@ -19,6 +25,7 @@ async function runTest() {
       phone: '9998887771',
       password: 'password123',
       role: 'admin',
+      isAdmin: true,
       workStatus: 'company_owner',
       companyRole: 'owner',
       pipelineStages: ['new', 'contacted', 'site_visit_scheduled', 'closed', 'lost']
@@ -136,6 +143,7 @@ async function runTest() {
   await Lead.deleteOne({ _id: minimalLead._id });
   await User.deleteOne({ _id: user._id });
   await mongoose.disconnect();
+  if (mongod) await mongod.stop();
 
   console.log('🎉 --- ALL TESTS PASSED SUCCESSFULLY! --- 🎉');
 }

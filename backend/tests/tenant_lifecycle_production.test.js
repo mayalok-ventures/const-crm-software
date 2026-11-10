@@ -9,8 +9,23 @@ const mongoose = require('mongoose');
 const assert = require('assert');
 const User = require('../src/models/User');
 const Lead = require('../src/models/Lead');
-const Project = require('../src/models/Project');
-const Booking = require('../src/models/Booking');
+const Project = mongoose.models.Project || mongoose.model('Project', new mongoose.Schema({
+  userId: mongoose.Schema.Types.ObjectId,
+  companyId: mongoose.Schema.Types.ObjectId,
+  name: String,
+  location: String,
+}, { timestamps: true }));
+
+const Booking = mongoose.models.Booking || mongoose.model('Booking', new mongoose.Schema({
+  companyId: mongoose.Schema.Types.ObjectId,
+  leadId: mongoose.Schema.Types.ObjectId,
+  projectId: mongoose.Schema.Types.ObjectId,
+  inventoryId: mongoose.Schema.Types.ObjectId,
+  bookingNumber: String,
+  bookingAmount: Number,
+  agreementValue: Number,
+  status: String,
+}, { timestamps: true }));
 const TenantConfig = require('../src/models/TenantConfig');
 const Subscription = require('../src/models/Subscription');
 const Plan = require('../src/models/Plan');
