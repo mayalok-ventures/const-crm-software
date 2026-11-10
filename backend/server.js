@@ -290,7 +290,7 @@ app.use('/api/templates', templatesRoutes);
 app.use('/api/recordings', recordingsRoutes);
 app.use('/api/groups', groupsRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/admin', adminWorkLimiter, adminRoutes);
 app.use('/api/whatsapp/meta', metaWhatsAppRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/campaigns', campaignRoutes);
