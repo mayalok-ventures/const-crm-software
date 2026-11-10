@@ -1,15 +1,15 @@
 # Production Risk Acceptance & Operational Waivers
-**Target Branch**: `release/rc-3`  
-**Date**: November 9, 2026  
+**Target Branch**: `release/rc-4`  
+**Date**: November 10, 2026  
 **Auditor / Engineering Panel**: Principal Performance Engineer, SRE / Chaos Engineer, Database Specialist, Security Engineer, Frontend Performance Engineer, QA Lead  
 **Verdict**: `GO-TO-STAGING-SOAK` (Production GO reserved for user sign-off after staging soak)
 
 ---
 
 ## Executive Summary
-All 32 identified risks across Audit Rounds 1–2, Batches 1–4, and RC 1–3 gates have been categorized into either:
+All 33 identified risks across Audit Rounds 1–2, Batches 1–4, and RC 1–4 gates have been categorized into either:
 1. **FIXED & VERIFIED**: 26 critical and high vulnerabilities remediated in code with dedicated regression tests that fail before and pass after.
-2. **ACCEPTED WITH RESIDUAL MITIGATION**: 6 architectural or third-party dependency risks that cannot or should not be patched in-tree without unacceptable business trade-offs. Each item below includes a precise risk summary, compensatory technical controls, and a dedicated signature block for leadership sign-off.
+2. **ACCEPTED WITH RESIDUAL MITIGATION**: 7 architectural or operational dependency risks that cannot or should not be patched in-tree without unacceptable business trade-offs. Each item below includes a precise risk summary, compensatory technical controls, and a dedicated signature block for leadership sign-off.
 
 ---
 
@@ -92,5 +92,19 @@ All 32 identified risks across Audit Rounds 1–2, Batches 1–4, and RC 1–3 g
 > ```
 > [ ] ACCEPTED & WAIVED FOR STAGING SOAK
 > Approver: _____________________________ (Principal SRE & DevOps Lead)
+> Date:     _____________________________
+> ```
+
+---
+
+### Waiver 7: Redis Optionality & Single-Instance In-Memory Fallback (RISK-33)
+> **Risk Description**: Redis is architecturally optional. In single-instance production and staging environments operating without `REDIS_URL`, rate limiting, caching, and lease fencing fall back to local in-memory stores and atomic MongoDB operations. If an operator attempts to scale beyond 1 instance without provisioning Redis, in-memory caches and rate limits become partitioned across nodes.
+> 
+> **Compensatory Controls**: `envValidator.js` validates topology at boot time: if `INSTANCE_COUNT > 1` or `WEB_CONCURRENCY > 1` without `REDIS_URL`, the server strictly aborts startup (exit code 1). Single-instance deployments safely utilize high-speed LRU caches (`memoryCache.js`), `rate-limiter-flexible` in-memory fallback, and MongoDB-backed atomic leases. Production Runbook Section 5 mandates Redis prior to horizontal scaling.
+> 
+> **Signature & Sign-Off**:
+> ```
+> [ ] ACCEPTED & WAIVED FOR STAGING SOAK
+> Approver: _____________________________ (Database & Infrastructure Specialist)
 > Date:     _____________________________
 > ```
