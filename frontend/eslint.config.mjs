@@ -12,9 +12,6 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Test harness and configuration files:
-    "playwright.config.js",
-    "tests/**",
     // Generated / vendored service worker bundles:
     "public/sw.js",
     "public/swe-worker-*.js",
