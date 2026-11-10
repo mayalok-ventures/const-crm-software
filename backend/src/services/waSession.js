@@ -168,6 +168,26 @@ const releaseLease = async (sessionId) => {
   } catch (e) {}
 };
 
+/**
+ * Retries lease acquisition across a rolling deploy handoff window.
+ * Allows the booting instance to acquire the lease cleanly once the terminating instance releases it.
+ */
+const acquireLeaseWithRetry = async (sessionId, maxAttempts = 5, delayMs = 1000) => {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const acquired = await acquireLease(sessionId);
+    if (acquired) {
+      if (attempt > 1) {
+        console.log(`[WA-Cluster] Session ${sessionId} lease acquired on attempt #${attempt} after handoff.`);
+      }
+      return true;
+    }
+    if (attempt < maxAttempts) {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  return false;
+};
+
 const getWAVersion = async (forceRefresh = false) => {
   const now = Date.now();
   if (!forceRefresh && cachedWAVersion && now - versionFetchedAt < VERSION_CACHE_TTL_MS) {
@@ -722,8 +742,8 @@ const setupSocketListeners = (sock, userId, cleanPhone, saveCreds) => {
 const restoreSession = async (userId, cleanPhone) => {
   const uIdStr = userId.toString();
 
-  // PM2 Cluster & Multi-process lease fence
-  const canAcquire = await acquireLease(uIdStr);
+  // PM2 Cluster & Multi-process lease fence (with retry for rolling deploy handoff)
+  const canAcquire = await acquireLeaseWithRetry(uIdStr, 5, 1000);
   if (!canAcquire) {
     console.log(`[WA-Cluster] Skipping session restore for ${uIdStr}: managed by another instance.`);
     return false;
@@ -1262,6 +1282,7 @@ module.exports = {
   closeAllSessions: handleGracefulShutdown,
   isClientReady: () => Object.values(sessions).some(s => s && s.ws && s.ws.readyState === 1),
   acquireLease,
+  acquireLeaseWithRetry,
   releaseLease,
   INSTANCE_ID,
 };
