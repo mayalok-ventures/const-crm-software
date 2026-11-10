@@ -1,6 +1,6 @@
 # Production Deployment, Operations & Disaster Recovery Runbook
 
-**Target Release**: `release/rc-3`  
+**Target Release**: `release/rc-5`  
 **Platform**: Render Web Service / MongoDB Atlas Replica Set / Redis / Cloudflare CDN  
 **Verification Target**: Enterprise-grade CRM with strict financial durability, real-time counselor speed, and fail-safe configuration.
 
@@ -258,17 +258,17 @@ Execute these verification checks immediately following deployment:
 
 ### 6.1 Service Health & Readiness Probes
 ```bash
-# Primary Readiness Probe (used by Render load balancer)
+# Primary Readiness Probe (used by Render load balancer & container orchestrator)
 curl -f -s https://api.crm.sahyak.com/health/ready | jq .
-# Expected: HTTP 200 {"status":"HEALTHY","ready":true,"checks":{"mongodb":{"status":"HEALTHY"},"storage":{"status":"HEALTHY"}}}
+# Verified Output: HTTP 200 {"status":"HEALTHY","ready":true,"gitCommit":"...","checks":{"mongodb":{"status":"HEALTHY","connectionState":"connected","pingLatencyMs":...},"storage":{"status":"HEALTHY","isWritable":true,"latencyMs":...}},"timestamp":"..."}
 
 # Liveness Probe
 curl -f -s https://api.crm.sahyak.com/health/live | jq .
-# Expected: HTTP 200 {"status":"HEALTHY","uptime":...}
+# Verified Output: HTTP 200 {"status":"HEALTHY","liveness":true,"pid":...,"uptimeSeconds":...,"memory":{"rssBytes":...},"eventLoopLagMs":...,"timestamp":"..."}
 
-# Database Health Check
-curl -f -s https://api.crm.sahyak.com/health/database | jq .
-# Expected: HTTP 200 {"status":"healthy","database":"connected"}
+# Overall Platform Health Check
+curl -f -s https://api.crm.sahyak.com/health | jq .
+# Verified Output: HTTP 200 {"status":"HEALTHY","overallScore":100,"uptimeSeconds":...,"components":{"application":"HEALTHY","mongodb":"HEALTHY","redis":"...","storage":"HEALTHY","whatsapp":"HEALTHY","payment":"HEALTHY","queue":"HEALTHY"}}
 ```
 
 ### 6.2 Public Share Token Rate Limiting & Masking
@@ -327,14 +327,17 @@ In the event of an unrecoverable runtime regression or critical service degradat
 > **Rollback Target Policy Based on Migration Cutover Stage**:
 >
 > 1. **Scenario A: Rollback BEFORE Phase 6 (WA Auth Encryption Migration)**:
->    - You can safely roll back code in Render to previous stable releases (e.g. `release/rc-3` or `release/rc-2`).
+>    - You can safely roll back code in Render to previous stable releases:
+>      - Target 1: `release/rc-4` (`d455ce201287ab09f6c37819253a8f4a00cc40e5`)
+>      - Target 2: `release/rc-3` (`05d734b13cf0566328c7ce7d66e41483d228e18e`)
+>      - Target 3: `release/rc-2` (`810b47cfc0d544d5eb536317ca2f8effe5fa3884`)
 >    - Phase 1 additive backfills (`tokenVersion`, `workspaceId`, reconciled payment field pairs) are fully backward-compatible and safely ignored by older application code.
 >    - If redundant lead indexes were already pruned in Phase 5, restore any missing indexes immediately by running `node src/scripts/syncIndexes.js --apply` in the Render shell.
 >
 > 2. **Scenario B: Rollback AFTER Phase 6 (WA Auth Encryption Migration)**:
 >    - **ROLLBACK TO PRE-RC-3 CODE IS STRICTLY FORBIDDEN WITHOUT DATABASE RESTORE.**
 >    - Older codebases (pre-rc-3) lack AES-256-GCM Baileys authentication state decryption and will fail to establish WhatsApp sessions.
->    - **Option 1 (Code-only rollback)**: Roll back only to `release/rc-3` (which contains full AES-256-GCM Baileys decryption support).
+>    - **Option 1 (Code-only rollback)**: Roll back only to `release/rc-4` (`d455ce2`) or `release/rc-3` (`05d734b`), which contain full AES-256-GCM Baileys decryption support.
 >    - **Option 2 (Full rollback to pre-rc-3 code)**: You MUST restore MongoDB Atlas from the pre-Phase 6 backup snapshot taken immediately prior to executing `migrateWaAuthEncryption.js --apply`.
 
 #### Executing Render Code Rollback:

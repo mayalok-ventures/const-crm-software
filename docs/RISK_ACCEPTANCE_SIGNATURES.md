@@ -1,5 +1,5 @@
 # Production Risk Acceptance & Operational Waivers
-**Target Branch**: `release/rc-4`  
+**Target Branch**: `release/rc-5`  
 **Date**: November 10, 2026  
 **Auditor / Engineering Panel**: Principal Performance Engineer, SRE / Chaos Engineer, Database Specialist, Security Engineer, Frontend Performance Engineer, QA Lead  
 **Verdict**: `GO-TO-STAGING-SOAK` (Production GO reserved for user sign-off after staging soak)
@@ -7,7 +7,7 @@
 ---
 
 ## Executive Summary
-All 33 identified risks across Audit Rounds 1–2, Batches 1–4, and RC 1–4 gates have been categorized into either:
+All 33 identified risks across Audit Rounds 1–2, Batches 1–4, and RC 1–5 gates have been categorized into either:
 1. **FIXED & VERIFIED**: 26 critical and high vulnerabilities remediated in code with dedicated regression tests that fail before and pass after.
 2. **ACCEPTED WITH RESIDUAL MITIGATION**: 7 architectural or operational dependency risks that cannot or should not be patched in-tree without unacceptable business trade-offs. Each item below includes a precise risk summary, compensatory technical controls, and a dedicated signature block for leadership sign-off.
 
@@ -56,9 +56,9 @@ All 33 identified risks across Audit Rounds 1–2, Batches 1–4, and RC 1–4 g
 ---
 
 ### Waiver 4: Frontend Development-Only Vulnerabilities (`vitest`, `vite`, `@serwist`) (RISK-23)
-> **Risk Description**: Several frontend development dependencies report vulnerability notices during `npm audit` in local development environments.
+> **Risk Description**: Several frontend development dependencies report vulnerability notices during `npm audit` in local development environments. Operational severity for production is classified as **Low (Dev-Only)**.
 > 
-> **Compensatory Controls**: All flagged packages are strictly confined to `devDependencies` in `frontend/package.json`. The CRM frontend is compiled ahead of time into a static web application (`output: 'export'`) consisting exclusively of static HTML, CSS, and client-side JavaScript deployed directly to Cloudflare Pages / CDN edges. Neither Node.js, Vite, Vitest, nor Serwist CLI run in the production hosting tier.
+> **Compensatory Controls**: All flagged packages are strictly confined to `devDependencies` in `frontend/package.json`. The CRM frontend is compiled ahead of time into a static web application (`output: 'export'`) consisting exclusively of static HTML, CSS, and client-side JavaScript deployed directly to Cloudflare Pages / CDN edges (verified via `frontend/tests/performance_and_isolation.test.js`). Neither Node.js, Vite, Vitest, nor Serwist CLI run in the production hosting tier.
 > 
 > **Signature & Sign-Off**:
 > ```
