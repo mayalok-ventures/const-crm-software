@@ -1,0 +1,800 @@
+{
+  "timestamp": "2026-11-11T07:13:32.113Z",
+  "totalExecuted": 79,
+  "totalPassed": 79,
+  "totalFailed": 0,
+  "quarantinedFailures": 0,
+  "durationSec": 88840.34,
+  "suites": [
+    {
+      "suite": "admin_payment_requests_pagination.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 & 2 payment requests pagination",
+      "code": 0,
+      "durationMs": 5085,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "agent_performance_n_plus_one.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 agent performance aggregation",
+      "code": 0,
+      "durationMs": 6470,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "assignment_max_active_leads.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 max active leads round robin guard",
+      "code": 0,
+      "durationMs": 5612,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "auth_2fa_hardening.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 2FA emergency bypass removal",
+      "code": 0,
+      "durationMs": 4341,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "auth_token_extraction.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 token extraction hardening",
+      "code": 0,
+      "durationMs": 4846,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "cache_capacity_and_eviction.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 in-memory cache capacity and sweep",
+      "code": 0,
+      "durationMs": 2949,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "coupon_atomic_redemption.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 atomic coupon usage counter",
+      "code": 0,
+      "durationMs": 4070,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "deals_counselor_search.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 deals counselor search role-scoping",
+      "code": 0,
+      "durationMs": 4704,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "distributed_lock.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 MongoDB distributed lock for crons",
+      "code": 0,
+      "durationMs": 3615,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "dual_instance_concurrency.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 dual instance concurrency & lease single-holder",
+      "code": 0,
+      "durationMs": 4552,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "followup_cron_lookback_cap.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 follow-up cron 24h lookback and stale claim recovery",
+      "code": 0,
+      "durationMs": 4749,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "followup_postpone_validation.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 follow-up postpone remark validation",
+      "code": 0,
+      "durationMs": 4316,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "lead_duplicate_merge.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 3 F3 duplicate lead detection and atomic merge",
+      "code": 0,
+      "durationMs": 7141,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "lead_fee_installments.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 3 F4 fee installment schedule tracking and payment linkage",
+      "code": 0,
+      "durationMs": 5668,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "lead_fee_installments_hardening.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 3 F4 UTC-safe overdue calculation and golden payment analytics invariance",
+      "code": 0,
+      "durationMs": 5652,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "lead_merge_transaction_rollback.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 3 F3 transaction rollback on injected merge failure",
+      "code": 0,
+      "durationMs": 5511,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "lead_omnichannel_timeline.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 3 F2 omnichannel activity timeline API and cursor pagination",
+      "code": 0,
+      "durationMs": 5711,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "lead_payment_idempotency.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 request-level payment idempotency",
+      "code": 0,
+      "durationMs": 4917,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "lead_phone_masking.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 3 F1 role-based phone masking and unmask audit logging",
+      "code": 0,
+      "durationMs": 4674,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "lead_phone_masking_comprehensive.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 3 F1 15-path phone masking coverage and server-mediated redirects",
+      "code": 0,
+      "durationMs": 6560,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "lead_presave_tenant_fix.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 pre-save companyId resolution & memo scoping",
+      "code": 0,
+      "durationMs": 5206,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "lead_soft_delete_and_cascade.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 soft delete and cascade cleanup",
+      "code": 0,
+      "durationMs": 6000,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "lead_soft_delete_partial_index.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 soft delete partial unique index",
+      "code": 0,
+      "durationMs": 4444,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "lead_stage_status_sync.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 lead stage and canonical status sync",
+      "code": 0,
+      "durationMs": 4221,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "lead_status_won_flow.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 & 3 lead won conversion and payment creation",
+      "code": 0,
+      "durationMs": 5282,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "lead_tenant_resolution_perf.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 tenant pre-save resolution performance",
+      "code": 0,
+      "durationMs": 4713,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "leads_pagination_tiebreaker.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 deterministic pagination tiebreaker",
+      "code": 0,
+      "durationMs": 4270,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "meta_webhook_security.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 Meta webhook signature verification",
+      "code": 0,
+      "durationMs": 1411,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "payment_dual_field_sync.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 payment snake_case and camelCase sync",
+      "code": 0,
+      "durationMs": 3090,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "pdf_export_event_loop.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 PDF export event loop yielding",
+      "code": 0,
+      "durationMs": 5220,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "pipeline_remap_status_integrity.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 pipeline deletion and remapping integrity",
+      "code": 0,
+      "durationMs": 4539,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "recording_workspace_isolation.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 call recordings workspace isolation",
+      "code": 0,
+      "durationMs": 6945,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc1_jwt_token_version.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC1 Gate: JWT tokenVersion lifecycle, backward compatibility & multi-device revocation",
+      "code": 0,
+      "durationMs": 5785,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc1_index_pruning_and_write_concern.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC1 Gate: Top 10 queries explain IXSCAN verification & majority write concern throughput",
+      "code": 0,
+      "durationMs": 8290,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc1_outbound_resilience.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC1 Gate: XLSX worker offloading, file magic bytes & outbound jittered retry",
+      "code": 0,
+      "durationMs": 10368,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc1_security_hardening.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC1 Gate: Cross-tenant route isolation & mass-assignment allowlist protection",
+      "code": 0,
+      "durationMs": 6484,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc2_clean_boot_and_db_connect.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC2 Production Ready: Clean database boot, dynamic port resolution & health readiness",
+      "code": 0,
+      "durationMs": 9331,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc3_rate_limiter_user_keying.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC3 Gate: User-keyed rate limiting, proxy hops, role-split admin limits & share-token isolation",
+      "code": 0,
+      "durationMs": 2210,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc3_dual_instance_topology.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC3 Gate: Dual-instance topology, once-only jobs & WhatsApp lease fencing HTTP 503 verification",
+      "code": 0,
+      "durationMs": 4952,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc3_wa_auth_encryption_rotation.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC3 Gate: WhatsApp auth encryption, key rotation, lazy re-encryption and migration",
+      "code": 0,
+      "durationMs": 3943,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc3_bulk_performance.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC3 Gate: Streaming CSV export (>=2k rows/s), chunked bulk transfer, and high-throughput deduplicated bulk import",
+      "code": 0,
+      "durationMs": 33143,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc3_chaos_matrix.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC3 Gate: Chaos matrix testing mongod restart, 3P mock latency/errors, Redis down fallback, ENOSPC disk full & SIGTERM in-flight drain",
+      "code": 0,
+      "durationMs": 11662,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc3_backup_restore_verification.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC3 Gate: Backup & restore verification drill with BSON dump/restore throughput and SHA-256 field checksum parity",
+      "code": 0,
+      "durationMs": 3547,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc3_env_validator_strict.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC3 Gate: Strict production environment validator refusing boot on weak secrets, unscoped reads, CORS wildcards, and missing Redis",
+      "code": 0,
+      "durationMs": 138,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc4_wa_lease_handoff.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC4 WhatsApp session lease handoff and retry-acquire tests",
+      "code": 0,
+      "durationMs": 5203,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc5_admin_rate_limiter.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC5 Item 1: Admin route rate limiting per-user and per-IP verification",
+      "code": 0,
+      "durationMs": 8561,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc5_cors_hardening.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC5 Item 2: CORS hardening, non-browser request headers, and wildcard removal verification",
+      "code": 0,
+      "durationMs": 583,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc5_token_revocation.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC5 Item 3: Token revocation, hash-keying, and zero-latency cache invalidation verification",
+      "code": 0,
+      "durationMs": 2833,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc5_startup_safety.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC5 Item 5: Startup safety, clean DB boot, and legacy DB backward compatibility verification",
+      "code": 0,
+      "durationMs": 6140,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc5_migration_rehearsal.test.js",
+      "category": "batch-suites",
+      "reason": "Release RC5 Item 6: Migration rehearsal, dry-run, apply, idempotency, and backup restoration drill",
+      "code": 0,
+      "durationMs": 11287,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "tenant_fail_closed.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 fail-closed tenant scoping without legacy flag",
+      "code": 0,
+      "durationMs": 5222,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "tenant_isolation_leads.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 strict tenant scoping on leads",
+      "code": 0,
+      "durationMs": 6392,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "test_runner_safety.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 3 test runner safety guard and manifest orphan check",
+      "code": 0,
+      "durationMs": 282,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "transaction_rollback.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 1 withTransaction helper rollback",
+      "code": 0,
+      "durationMs": 4465,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "uncaught_exception_resilience.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 uncaughtException graceful shutdown",
+      "code": 0,
+      "durationMs": 878,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "whatsapp_distributed_lease.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 2 WhatsApp lease & 440 reconnect loop prevention",
+      "code": 0,
+      "durationMs": 4597,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "f1_installment_race.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 atomic installment payment race condition",
+      "code": 0,
+      "durationMs": 5483,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "f1_write_concern.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 explicit majority and journal write concern",
+      "code": 0,
+      "durationMs": 3190,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "f1_soft_delete_orphans.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 soft delete cascade cleanup and orphan skipping",
+      "code": 0,
+      "durationMs": 5283,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "f1_optimistic_concurrency.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 optimistic concurrency control on lead updates",
+      "code": 0,
+      "durationMs": 4494,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "f1_idempotency_retry.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 idempotency keys and double-submit retry guards",
+      "code": 0,
+      "durationMs": 5368,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "f1_resumable_import.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 resumable and idempotent ImportJob",
+      "code": 0,
+      "durationMs": 4911,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "f2_count_optimization.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 lead list countDocuments optimization and caching",
+      "code": 0,
+      "durationMs": 5639,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "f2_prune_indexes.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 lead index pruning and limit compliance",
+      "code": 0,
+      "durationMs": 3654,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "f2_chat_polling.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 lighter chat polling with ETag and since cursor",
+      "code": 0,
+      "durationMs": 5106,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "f2_disk_streaming_import.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 disk storage streaming import and CSV formula escaping",
+      "code": 0,
+      "durationMs": 4826,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "f3_offline_queue_worker.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 offline mutation queue worker replay",
+      "code": 0,
+      "durationMs": 146,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "f4_cron_distributed_lock.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 distributed locks and lease timeouts for crons and workers",
+      "code": 0,
+      "durationMs": 6537,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "f5_security_masking_oracle.test.js",
+      "category": "batch-suites",
+      "reason": "Audit Batch 4 security hardening and phone masking oracles",
+      "code": 0,
+      "durationMs": 5491,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc2_connection_write_concern.test.js",
+      "category": "batch-suites",
+      "reason": "Production Readiness B1: Connection-level journaled majority write concern and throughput verification",
+      "code": 0,
+      "durationMs": 7125,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc2_index_sync_and_pruning.test.js",
+      "category": "batch-suites",
+      "reason": "Production Readiness B2: Safe index sync, duplicate detection precheck, and explain-guarded pruning",
+      "code": 0,
+      "durationMs": 7783,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc2_migration_safety.test.js",
+      "category": "batch-suites",
+      "reason": "Production Readiness B3: Database migration safety, idempotency, and dry-run verification",
+      "code": 0,
+      "durationMs": 4551,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc2_soft_delete_purge.test.js",
+      "category": "batch-suites",
+      "reason": "Production Readiness B4: Soft-delete retention purge script and transactional cascade cleanup",
+      "code": 0,
+      "durationMs": 88401174,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc2_wa_auth_encryption.test.js",
+      "category": "batch-suites",
+      "reason": "Production Readiness C1: AES-256-GCM encryption for Baileys auth state and plaintext fallback",
+      "code": 0,
+      "durationMs": 18047,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc2_admin_rate_limiter.test.js",
+      "category": "batch-suites",
+      "reason": "Production Readiness C2: Dedicated rate limiting for administrative endpoints",
+      "code": 0,
+      "durationMs": 5952,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc2_email_security_timeouts.test.js",
+      "category": "batch-suites",
+      "reason": "Production Readiness C3: Email attachment security allowlist and transport connection timeouts",
+      "code": 0,
+      "durationMs": 1514,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc2_webhook_signature_hardening.test.js",
+      "category": "batch-suites",
+      "reason": "Production Readiness C4: Fail-closed raw body webhook signature verification and replay guards",
+      "code": 0,
+      "durationMs": 10093,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc2_share_token_security.test.js",
+      "category": "batch-suites",
+      "reason": "Production Readiness C5: Public share token expiry, phone masking, and scraping rate limits",
+      "code": 0,
+      "durationMs": 8594,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "rc2_fail_safe_config.test.js",
+      "category": "batch-suites",
+      "reason": "Production Readiness D1: Fail-safe production environment validator and secret gating",
+      "code": 0,
+      "durationMs": 233,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    }
+  ]
+}

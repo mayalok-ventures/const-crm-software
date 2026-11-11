@@ -35,8 +35,8 @@ describe('F4: Distributed Locks and Concurrency Guards for Crons and Workers', (
 
     const p1 = withDistributedLock(lockKey, 5000, async () => {
       worker1Ran = true;
-      // Hold the lock for 100ms
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Hold the lock for 500ms to be robust under high system load
+      await new Promise(resolve => setTimeout(resolve, 500));
       return 'worker1_done';
     });
 

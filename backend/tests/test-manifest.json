@@ -433,6 +433,14 @@
       "category": "batch-suites",
       "reason": "Release RC5 Item 3: Token revocation, hash-keying, and zero-latency cache invalidation verification"
     },
+    "rc5_startup_safety.test.js": {
+      "category": "batch-suites",
+      "reason": "Release RC5 Item 5: Startup safety, clean DB boot, and legacy DB backward compatibility verification"
+    },
+    "rc5_migration_rehearsal.test.js": {
+      "category": "batch-suites",
+      "reason": "Release RC5 Item 6: Migration rehearsal, dry-run, apply, idempotency, and backup restoration drill"
+    },
     "render_deployment_compatibility.test.js": {
       "category": "core",
       "reason": "Render environment compatibility checks"

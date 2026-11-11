@@ -1,0 +1,760 @@
+{
+  "timestamp": "2026-11-10T06:32:39.564Z",
+  "totalExecuted": 75,
+  "totalPassed": 51,
+  "totalFailed": 24,
+  "quarantinedFailures": 0,
+  "durationSec": 476.35,
+  "suites": [
+    {
+      "suite": "admin_control_center_rebuild.test.js",
+      "category": "core",
+      "reason": "Admin dashboard rebuild checks",
+      "code": 0,
+      "durationMs": 4565,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "admin_lead_flow.test.js",
+      "category": "core",
+      "reason": "Admin lead lifecycle flow",
+      "code": 1,
+      "durationMs": 624,
+      "passed": false,
+      "quarantined": false,
+      "error": "Fatal Test Error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' }"
+    },
+    {
+      "suite": "admin_rebuild_acceptance.test.js",
+      "category": "core",
+      "reason": "Admin acceptance test suite",
+      "code": 1,
+      "durationMs": 1230,
+      "passed": false,
+      "quarantined": false,
+      "error": "node:internal/modules/cjs/loader:1568\r   throw err;\r   ^\r"
+    },
+    {
+      "suite": "alert_incident_engine.test.js",
+      "category": "core",
+      "reason": "Monitoring incident engine tests",
+      "code": 0,
+      "durationMs": 172,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "api_key_management.test.js",
+      "category": "core",
+      "reason": "API key creation and revocation tests",
+      "code": 0,
+      "durationMs": 11277,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "appsail_health_and_deployment.test.js",
+      "category": "core",
+      "reason": "AppSail deployment compatibility checks",
+      "code": 0,
+      "durationMs": 1275,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "audit_logging_immutability.test.js",
+      "category": "core",
+      "reason": "Audit logging immutability verification",
+      "code": 0,
+      "durationMs": 1241,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "auth_reliability_phase1.test.js",
+      "category": "core",
+      "reason": "Auth reliability and token validation",
+      "code": 0,
+      "durationMs": 3265,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "automation_builder_and_registry.test.js",
+      "category": "core",
+      "reason": "Automation rule registry tests",
+      "code": 0,
+      "durationMs": 4648,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "automation_deep_audit.test.js",
+      "category": "core",
+      "reason": "Automation execution deep checks",
+      "code": 1,
+      "durationMs": 4907,
+      "passed": false,
+      "quarantined": false,
+      "error": "[AutomationEngine] Unsupported condition operator 'unknown_operator_xyz', evaluating to false for safety [Lead pre-save] Fallback tenant resolution triggered for lead: 6af2b8cbff756cb671aab043 [Lead pre-save] Fallback tenant resolution triggered for lead: 6af2b8cbff756cb671aab056"
+    },
+    {
+      "suite": "automations_engine.test.js",
+      "category": "core",
+      "reason": "Automation engine trigger and action flows",
+      "code": 0,
+      "durationMs": 4770,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "backup_monitoring.test.js",
+      "category": "core",
+      "reason": "Database backup telemetry tests",
+      "code": 0,
+      "durationMs": 1398,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "billing_reconciliation_production.test.js",
+      "category": "core",
+      "reason": "Billing reconciliation tests",
+      "code": 0,
+      "durationMs": 6099,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "billing_reconciliation_v2_hardening.test.js",
+      "category": "core",
+      "reason": "Billing reconciliation v2 hardening",
+      "code": 0,
+      "durationMs": 6492,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "campaign_routing_and_assignment.test.js",
+      "category": "core",
+      "reason": "Campaign routing logic",
+      "code": 0,
+      "durationMs": 4387,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "crm_admin.test.js",
+      "category": "core",
+      "reason": "General CRM admin flows",
+      "code": 1,
+      "durationMs": 4907,
+      "passed": false,
+      "quarantined": false,
+      "error": "❌ Test suite failed: TypeError: Cannot read properties of undefined (reading '_id')     at runTests (C:\\Users\\Hi\\OneDrive\\Documents\\crm\\mobile-crm\\backend\\tests\\crm_admin.test.js:175:33)     at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+    },
+    {
+      "suite": "crm_forensic_fixes.test.js",
+      "category": "core",
+      "reason": "CRM forensic test verification",
+      "code": 1,
+      "durationMs": 4744,
+      "passed": false,
+      "quarantined": false,
+      "error": "[Lead pre-save] Fallback tenant resolution triggered for lead: 6af2b8ed528897ba959fa7a0   ❌ FAIL: ISSUE-08: Admission deal synchronizes lead correctly and prevents duplicates      Expected values to be strictly equal:"
+    },
+    {
+      "suite": "custom_roles_and_resend.test.js",
+      "category": "core",
+      "reason": "Custom roles permissions and invite resend",
+      "code": 0,
+      "durationMs": 3924,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "database_monitoring.test.js",
+      "category": "core",
+      "reason": "Database connection and slow query monitoring",
+      "code": 0,
+      "durationMs": 1217,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "deployment_monitoring.test.js",
+      "category": "core",
+      "reason": "Deployment version telemetry",
+      "code": 0,
+      "durationMs": 1348,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "deployments_releases_tracking.test.js",
+      "category": "core",
+      "reason": "Release tracking tests",
+      "code": 0,
+      "durationMs": 117,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "dynamic_form_builder.test.js",
+      "category": "core",
+      "reason": "Dynamic lead capture forms",
+      "code": 1,
+      "durationMs": 1782,
+      "passed": false,
+      "quarantined": false,
+      "error": "node:internal/modules/cjs/loader:1568\r   throw err;\r   ^\r"
+    },
+    {
+      "suite": "dynamic_permissions_and_multi_account.test.js",
+      "category": "core",
+      "reason": "Dynamic permissions and multi-account switching",
+      "code": 1,
+      "durationMs": 13194,
+      "passed": false,
+      "quarantined": false,
+      "error": "[ADMIN SEED] Notice: E11000 duplicate key error collection: test.users index: username_1 dup key: { username: \"ADMIN\" }   ❌ FAIL: Bootstrap Workspace with Owner and 2 Counsellors via Invitations      Error: Member A doc must exist"
+    },
+    {
+      "suite": "education_automations.test.js",
+      "category": "core",
+      "reason": "Education sector automation workflows",
+      "code": 1,
+      "durationMs": 6034,
+      "passed": false,
+      "quarantined": false,
+      "error": "❌ FAILED: Phase 1: Higher Education Workspace Seeding      Error: Expected values to be strictly equal: + actual - expected"
+    },
+    {
+      "suite": "education_subprofile.test.js",
+      "category": "core",
+      "reason": "Education candidate subprofile fields",
+      "code": 1,
+      "durationMs": 9863,
+      "passed": false,
+      "quarantined": false,
+      "error": "❌ [FAIL] User saved with educationSubProfile = \"higher_education\"   ❌ [FAIL] Custom pipeline stages include tailored stage: \"Counselling Scheduled\" (Total stages: 11)   ❌ [FAIL] Lead form schema dynamically tailored with custom field: \"courseApplied\" (Total fields: 10)"
+    },
+    {
+      "suite": "email_formatting_and_mime.test.js",
+      "category": "core",
+      "reason": "Email MIME generation and formatting",
+      "code": 0,
+      "durationMs": 2476,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "email_module_comprehensive.test.js",
+      "category": "core",
+      "reason": "Email IMAP/SMTP provider adapters and threads",
+      "code": 0,
+      "durationMs": 2582,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "external_integration_monitoring.test.js",
+      "category": "core",
+      "reason": "External webhook and health monitoring",
+      "code": 0,
+      "durationMs": 4736,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "followup_workflow.test.js",
+      "category": "core",
+      "reason": "Follow-up scheduling and reminders",
+      "code": 0,
+      "durationMs": 12353,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "hybrid_catalogue.test.js",
+      "category": "core",
+      "reason": "Colleges, degrees, and fee catalogue management",
+      "code": 0,
+      "durationMs": 10687,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "integration_architecture_audit.test.js",
+      "category": "core",
+      "reason": "Integration subsystem architecture",
+      "code": 0,
+      "durationMs": 11440,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "integrations_comprehensive.test.js",
+      "category": "core",
+      "reason": "Comprehensive integration suite",
+      "code": 0,
+      "durationMs": 2908,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "integrations_phase3.test.js",
+      "category": "core",
+      "reason": "Phase 3 integration providers",
+      "code": 1,
+      "durationMs": 3824,
+      "passed": false,
+      "quarantined": false,
+      "error": "Unhandled Test Suite Error: TypeError: Cannot read properties of null (reading 'googleKeyHash')     at runTests (C:\\Users\\Hi\\OneDrive\\Documents\\crm\\mobile-crm\\backend\\tests\\integrations_phase3.test.js:137:26)     at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+    },
+    {
+      "suite": "lead_profile_comprehensive_edit.test.js",
+      "category": "core",
+      "reason": "Lead profile editing and validations",
+      "code": 0,
+      "durationMs": 2191,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "lead_profile_no_assumed_data.test.js",
+      "category": "core",
+      "reason": "Lead profile data boundary enforcement",
+      "code": 0,
+      "durationMs": 2220,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "lead_profile_whatsapp_and_forms.test.js",
+      "category": "core",
+      "reason": "Lead profile form data and WhatsApp links",
+      "code": 0,
+      "durationMs": 3893,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "lead_transfer_and_automation.test.js",
+      "category": "core",
+      "reason": "Lead ownership transfer and automation triggers",
+      "code": 0,
+      "durationMs": 5005,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "meta_leadads_hardened_unit.test.js",
+      "category": "core",
+      "reason": "Meta Lead Ads webhook payload parser unit tests",
+      "code": 0,
+      "durationMs": 1381,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "meta_leadads_integration.test.js",
+      "category": "core",
+      "reason": "Meta Lead Ads integration flow",
+      "code": 124,
+      "durationMs": 45055,
+      "passed": false,
+      "quarantined": false,
+      "error": "Test timed out after 45000ms [ADMIN SEED] Notice: E11000 duplicate key error collection: test.users index: username_1 dup key: { username: \"ADMIN\" } [Lead pre-save] Fallback tenant resolution triggered for lead: 6af2b957b495154ea11722a5"
+    },
+    {
+      "suite": "meta_whatsapp_comprehensive.test.js",
+      "category": "core",
+      "reason": "Meta Cloud API WhatsApp integration tests",
+      "code": 0,
+      "durationMs": 4018,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "monitoring.test.js",
+      "category": "core",
+      "reason": "System monitoring metrics and alerts",
+      "code": 0,
+      "durationMs": 7818,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "multi_tenant_isolation.test.js",
+      "category": "core",
+      "reason": "Multi-tenant workspace isolation checks",
+      "code": 1,
+      "durationMs": 2677,
+      "passed": false,
+      "quarantined": false,
+      "error": "Fatal test error: { message: 'Route not found' }"
+    },
+    {
+      "suite": "multi_tenant_usage_monitoring.test.js",
+      "category": "core",
+      "reason": "Workspace storage and lead limits",
+      "code": 0,
+      "durationMs": 1212,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "oauth_popup_flow.test.js",
+      "category": "core",
+      "reason": "OAuth popup callback messaging",
+      "code": 0,
+      "durationMs": 1638,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "owner_2fa_verification.test.js",
+      "category": "core",
+      "reason": "Owner TOTP 2FA verification",
+      "code": 1,
+      "durationMs": 3871,
+      "passed": false,
+      "quarantined": false,
+      "error": "❌ TEST SUITE FAILED: AssertionError [ERR_ASSERTION]: Agent must receive 403 Forbidden on Owner 2FA setup  200 !== 403"
+    },
+    {
+      "suite": "perf_and_speed_phase2.test.js",
+      "category": "core",
+      "reason": "API throughput and response latency",
+      "code": 0,
+      "durationMs": 2227,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "perf_round2_verification.test.js",
+      "category": "core",
+      "reason": "Round 2 performance benchmarks",
+      "code": 1,
+      "durationMs": 31192,
+      "passed": false,
+      "quarantined": false,
+      "error": "💥 Test Failed: MongooseServerSelectionError: connect ECONNREFUSED 127.0.0.1:27017     at _handleConnectionErrors (C:\\Users\\Hi\\OneDrive\\Documents\\crm\\mobile-crm\\backend\\node_modules\\mongoose\\lib\\connection.js:1169:11)     at NativeConnection.openUri (C:\\Users\\Hi\\OneDrive\\Documents\\crm\\mobile-crm\\backend\\node_modules\\mongoose\\lib\\connection.js:1100:11)"
+    },
+    {
+      "suite": "permission_matrix_and_ui_lifecycle.test.js",
+      "category": "core",
+      "reason": "Role permission matrix enforcement",
+      "code": 1,
+      "durationMs": 18416,
+      "passed": false,
+      "quarantined": false,
+      "error": "[ADMIN SEED] Notice: E11000 duplicate key error collection: test.users index: username_1 dup key: { username: \"ADMIN\" }   ❌ FAIL: 4.2 Leads Export: Counsellor is FORBIDDEN (403), Manager is ALLOWED (200)      Error: Request failed with status code 403"
+    },
+    {
+      "suite": "permission_parity_and_escalation_hardening.test.js",
+      "category": "core",
+      "reason": "Privilege escalation prevention",
+      "code": 1,
+      "durationMs": 2317,
+      "passed": false,
+      "quarantined": false,
+      "error": "✗ Backend catalogue contains exactly 54 canonical keys     Expected 54 backend keys, found 59 "
+    },
+    {
+      "suite": "phase1_phase2_first_touch.test.js",
+      "category": "core",
+      "reason": "First touch channel routing",
+      "code": 1,
+      "durationMs": 605,
+      "passed": false,
+      "quarantined": false,
+      "error": "Test Execution Error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' }"
+    },
+    {
+      "suite": "phase1_phase2_verification.test.js",
+      "category": "core",
+      "reason": "Phase 1 & 2 integration verification",
+      "code": 1,
+      "durationMs": 562,
+      "passed": false,
+      "quarantined": false,
+      "error": "Test Execution Error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' }"
+    },
+    {
+      "suite": "phase1_security_scope_verification.test.js",
+      "category": "core",
+      "reason": "Security scoping rules",
+      "code": 1,
+      "durationMs": 3017,
+      "passed": false,
+      "quarantined": false,
+      "error": "❌ [FAIL] TEST I: Tenant Owner blocked from platform endpoint with 403"
+    },
+    {
+      "suite": "platform_health_score_engine.test.js",
+      "category": "core",
+      "reason": "Health score calculation tests",
+      "code": 0,
+      "durationMs": 1300,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "production_health_framework.test.js",
+      "category": "core",
+      "reason": "Health check /health and /live endpoints",
+      "code": 0,
+      "durationMs": 4201,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "queue_processing.test.js",
+      "category": "core",
+      "reason": "In-memory task queue tests",
+      "code": 0,
+      "durationMs": 3755,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "render_deployment_compatibility.test.js",
+      "category": "core",
+      "reason": "Render environment compatibility checks",
+      "code": 0,
+      "durationMs": 3040,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "security_abuse_detection.test.js",
+      "category": "core",
+      "reason": "Rate limiting and IP brute-force abuse protection",
+      "code": 0,
+      "durationMs": 11221,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "security_hardening_and_lifecycle.test.js",
+      "category": "core",
+      "reason": "Security middleware and CORS rules",
+      "code": 0,
+      "durationMs": 13970,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "security_rbac_and_payment_remediation.test.js",
+      "category": "core",
+      "reason": "RBAC payment access controls",
+      "code": 1,
+      "durationMs": 12377,
+      "passed": false,
+      "quarantined": false,
+      "error": "[ADMIN SEED] Notice: E11000 duplicate key error collection: test.users index: username_1 dup key: { username: \"ADMIN\" }   ❌ FAIL: Accept counsellor invitation and verify DB document integrity      Error: User document must exist in database"
+    },
+    {
+      "suite": "self_service_integrations.test.js",
+      "category": "core",
+      "reason": "Self-service webhook connectors",
+      "code": 0,
+      "durationMs": 1578,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "self_service_lead_integration.test.js",
+      "category": "core",
+      "reason": "Self-service lead ingestion endpoints",
+      "code": 0,
+      "durationMs": 4800,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "system_observability_suite.test.js",
+      "category": "core",
+      "reason": "System telemetry, heap and event loop metrics",
+      "code": 0,
+      "durationMs": 3295,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "system_qa_acceptance.test.js",
+      "category": "core",
+      "reason": "QA acceptance scenarios",
+      "code": 1,
+      "durationMs": 1239,
+      "passed": false,
+      "quarantined": false,
+      "error": "node:internal/modules/cjs/loader:1568\r   throw err;\r   ^\r"
+    },
+    {
+      "suite": "tenant_lifecycle_production.test.js",
+      "category": "core",
+      "reason": "Tenant onboarding and subscription lifecycle",
+      "code": 0,
+      "durationMs": 8866,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "tenant_workflow_phases.test.js",
+      "category": "core",
+      "reason": "Multi-tenant CRM workflow phases",
+      "code": 1,
+      "durationMs": 6918,
+      "passed": false,
+      "quarantined": false,
+      "error": "❌ [FAIL] Phase 3.4: Manual pipeline stage transition to \"Demo Scheduled\" persists accurately"
+    },
+    {
+      "suite": "test_coupon_system.test.js",
+      "category": "core",
+      "reason": "Coupon creation and validation",
+      "code": 0,
+      "durationMs": 5091,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "test_email_folders_flow.js",
+      "category": "core",
+      "reason": "Email folder operations",
+      "code": 0,
+      "durationMs": 2300,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "test_email_placeholders.js",
+      "category": "core",
+      "reason": "Dynamic email placeholder replacement",
+      "code": 0,
+      "durationMs": 2776,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "test_plan_catalog_entitlements.test.js",
+      "category": "core",
+      "reason": "Public plan catalog entitlements",
+      "code": 0,
+      "durationMs": 7939,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "test_sheets_flow.js",
+      "category": "core",
+      "reason": "Sheets webhook flow tests",
+      "code": 0,
+      "durationMs": 2710,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "test_superadmin_plan_override.test.js",
+      "category": "core",
+      "reason": "SuperAdmin plan override tests",
+      "code": 124,
+      "durationMs": 45044,
+      "passed": false,
+      "quarantined": false,
+      "error": "Test timed out after 45000ms"
+    },
+    {
+      "suite": "test_totp_resilience.test.js",
+      "category": "core",
+      "reason": "TOTP MFA clock skew resilience",
+      "code": 0,
+      "durationMs": 3641,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "verify_form_and_nav.test.js",
+      "category": "core",
+      "reason": "Form builder navigation and field validation",
+      "code": 1,
+      "durationMs": 4402,
+      "passed": false,
+      "quarantined": false,
+      "error": "[Lead pre-save] Fallback tenant resolution triggered for lead: 6af2ba670272ed229be4f7f9 [Lead pre-save] Fallback tenant resolution triggered for lead: 6af2ba670272ed229be4f7f9 Verification error: Error: Cannot find module '../src/controllers/projectsController'"
+    },
+    {
+      "suite": "whatsapp_comprehensive_suite.test.js",
+      "category": "core",
+      "reason": "WhatsApp Baileys & Meta message formatting",
+      "code": 0,
+      "durationMs": 2277,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    },
+    {
+      "suite": "workspace_rbac_and_isolation.test.js",
+      "category": "core",
+      "reason": "Workspace RBAC and data isolation",
+      "code": 0,
+      "durationMs": 21408,
+      "passed": true,
+      "quarantined": false,
+      "error": null
+    }
+  ]
+}

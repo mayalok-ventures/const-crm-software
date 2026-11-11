@@ -94,8 +94,8 @@ describe('RC1 Gate: JWT tokenVersion Lifecycle & Revocation', () => {
   it('3. POST /api/auth/logout terminates single device session without revoking other device tokens', async () => {
     // Reset user tokenVersion to 1
     const freshUser = await User.findById(testUser._id);
-    const mobileToken = jwt.sign({ id: testUser._id, tokenVersion: freshUser.tokenVersion }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    const desktopToken = jwt.sign({ id: testUser._id, tokenVersion: freshUser.tokenVersion }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const mobileToken = jwt.sign({ id: testUser._id, tokenVersion: freshUser.tokenVersion, device: 'mobile' }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const desktopToken = jwt.sign({ id: testUser._id, tokenVersion: freshUser.tokenVersion, device: 'desktop' }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     // Desktop logs out
     const logoutRes = await fetch(`${baseUrl}/logout`, {
