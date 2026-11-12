@@ -76,12 +76,12 @@ async function main() {
   const keyMatches = [...ownerSectionMatch[1].matchAll(/key:\s*['"]([^'"]+)['"]/g)];
   const frontendKeys = Array.from(new Set(keyMatches.map(m => m[1]))).sort();
 
-  await runTest(`Backend catalogue contains exactly 54 canonical keys`, () => {
-    assert.strictEqual(backendKeys.length, 54, `Expected 54 backend keys, found ${backendKeys.length}`);
+  await runTest(`Backend catalogue contains exactly 60 canonical keys`, () => {
+    assert.strictEqual(backendKeys.length, 60, `Expected 60 backend keys, found ${backendKeys.length}`);
   });
 
-  await runTest(`Frontend owner role contains exactly 54 canonical keys`, () => {
-    assert.strictEqual(frontendKeys.length, 54, `Expected 54 frontend keys, found ${frontendKeys.length}`);
+  await runTest(`Frontend owner role contains exactly 60 canonical keys`, () => {
+    assert.strictEqual(frontendKeys.length, 60, `Expected 60 frontend keys, found ${frontendKeys.length}`);
   });
 
   await runTest(`Frontend and backend have 100% identical permission keys (0 orphans, 0 missing)`, () => {

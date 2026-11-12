@@ -648,6 +648,18 @@
     "rc2_fail_safe_config.test.js": {
       "category": "batch-suites",
       "reason": "Production Readiness D1: Fail-safe production environment validator and secret gating"
+    },
+    "stage1a_privilege_escalation.test.js": {
+      "category": "core",
+      "reason": "Post-RC5 Stage 1a: Privilege escalation prevention and cross-tenant user mutation protection"
+    },
+    "stage1b_campaign_cross_tenant.test.js": {
+      "category": "core",
+      "reason": "Post-RC5 Stage 1b: Campaign leads multi-tenant workspace scoping and phone masking"
+    },
+    "stage1c_superadmin_2fa_persistence.test.js": {
+      "category": "core",
+      "reason": "Post-RC5 Stage 1c: SuperAdmin 2FA persistence and non-destructive reboot seeding"
     }
   }
 }

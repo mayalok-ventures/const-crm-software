@@ -1160,7 +1160,7 @@ exports.createAdminAgent = async (req, res) => {
 exports.updateAdminAgent = async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    const body = req.body || {};
 
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ success: false, message: 'Invalid user ID' });
@@ -1169,45 +1169,106 @@ exports.updateAdminAgent = async (req, res) => {
     const beforeUser = await User.findById(id).lean();
     if (!beforeUser) return res.status(404).json({ success: false, message: 'User not found' });
 
-    if (updates.role) {
-      if (updates.role === 'manager' || updates.companyRole === 'manager') {
+    const isSuperAdmin = req.user.role === 'superadmin' || req.user.isAdmin === true;
+
+    // 2. Hierarchy Check: Non-superadmin cannot edit a superadmin account
+    if (!isSuperAdmin && (beforeUser.role === 'superadmin' || beforeUser.isAdmin === true)) {
+      return res.status(403).json({ success: false, message: 'Forbidden: Cannot modify platform superadmin account' });
+    }
+
+    // 3. Hierarchy Check: Non-superadmins cannot edit the organization owner (only the owner themselves or superadmin can)
+    const targetIsOwner = beforeUser.role === 'owner' || beforeUser.companyRole === 'owner' || beforeUser.workStatus === 'company_owner';
+    const isSelf = String(req.user._id) === String(beforeUser._id);
+    if (!isSuperAdmin && targetIsOwner && !isSelf) {
+      return res.status(403).json({ success: false, message: 'Forbidden: Only organization owners or superadmins can modify owner accounts' });
+    }
+
+    // 3. Multi-Tenant Boundary Check: Target user must belong to caller's company/workspace
+    if (!isSuperAdmin) {
+      const callerCompanyId = String(req.user.companyId || req.user._id);
+      const targetCompanyId = beforeUser.companyId ? String(beforeUser.companyId) : String(beforeUser._id);
+
+      let inSameWorkspace = callerCompanyId === targetCompanyId;
+      if (!inSameWorkspace && req.workspaceId) {
+        const [callerMembership, targetMembership] = await Promise.all([
+          WorkspaceMembership.findOne({ workspaceId: req.workspaceId, userId: req.user._id, status: 'active' }).lean(),
+          WorkspaceMembership.findOne({ workspaceId: req.workspaceId, userId: beforeUser._id, status: 'active' }).lean(),
+        ]);
+        if (callerMembership && targetMembership) inSameWorkspace = true;
+      }
+
+      if (!inSameWorkspace) {
+        return res.status(403).json({ success: false, message: 'Forbidden: User belongs to another organization' });
+      }
+    }
+
+    // 4. Strict Field Allowlist - prevent mass assignment & privilege escalation
+    const updates = {};
+
+    if (typeof body.name === 'string' && body.name.trim()) {
+      updates.name = body.name.trim();
+    }
+    if (typeof body.email === 'string' && body.email.trim()) {
+      updates.email = body.email.trim().toLowerCase();
+    }
+    if (typeof body.phone === 'string' && body.phone.trim()) {
+      updates.phone = body.phone.trim();
+    }
+    if (typeof body.incentive_pct === 'number' || (!isNaN(Number(body.incentive_pct)) && body.incentive_pct !== '')) {
+      updates.incentive_pct = Number(body.incentive_pct);
+    }
+    if (typeof body.leadCap === 'number' || (!isNaN(Number(body.leadCap)) && body.leadCap !== '')) {
+      updates.leadCap = Number(body.leadCap);
+    }
+    if (typeof body.leadDistributionWeight === 'number') {
+      updates.leadDistributionWeight = body.leadDistributionWeight;
+    }
+    if (typeof body.dailyLeadLimit === 'number') {
+      updates.dailyLeadLimit = body.dailyLeadLimit;
+    }
+    if (typeof body.isActive === 'boolean') {
+      updates.isActive = body.isActive;
+    }
+    if (typeof body.isAvailableForRouting === 'boolean') {
+      updates.isAvailableForRouting = body.isAvailableForRouting;
+      updates.isAvailable = body.isAvailableForRouting;
+    } else if (typeof body.isAvailable === 'boolean') {
+      updates.isAvailableForRouting = body.isAvailable;
+      updates.isAvailable = body.isAvailable;
+    }
+
+    // 5. Role & CompanyRole whitelist: Only allow 'manager', 'agent', 'counsellor'
+    // FORBID: 'superadmin', 'owner', 'admin'
+    const requestedRole = body.role || body.companyRole;
+    if (requestedRole) {
+      if (requestedRole === 'manager') {
         updates.role = 'manager';
         updates.companyRole = 'manager';
         updates.workStatus = 'employee';
         updates.managerId = null;
         updates.managerName = '';
-      } else if (updates.role === 'agent') {
+      } else if (requestedRole === 'agent' || requestedRole === 'counsellor') {
         updates.role = 'agent';
-        updates.companyRole = updates.companyRole || 'agent';
+        updates.companyRole = requestedRole;
         updates.workStatus = 'independent_agent';
-      }
-    }
-
-    if (updates.companyRole && !updates.role) {
-      if (updates.companyRole === 'manager') {
-        updates.role = 'manager';
-        updates.companyRole = 'manager';
-        updates.workStatus = 'employee';
-        updates.managerId = null;
-        updates.managerName = '';
       } else {
-        updates.role = 'agent';
-        updates.companyRole = updates.companyRole || 'agent';
-        updates.workStatus = 'independent_agent';
+        return res.status(400).json({
+          success: false,
+          message: `Invalid role '${requestedRole}'. Allowed roles: manager, agent, counsellor`,
+        });
       }
     }
 
-    if (updates.roleId !== undefined) {
-      if (updates.roleId && mongoose.Types.ObjectId.isValid(updates.roleId) && !String(updates.roleId).startsWith('default_')) {
-        // Valid custom role
-      } else {
-        updates.roleId = null;
-      }
-    }
-
-    if (updates.managerId !== undefined) {
-      if (updates.managerId && mongoose.Types.ObjectId.isValid(updates.managerId) && !String(updates.managerId).startsWith('default_')) {
-        const mgr = await User.findById(updates.managerId).select('name').lean();
+    // 6. Manager assignment validation
+    if (body.managerId !== undefined) {
+      if (body.managerId && mongoose.Types.ObjectId.isValid(body.managerId) && !String(body.managerId).startsWith('default_')) {
+        const mgr = await User.findById(body.managerId).select('name companyId').lean();
+        const callerCompanyId = String(req.user.companyId || req.user._id);
+        const mgrCompanyId = mgr?.companyId ? String(mgr.companyId) : String(mgr?._id);
+        if (!isSuperAdmin && mgrCompanyId !== callerCompanyId) {
+          return res.status(400).json({ success: false, message: 'Assigned manager must belong to your organization' });
+        }
+        updates.managerId = mgr?._id || null;
         updates.managerName = mgr?.name || '';
       } else {
         updates.managerId = null;
@@ -1215,11 +1276,23 @@ exports.updateAdminAgent = async (req, res) => {
       }
     }
 
-    if (updates.isAvailableForRouting !== undefined) {
-      updates.isAvailable = updates.isAvailableForRouting;
+    // 7. RoleId custom role validation
+    if (body.roleId !== undefined) {
+      if (body.roleId && mongoose.Types.ObjectId.isValid(body.roleId) && !String(body.roleId).startsWith('default_')) {
+        updates.roleId = body.roleId;
+      } else {
+        updates.roleId = null;
+      }
     }
 
+    // Apply sanitized updates atomically
     const user = await User.findByIdAndUpdate(id, { $set: updates }, { new: true });
+
+    // Evict cached authentication state
+    try {
+      const { userCache } = require('../middleware/auth');
+      if (userCache) userCache.del(String(user._id));
+    } catch (_) {}
 
     await logActivity({
       actor: req.user._id,

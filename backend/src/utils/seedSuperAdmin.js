@@ -24,9 +24,9 @@ const seedSuperAdmin = async () => {
       console.log(`\n👑 [ADMIN SEED] Initialized Single Admin: ${admin.email}`);
     } else {
       let updated = false;
-      if (admin.role !== 'superadmin' && admin.role !== 'admin') { admin.role = 'superadmin'; updated = true; }
+      if (admin.role !== 'superadmin') { admin.role = 'superadmin'; updated = true; }
       if (!admin.isAdmin) { admin.isAdmin = true; updated = true; }
-      if (admin.twoFactorEnabled) { admin.twoFactorEnabled = false; updated = true; }
+      // Security preservation: NEVER weaken or clear twoFactorEnabled, twoFactorSecret, or tokenVersion
       if (updated) await admin.save({ validateBeforeSave: false });
     }
   } catch (err) {

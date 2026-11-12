@@ -464,42 +464,68 @@ exports.getCampaignLeads = async (req, res) => {
     const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 25));
     const skip = (parsedPage - 1) * parsedLimit;
 
+    // Strict multi-tenant anchoring:
+    // Ensure leads match campaign workspace/company AND caller's tenant
+    const targetWsId = campaign.workspaceId || req.workspaceId || req.user.workspaceId;
+    const targetCompanyId = campaign.companyId || req.user.companyId;
+
+    const tenantOrConditions = [];
+    if (targetWsId) tenantOrConditions.push({ workspaceId: targetWsId });
+    if (targetCompanyId) {
+      tenantOrConditions.push({ companyId: targetCompanyId });
+      tenantOrConditions.push({ userId: targetCompanyId });
+    }
+
     const baseCampaignQuery = {
-      $or: [
-        { campaignId: campaign._id },
-        { 'leadSource.campaignId': String(campaign._id) },
-        { 'leadSource.campaignId': campaign.externalCampaignId || campaign.campaignId },
-        { 'leadSource.campaignName': campaign.campaignName || campaign.name || campaign.displayName },
+      $and: [
+        {
+          $or: [
+            { campaignId: campaign._id },
+            { 'leadSource.campaignId': String(campaign._id) },
+            ...(campaign.externalCampaignId ? [{ 'leadSource.campaignId': campaign.externalCampaignId }] : []),
+          ],
+        },
+        ...(tenantOrConditions.length > 0 ? [{ $or: tenantOrConditions }] : []),
+        { isDeleted: { $ne: true } },
+        { deletedAt: null },
       ],
     };
 
+    // Role-based lead visibility
+    if (!req.user.workspaceId && req.workspaceId) {
+      req.user.workspaceId = req.workspaceId;
+    }
+    const { buildLeadPermissionQuery } = require('./leadsController');
+    const permissionQuery = await buildLeadPermissionQuery(req.user, false);
+    if (permissionQuery && Object.keys(permissionQuery).length > 0) {
+      baseCampaignQuery.$and.push(permissionQuery);
+    }
+
     const leadQuery = {
-      ...baseCampaignQuery,
+      $and: [...baseCampaignQuery.$and],
     };
 
     if (status && status !== 'all') {
-      leadQuery.status = status;
+      leadQuery.$and.push({ status });
     }
     if (counselorId && counselorId !== 'all') {
-      leadQuery.assignedTo = counselorId;
+      leadQuery.$and.push({ assignedTo: counselorId });
     }
     if (search && search.trim()) {
       const term = search.trim();
-      leadQuery.$and = [
-        {
-          $or: [
-            { name: { $regex: term, $options: 'i' } },
-            { phone: { $regex: term, $options: 'i' } },
-            { email: { $regex: term, $options: 'i' } },
-            { assignedToName: { $regex: term, $options: 'i' } },
-            { 'leadSource.formName': { $regex: term, $options: 'i' } },
-            { 'leadSource.adName': { $regex: term, $options: 'i' } },
-          ],
-        },
-      ];
+      leadQuery.$and.push({
+        $or: [
+          { name: { $regex: term, $options: 'i' } },
+          { phone: { $regex: term, $options: 'i' } },
+          { email: { $regex: term, $options: 'i' } },
+          { assignedToName: { $regex: term, $options: 'i' } },
+          { 'leadSource.formName': { $regex: term, $options: 'i' } },
+          { 'leadSource.adName': { $regex: term, $options: 'i' } },
+        ],
+      });
     }
 
-    const [leads, total, allCampaignLeads] = await Promise.all([
+    const [rawLeads, total, allCampaignLeads] = await Promise.all([
       Lead.find(leadQuery)
         .populate('assignedTo', 'name email phone usercode')
         .sort({ createdAt: -1 })
@@ -509,6 +535,11 @@ exports.getCampaignLeads = async (req, res) => {
       Lead.countDocuments(leadQuery),
       Lead.find(baseCampaignQuery).select('assignedTo assignedToName leadSource status pipelineStage createdAt').lean(),
     ]);
+
+    // Apply phone masking for unauthorized / restricted roles
+    const { shouldMaskPhoneForUser, sanitizeLeadPhone } = require('../utils/phoneMasking');
+    const shouldMask = await shouldMaskPhoneForUser(req.user, req.membership, req.workspace);
+    const leads = rawLeads.map((l) => sanitizeLeadPhone(l, shouldMask));
 
     // Compute live breakdowns across all leads in this campaign
     const counselorMap = {};

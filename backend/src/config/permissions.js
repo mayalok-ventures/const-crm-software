@@ -82,6 +82,7 @@ const PERMISSIONS = {
   'roles.manage': { key: 'roles.manage', category: 'Team', label: 'Manage Custom Roles', description: 'Create and edit custom role permissions' },
   'workspace.settings.edit': { key: 'workspace.settings.edit', category: 'Settings', label: 'Edit Workspace Settings', description: 'Update agency name, preferences, and logo' },
   'billing.manage': { key: 'billing.manage', category: 'Settings', label: 'Manage Billing & Plans', description: 'Upgrade subscription, view invoices, apply coupons' },
+  'audit.view': { key: 'audit.view', category: 'Settings', label: 'View Audit Logs', description: 'Inspect workspace security, operational, and data mutation audit trail' },
   // Automations & Workflows
   'automations.view': { key: 'automations.view', category: 'Automations', label: 'View Automations', description: 'View automated workflows, triggers, and execution audit logs' },
   'automations.manage': { key: 'automations.manage', category: 'Automations', label: 'Manage Automations', description: 'Create, update, toggle, test and delete automation rules' },
