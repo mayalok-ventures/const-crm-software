@@ -95,7 +95,7 @@ const sweepDueFollowUps = async () => {
           leadId: lead._id,
           leadName: lead.name || 'Candidate',
           title: isOverdue ? `🚨 OVERDUE Follow-Up: ${lead.name || 'Candidate'}` : `⏰ Follow-Up Due: ${lead.name || 'Candidate'}`,
-          message: `${lead.name || 'Candidate'} (${lead.phone || 'Phone'}) — Agenda: ${agendaNote}`,
+          message: `${lead.name || 'Candidate'} — Agenda: ${agendaNote}`,
           type: isOverdue ? 'follow_up_overdue' : 'follow_up',
           priority: isOverdue ? 'urgent' : 'high',
           category: 'reminder',
