@@ -131,15 +131,21 @@ const sweepDueFollowUps = async () => {
 
     // ── 2. SWEEP FOLLOWUPS COLLECTION (Enterprise sub-record model) ─────────
     const dueFollowUps = await FollowUp.find({
-      $or: [
-        { scheduled_at: { $gte: minCutoff, $lte: cutoff } },
-        { scheduledAt: { $gte: minCutoff, $lte: cutoff } },
-      ],
-      status: 'open',
-      notified: { $ne: true },
-      $or: [
-        { claimStatus: { $in: [null, undefined, 'idle', 'failed'] } },
-        { claimStatus: 'processing', claimedAt: { $lt: staleClaimThreshold } },
+      $and: [
+        {
+          $or: [
+            { scheduled_at: { $gte: minCutoff, $lte: cutoff } },
+            { scheduledAt: { $gte: minCutoff, $lte: cutoff } },
+          ],
+        },
+        { status: 'open' },
+        { notified: { $ne: true } },
+        {
+          $or: [
+            { claimStatus: { $in: [null, undefined, 'idle', 'failed'] } },
+            { claimStatus: 'processing', claimedAt: { $lt: staleClaimThreshold } },
+          ],
+        },
       ],
     })
       .populate('leadId', 'name phone workspaceId companyId')

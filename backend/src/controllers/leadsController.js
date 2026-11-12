@@ -647,8 +647,10 @@ exports.scheduleFollowUp = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Scheduled date and time are required.' });
     }
 
-    const parsedDate = new Date(rawDate);
-    if (isNaN(parsedDate.getTime())) {
+    const { parseDateInTimezone } = require('../utils/timezoneHelper');
+    const userTimezone = req.body.timezone || req.workspace?.settings?.timezone || req.user?.preferences?.timezone || 'Asia/Kolkata';
+    const parsedDate = parseDateInTimezone(rawDate, userTimezone);
+    if (!parsedDate || isNaN(parsedDate.getTime())) {
       return res.status(400).json({ success: false, message: 'Invalid follow-up date/time format.' });
     }
 

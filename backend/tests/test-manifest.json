@@ -660,6 +660,10 @@
     "stage1c_superadmin_2fa_persistence.test.js": {
       "category": "core",
       "reason": "Post-RC5 Stage 1c: SuperAdmin 2FA persistence and non-destructive reboot seeding"
+    },
+    "stage2_followup_scheduler.test.js": {
+      "category": "core",
+      "reason": "Post-RC5 Stage 2: Follow-up scheduler duplicate $or fix, drift audit, and timezone/DST correctness"
     }
   }
 }

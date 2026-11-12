@@ -153,19 +153,40 @@ const followUpSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
+function syncDualFields(doc) {
+  if (!doc) return;
+  if (doc.lead_id && !doc.leadId) doc.leadId = doc.lead_id;
+  if (doc.leadId && !doc.lead_id) doc.lead_id = doc.leadId;
+  if (doc.agent_id && !doc.agentId) doc.agentId = doc.agent_id;
+  if (doc.agentId && !doc.agent_id) doc.agent_id = doc.agentId;
+  if (doc.scheduled_at && !doc.scheduledAt) doc.scheduledAt = doc.scheduled_at;
+  if (doc.scheduledAt && !doc.scheduled_at) doc.scheduled_at = doc.scheduledAt;
+  if (doc.note && !doc.scheduleNote) doc.scheduleNote = doc.note;
+  if (doc.scheduleNote && !doc.note) doc.note = doc.scheduleNote;
+  if (doc.postpone_remark && !doc.postponeRemark) doc.postponeRemark = doc.postpone_remark;
+  if (doc.postponeRemark && !doc.postpone_remark) doc.postpone_remark = doc.postponeRemark;
+  if (doc.completion_note && !doc.completionNote) doc.completionNote = doc.completion_note;
+  if (doc.completionNote && !doc.completion_note) doc.completion_note = doc.completionNote;
+  if (doc.completed_at && !doc.completedAt) doc.completedAt = doc.completed_at;
+  if (doc.completedAt && !doc.completed_at) doc.completed_at = doc.completedAt;
+}
+
+followUpSchema.pre('validate', function (next) {
+  syncDualFields(this);
+  next();
+});
+
 followUpSchema.pre('save', function (next) {
-  if (this.lead_id && !this.leadId) this.leadId = this.lead_id;
-  if (this.leadId && !this.lead_id) this.lead_id = this.leadId;
-  if (this.agent_id && !this.agentId) this.agentId = this.agent_id;
-  if (this.agentId && !this.agent_id) this.agent_id = this.agentId;
-  if (this.scheduled_at && !this.scheduledAt) this.scheduledAt = this.scheduled_at;
-  if (this.scheduledAt && !this.scheduled_at) this.scheduled_at = this.scheduledAt;
-  if (this.postpone_remark !== undefined && this.postponeRemark === undefined) this.postponeRemark = this.postpone_remark;
-  if (this.postponeRemark !== undefined && this.postpone_remark === undefined) this.postpone_remark = this.postponeRemark;
-  if (this.completion_note !== undefined && this.completionNote === undefined) this.completionNote = this.completion_note;
-  if (this.completionNote !== undefined && this.completion_note === undefined) this.completion_note = this.completionNote;
-  if (this.completed_at !== undefined && this.completedAt === undefined) this.completedAt = this.completed_at;
-  if (this.completedAt !== undefined && this.completed_at === undefined) this.completed_at = this.completed_at;
+  syncDualFields(this);
+  next();
+});
+
+followUpSchema.pre(['updateOne', 'findOneAndUpdate'], function (next) {
+  const update = this.getUpdate();
+  if (update) {
+    if (update.$set) syncDualFields(update.$set);
+    else syncDualFields(update);
+  }
   next();
 });
 
@@ -173,5 +194,6 @@ followUpSchema.index({ workspaceId: 1, scheduled_at: 1, status: 1 });
 followUpSchema.index({ lead_id: 1, scheduled_at: 1 });
 followUpSchema.index({ agent_id: 1, status: 1 });
 followUpSchema.index({ status: 1, scheduled_at: 1 });
+followUpSchema.index({ status: 1, notified: 1, scheduled_at: 1, claimStatus: 1 });
 
 module.exports = mongoose.models.FollowUp || mongoose.model('FollowUp', followUpSchema);
