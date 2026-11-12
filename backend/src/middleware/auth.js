@@ -170,6 +170,17 @@ const protect = async (req, res, next) => {
     const lifecycle = await calculateSubscriptionLifecycle(user);
     user.subscriptionLifecycle = lifecycle;
     req.user = user;
+    req.tokenPayload = decoded;
+
+    if (decoded.supportMode === true) {
+      req.isImpersonated = true;
+      req.impersonator = {
+        id: decoded.superAdminId,
+        email: decoded.superAdminEmail,
+        name: decoded.superAdminName,
+        sessionId: decoded.sessionId,
+      };
+    }
 
     // ─────────────────────────────────────────────────────────────
     // TENANT LIFECYCLE ACCESS ENFORCEMENT (SUSPENDED / CANCELLED / ARCHIVED)
@@ -424,6 +435,10 @@ const optionalAuth = async (req, res, next) => {
 };
 
 const superAdminOnly = (req, res, next) => {
+  if (req.isImpersonated) {
+    return res.status(403).json({ message: 'Impersonated support sessions cannot access SuperAdmin administrative routes' });
+  }
+
   if (!req.user || (req.user.role !== 'superadmin' && !req.user.isAdmin)) {
     securityTracker.recordEvent({
       type: 'PERMISSION_DENIED',
@@ -435,6 +450,12 @@ const superAdminOnly = (req, res, next) => {
     });
     return res.status(403).json({ message: 'SuperAdmin platform authorization required' });
   }
+
+  // 2FA enforcement: if 2FA is pending or user has twoFactorEnabled but token has no verified 2FA claim
+  if (req.tokenPayload?.pending2FA) {
+    return res.status(401).json({ message: 'Two-Factor Authentication required to access SuperAdmin', code: '2FA_REQUIRED' });
+  }
+
   next();
 };
 

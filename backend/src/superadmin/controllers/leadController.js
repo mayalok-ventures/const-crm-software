@@ -1,13 +1,32 @@
+const mongoose = require('mongoose');
 const Lead = require('../../models/Lead');
 
 exports.getGlobalLeads = async (req, res) => {
   try {
     const { search, stage, source, page = 1, limit = 20 } = req.query;
-    const query = {};
+    const query = {
+      deletedAt: null,
+      isDeleted: { $ne: true },
+    };
 
-    if (search) {
-      const regex = new RegExp(search.trim(), 'i');
-      query.$or = [{ name: regex }, { phone: regex }, { email: regex }, { company: regex }];
+    if (search && search.trim()) {
+      const trimmed = search.trim();
+      if (mongoose.Types.ObjectId.isValid(trimmed) && trimmed.length === 24) {
+        query._id = new mongoose.Types.ObjectId(trimmed);
+      } else if (trimmed.includes('@')) {
+        const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        query.email = new RegExp('^' + escaped, 'i');
+      } else if (/^\+?\d{6,15}$/.test(trimmed)) {
+        const digits = trimmed.replace(/\D/g, '');
+        query.phone = new RegExp('^\\+?' + digits);
+      } else {
+        const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        query.$or = [
+          { name: new RegExp('^' + escaped, 'i') },
+          { email: new RegExp('^' + escaped, 'i') },
+          { company: new RegExp('^' + escaped, 'i') },
+        ];
+      }
     }
 
     if (stage && stage !== 'all') {

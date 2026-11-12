@@ -32,7 +32,7 @@ const logActivity = async ({
   role = 'admin',
   actorRole = 'admin',
   action = 'UPDATE',
-  targetType = 'User',
+  targetType = null,
   entityType = 'User',
   targetId = null,
   entityId = null,
@@ -48,8 +48,8 @@ const logActivity = async ({
     if (!act) return;
     const actRole = actorRole || role || 'admin';
     
-    let entType = entityType || 'User';
-    const tLower = String(targetType || '').toLowerCase();
+    let entType = entityType || (targetType ? targetType : 'User');
+    const tLower = String(targetType || entityType || '').toLowerCase();
     if (tLower.includes('lead')) entType = 'Lead';
     else if (tLower.includes('user') || tLower.includes('agent') || tLower.includes('manager')) entType = 'User';
     else if (tLower.includes('pipe')) entType = 'Pipeline';
@@ -3120,6 +3120,30 @@ exports.deleteUser = async (req, res) => {
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
+    // Guard: cannot delete superadmin accounts
+    if (user.role === 'superadmin' || user.isAdmin === true) {
+      return res.status(403).json({ success: false, message: 'Cannot delete a SuperAdmin account' });
+    }
+
+    // Typed confirmation requirement
+    const { confirmText, confirmEmail } = req.body || {};
+    if (confirmText !== 'DELETE_USER' && confirmEmail !== user.email) {
+      return res.status(400).json({
+        success: false,
+        message: "Typed confirmation 'DELETE_USER' or matching user email is required to delete a user account",
+        code: 'CONFIRMATION_REQUIRED',
+      });
+    }
+
+    // Production guard
+    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DESTRUCTIVE_CLEANSLATE !== 'true') {
+      return res.status(403).json({
+        success: false,
+        message: 'Direct user deletion is disabled in production without ALLOW_DESTRUCTIVE_CLEANSLATE=true. Use suspension instead.',
+        code: 'DESTRUCTIVE_ACTION_FORBIDDEN',
+      });
+    }
+
     await User.findByIdAndDelete(id);
 
     await logActivity({
@@ -3207,7 +3231,39 @@ exports.getAbuseLogs = async (req, res) => res.json({ success: true, abuseLogs: 
 // Clean Slate Purge & Test Data Purge Handlers
 exports.purgeFakeDataAndCleanSlate = async (req, res) => {
   try {
+    // Environment flag guard: permanently disabled in production unless ALLOW_DESTRUCTIVE_CLEANSLATE === 'true'
+    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DESTRUCTIVE_CLEANSLATE !== 'true') {
+      return res.status(403).json({
+        success: false,
+        message: 'Destructive clean-slate is permanently disabled in production unless ALLOW_DESTRUCTIVE_CLEANSLATE=true is explicitly set',
+        code: 'DESTRUCTIVE_ACTION_FORBIDDEN',
+      });
+    }
+
+    // Typed confirmation requirement
+    const { confirmText } = req.body || {};
+    if (confirmText !== 'CLEAN_SLATE_CONFIRM') {
+      return res.status(400).json({
+        success: false,
+        message: "Typed confirmation 'CLEAN_SLATE_CONFIRM' is required to execute clean slate purge",
+        code: 'CONFIRMATION_REQUIRED',
+      });
+    }
+
     const delLeads = await Lead.deleteMany({ deletedAt: null });
+
+    await logActivity({
+      userId: req.user._id,
+      actor: req.user._id,
+      actorRole: req.user.role,
+      action: 'DELETE_CLEAN_SLATE',
+      targetType: 'Lead',
+      entityType: 'Lead',
+      entityId: req.user._id,
+      details: `Purged ${delLeads.deletedCount} active leads via Clean Slate command`,
+      ipAddress: req.ip,
+    });
+
     res.json({ success: true, message: 'Clean slate completed', deletedLeads: delLeads.deletedCount });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
@@ -3216,7 +3272,36 @@ exports.purgeFakeDataAndCleanSlate = async (req, res) => {
 
 exports.purgeTestDataOnly = async (req, res) => {
   try {
+    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DESTRUCTIVE_CLEANSLATE !== 'true') {
+      return res.status(403).json({
+        success: false,
+        message: 'Test data purge is permanently disabled in production unless ALLOW_DESTRUCTIVE_CLEANSLATE=true is explicitly set',
+        code: 'DESTRUCTIVE_ACTION_FORBIDDEN',
+      });
+    }
+
+    const { confirmText } = req.body || {};
+    if (confirmText !== 'PURGE_TEST_DATA_CONFIRM') {
+      return res.status(400).json({
+        success: false,
+        message: "Typed confirmation 'PURGE_TEST_DATA_CONFIRM' is required to execute test data purge",
+        code: 'CONFIRMATION_REQUIRED',
+      });
+    }
+
     const delLeads = await Lead.deleteMany({ isTestData: true });
+
+    await logActivity({
+      userId: req.user._id,
+      actor: req.user._id,
+      actorRole: req.user.role,
+      action: 'DELETE_TEST_DATA',
+      entityType: 'Lead',
+      entityId: req.user._id,
+      details: `Purged ${delLeads.deletedCount} test leads`,
+      ipAddress: req.ip,
+    });
+
     res.json({ success: true, message: 'Test data purged', deletedLeads: delLeads.deletedCount });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });

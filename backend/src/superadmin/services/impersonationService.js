@@ -17,14 +17,20 @@ async function startImpersonationSession({ targetUserId, reason = 'Customer Supp
     throw new Error('Target user not found');
   }
 
+  // Security Guard: Forbid impersonation of other SuperAdmins or privilege escalation
+  if (targetUser.role === 'superadmin' || targetUser.isAdmin === true) {
+    throw new Error('Cannot impersonate a SuperAdmin account. Support impersonation is restricted to tenant users.');
+  }
+
   const sessionId = uuidv4();
   const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour expiration
 
   const payload = {
     id: targetUser._id,
     role: targetUser.role,
-    isAdmin: targetUser.isAdmin,
+    isAdmin: false, // Ensure impersonated session does not inherit platform superadmin powers
     supportMode: true,
+    tokenVersion: targetUser.tokenVersion || 0,
     superAdminId: adminUser._id,
     superAdminEmail: adminUser.email,
     superAdminName: adminUser.name,

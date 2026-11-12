@@ -14,10 +14,32 @@
 | **S1** | **Security Blockers (Escalation, Leak, 2FA)** | **COMPLETE** | Commit `82c3dbb` (Tests: 3 new suites, 9/9 passed) |
 | **S2** | **Follow-up Scheduler Core ($or duplicate, timezones)** | **COMPLETE** | Commit `7e7778e` (Tests: 5/5 passed, DST & drift verified) |
 | **S3** | **Campaign Leads View (Unified Leads screen)** | **COMPLETE** | Commit `23bd59f` (Tests: 5/5 integration passed, mobile E2E ready) |
-| **S4** | **Automation Engine Repair (`tag_added`, loops, duration)** | **COMPLETE** | Commit pending (Tests: 8/8 passed, sweep & idempotency verified) |
-| **S5** | **Super Admin Hardening (Security, 2FA, Dashboard UI)** | Pending | Branch `feature/post-rc5` |
+| **S4** | **Automation Engine Repair (`tag_added`, loops, duration)** | **COMPLETE** | Commit `e9c38a4` (Tests: 8/8 passed, sweep & idempotency verified) |
+| **S5** | **Super Admin Hardening (Security, 2FA, Dashboard UI)** | **COMPLETE** | Commit pending (Tests: 6/6 passed, authz matrix & safeguards verified) |
 | **S6** | **Notifications, Follow-up Reminders & PWA Hardening** | Pending | Branch `feature/post-rc5` |
 | **S7** | **Native-Android Alarm Wrapper Decision Memo** | Pending | Branch `feature/post-rc5` |
+
+---
+
+## Stage 5 Execution Summary
+1. **Super Admin Dashboard Restoration**:
+   - Replaced client redirect in `frontend/src/app/superadmin-dashboard/page.js` with the full 15-module superadmin command center (`SuperAdminSidebar`, `Overview`, `Organisations`, `Users`, `Revenue`, `GlobalLeads`, `Integrations`, `Health`, `ErrorLogs`, `Audit`, `FeatureFlags`, `Broadcast`).
+   - Wired strict superadmin-only authentication check with 2FA enforcement and support mode banner (`SupportModeBanner`).
+2. **Impersonation Hardening & Privilege Isolation**:
+   - Updated `impersonationService.js`: injected target user's `tokenVersion` into JWT payload, preventing 401 revocation errors.
+   - Forbade impersonating SuperAdmin accounts, preventing support session privilege escalation.
+   - Set `req.isImpersonated = true` and `req.impersonator` context in `auth.js` middleware.
+   - Explicitly blocked impersonated support sessions from accessing SuperAdmin endpoints in `superAdminOnly`.
+   - Recorded immutable `IMPERSONATION_START` audit logs.
+3. **Destructive Action Safeguards**:
+   - `purgeFakeDataAndCleanSlate`: requires typed confirmation `'CLEAN_SLATE_CONFIRM'`, permanently disabled in production unless `ALLOW_DESTRUCTIVE_CLEANSLATE=true`, and audit-logged.
+   - `purgeTestDataOnly`: requires typed confirmation `'PURGE_TEST_DATA_CONFIRM'`, permanently disabled in production unless `ALLOW_DESTRUCTIVE_CLEANSLATE=true`, and audit-logged.
+   - `deleteUser`: requires typed confirmation `'DELETE_USER'` or matching email, forbidden on SuperAdmin accounts, disabled in production without env override, and audit-logged.
+4. **Global Leads Observability & Index-Friendly Query**:
+   - `leadController.js:getGlobalLeads`: strictly excludes soft-deleted records (`deletedAt: null, isDeleted: { $ne: true }`).
+   - Optimized search queries: prefix-anchored regex for phone digits (`^\+?\d+`), email, and name to utilize existing indexes rather than performing full collection scans (COLLSCAN).
+5. **Verification**:
+   - `stage5_superadmin_hardening.test.js`: 6/6 tests passing (Authz Matrix, 2FA/tokenVersion, Impersonation Hardening, Clean-slate guards, User deletion guards, Global leads search & soft-delete filtering).
 
 ---
 

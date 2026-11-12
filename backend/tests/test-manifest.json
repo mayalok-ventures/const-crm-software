@@ -672,6 +672,10 @@
     "stage4_automations_repair.test.js": {
       "category": "core",
       "reason": "Post-RC5 Stage 4: Automation engine repair, tag_added trigger, idempotency, delayed action sweep recovery, loop guard, channel graceful failure, and plan limits"
+    },
+    "stage5_superadmin_hardening.test.js": {
+      "category": "core",
+      "reason": "Post-RC5 Stage 5: SuperAdmin hardening, authz matrix, 2FA/tokenVersion enforcement, impersonation safety, destructive action safeguards, and global leads query optimization"
     }
   }
 }
