@@ -71,22 +71,39 @@ exports.getInboundCampaigns = async (req, res) => {
     const enriched = await Promise.all(
       campaigns.map(async (c) => {
         const leadMatchFilter = {
-          $or: [
-            { campaignId: c._id },
-            { 'leadSource.campaignId': String(c._id) },
-            { 'leadSource.campaignId': c.externalCampaignId || c.campaignId },
-            { 'leadSource.campaignName': c.campaignName || c.name || c.displayName },
+          $and: [
+            filter,
+            { isDeleted: { $ne: true } },
+            { deletedAt: null },
+            {
+              $or: [
+                { campaignId: c._id },
+                { 'leadSource.campaignId': String(c._id) },
+                ...(c.externalCampaignId ? [{ 'leadSource.campaignId': c.externalCampaignId }] : []),
+                ...(c.campaignName ? [{ 'leadSource.campaignName': c.campaignName }] : []),
+                ...(c.name ? [{ 'leadSource.campaignName': c.name }] : []),
+              ],
+            },
           ],
         };
 
         const [leadCount, assignedCount, convertedCount] = await Promise.all([
           Lead.countDocuments(leadMatchFilter),
-          Lead.countDocuments({ ...leadMatchFilter, assignedTo: { $ne: null } }),
           Lead.countDocuments({
-            ...leadMatchFilter,
-            $or: [
-              { status: { $in: ['closed', 'admitted', 'enrolled', 'deal_closed'] } },
-              { pipelineStage: { $in: ['Admitted', 'Enrolled', 'Fee Paid', 'Admission Confirmed'] } },
+            $and: [
+              ...leadMatchFilter.$and,
+              { assignedTo: { $ne: null } },
+            ],
+          }),
+          Lead.countDocuments({
+            $and: [
+              ...leadMatchFilter.$and,
+              {
+                $or: [
+                  { status: { $in: ['closed', 'admitted', 'enrolled', 'deal_closed'] } },
+                  { pipelineStage: { $in: ['Admitted', 'Enrolled', 'Fee Paid', 'Admission Confirmed'] } },
+                ],
+              },
             ],
           }),
         ]);
@@ -259,22 +276,39 @@ exports.getCampaignDetails = async (req, res) => {
     }
 
     const leadMatchFilter = {
-      $or: [
-        { campaignId: campaign._id },
-        { 'leadSource.campaignId': String(campaign._id) },
-        { 'leadSource.campaignId': campaign.externalCampaignId || campaign.campaignId },
-        { 'leadSource.campaignName': campaign.campaignName || campaign.name || campaign.displayName },
+      $and: [
+        filter,
+        { isDeleted: { $ne: true } },
+        { deletedAt: null },
+        {
+          $or: [
+            { campaignId: campaign._id },
+            { 'leadSource.campaignId': String(campaign._id) },
+            ...(campaign.externalCampaignId ? [{ 'leadSource.campaignId': campaign.externalCampaignId }] : []),
+            ...(campaign.campaignName ? [{ 'leadSource.campaignName': campaign.campaignName }] : []),
+            ...(campaign.name ? [{ 'leadSource.campaignName': campaign.name }] : []),
+          ],
+        },
       ],
     };
 
     const [leadCount, assignedCount, convertedCount] = await Promise.all([
       Lead.countDocuments(leadMatchFilter),
-      Lead.countDocuments({ ...leadMatchFilter, assignedTo: { $ne: null } }),
       Lead.countDocuments({
-        ...leadMatchFilter,
-        $or: [
-          { status: { $in: ['closed', 'admitted', 'enrolled', 'deal_closed'] } },
-          { pipelineStage: { $in: ['Admitted', 'Enrolled', 'Fee Paid', 'Admission Confirmed'] } },
+        $and: [
+          ...leadMatchFilter.$and,
+          { assignedTo: { $ne: null } },
+        ],
+      }),
+      Lead.countDocuments({
+        $and: [
+          ...leadMatchFilter.$and,
+          {
+            $or: [
+              { status: { $in: ['closed', 'admitted', 'enrolled', 'deal_closed'] } },
+              { pipelineStage: { $in: ['Admitted', 'Enrolled', 'Fee Paid', 'Admission Confirmed'] } },
+            ],
+          },
         ],
       }),
     ]);

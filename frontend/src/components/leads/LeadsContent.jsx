@@ -36,13 +36,20 @@ const ScheduleFollowUpModal = dynamic(() => import('@/components/LeadModals').th
 const CompleteFollowUpModal = dynamic(() => import('@/components/LeadModals').then(m => m.CompleteFollowUpModal), { ssr: false });
 const TransferLeadsModal = dynamic(() => import('@/components/leads/TransferLeadsModal'), { ssr: false });
 
-export default function LeadsContent() {
+export default function LeadsContent({
+  initialCampaignId = null,
+  initialCampaignName = null,
+  embedded = false,
+  hideNav = false,
+} = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { activeModule, isPersistentTabsEnabled } = usePersistentTab();
   const isComponentActive = !isPersistentTabsEnabled || activeModule === 'leads';
   const rawTab = searchParams?.get('tab') || 'all';
-  const activeTab = (rawTab === 'team_leads' || rawTab === 'my_leads') ? 'all' : rawTab;
+  const defaultTab = (rawTab === 'team_leads' || rawTab === 'my_leads') ? 'all' : rawTab;
+  const [internalTab, setInternalTab] = useState(defaultTab);
+  const activeTab = embedded ? internalTab : defaultTab;
 
   const [user, setUser] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -90,7 +97,7 @@ export default function LeadsContent() {
 
   // Source Hierarchy & Attribution Filters (Part 1.4)
   const initialPlatform = searchParams?.get('platform') || '';
-  const initialCampaign = searchParams?.get('campaignName') || searchParams?.get('campaignId') || '';
+  const initialCampaign = initialCampaignId || initialCampaignName || searchParams?.get('campaignName') || searchParams?.get('campaignId') || '';
   const initialConnection = searchParams?.get('connectionId') || '';
   const initialAssignedTo = searchParams?.get('assignedTo') || '';
 
@@ -105,6 +112,12 @@ export default function LeadsContent() {
     Boolean(initialPlatform || initialCampaign || initialConnection || initialAssignedTo)
   );
 
+  useEffect(() => {
+    if (initialCampaignId || initialCampaignName) {
+      setCampaignFilter(initialCampaignId || initialCampaignName);
+    }
+  }, [initialCampaignId, initialCampaignName]);
+
   const queryClient = useQueryClient();
 
   const queryFilters = useMemo(() => {
@@ -117,7 +130,7 @@ export default function LeadsContent() {
     if (locationFilter) params.location = locationFilter;
     if (platformFilter) params.platform = platformFilter;
     if (connectionFilter) params.connectionId = connectionFilter;
-    if (campaignFilter) params.campaignId = campaignFilter;
+    if (initialCampaignId || campaignFilter) params.campaignId = initialCampaignId || campaignFilter;
     if (assignedToFilter) params.assignedTo = assignedToFilter;
     if (startDateFilter) params.startDate = startDateFilter;
     if (endDateFilter) params.endDate = endDateFilter;
@@ -126,7 +139,7 @@ export default function LeadsContent() {
     return params;
   }, [
     page, debouncedSearch, statusFilter, tempFilter, activeTab, sourceFilter, streamFilter,
-    locationFilter, platformFilter, connectionFilter, campaignFilter, assignedToFilter,
+    locationFilter, platformFilter, connectionFilter, campaignFilter, initialCampaignId, assignedToFilter,
     startDateFilter, endDateFilter, testFilter
   ]);
 
@@ -338,86 +351,107 @@ export default function LeadsContent() {
   ]);
 
   return (
-    <div className="app-container">
-      <BottomNav active="leads" />
+    <div className={embedded ? "w-full" : "app-container"}>
+      {!hideNav && !embedded && <BottomNav active="leads" />}
 
-      <main className="main-content" data-crm-canvas="true">
-        <div style={{ width: '100%' }} className="pb-mobile-nav">
+      <main className={embedded ? "w-full" : "main-content"} data-crm-canvas="true">
+        <div style={{ width: '100%' }} className={embedded ? "" : "pb-mobile-nav"}>
           
           {/* Header Section */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-extrabold m-0 text-slate-900 flex items-center gap-2.5">
-                <Users size={24} className="text-indigo-600 shrink-0" /> Candidate Leads Workspace
-              </h1>
-              <p className="m-0 mt-1 text-xs sm:text-sm text-slate-500">
-                Manage prospective students, college preferences, tele-counselling, and admission pipeline.
-              </p>
-            </div>
+          {!embedded ? (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+              <div>
+                <h1 className="text-xl sm:text-2xl font-extrabold m-0 text-slate-900 flex items-center gap-2.5">
+                  <Users size={24} className="text-indigo-600 shrink-0" /> Candidate Leads Workspace
+                </h1>
+                <p className="m-0 mt-1 text-xs sm:text-sm text-slate-500">
+                  Manage prospective students, college preferences, tele-counselling, and admission pipeline.
+                </p>
+              </div>
 
-            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-              {/* Secondary Utilities Dropdown (Import, Export) */}
-              {(hasPermission(user, 'leads.create') || hasPermission(user, 'leads.export')) && (
-                <div className="relative">
-                  <button
-                    onClick={() => setShowActionsMenu(!showActionsMenu)}
-                    className="btn btn-secondary btn-sm flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 cursor-pointer"
-                    title="Import, Export & Utilities"
-                  >
-                    <MoreHorizontal size={15} />
-                    <span className="hidden xs:inline">More Tools</span>
-                  </button>
-                  {showActionsMenu && (
-                    <div
-                      className="absolute right-0 top-full mt-1.5 w-52 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-fade-in"
-                      onMouseLeave={() => setShowActionsMenu(false)}
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                {/* Secondary Utilities Dropdown (Import, Export) */}
+                {(hasPermission(user, 'leads.create') || hasPermission(user, 'leads.export')) && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowActionsMenu(!showActionsMenu)}
+                      className="btn btn-secondary btn-sm flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 cursor-pointer"
+                      title="Import, Export & Utilities"
                     >
-                      {hasPermission(user, 'leads.create') && (
-                        <button
-                          onClick={() => {
-                            setShowActionsMenu(false);
-                            setShowImportModal(true);
-                          }}
-                          className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 cursor-pointer"
-                        >
-                          <Upload size={14} className="text-indigo-600" />
-                          <span>Import Records (.xlsx, .csv)</span>
-                        </button>
-                      )}
-                      {hasPermission(user, 'leads.export') && (
-                        <button
-                          onClick={() => {
-                            setShowActionsMenu(false);
-                            setShowExportModal(true);
-                          }}
-                          className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 cursor-pointer"
-                        >
-                          <Download size={14} className="text-indigo-600" />
-                          <span>Export Data (.xlsx, .pdf)</span>
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+                      <MoreHorizontal size={15} />
+                      <span className="hidden xs:inline">More Tools</span>
+                    </button>
+                    {showActionsMenu && (
+                      <div
+                        className="absolute right-0 top-full mt-1.5 w-52 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-fade-in"
+                        onMouseLeave={() => setShowActionsMenu(false)}
+                      >
+                        {hasPermission(user, 'leads.create') && (
+                          <button
+                            onClick={() => {
+                              setShowActionsMenu(false);
+                              setShowImportModal(true);
+                            }}
+                            className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 cursor-pointer"
+                          >
+                            <Upload size={14} className="text-indigo-600" />
+                            <span>Import Records (.xlsx, .csv)</span>
+                          </button>
+                        )}
+                        {hasPermission(user, 'leads.export') && (
+                          <button
+                            onClick={() => {
+                              setShowActionsMenu(false);
+                              setShowExportModal(true);
+                            }}
+                            className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 cursor-pointer"
+                          >
+                            <Download size={14} className="text-indigo-600" />
+                            <span>Export Data (.xlsx, .pdf)</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
-              {/* Primary Action Button */}
-              {hasPermission(user, 'leads.create') && (
-                <button
-                  onClick={() => setShowAddModal(true)}
-                  className="btn btn-primary btn-sm flex items-center gap-1.5 text-xs sm:text-sm font-bold shadow-sm"
-                >
-                  <Plus size={16} /> <span>Add Candidate</span>
-                </button>
-              )}
+                {/* Primary Action Button */}
+                {hasPermission(user, 'leads.create') && (
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="btn btn-primary btn-sm flex items-center gap-1.5 text-xs sm:text-sm font-bold shadow-sm"
+                  >
+                    <Plus size={16} /> <span>Add Candidate</span>
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center justify-between gap-3 mb-4 pt-1">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2 m-0">
+                  <Users size={18} className="text-indigo-600" /> Campaign Leads
+                </h2>
+                <p className="text-xs text-slate-500 m-0 mt-0.5">Showing leads captured and attributed to this campaign</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {hasPermission(user, 'leads.create') && (
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="btn btn-primary btn-sm flex items-center gap-1.5 text-xs font-bold shadow-sm"
+                  >
+                    <Plus size={14} /> <span>Add Candidate</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Sub-Tab Navigation Bar */}
           <div className="flex items-center gap-2 border-b border-slate-200 pb-3 mb-4 overflow-x-auto no-scrollbar">
             {/* 1. All Candidates */}
             <button
-              onClick={() => router.push('/leads?tab=all')}
+              onClick={() => embedded ? setInternalTab('all') : router.push('/leads?tab=all')}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold border transition whitespace-nowrap shrink-0 ${
                 activeTab === 'all'
                   ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
@@ -437,7 +471,7 @@ export default function LeadsContent() {
 
             {/* 2. Hot Leads */}
             <button
-              onClick={() => router.push('/leads?tab=hot')}
+              onClick={() => embedded ? setInternalTab('hot') : router.push('/leads?tab=hot')}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold border transition whitespace-nowrap shrink-0 ${
                 activeTab === 'hot'
                   ? 'bg-red-500 text-white border-red-500 shadow-sm'
@@ -450,11 +484,16 @@ export default function LeadsContent() {
 
             {/* 3. Follow-ups */}
             <button
-              onClick={() => router.push('/leads?tab=followups')}
+              onClick={() => embedded ? setInternalTab('followups') : router.push('/leads?tab=followups')}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold border transition whitespace-nowrap shrink-0 ${
                 activeTab === 'followups'
                   ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
                   : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              <Clock size={15} />
+              <span>Scheduled Follow-ups</span>
+            </button>
               }`}
             >
               <Clock size={15} />
@@ -608,7 +647,9 @@ export default function LeadsContent() {
                   {campaignFilter && (
                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200">
                       Campaign: {campaignFilter}
-                      <button onClick={() => { setCampaignFilter(''); setPage(1); }} className="hover:text-violet-900 ml-0.5 cursor-pointer">✕</button>
+                      {!embedded && (
+                        <button onClick={() => { setCampaignFilter(''); setPage(1); }} className="hover:text-violet-900 ml-0.5 cursor-pointer">✕</button>
+                      )}
                     </span>
                   )}
                   {connectionFilter && (

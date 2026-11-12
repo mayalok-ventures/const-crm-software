@@ -305,8 +305,10 @@ exports.getLeads = async (req, res) => {
     }
 
     if (campaignId && campaignId !== 'all' && campaignId !== 'undefined') {
+      const isOid = mongoose.Types.ObjectId.isValid(campaignId);
       query.$and.push({
         $or: [
+          ...(isOid ? [{ campaignId: new mongoose.Types.ObjectId(campaignId) }] : []),
           { 'leadSource.campaignId': String(campaignId) },
           { 'leadSource.campaignName': new RegExp(String(campaignId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
           { utmCampaign: new RegExp(String(campaignId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },

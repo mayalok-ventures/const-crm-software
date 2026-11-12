@@ -664,6 +664,10 @@
     "stage2_followup_scheduler.test.js": {
       "category": "core",
       "reason": "Post-RC5 Stage 2: Follow-up scheduler duplicate $or fix, drift audit, and timezone/DST correctness"
+    },
+    "stage3_campaign_leads_view.test.js": {
+      "category": "core",
+      "reason": "Post-RC5 Stage 3: Campaign leads view scoping, pagination without duplicates, soft-delete filtering, and phone masking"
     }
   }
 }
