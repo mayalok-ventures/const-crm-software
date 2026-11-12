@@ -97,6 +97,16 @@ function validateEnvironment() {
       console.warn('⚠️ [EnvValidator] META_APP_SECRET is not configured. Inbound Meta webhooks will fail closed.');
     }
 
+    // 7. Web Push VAPID Validation (if ENABLE_WEB_PUSH_FOLLOWUPS is enabled)
+    if (process.env.ENABLE_WEB_PUSH_FOLLOWUPS === 'true') {
+      if (!process.env.VAPID_PUBLIC_KEY) {
+        errors.push('VAPID_PUBLIC_KEY: Required in production when ENABLE_WEB_PUSH_FOLLOWUPS is true.');
+      }
+      if (!process.env.VAPID_PRIVATE_KEY) {
+        errors.push('VAPID_PRIVATE_KEY: Required in production when ENABLE_WEB_PUSH_FOLLOWUPS is true.');
+      }
+    }
+
     configErrors = errors;
 
     if (errors.length > 0) {

@@ -90,30 +90,42 @@ const dispatchNotification = async ({
 
   // 3. Web Push Notification (for background mobile/desktop PWA)
   if (channels.includes('push')) {
-    try {
-      const defaultUrl = leadId ? `/leads/${leadId}` : '/follow-ups';
-      const pushBody = {
-        title: title || 'CRM Notification',
-        body: message,
-        url: pushPayload?.url || defaultUrl,
-        type,
-        priority,
-        tag: `notif-${type}-${leadId || 'general'}`,
-        timestamp: Date.now(),
-      };
+    const isPushFeatureEnabled = process.env.ENABLE_WEB_PUSH_FOLLOWUPS === 'true';
+    if (isPushFeatureEnabled) {
+      try {
+        const defaultUrl = leadId ? `/leads/${leadId}` : '/follow-ups';
+        const pushBody = {
+          title: pushPayload?.title || title || 'CRM Notification',
+          body: pushPayload?.body || message,
+          url: pushPayload?.url || defaultUrl,
+          type,
+          priority,
+          tag: pushPayload?.tag || `notif-${type}-${leadId || 'general'}`,
+          renotify: pushPayload?.renotify !== undefined ? pushPayload.renotify : true,
+          requireInteraction: pushPayload?.requireInteraction !== undefined ? pushPayload.requireInteraction : true,
+          vibrate: pushPayload?.vibrate || [300, 150, 300, 150, 450],
+          actions: pushPayload?.actions || [
+            { action: 'open_action', title: 'Complete / Note' },
+            { action: 'snooze_15', title: 'Snooze 15m' },
+          ],
+          data: pushPayload?.data || { url: pushPayload?.url || defaultUrl, leadId, entityId },
+          timestamp: Date.now(),
+        };
 
-      const pushResult = await sendPushNotification(userId, pushBody);
-      await Notification.updateOne(
-        { _id: notifDoc._id },
-        {
-          $set: {
-            'deliveryStatus.push': pushResult.sentCount > 0 ? 'delivered' : 'failed',
-            'deliveryStatus.pushError': pushResult.reason || null,
-          },
-        }
-      ).catch(() => {});
-    } catch (pushErr) {
-      console.warn('[NotificationService] Web Push dispatch warning:', pushErr.message);
+        const pushResult = await sendPushNotification(userId, pushBody);
+        await Notification.updateOne(
+          { _id: notifDoc._id },
+          {
+            $set: {
+              'deliveryStatus.push': pushResult.sentCount > 0 ? 'delivered' : 'failed',
+              'deliveryStatus.pushError': pushResult.reason || null,
+              'deliveryStatus.deliveredAt': pushResult.sentCount > 0 ? new Date() : null,
+            },
+          }
+        ).catch(() => {});
+      } catch (pushErr) {
+        console.warn('[NotificationService] Web Push dispatch warning:', pushErr.message);
+      }
     }
   }
 
@@ -127,7 +139,7 @@ const notifyFollowUpDue = async (lead, followUp, recipientUserId) => {
   const dedupKey = `followup_due_${lead._id}_${new Date(followUp.scheduled_at || followUp.scheduledAt || Date.now()).getTime()}`;
   const title = `⏰ Follow-Up Due: ${lead.name || 'Candidate'}`;
   const agendaText = followUp.note || lead.followUpNote || 'Follow-up call scheduled';
-  const message = `Call due with ${lead.name || 'Student'} (${lead.phone || 'Phone'}). Agenda: ${agendaText}`;
+  const message = `Call due with ${lead.name || 'Candidate'}. Agenda: ${agendaText}`;
 
   return dispatchNotification({
     userId: recipientUserId,

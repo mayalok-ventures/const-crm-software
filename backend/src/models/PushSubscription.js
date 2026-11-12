@@ -37,6 +37,7 @@ const pushSubscriptionSchema = new mongoose.Schema(
     deviceInfo: {
       userAgent: { type: String, default: '' },
       platform: { type: String, default: '' },
+      deviceLabel: { type: String, default: '' },
     },
     failedAttempts: {
       type: Number,

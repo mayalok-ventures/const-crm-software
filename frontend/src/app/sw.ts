@@ -54,7 +54,7 @@ self.addEventListener('activate', (event: any) => {
 // WEB PUSH NOTIFICATIONS & CRM FOLLOW-UP ALARM HANDLER
 // ─────────────────────────────────────────────────────────────
 self.addEventListener('push', (event: any) => {
-  let payload: { title?: string; body?: string; url?: string; tag?: string; priority?: string } = {};
+  let payload: any = {};
   try {
     payload = event.data ? event.data.json() : {};
   } catch (_) {
@@ -67,10 +67,18 @@ self.addEventListener('push', (event: any) => {
     icon: '/android-chrome-192x192.png',
     badge: '/favicon-32x32.png',
     tag: payload.tag || 'crm-alarm-engine',
-    requireInteraction: true, // Persists until user interacts
-    vibrate: [300, 150, 300, 150, 450],
+    renotify: payload.renotify !== undefined ? payload.renotify : true,
+    requireInteraction: payload.requireInteraction !== undefined ? payload.requireInteraction : true,
+    vibrate: payload.vibrate || [300, 150, 300, 150, 450],
+    actions: payload.actions || [
+      { action: 'open_action', title: 'Action / Note' },
+      { action: 'snooze_15', title: 'Snooze 15m' },
+    ],
     data: {
       url: payload.url || '/follow-ups',
+      followUpId: payload.followUpId || payload.data?.followUpId,
+      notificationId: payload.notificationId || payload.data?.notificationId,
+      ...payload.data,
     },
   };
 
@@ -79,7 +87,22 @@ self.addEventListener('push', (event: any) => {
 
 self.addEventListener('notificationclick', (event: any) => {
   event.notification.close();
-  const targetUrl = event.notification.data?.url || '/follow-ups';
+  let targetUrl = event.notification.data?.url || '/follow-ups';
+
+  if (event.action === 'snooze_15') {
+    if (targetUrl.includes('?')) {
+      targetUrl += '&action=snooze&delayMinutes=15';
+    } else {
+      targetUrl += '?action=snooze&delayMinutes=15';
+    }
+  }
+
+  const notifId = event.notification.data?.notificationId;
+  if (notifId) {
+    try {
+      fetch(`/api/notifications/${notifId}/clicked`, { method: 'POST', keepalive: true }).catch(() => {});
+    } catch (_) {}
+  }
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList: any[]) => {

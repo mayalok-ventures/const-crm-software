@@ -48,6 +48,12 @@ const upload = multer({
   limits: { fileSize: 15 * 1024 * 1024 }, // 15MB file size limit
 });
 
+// ── Mobile Push Notification Quick-Action Endpoints ───────────────
+// Authenticated cryptographically via single-use signed tokens
+const { verifyQuickAction, executeQuickAction } = require('../controllers/quickActionController');
+router.get('/follow-ups/quick-action/verify', verifyQuickAction);
+router.post('/follow-ups/quick-action', executeQuickAction);
+
 router.use(protect);
 router.use(resolveWorkspace);
 

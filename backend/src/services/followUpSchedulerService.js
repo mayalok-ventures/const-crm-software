@@ -190,15 +190,36 @@ const sweepDueFollowUps = async () => {
       const scheduledDate = fup.scheduled_at || fup.scheduledAt || now;
       const dedupKey = `fup_doc_due_${fup._id}_${new Date(scheduledDate).getTime()}`;
 
+      // Minimal payload - strictly NO phone numbers to ensure user privacy
+      const sanitizedLeadName = lead.name || 'Candidate';
+      const cleanNote = (fup.note || 'Follow-up call').trim();
+
+      // Generate signed, short-lived, single-use quick action token
+      let quickActionUrl = lead._id ? `/leads/${lead._id}` : '/follow-ups';
+      let quickActionToken = null;
+      try {
+        const { generateQuickActionToken } = require('../utils/quickActionToken');
+        quickActionToken = generateQuickActionToken({
+          followUpId: fup._id,
+          leadId: lead._id,
+          userId: recipientId,
+          workspaceId: fup.workspaceId || lead.workspaceId || null,
+          expiresInSeconds: 3600,
+        });
+        quickActionUrl = `/follow-ups/quick-action?fupId=${fup._id}&token=${quickActionToken}`;
+      } catch (tokenErr) {
+        console.warn('[FollowUpScheduler] Quick action token generation warning:', tokenErr.message);
+      }
+
       try {
         await dispatchNotification({
           userId: recipientId,
           workspaceId: fup.workspaceId || lead.workspaceId || null,
           companyId: fup.companyId || lead.companyId || null,
           leadId: lead._id || fup.lead_id || null,
-          leadName: lead.name || 'Candidate',
-          title: `⏰ Follow-Up Reminder: ${lead.name || 'Candidate'}`,
-          message: `${lead.name || 'Student'} (${lead.phone || 'Phone'}) — Note: ${fup.note || 'Follow-up call'}`,
+          leadName: sanitizedLeadName,
+          title: `⏰ Follow-Up Reminder: ${sanitizedLeadName}`,
+          message: `${sanitizedLeadName} — Note: ${cleanNote}`,
           type: 'follow_up',
           priority: 'high',
           category: 'reminder',
@@ -208,13 +229,37 @@ const sweepDueFollowUps = async () => {
           dedupKey,
           channels: ['in_app', 'push', 'sse'],
           pushPayload: {
-            url: lead._id ? `/leads/${lead._id}` : '/follow-ups',
+            title: `⏰ Follow-Up Reminder: ${sanitizedLeadName}`,
+            body: `${sanitizedLeadName} — Note: ${cleanNote}`,
+            url: quickActionUrl,
+            tag: `fup_${fup._id}`,
+            renotify: true,
+            requireInteraction: true,
+            vibrate: [300, 150, 300, 150, 450],
+            actions: [
+              { action: 'open_action', title: 'Complete / Note' },
+              { action: 'snooze_15', title: 'Snooze 15m' },
+            ],
+            data: {
+              followUpId: String(fup._id),
+              leadId: String(lead._id),
+              url: quickActionUrl,
+              quickActionToken,
+            },
           },
         });
 
         await FollowUp.updateOne(
           { _id: fup._id },
-          { $set: { notified: true, notifiedAt: new Date(), claimStatus: 'dispatched' } }
+          {
+            $set: {
+              notified: true,
+              notifiedAt: new Date(),
+              lastReminderAt: new Date(),
+              claimStatus: 'dispatched',
+            },
+            $inc: { reminderCount: 1 },
+          }
         );
         processedCount++;
       } catch (dispErr) {
@@ -224,6 +269,103 @@ const sweepDueFollowUps = async () => {
           { $set: { claimStatus: 'failed', notified: false } }
         );
       }
+    }
+
+    // 2. Unacknowledged follow-up reminders re-send (after 15 mins, capped at 3 total reminders)
+    try {
+      const renotifyThreshold = new Date(now.getTime() - 15 * 60 * 1000);
+      const unacknowledgedFollowUps = await FollowUp.find({
+        status: 'open',
+        notified: true,
+        acknowledged: { $ne: true },
+        $or: [
+          { reminderCount: { $lt: 3 } },
+          { reminderCount: { $exists: false } },
+        ],
+        $and: [
+          {
+            $or: [
+              { lastReminderAt: { $lt: renotifyThreshold } },
+              { lastReminderAt: null, notifiedAt: { $lt: renotifyThreshold } },
+            ],
+          },
+        ],
+      })
+        .populate('leadId', 'name phone workspaceId companyId')
+        .limit(25)
+        .lean();
+
+      for (const unackFup of unacknowledgedFollowUps) {
+        const lead = unackFup.leadId;
+        if (!lead || !lead._id) continue;
+        const recipientId = unackFup.agent_id || unackFup.agentId || unackFup.createdBy || lead.assignedTo || lead.userId;
+        if (!recipientId) continue;
+
+        const sanitizedLeadName = lead.name || 'Candidate';
+        const cleanNote = (unackFup.note || 'Follow-up call').trim();
+        const currentCount = unackFup.reminderCount || 1;
+
+        let quickActionUrl = `/leads/${lead._id}`;
+        let quickActionToken = null;
+        try {
+          const { generateQuickActionToken } = require('../utils/quickActionToken');
+          quickActionToken = generateQuickActionToken({
+            followUpId: unackFup._id,
+            leadId: lead._id,
+            userId: recipientId,
+            workspaceId: unackFup.workspaceId || lead.workspaceId || null,
+            expiresInSeconds: 3600,
+          });
+          quickActionUrl = `/follow-ups/quick-action?fupId=${unackFup._id}&token=${quickActionToken}`;
+        } catch (_) {}
+
+        await dispatchNotification({
+          userId: recipientId,
+          workspaceId: unackFup.workspaceId || lead.workspaceId || null,
+          companyId: unackFup.companyId || lead.companyId || null,
+          leadId: lead._id,
+          leadName: sanitizedLeadName,
+          title: `⏰ Follow-Up Overdue: ${sanitizedLeadName} (Reminder ${currentCount + 1})`,
+          message: `${sanitizedLeadName} — Note: ${cleanNote}`,
+          type: 'follow_up_overdue',
+          priority: 'urgent',
+          category: 'reminder',
+          entityType: 'FollowUp',
+          entityId: unackFup._id,
+          dueAt: unackFup.scheduled_at || unackFup.scheduledAt || now,
+          dedupKey: `fup_unack_${unackFup._id}_reminder_${currentCount + 1}`,
+          channels: ['push', 'sse'],
+          pushPayload: {
+            title: `⏰ Follow-Up Overdue: ${sanitizedLeadName}`,
+            body: `${sanitizedLeadName} — Note: ${cleanNote}`,
+            url: quickActionUrl,
+            tag: `fup_${unackFup._id}`, // Exact same tag replaces old notification
+            renotify: true,
+            requireInteraction: true,
+            vibrate: [400, 200, 400, 200, 600],
+            actions: [
+              { action: 'open_action', title: 'Complete / Note' },
+              { action: 'snooze_15', title: 'Snooze 15m' },
+            ],
+            data: {
+              followUpId: String(unackFup._id),
+              leadId: String(lead._id),
+              url: quickActionUrl,
+              quickActionToken,
+            },
+          },
+        });
+
+        await FollowUp.updateOne(
+          { _id: unackFup._id },
+          {
+            $set: { lastReminderAt: new Date() },
+            $inc: { reminderCount: 1 },
+          }
+        );
+      }
+    } catch (unackErr) {
+      console.warn('[FollowUpScheduler] Unacknowledged sweep warning:', unackErr.message);
     }
 
     lastSweepTimestamp = new Date();

@@ -676,6 +676,10 @@
     "stage5_superadmin_hardening.test.js": {
       "category": "core",
       "reason": "Post-RC5 Stage 5: SuperAdmin hardening, authz matrix, 2FA/tokenVersion enforcement, impersonation safety, destructive action safeguards, and global leads query optimization"
+    },
+    "stage6_notifications_pwa.test.js": {
+      "category": "core",
+      "reason": "Post-RC5 Stage 6: PWA Web Push follow-up notifications, tag deduplication, minimal payload masking, single-use quick-action tokens, and expired subscription pruning"
     }
   }
 }

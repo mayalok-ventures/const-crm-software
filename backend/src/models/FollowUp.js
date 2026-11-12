@@ -151,6 +151,23 @@ const followUpSchema = new mongoose.Schema({
     index: true,
     sparse: true,
   },
+  acknowledged: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
+  acknowledgedAt: {
+    type: Date,
+    default: null,
+  },
+  reminderCount: {
+    type: Number,
+    default: 0,
+  },
+  lastReminderAt: {
+    type: Date,
+    default: null,
+  },
 }, { timestamps: true });
 
 function syncDualFields(doc) {

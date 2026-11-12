@@ -34,6 +34,15 @@ export default function NotificationsPage() {
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [permissionState, setPermissionState] = useState('default');
   const [pushLoading, setPushLoading] = useState(false);
+  const [showDeviceGuide, setShowDeviceGuide] = useState(false);
+  const [healthData, setHealthData] = useState(null);
+
+  const fetchHealth = useCallback(async () => {
+    try {
+      const res = await api.get('/notifications/push/health');
+      if (res.data?.success) setHealthData(res.data);
+    } catch (_) {}
+  }, []);
 
   useEffect(() => {
     const supported = isPushSupported();
@@ -41,8 +50,9 @@ export default function NotificationsPage() {
     if (supported) {
       setPermissionState(getPushPermissionState());
       checkIsPushSubscribed().then(setPushSubscribed);
+      fetchHealth();
     }
-  }, []);
+  }, [fetchHealth]);
 
   const handleTogglePush = async () => {
     try {
@@ -155,56 +165,120 @@ export default function NotificationsPage() {
       <main className="max-w-5xl mx-auto w-full p-4 md:p-8 space-y-6">
         {/* ── Web Push Device Alarm Banner ────────────────────────── */}
         {pushSupported && (
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                pushSubscribed ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-indigo-50 text-indigo-600 border border-indigo-100'
-              }`}>
-                <Smartphone className="w-5 h-5" />
+          <div className="space-y-3">
+            <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                  pushSubscribed ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-indigo-50 text-indigo-600 border border-indigo-100'
+                }`}>
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    Device Push Alarms &amp; Follow-Up Reminders
+                    {pushSubscribed ? (
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Enabled
+                      </span>
+                    ) : permissionState === 'denied' ? (
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1">
+                        <XCircle className="w-3 h-3" /> Permission Denied
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                        Not Configured
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Receive high-priority system alerts and sound chimes on your phone even when this tab is closed.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  Device Push Alarms &amp; Follow-Up Reminders
-                  {pushSubscribed ? (
-                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> Enabled
-                    </span>
-                  ) : (
-                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                      Not Configured
-                    </span>
-                  )}
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Receive high-priority device notifications even when this browser tab is closed.
-                </p>
-              </div>
-            </div>
 
-            <div className="flex items-center gap-2">
-              {pushSubscribed && (
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                 <button
-                  onClick={handleTestPush}
-                  disabled={pushLoading}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-2xs flex items-center gap-1.5 transition"
+                  type="button"
+                  onClick={() => setShowDeviceGuide(!showDeviceGuide)}
+                  className="px-2.5 py-1.5 text-xs font-medium rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 transition"
                 >
-                  <Send className="w-3.5 h-3.5 text-indigo-600" />
-                  Test Push
+                  {showDeviceGuide ? 'Hide Diagnostics' : 'Setup & Health'}
                 </button>
-              )}
 
-              <button
-                onClick={handleTogglePush}
-                disabled={pushLoading}
-                className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl text-white shadow-2xs transition ${
-                  pushSubscribed
-                    ? 'bg-slate-700 hover:bg-slate-800'
-                    : 'bg-indigo-600 hover:bg-indigo-700'
-                }`}
-              >
-                {pushLoading ? 'Processing...' : pushSubscribed ? 'Disable Push' : 'Enable Device Push Alarms'}
-              </button>
+                {pushSubscribed && (
+                  <button
+                    onClick={handleTestPush}
+                    disabled={pushLoading}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-2xs flex items-center gap-1.5 transition"
+                  >
+                    <Send className="w-3.5 h-3.5 text-indigo-600" />
+                    Test Push
+                  </button>
+                )}
+
+                <button
+                  onClick={handleTogglePush}
+                  disabled={pushLoading}
+                  className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl text-white shadow-2xs transition ${
+                    pushSubscribed
+                      ? 'bg-slate-700 hover:bg-slate-800'
+                      : 'bg-indigo-600 hover:bg-indigo-700'
+                  }`}
+                >
+                  {pushLoading ? 'Processing...' : pushSubscribed ? 'Disable Push' : 'Enable Device Push Alarms'}
+                </button>
+              </div>
             </div>
+
+            {/* Diagnostic Health & Platform Setup Guide */}
+            {(showDeviceGuide || permissionState === 'denied') && (
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                    <span className="text-[11px] font-bold text-slate-500 block uppercase">Browser Permission</span>
+                    <span className={`font-semibold capitalize text-sm mt-0.5 block ${
+                      permissionState === 'granted' ? 'text-emerald-600' : permissionState === 'denied' ? 'text-rose-600' : 'text-amber-600'
+                    }`}>
+                      {permissionState}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                    <span className="text-[11px] font-bold text-slate-500 block uppercase">Push Service State</span>
+                    <span className="font-semibold text-slate-900 text-sm mt-0.5 block">
+                      {healthData?.vapidConfigured ? 'VAPID Registered' : 'Dev Ephemeral Mode'}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                    <span className="text-[11px] font-bold text-slate-500 block uppercase">Active Devices</span>
+                    <span className="font-semibold text-slate-900 text-sm mt-0.5 block">
+                      {healthData?.registeredDevices ?? (pushSubscribed ? 1 : 0)} connected
+                    </span>
+                  </div>
+                </div>
+
+                {/* Per-Platform Resolution Instructions */}
+                <div className="border-t border-slate-200 pt-3 space-y-2">
+                  <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+                    Platform Setup &amp; Troubleshooting Guidelines
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px] text-slate-600">
+                    <div className="p-2.5 rounded-lg bg-white border border-slate-200">
+                      <strong className="text-slate-800 block mb-1">Android (Chrome / Edge)</strong>
+                      <span>If permission is blocked: Tap the padlock icon next to the URL in the address bar &rarr; Permissions &rarr; Notifications &rarr; Set to "Allow".</span>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-white border border-slate-200">
+                      <strong className="text-slate-800 block mb-1">iOS (iPhone 16.4+)</strong>
+                      <span>Apple requires PWA installation: 1. Tap Safari Share (square with arrow) &rarr; 2. Tap "Add to Home Screen" &rarr; 3. Open CRM from Home Screen to enable Push.</span>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-white border border-slate-200">
+                      <strong className="text-slate-800 block mb-1">Desktop (Windows / Mac)</strong>
+                      <span>Ensure OS notifications are unmuted for your browser in Windows Settings / macOS System Settings &rarr; Notifications.</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

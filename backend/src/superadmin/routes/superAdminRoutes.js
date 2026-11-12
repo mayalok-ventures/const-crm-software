@@ -52,6 +52,7 @@ router.get('/integrations', integrationController.getIntegrationsTelemetry);
 // 7. System Health & Error Logs
 router.get('/health', systemController.getHealth);
 router.get('/error-logs', systemController.getErrorLogs);
+router.get('/notifications/reminder-health', systemController.getReminderHealth);
 
 // 8. Platform Audit Logs
 router.get('/audit-logs', auditController.getAuditLogs);

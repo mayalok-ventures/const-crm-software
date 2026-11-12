@@ -255,6 +255,96 @@ const streamNotifications = (req, res) => {
   });
 };
 
+// @desc  Get user push notification device health status
+// @route GET /api/notifications/push/health
+// @access Private
+const getPushHealth = async (req, res) => {
+  try {
+    const publicKey = getVapidPublicKey();
+    const subs = await PushSubscription.find({ userId: req.user._id, isActive: true }).lean();
+    const lastSuccessSub = subs.find((s) => s.lastSuccessAt);
+    res.json({
+      success: true,
+      pushEnabled: process.env.ENABLE_WEB_PUSH_FOLLOWUPS === 'true',
+      vapidConfigured: Boolean(publicKey),
+      registeredDevices: subs.length,
+      devices: subs.map((s) => ({
+        id: s._id,
+        platform: s.deviceInfo?.platform || 'Unknown',
+        deviceLabel: s.deviceInfo?.deviceLabel || 'Browser Device',
+        userAgent: s.deviceInfo?.userAgent ? s.deviceInfo.userAgent.slice(0, 80) : '',
+        createdAt: s.createdAt,
+        lastSuccessAt: s.lastSuccessAt,
+      })),
+      lastSuccessAt: lastSuccessSub?.lastSuccessAt || null,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// @desc  Acknowledge follow-up notification (silences alarms and updates delivery record)
+// @route POST /api/notifications/:id/acknowledge
+// @access Private
+const acknowledgeNotification = async (req, res) => {
+  try {
+    const notif = await Notification.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user._id },
+      {
+        $set: {
+          isRead: true,
+          readAt: new Date(),
+          'deliveryStatus.acknowledgedAt': new Date(),
+        },
+      },
+      { new: true }
+    );
+    if (!notif) return res.status(404).json({ message: 'Notification not found' });
+    if (notif.entityType === 'FollowUp' && notif.entityId) {
+      const FollowUp = require('../models/FollowUp');
+      await FollowUp.updateOne(
+        { _id: notif.entityId },
+        { $set: { acknowledged: true, acknowledgedAt: new Date() } }
+      ).catch(() => {});
+    }
+    res.json({ success: true, message: 'Notification acknowledged', notification: notif });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// @desc  Record notification click event
+// @route POST /api/notifications/:id/clicked
+// @access Private
+const recordNotificationClick = async (req, res) => {
+  try {
+    await Notification.updateOne(
+      { _id: req.params.id, userId: req.user._id },
+      { $set: { 'deliveryStatus.clickedAt': new Date() } }
+    ).catch(() => {});
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// @desc  Get unacknowledged reminder count
+// @route GET /api/notifications/unacknowledged-count
+// @access Private
+const getUnacknowledgedCount = async (req, res) => {
+  try {
+    const count = await Notification.countDocuments({
+      userId: req.user._id,
+      category: 'reminder',
+      'deliveryStatus.acknowledgedAt': null,
+      isRead: false,
+    });
+    res.json({ success: true, unacknowledgedCount: count });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   broadcastNotification,
   getNotifications,
@@ -267,4 +357,8 @@ module.exports = {
   unregisterPushSubscription,
   testPushNotification,
   streamNotifications,
+  getPushHealth,
+  acknowledgeNotification,
+  recordNotificationClick,
+  getUnacknowledgedCount,
 };

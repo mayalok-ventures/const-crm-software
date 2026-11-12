@@ -1346,6 +1346,12 @@ exports.logout = async (req, res) => {
     if (rawToken) {
       revokeToken(rawToken);
     }
+    // Prune device push subscription if endpoint provided
+    const pushEndpoint = req.body?.endpoint || req.headers?.['x-push-endpoint'];
+    if (pushEndpoint && req.user?._id) {
+      const PushSubscription = require('../models/PushSubscription');
+      await PushSubscription.deleteOne({ userId: req.user._id, endpoint: pushEndpoint }).catch(() => {});
+    }
   } catch (_) {}
   res.json({ success: true, message: 'Logged out successfully' });
 };
@@ -1360,6 +1366,11 @@ exports.logoutAll = async (req, res) => {
       user.tokenVersion = (user.tokenVersion || 0) + 1;
       await user.save();
       invalidateUserAuthCache(user._id);
+    }
+    // Prune all device push subscriptions for user across all devices
+    if (req.user?._id) {
+      const PushSubscription = require('../models/PushSubscription');
+      await PushSubscription.deleteMany({ userId: req.user._id }).catch(() => {});
     }
     res.json({ success: true, message: 'All active sessions revoked across all devices' });
   } catch (err) {
