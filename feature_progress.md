@@ -15,9 +15,32 @@
 | **S2** | **Follow-up Scheduler Core ($or duplicate, timezones)** | **COMPLETE** | Commit `7e7778e` (Tests: 5/5 passed, DST & drift verified) |
 | **S3** | **Campaign Leads View (Unified Leads screen)** | **COMPLETE** | Commit `23bd59f` (Tests: 5/5 integration passed, mobile E2E ready) |
 | **S4** | **Automation Engine Repair (`tag_added`, loops, duration)** | **COMPLETE** | Commit `e9c38a4` (Tests: 8/8 passed, sweep & idempotency verified) |
-| **S5** | **Super Admin Hardening (Security, 2FA, Dashboard UI)** | **COMPLETE** | Commit pending (Tests: 6/6 passed, authz matrix & safeguards verified) |
-| **S6** | **Notifications, Follow-up Reminders & PWA Hardening** | Pending | Branch `feature/post-rc5` |
-| **S7** | **Native-Android Alarm Wrapper Decision Memo** | Pending | Branch `feature/post-rc5` |
+| **S5** | **Super Admin Hardening (Security, 2FA, Dashboard UI)** | **COMPLETE** | Commit `e20bf1a` (Tests: 6/6 passed, authz matrix & safeguards verified) |
+| **S6** | **Notifications, Follow-up Reminders & PWA Hardening** | **COMPLETE** | Commit `cd2c402` (Tests: 7/7 passed, masking, dedupe tag, quick-action) |
+| **S7** | **Native-Android Alarm Wrapper Decision Memo** | In Progress | `docs/NATIVE_ALARM_DECISION_MEMO.md` |
+
+---
+
+## Stage 6 Execution Summary
+1. **PWA Web Push Reminders & Privacy Hardening**:
+   - Stripped candidate phone numbers from reminder title, message, and push payload across `followUpSchedulerService.js` and `notificationService.js`.
+   - Formatted push notification dedupe tag deterministically: `tag: 'fup_' + followUp._id` with `renotify: true`, ensuring rescheduling or re-notification replaces previous notification cards rather than stacking duplicate banners in OS trays.
+   - Enforced high-priority urgency and 3600s TTL per RFC 8030 / RFC 8292.
+2. **Device Push Subscription Lifecycle & Hygiene**:
+   - Pruned subscriptions on single-device logout (`POST /api/auth/logout` with endpoint) and pruned all user device subscriptions on session revocation (`POST /api/auth/logout-all`).
+   - Automatically pruned expired/unregistered endpoints from `PushSubscription` on HTTP 404/410 push server responses.
+3. **Single-Use Signed Quick-Action Tokens**:
+   - Implemented HMAC-SHA256 token generator and validator in `backend/src/utils/quickActionToken.js` with random nonce and expiry.
+   - Created `backend/src/models/ConsumedToken.js` with MongoDB TTL index (`expires: 0`) for thread-safe single-use consumption and automatic cleanup. Replay attempts are rejected with HTTP 409 Conflict.
+   - Implemented `verifyQuickAction` and `executeQuickAction` in `backend/src/controllers/quickActionController.js`.
+   - Enforced mandatory non-empty outcome note validation for complete, snooze, and reschedule actions.
+   - Built minimal mobile-first standalone quick action screen in `frontend/src/app/follow-ups/quick-action/page.js`.
+4. **Reliability & Telemetry**:
+   - Implemented unacknowledged follow-up retry sweep in `followUpSchedulerService.js`: re-sends unacknowledged reminders after 15 minutes, capped at 3 total reminders.
+   - Mounted `GET /api/superadmin/notifications/reminder-health` reporting active subscriptions, pending follow-ups, and unacknowledged reminders.
+   - Authored `docs/NOTIFICATIONS_DEVICE_QA.md` with step-by-step verification instructions for Android Chrome, iOS 16.4+ standalone PWA, and desktop browsers.
+5. **Verification**:
+   - `stage6_notifications_pwa.test.js`: 7/7 tests passing (minimal payload privacy, tag deduplication, logout pruning, 410 cleanup, quick-action tokens, mandatory note enforcement, reminder health).
 
 ---
 
