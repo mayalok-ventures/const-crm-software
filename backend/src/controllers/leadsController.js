@@ -1581,6 +1581,15 @@ exports.createLead = async (req, res) => {
     }
 
     emitCRMEvent(CRM_EVENTS.LEAD_CREATED, { lead, user: req.user });
+    if (leadTags.length > 0) {
+      emitCRMEvent(CRM_EVENTS.TAG_ADDED, {
+        lead,
+        tag: leadTags[0],
+        addedTags: leadTags,
+        user: req.user,
+        workspaceId: lead.workspaceId,
+      });
+    }
     if (lead.customData?.targetCountry) {
       emitCRMEvent(CRM_EVENTS.LEAD_FIELD_UPDATED, {
         lead,
@@ -2007,6 +2016,20 @@ exports.updateLead = async (req, res) => {
         newStage: changes.status.to,
         user: req.user,
       });
+    }
+    if (changes.tags) {
+      const oldTags = Array.isArray(changes.tags.old) ? changes.tags.old : [];
+      const newTags = Array.isArray(changes.tags.new) ? changes.tags.new : [];
+      const addedTags = newTags.filter(t => !oldTags.includes(t));
+      if (addedTags.length > 0) {
+        emitCRMEvent(CRM_EVENTS.TAG_ADDED, {
+          lead,
+          tag: addedTags[0],
+          addedTags,
+          user: req.user,
+          workspaceId: lead.workspaceId,
+        });
+      }
     }
     if (req.body.targetCountry || req.body['customData.targetCountry'] || req.body.customData?.targetCountry) {
       emitCRMEvent(CRM_EVENTS.LEAD_FIELD_UPDATED, {

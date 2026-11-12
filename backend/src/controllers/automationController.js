@@ -1,6 +1,9 @@
 const AutomationRule = require('../models/AutomationRule');
 const AutomationLog = require('../models/AutomationLog');
 const Lead = require('../models/Lead');
+const Workspace = require('../models/Workspace');
+const User = require('../models/User');
+const { PLAN_LIMITS } = require('../utils/planLimits');
 const AutomationEngine = require('../services/automationEngine');
 const AutomationRegistry = require('../services/automationRegistry');
 
@@ -180,6 +183,23 @@ exports.createAutomation = async (req, res) => {
 
     const resolvedStatus = status || (isActive === false ? 'paused' : 'active');
     const isActuallyActive = resolvedStatus === 'active';
+
+    // Plan limits check
+    if (isActuallyActive) {
+      const activeRuleCount = await AutomationRule.countDocuments({
+        workspaceId: req.workspaceId,
+        status: 'active',
+      });
+      const currentWorkspace = await Workspace.findById(req.workspaceId).select('limits plan tier settings').lean();
+      const planLimits = PLAN_LIMITS[currentWorkspace?.plan] || PLAN_LIMITS.free;
+      const maxAllowedRules = currentWorkspace?.limits?.maxAutomations || currentWorkspace?.settings?.maxAutomations || planLimits?.maxAutomations || req.planLimits?.maxAutomations || 100;
+      if (activeRuleCount >= maxAllowedRules) {
+        return res.status(403).json({
+          message: `Plan limit reached: maximum ${maxAllowedRules} active automation rules allowed. Please upgrade or pause unused rules.`,
+          code: 'PLAN_LIMIT_REACHED',
+        });
+      }
+    }
 
     // Build & normalize actions array
     let normalizedActions = Array.isArray(actions) && actions.length > 0 ? [...actions] : [];
@@ -716,10 +736,10 @@ exports.retryAutomationLog = async (req, res) => {
 
       res.json({ success: true, message: 'Automation action retried successfully', log });
     } catch (retryErr) {
-      log.status = 'failed';
+      log.retryCount = (log.retryCount || 0) + 1;
+      log.status = log.retryCount >= 3 ? 'dead_letter' : 'failed';
       log.error = retryErr.message;
       log.errorMessage = retryErr.message;
-      log.retryCount = (log.retryCount || 0) + 1;
       log.executedAt = new Date();
       log.durationMs = Date.now() - startTime;
       await log.save();

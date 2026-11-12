@@ -668,6 +668,10 @@
     "stage3_campaign_leads_view.test.js": {
       "category": "core",
       "reason": "Post-RC5 Stage 3: Campaign leads view scoping, pagination without duplicates, soft-delete filtering, and phone masking"
+    },
+    "stage4_automations_repair.test.js": {
+      "category": "core",
+      "reason": "Post-RC5 Stage 4: Automation engine repair, tag_added trigger, idempotency, delayed action sweep recovery, loop guard, channel graceful failure, and plan limits"
     }
   }
 }

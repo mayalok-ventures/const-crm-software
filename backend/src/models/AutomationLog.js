@@ -79,8 +79,13 @@ const automationLogSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'processing', 'completed', 'success', 'failed', 'skipped'],
+      enum: ['pending', 'processing', 'completed', 'success', 'failed', 'skipped', 'dead_letter'],
       required: true,
+      index: true,
+    },
+    idempotencyKey: {
+      type: String,
+      default: null,
       index: true,
     },
     messageSent: {

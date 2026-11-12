@@ -103,6 +103,13 @@ export default function AutomationLogsModal({ isOpen, onClose, ruleId = null, ru
             Failed
           </span>
         );
+      case 'dead_letter':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 text-[10px] font-extrabold uppercase">
+            <AlertTriangle size={12} className="text-rose-700" />
+            Dead Letter
+          </span>
+        );
       case 'skipped':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-extrabold uppercase">

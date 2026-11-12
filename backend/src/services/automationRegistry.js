@@ -136,6 +136,17 @@ const TRIGGERS = [
       matchType: { type: 'string', required: true, default: 'contains', enum: ['contains', 'exact'] },
     },
   },
+  {
+    id: 'tag_added',
+    name: 'Tag Added to Lead',
+    category: 'lead_lifecycle',
+    description: 'Runs automatically whenever a specific tag is applied to a lead.',
+    badge: 'Real-Time',
+    icon: 'Tag',
+    configSchema: {
+      targetTag: { type: 'string', required: true, label: 'When Tag is Applied' },
+    },
+  },
 ];
 
 const ACTIONS = [
@@ -376,6 +387,11 @@ class AutomationRegistry {
           errors.push('At least one trigger keyword is required for inbound WhatsApp automations.');
         }
       }
+      if (ruleData.triggerType === 'tag_added') {
+        if (!ruleData.triggerConfig?.targetTag && !ruleData.actionConfig?.targetTag) {
+          errors.push('Target tag is required for tag added triggers.');
+        }
+      }
     }
 
     // Validate conditions
@@ -470,6 +486,10 @@ class AutomationRegistry {
       case 'whatsapp_inbound': {
         const kwList = Array.isArray(cfg.keywords) ? cfg.keywords.map((k) => `"${k}"`).join(', ') : 'keywords';
         triggerPart = `When inbound WhatsApp message matches ${kwList}`;
+        break;
+      }
+      case 'tag_added': {
+        triggerPart = `When tag "${cfg.targetTag || 'Any Tag'}" is added to a lead`;
         break;
       }
       default:

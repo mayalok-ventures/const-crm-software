@@ -73,6 +73,13 @@ const FALLBACK_CAPABILITIES = {
       description: 'Runs when a customer sends a WhatsApp message matching specific keywords.',
       badge: 'Chatbot',
     },
+    {
+      id: 'tag_added',
+      name: 'Tag Added to Lead',
+      category: 'lead_lifecycle',
+      description: 'Runs automatically whenever a specific tag is applied to a lead.',
+      badge: 'Real-Time',
+    },
   ],
   fields: [
     { id: 'source', label: 'Lead Source', type: 'select' },
@@ -156,6 +163,7 @@ export default function AutomationRuleModal({ isOpen, onClose, onSaved, initialR
   const [keywords, setKeywords] = useState([]);
   const [keywordInput, setKeywordInput] = useState('');
   const [matchType, setMatchType] = useState('contains');
+  const [targetTag, setTargetTag] = useState('');
 
   // Step 2: Conditions State
   const [useConditions, setUseConditions] = useState(false);
@@ -236,6 +244,7 @@ export default function AutomationRuleModal({ isOpen, onClose, onSaved, initialR
       setLeadSources(tCfg.leadSources || []);
       setKeywords(tCfg.keywords || []);
       setMatchType(tCfg.matchType || 'contains');
+      setTargetTag(tCfg.targetTag || initialRule.actionConfig?.targetTag || '');
 
       const conds = tCfg.conditions || initialRule.conditions || [];
       if (Array.isArray(conds) && conds.length > 0) {
@@ -650,6 +659,7 @@ export default function AutomationRuleModal({ isOpen, onClose, onSaved, initialR
         triggerConfig: {
           targetStage: targetStage || undefined,
           fromStage: fromStage || undefined,
+          targetTag: triggerType === 'tag_added' ? targetTag.trim() : undefined,
           daysInStage: triggerType === 'stage_duration' ? Number(daysInStage) : undefined,
           keywords: triggerType === 'whatsapp_inbound' ? keywords : undefined,
           matchType: triggerType === 'whatsapp_inbound' ? matchType : undefined,
@@ -1100,6 +1110,25 @@ export default function AutomationRuleModal({ isOpen, onClose, onSaved, initialR
                         <span>Exact Match Only</span>
                       </label>
                     </div>
+                  </div>
+                )}
+
+                {/* Tag Added Config */}
+                {triggerType === 'tag_added' && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      When Tag is Added to Candidate *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. VIP, Urgent, Scholarship, Call Back"
+                      value={targetTag}
+                      onChange={(e) => setTargetTag(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Runs automatically when this tag is applied to a lead manually, via bulk import, or through another workflow.
+                    </p>
                   </div>
                 )}
               </div>

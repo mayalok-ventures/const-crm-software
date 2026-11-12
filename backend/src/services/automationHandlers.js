@@ -589,6 +589,23 @@ crmEvents.on(CRM_EVENTS.LEAD_FIELD_UPDATED, async (payload) => {
   }
 });
 
+// Listener: Tag Added to Lead
+crmEvents.on(CRM_EVENTS.TAG_ADDED, async (payload) => {
+  const { lead, tag, addedTags, user, workspaceId } = payload || {};
+  if (!lead) return;
+  try {
+    await AutomationEngine.executeTagAddedAutomations({
+      lead,
+      tag,
+      addedTags: addedTags || (tag ? [tag] : []),
+      user,
+      workspaceId: workspaceId || lead.workspaceId || user?.workspaceId,
+    });
+  } catch (err) {
+    console.error('[AutomationHandlers] TAG_ADDED automation error:', err.message);
+  }
+});
+
 // Listener: Checkout Started
 crmEvents.on(CRM_EVENTS.PAYMENT_CHECKOUT_STARTED, async (payload) => {
   const { lead, user } = payload;

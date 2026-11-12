@@ -46,6 +46,10 @@ const workspaceSchema = new mongoose.Schema({
     maxSnoozeCount: { type: Number, default: 2 },
     maskLeadPhones: { type: Boolean, default: false }, // F1: Workspace phone masking flag (default: false)
   },
+  limits: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
   rolePermissions: {
     type: Map,
     of: [{

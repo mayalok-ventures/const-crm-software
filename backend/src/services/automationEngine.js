@@ -170,10 +170,10 @@ class AutomationEngine {
   /**
    * 1. Trigger: New Lead Created (Multi-channel: WhatsApp, Email, Tag, Assignment)
    */
-  static async executeLeadCreatedAutomations({ lead, user, workspaceId, depth = 0 }) {
+  static async executeLeadCreatedAutomations({ lead, user, workspaceId, depth = 0, chain = [] }) {
     if (!lead) return [];
-    if (depth > 5) {
-      console.warn(`[AutomationEngine] Max automation depth exceeded (5) on lead ${lead._id}. Halting cascading loop.`);
+    if (depth >= 3) {
+      console.warn(`[AutomationEngine] Max automation depth reached (3) on lead ${lead._id}. Halting cascading loop.`);
       return [];
     }
 
@@ -194,6 +194,12 @@ class AutomationEngine {
 
       const executed = [];
       for (const rule of rules) {
+        // Loop guard check
+        if (chain.includes(String(rule._id))) {
+          console.warn(`[AutomationEngine] Loop detected: Rule ${rule._id} already in execution chain. Skipping.`);
+          continue;
+        }
+
         // Filter by Lead Source if rule has leadSources configured
         const allowedSources = rule.triggerConfig?.leadSources || [];
         if (Array.isArray(allowedSources) && allowedSources.length > 0) {
@@ -213,11 +219,26 @@ class AutomationEngine {
           continue;
         }
 
+        // Idempotency: once per event per lead
+        const idempotencyKey = `auto_${rule._id}_${lead._id}_created`;
+        const alreadyExecuted = await AutomationLog.findOne({
+          ruleId: rule._id,
+          leadId: lead._id,
+          idempotencyKey,
+          status: { $in: ['completed', 'success', 'processing', 'pending'] },
+        });
+        if (alreadyExecuted) {
+          console.log(`[AutomationEngine] Skipping duplicate lead_created execution for rule ${rule._id} on lead ${lead._id}`);
+          continue;
+        }
+
         const res = await this.executeRuleActions(rule, {
           lead,
           user,
           workspaceId: effectiveWorkspaceId,
           depth: depth + 1,
+          chain: [...chain, String(rule._id)],
+          idempotencyKey,
         });
         executed.push({ ruleId: rule._id, name: rule.name, result: res });
       }
@@ -235,10 +256,17 @@ class AutomationEngine {
   /**
    * 2. Trigger: Pipeline Stage Changed or Milestone Stage Reached
    */
-  static async executeStageChangedAutomations({ lead, oldStage, newStage, user, workspaceId, depth = 0 }) {
+  static async executeStageChangedAutomations(arg1, arg2, arg3, arg4) {
+    let opts = {};
+    if (arg1 && arg1._id) {
+      opts = { lead: arg1, oldStage: arg2, newStage: arg3, ...(arg4 || {}) };
+    } else {
+      opts = arg1 || {};
+    }
+    const { lead, oldStage, newStage, user, workspaceId, depth = 0, chain = [] } = opts;
     if (!lead || !newStage) return [];
-    if (depth > 5) {
-      console.warn(`[AutomationEngine] Max automation depth exceeded (5) on stage transition for lead ${lead._id}.`);
+    if (depth >= 3) {
+      console.warn(`[AutomationEngine] Max automation depth reached (3) on stage transition for lead ${lead._id}.`);
       return [];
     }
 
@@ -260,6 +288,12 @@ class AutomationEngine {
 
       const executed = [];
       for (const rule of rules) {
+        // Loop guard check
+        if (chain.includes(String(rule._id))) {
+          console.warn(`[AutomationEngine] Loop detected: Rule ${rule._id} already in execution chain. Skipping.`);
+          continue;
+        }
+
         const targetStage = String(rule.triggerConfig?.targetStage || '').trim().toLowerCase();
 
         // Target stage match
@@ -282,6 +316,19 @@ class AutomationEngine {
           continue;
         }
 
+        // Idempotency: once per stage transition
+        const idempotencyKey = `auto_${rule._id}_${lead._id}_stage_${cleanNewStage}`;
+        const alreadyExecuted = await AutomationLog.findOne({
+          ruleId: rule._id,
+          leadId: lead._id,
+          idempotencyKey,
+          status: { $in: ['completed', 'success', 'processing', 'pending'] },
+        });
+        if (alreadyExecuted) {
+          console.log(`[AutomationEngine] Skipping duplicate stage_changed execution for rule ${rule._id} on lead ${lead._id}`);
+          continue;
+        }
+
         console.log(`[AutomationEngine] Executing stage automation rule '${rule.name}' for stage '${newStage}' on lead ${lead._id}`);
         const res = await this.executeRuleActions(rule, {
           lead,
@@ -289,6 +336,8 @@ class AutomationEngine {
           workspaceId: effectiveWorkspaceId,
           stage: newStage,
           depth: depth + 1,
+          chain: [...chain, String(rule._id)],
+          idempotencyKey,
         });
         executed.push({ ruleId: rule._id, name: rule.name, result: res });
       }
@@ -301,6 +350,98 @@ class AutomationEngine {
 
   static async handleStageChanged(lead, newStage, oldStage, context = {}) {
     return this.executeStageChangedAutomations({ lead, newStage, oldStage, ...context });
+  }
+
+  static async executeStageChangeAutomations(lead, oldStage, newStage, context = {}) {
+    return this.executeStageChangedAutomations(lead, oldStage, newStage, context);
+  }
+
+  /**
+   * 3. Trigger: Tag Added to Lead
+   */
+  static async executeTagAddedAutomations(arg1, arg2, arg3) {
+    let opts = {};
+    if (arg1 && arg1._id) {
+      opts = { lead: arg1, tag: arg2, ...(arg3 || {}) };
+    } else {
+      opts = arg1 || {};
+    }
+    const { lead, tag, addedTags = [], user, workspaceId, depth = 0, chain = [] } = opts;
+    if (!lead || (!tag && addedTags.length === 0)) return [];
+    if (depth >= 3) {
+      console.warn(`[AutomationEngine] Max automation depth reached (3) on tag_added for lead ${lead._id}. Halting cascading loop.`);
+      return [];
+    }
+
+    const effectiveWorkspaceId = workspaceId || lead.workspaceId || user?.workspaceId || lead.userId;
+    const effectiveUserId = user?._id || lead.userId;
+    const allTags = [...addedTags, ...(tag ? [tag] : [])].map(t => String(t).trim().toLowerCase());
+
+    try {
+      const tenantQuery = this.getTenantQuery(effectiveWorkspaceId, effectiveUserId);
+      const rules = await AutomationRule.find({
+        ...tenantQuery,
+        triggerType: 'tag_added',
+        isActive: true,
+      });
+
+      if (!rules || rules.length === 0) return [];
+
+      console.log(`[AutomationEngine] Evaluating ${rules.length} 'tag_added' rule(s) for tags: ${allTags.join(', ')} on lead ${lead._id}`);
+
+      const executed = [];
+      for (const rule of rules) {
+        // Loop guard check
+        if (chain.includes(String(rule._id))) {
+          console.warn(`[AutomationEngine] Loop detected: Rule ${rule._id} already in execution chain. Skipping.`);
+          continue;
+        }
+
+        const targetTag = String(rule.triggerConfig?.targetTag || rule.actionConfig?.targetTag || '').trim().toLowerCase();
+        if (targetTag && targetTag !== '*' && !allTags.includes(targetTag)) {
+          continue;
+        }
+
+        // Evaluate custom conditions
+        const conditionsMatch = rule.triggerConfig?.conditionsMatch || 'all';
+        const conditions = rule.triggerConfig?.conditions || [];
+        if (!this.evaluateConditions(lead, conditions, conditionsMatch)) {
+          continue;
+        }
+
+        // Idempotency: once per tag per lead
+        const matchedTag = targetTag || allTags[0];
+        const idempotencyKey = `auto_${rule._id}_${lead._id}_tag_${matchedTag}`;
+        const alreadyExecuted = await AutomationLog.findOne({
+          ruleId: rule._id,
+          leadId: lead._id,
+          idempotencyKey,
+          status: { $in: ['completed', 'success', 'processing', 'pending'] },
+        });
+        if (alreadyExecuted) {
+          console.log(`[AutomationEngine] Skipping duplicate tag_added execution for rule ${rule._id} on lead ${lead._id}`);
+          continue;
+        }
+
+        const res = await this.executeRuleActions(rule, {
+          lead,
+          user,
+          workspaceId: effectiveWorkspaceId,
+          depth: depth + 1,
+          chain: [...chain, String(rule._id)],
+          idempotencyKey,
+        });
+        executed.push({ ruleId: rule._id, name: rule.name, result: res });
+      }
+      return executed;
+    } catch (err) {
+      console.error('[AutomationEngine] Error in executeTagAddedAutomations:', err.message);
+      return [];
+    }
+  }
+
+  static async handleTagAdded(lead, tag, context = {}) {
+    return this.executeTagAddedAutomations({ lead, tag, ...context });
   }
 
   /**
@@ -454,10 +595,10 @@ class AutomationEngine {
    * Helper: Execute all sequenced actions configured in an AutomationRule
    */
   static async executeRuleActions(rule, context) {
-    const { lead, user, workspaceId, customPhone, matchedKeyword, inboundChannel, metaPhoneNumberId, depth = 0 } = context;
-    if (depth > 5) {
-      console.warn(`[AutomationEngine] Recursion limit reached for rule '${rule.name}'.`);
-      return { successCount: 0, lastError: 'Max recursion depth exceeded' };
+    const { lead, user, workspaceId, customPhone, matchedKeyword, inboundChannel, metaPhoneNumberId, depth = 0, chain = [], idempotencyKey = null } = context;
+    if (depth >= 3) {
+      console.warn(`[AutomationEngine] Recursion limit reached (3) for rule '${rule.name}'.`);
+      return { successCount: 0, lastError: 'Max recursion depth exceeded (3)' };
     }
 
     let actions = rule.actions && rule.actions.length > 0 ? rule.actions : [];
@@ -755,12 +896,14 @@ class AutomationEngine {
             await waSession.sendText(user?._id || lead?.userId, targetPhone, finalMsg);
           }
         } catch (err) {
-          dispatchError = err.message;
-          // In local/test mode or when device is offline, simulate delivery gracefully
-          console.log(`[AutomationEngine] Simulated WhatsApp delivery to ${targetPhone}: "${finalMsg.slice(0, 60)}"`);
+          dispatchError = err.message || 'WhatsApp session is offline or channel disconnected';
+          console.warn(`[AutomationEngine] WhatsApp delivery failed for ${targetPhone}: ${dispatchError}`);
         }
 
-        // Log success in AutomationLog
+        const logStatus = dispatchError ? 'failed' : 'success';
+        const failureMessage = dispatchError ? `WhatsApp channel error: ${dispatchError}` : null;
+
+        // Log result in AutomationLog
         await AutomationLog.create({
           ruleId: rule._id,
           ruleName: rule.name,
@@ -777,7 +920,10 @@ class AutomationEngine {
           channel: 'whatsapp',
           actionType: 'send_whatsapp',
           actionPayload: { preview: finalMsg, text: finalMsg },
-          status: 'success',
+          idempotencyKey: context.idempotencyKey || null,
+          status: logStatus,
+          error: failureMessage,
+          errorMessage: failureMessage,
           messageSent: finalMsg.slice(0, 200),
           executionDurationMs: Date.now() - startTime,
           durationMs: Date.now() - startTime,
@@ -785,7 +931,7 @@ class AutomationEngine {
           timestamp: new Date(),
         }).catch((e) => console.error('[AutomationEngine] AutomationLog save error:', e.message));
 
-        if (lead) {
+        if (!dispatchError && lead) {
           lead.leadActivities = lead.leadActivities || [];
           lead.leadActivities.push({
             action: 'message_sent',
@@ -831,6 +977,7 @@ class AutomationEngine {
         const rawBody = config.emailBody || rule.actionConfig?.templateText || '';
         const bodyHtml = this.replaceVariables(rawBody, { lead, user });
 
+        let emailError = null;
         try {
           await EmailService.sendEmail({
             workspaceId,
@@ -843,13 +990,14 @@ class AutomationEngine {
             leadId: lead._id,
           });
         } catch (err) {
-          if (process.env.NODE_ENV === 'production') {
-            throw err;
-          }
-          console.log(`[AutomationEngine] Simulated Email delivery to ${targetEmail}: "${subject}"`);
+          emailError = err.message || 'Email delivery failed (service disconnected)';
+          console.warn(`[AutomationEngine] Email delivery failed for ${targetEmail}: ${emailError}`);
         }
 
-        // Log success in AutomationLog
+        const emailLogStatus = emailError ? 'failed' : 'success';
+        const emailFailureMessage = emailError ? `Email channel error: ${emailError}` : null;
+
+        // Log result in AutomationLog
         await AutomationLog.create({
           ruleId: rule._id,
           ruleName: rule.name,
@@ -866,7 +1014,10 @@ class AutomationEngine {
           channel: 'email',
           actionType: 'send_email',
           actionPayload: { preview: bodyHtml, subject },
-          status: 'success',
+          idempotencyKey: context.idempotencyKey || null,
+          status: emailLogStatus,
+          error: emailFailureMessage,
+          errorMessage: emailFailureMessage,
           messageSent: `Subject: ${subject}`,
           executionDurationMs: Date.now() - startTime,
           durationMs: Date.now() - startTime,
@@ -874,7 +1025,7 @@ class AutomationEngine {
           timestamp: new Date(),
         }).catch((e) => console.error('[AutomationEngine] AutomationLog save error:', e.message));
 
-        if (lead) {
+        if (!emailError && lead) {
           lead.leadActivities = lead.leadActivities || [];
           lead.leadActivities.push({
             action: 'email_sent',
@@ -1129,19 +1280,55 @@ class AutomationEngine {
         const cutoffDate = new Date(Date.now() - daysInStage * 24 * 60 * 60 * 1000);
         const tenantQuery = this.getTenantQuery(rule.workspaceId, rule.userId);
 
-        // Find leads matching tenant and stage that have been unmoved since cutoff
+        // Find leads matching tenant and stage that entered targetStage on or before cutoff
+        // Check stageHistory transition timestamp rather than generic updatedAt
         const matchingLeads = await Lead.find({
           ...tenantQuery,
           status: targetStage,
-          updatedAt: { $lte: cutoffDate },
+          $or: [
+            {
+              stageHistory: {
+                $elemMatch: {
+                  toStage: targetStage,
+                  changedAt: { $lte: cutoffDate },
+                },
+              },
+            },
+            {
+              stageHistory: { $not: { $elemMatch: { toStage: targetStage } } },
+              updatedAt: { $lte: cutoffDate },
+            },
+          ],
         }).limit(50);
 
         for (const lead of matchingLeads) {
-          // Idempotency: verify this rule hasn't already executed on this lead
+          // Verify actual stage entry date
+          let stageEntryDate = null;
+          if (Array.isArray(lead.stageHistory) && lead.stageHistory.length > 0) {
+            for (let i = lead.stageHistory.length - 1; i >= 0; i--) {
+              const h = lead.stageHistory[i];
+              if (h.toStage === targetStage || h.stage === targetStage) {
+                stageEntryDate = h.changedAt || h.createdAt;
+                break;
+              }
+            }
+          }
+          if (!stageEntryDate) {
+            stageEntryDate = lead.stageUpdatedAt || lead.updatedAt || lead.createdAt;
+          }
+          if (stageEntryDate && new Date(stageEntryDate).getTime() > cutoffDate.getTime()) {
+            continue; // Not yet past the threshold
+          }
+
+          // Idempotency: verify this rule hasn't already executed on this lead for this duration threshold
+          const idempotencyKey = `auto_${rule._id}_${lead._id}_duration_${targetStage}_${daysInStage}`;
           const alreadyExecuted = await AutomationLog.exists({
             ruleId: rule._id,
             leadId: lead._id,
-            status: 'success',
+            $or: [
+              { idempotencyKey },
+              { status: { $in: ['success', 'completed'] } },
+            ],
           });
 
           if (alreadyExecuted) {
@@ -1154,6 +1341,7 @@ class AutomationEngine {
               workspaceId: rule.workspaceId || lead.workspaceId,
               user: { _id: rule.userId },
               depth: 1,
+              idempotencyKey,
             });
             processedCount++;
           } catch (leadErr) {
