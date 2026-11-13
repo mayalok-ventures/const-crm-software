@@ -147,10 +147,6 @@ function UnifiedAdminContent() {
     usersPagination.page,
     userSearch,
     userRoleFilter,
-    leadsPagination.page,
-    leadSearch,
-    leadStageFilter,
-    leadSourceFilter,
     auditSearch,
   ]);
 
