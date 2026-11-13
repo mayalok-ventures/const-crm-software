@@ -17,7 +17,11 @@ const AutomationLog = require('../src/models/AutomationLog');
 const AutomationEngine = require('../src/services/automationEngine');
 const { CRM_EVENTS } = require('../src/services/automationHandlers');
 
-const MONGODB_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mobile-crm';
+const waSession = require('../src/services/waSession');
+waSession.sendText = async () => ({ key: { id: 'mock_wa_key' } });
+
+const EmailService = require('../src/services/email/emailService');
+EmailService.sendEmail = async () => ({ success: true, messageId: 'mock_email_id' });
 
 let testUser;
 let testWorkspace;
@@ -27,10 +31,17 @@ let stageDripRule;
 let waInboundMenuRule;
 let waInboundCourseRule;
 let waFallbackRule;
+let mongod = null;
 
 async function runAutomationTestSuite() {
   console.log('🧪 Starting CRM Dynamic Automation Engine & WhatsApp Bot Test Suite...');
-  await mongoose.connect(MONGODB_URI);
+  let uri = process.env.MONGO_URI || process.env.MONGODB_URI;
+  if (!uri) {
+    const { MongoMemoryServer } = require('mongodb-memory-server');
+    mongod = await MongoMemoryServer.create();
+    uri = mongod.getUri();
+  }
+  await mongoose.connect(uri);
   console.log('  ✔ Connected to MongoDB');
 
   try {
@@ -352,6 +363,7 @@ async function runAutomationTestSuite() {
       console.warn('Cleanup warning:', cleanupErr.message);
     }
     await mongoose.disconnect();
+    if (mongod) await mongod.stop();
   }
 }
 

@@ -23,11 +23,19 @@ const AutomationEngine = require('../src/services/automationEngine');
 const AutomationRegistry = require('../src/services/automationRegistry');
 const automationController = require('../src/controllers/automationController');
 
-const MONGODB_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mobile-crm';
+const waSession = require('../src/services/waSession');
+waSession.sendText = async () => ({ key: { id: 'mock_wa_key' } });
 
 async function runBuilderAndRegistrySuite() {
   console.log('🧪 Starting Automation Builder & Registry Verification Suite...\n');
-  await mongoose.connect(MONGODB_URI);
+  let mongod = null;
+  let uri = process.env.MONGO_URI || process.env.MONGODB_URI;
+  if (!uri) {
+    const { MongoMemoryServer } = require('mongodb-memory-server');
+    mongod = await MongoMemoryServer.create();
+    uri = mongod.getUri();
+  }
+  await mongoose.connect(uri);
   console.log('  ✔ Connected to MongoDB');
 
   const unique = Date.now();
@@ -328,6 +336,7 @@ async function runBuilderAndRegistrySuite() {
     }
     if (testUser) await User.deleteOne({ _id: testUser._id }).catch(() => null);
     await mongoose.disconnect();
+    if (mongod) await mongod.stop();
     console.log('  ✔ Test database connections and fixtures cleaned up safely.');
   }
 }
