@@ -69,6 +69,10 @@
       "category": "core",
       "reason": "Automation execution deep checks"
     },
+    "automation_e2e_verification.test.js": {
+      "category": "core",
+      "reason": "Comprehensive end-to-end verification of all triggers, conditions, and actions"
+    },
     "automations_engine.test.js": {
       "category": "core",
       "reason": "Automation engine trigger and action flows"

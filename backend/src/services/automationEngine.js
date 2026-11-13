@@ -454,11 +454,12 @@ class AutomationEngine {
     phone,
     text = '',
     messageText,
+    message,
     channel = 'baileys',
     metaPhoneNumberId = null,
   }) {
     if (!phone) return null;
-    const rawContent = text || messageText || '';
+    const rawContent = text || messageText || message || '';
     const cleanText = String(rawContent).trim();
     const cleanLowerText = cleanText.toLowerCase();
     const cleanPhone = phone.replace(/\D/g, '');
@@ -1180,7 +1181,7 @@ class AutomationEngine {
         }
 
         // Move Stage
-        const stageTarget = config.newStage || rule.actionConfig?.newStage;
+        const stageTarget = config.newStage || config.targetStage || rule.actionConfig?.newStage || rule.actionConfig?.targetStage;
         if (stageTarget && String(stageTarget).trim()) {
           const oldStage = lead.status;
           lead.status = String(stageTarget).trim();
