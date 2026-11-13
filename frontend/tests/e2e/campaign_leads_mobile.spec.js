@@ -124,8 +124,8 @@ test.describe('Stage 3: Campaign Leads Mobile Viewport & Unified Experience', ()
 
     // 2. Verify Stats Cards Grid
     await expect(page.locator('text=Total Leads')).toBeVisible();
-    await expect(page.locator('text=2').first()).toBeVisible(); // total leads
-    await expect(page.locator('text=Assigned')).toBeVisible();
+    await expect(page.locator('div:has(> div > span:text-is("Total Leads"))').getByText('2', { exact: true })).toBeVisible(); // total leads
+    await expect(page.getByText('Assigned', { exact: true })).toBeVisible();
     await expect(page.locator('text=Conversion Rate')).toBeVisible();
     await expect(page.locator('text=50.0%')).toBeVisible();
 
