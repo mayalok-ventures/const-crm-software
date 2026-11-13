@@ -114,7 +114,7 @@ export default function LoginPage() {
       setAuth(data, data.token);
       toast.success(`Welcome back, ${data.name}! 👋`);
       if (data.role === 'superadmin') {
-        router.replace('/superadmin-dashboard');
+        router.replace('/admin');
       } else {
         router.replace('/dashboard');
       }
@@ -152,7 +152,7 @@ export default function LoginPage() {
       setAuth(data, data.token);
       toast.success(`Security check passed! Welcome, ${data.name}! 🚀`);
       if (data.role === 'superadmin') {
-        router.replace('/superadmin-dashboard');
+        router.replace('/admin');
       } else {
         router.replace('/dashboard');
       }

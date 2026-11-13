@@ -245,6 +245,9 @@ describe('SuperAdmin Platform Security, Endpoints & Index Benchmark', () => {
 
   describe('4. Explain() Index Benchmarks (10k Tenants & 100k Leads)', () => {
     beforeAll(async () => {
+      await User.createIndexes();
+      await Lead.createIndexes();
+
       // Fast batch insertion for 10,000 tenants
       console.log('Seeding 10,000 tenants for explain() benchmark...');
       const tenantDocs = [];

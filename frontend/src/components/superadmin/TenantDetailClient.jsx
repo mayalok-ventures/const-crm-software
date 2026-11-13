@@ -118,7 +118,7 @@ export default function TenantDetailClient() {
     return (
       <div className="flex h-screen w-full flex-col items-center justify-center bg-[#070b14] text-white p-4">
         <div className="text-sm font-bold text-slate-300">Organisation record not found.</div>
-        <Link href="/superadmin-dashboard?tab=organisations" className="mt-4 text-xs text-amber-400 underline">
+        <Link href="/admin?tab=organisations" className="mt-4 text-xs text-amber-400 underline">
           Return to Organisations Roster
         </Link>
       </div>
@@ -134,7 +134,7 @@ export default function TenantDetailClient() {
     <div className="min-h-screen bg-[#070b14] text-slate-100 p-3 sm:p-4 md:p-8 space-y-6 max-w-6xl mx-auto pb-mobile-nav">
       {/* Back link */}
       <Link
-        href="/superadmin-dashboard?tab=organisations"
+        href="/admin?tab=organisations"
         className="inline-flex items-center gap-2 text-xs text-slate-400 hover:text-white transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />

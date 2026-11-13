@@ -132,12 +132,12 @@ export default function SuperAdminSidebar({
       {/* Footer Switcher */}
       <div className="p-3 border-t border-slate-800/80 bg-[#050811] shrink-0 space-y-2">
         <Link
-          href="/admin"
+          href="/dashboard"
           className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-300 text-[11px] font-medium transition-colors"
         >
           <span className="flex items-center gap-2 truncate">
             <Building2 className="w-3.5 h-3.5 text-blue-400" />
-            <span>Org Admin CRM</span>
+            <span>Tenant CRM Workspace</span>
           </span>
           <ArrowUpRight className="w-3 h-3 text-slate-300 shrink-0" />
         </Link>

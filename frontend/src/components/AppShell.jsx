@@ -15,6 +15,7 @@ const STANDALONE_ROUTES = [
   '/terms',
   '/data-deletion',
   '/share',
+  '/admin',
   '/superadmin-dashboard',
 ];
 

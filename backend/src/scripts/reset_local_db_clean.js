@@ -36,14 +36,14 @@ async function resetCleanLocal() {
   // 2. Ensure SuperAdmin exists
   await User.deleteMany({ role: { $ne: 'superadmin' } });
   await seedSuperAdmin();
-  console.log('👑 Single SuperAdmin Account Seeded: admin@crm.com / Admin@123');
+  console.log('👑 Single SuperAdmin Account Seeded: superadmin@sahyak.com / Kunalxca2026@');
 
   // 3. Ensure Subscription Plans exist
   await seedPlans();
   console.log('💳 Standardized 12 Subscription Plans Seeded.');
 
   // 4. Create default connected Meta & Google Integration in local DB for testing
-  const adminUser = await User.findOne({ email: 'admin@crm.com' }) || await User.findOne();
+  const adminUser = await User.findOne({ email: 'superadmin@sahyak.com' }) || await User.findOne({ role: 'superadmin' }) || await User.findOne();
   if (adminUser) {
     await Integration.create({
       userId: adminUser._id,

@@ -71,7 +71,7 @@ function SignupForm() {
       setAuth(data, data.token);
       toast.success(`Account registered! Welcome, ${data.name} 🎉`);
       if (data.role === 'superadmin') {
-        router.replace('/superadmin-dashboard');
+        router.replace('/admin');
       } else {
         router.replace('/dashboard');
       }

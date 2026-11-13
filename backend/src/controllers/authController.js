@@ -155,7 +155,7 @@ exports.register = async (req, res) => {
     setImmediate(async () => {
       try {
         const superAdmin = await User.findOne({
-          $or: [{ role: 'superadmin' }, { isAdmin: true }, { email: 'admin@crm.com' }]
+          $or: [{ role: 'superadmin' }, { isAdmin: true }, { email: 'superadmin@sahyak.com' }, { email: 'admin@crm.com' }]
         }).lean();
 
         if (superAdmin && String(superAdmin._id) !== String(user._id)) {
