@@ -62,7 +62,11 @@ export default function FeeInstallmentsCard({
   };
 
   useEffect(() => {
-    fetchInstallments();
+    let active = true;
+    Promise.resolve().then(() => {
+      if (active) fetchInstallments();
+    });
+    return () => { active = false; };
   }, [leadId]);
 
   const handleCreateInstallment = async (e) => {

@@ -54,12 +54,18 @@ export default function LeadsContent({
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    setUser(getUser());
+    let active = true;
+    Promise.resolve().then(() => {
+      if (active) setUser(getUser());
+    });
     const handleUserUpdate = () => {
-      setUser(getUser());
+      if (active) setUser(getUser());
     };
     window.addEventListener('user-updated', handleUserUpdate);
-    return () => window.removeEventListener('user-updated', handleUserUpdate);
+    return () => {
+      active = false;
+      window.removeEventListener('user-updated', handleUserUpdate);
+    };
   }, []);
 
   const [allFollowUps, setAllFollowUps] = useState([]);
@@ -107,7 +113,7 @@ export default function LeadsContent({
 
   useEffect(() => {
     if (initialCampaignId || initialCampaignName) {
-      setCampaignFilter(initialCampaignId || initialCampaignName);
+      Promise.resolve().then(() => setCampaignFilter(initialCampaignId || initialCampaignName));
     }
   }, [initialCampaignId, initialCampaignName]);
 
@@ -205,7 +211,7 @@ export default function LeadsContent({
       router.replace('/login');
       return;
     }
-    setUser(u);
+    Promise.resolve().then(() => setUser(u));
   }, [router]);
 
   // Format Indian Currency
@@ -245,7 +251,7 @@ export default function LeadsContent({
   useEffect(() => {
     if (!isComponentActive) return;
     if (searchParams?.get('action') === 'create') {
-      setShowAddModal(true);
+      Promise.resolve().then(() => setShowAddModal(true));
     }
   }, [searchParams, isComponentActive]);
 
@@ -335,8 +341,10 @@ export default function LeadsContent({
 
   // Reset selection on filter or page change to prevent inadvertent operations
   useEffect(() => {
-    setSelectedLeadIds([]);
-    setSelectAllFiltered(false);
+    Promise.resolve().then(() => {
+      setSelectedLeadIds([]);
+      setSelectAllFiltered(false);
+    });
   }, [
     statusFilter, tempFilter, sourceFilter, streamFilter, locationFilter,
     platformFilter, connectionFilter, campaignFilter, assignedToFilter,

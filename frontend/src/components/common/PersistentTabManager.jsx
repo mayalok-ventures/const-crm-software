@@ -19,12 +19,18 @@ export default function PersistentTabManager({ children }) {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    setUser(getUser());
+    let active = true;
+    Promise.resolve().then(() => {
+      if (active) setUser(getUser());
+    });
     const handleUserUpdate = () => {
-      setUser(getUser());
+      if (active) setUser(getUser());
     };
     window.addEventListener('user-updated', handleUserUpdate);
-    return () => window.removeEventListener('user-updated', handleUserUpdate);
+    return () => {
+      active = false;
+      window.removeEventListener('user-updated', handleUserUpdate);
+    };
   }, []);
 
   // Feature Flag: enabled by default; can be disabled with NEXT_PUBLIC_PERSISTENT_TABS === 'false'
@@ -36,9 +42,17 @@ export default function PersistentTabManager({ children }) {
 
   const [optimisticTab, setOptimisticTab] = useState(null);
 
+  // Mount only on-demand when the user first visits the tab
+  const [visitedTabs, setVisitedTabs] = useState(() => {
+    const initial = new Set();
+    if (isLeadsTab) initial.add('leads');
+    if (isPipelineTab) initial.add('pipeline');
+    return initial;
+  });
+
   // Sync optimistic tab when Next.js pathname updates
   useEffect(() => {
-    setOptimisticTab(null);
+    Promise.resolve().then(() => setOptimisticTab(null));
   }, [cleanPath]);
 
   // Support instant 0ms back/forward navigation between warm tabs
@@ -79,20 +93,17 @@ export default function PersistentTabManager({ children }) {
   const isEffectivePipeline = isPipelineTab || (optimisticTab === 'pipeline' && (cleanPath === '/' || cleanPath === '/leads' || cleanPath === '/pipeline'));
   const isPersistentModule = isEffectiveLeads || isEffectivePipeline;
 
-  // Mount only on-demand when the user first visits the tab
-  const [visitedTabs, setVisitedTabs] = useState(() => {
-    const initial = new Set();
-    if (isLeadsTab) initial.add('leads');
-    if (isPipelineTab) initial.add('pipeline');
-    return initial;
-  });
-
   useEffect(() => {
-    if (isLeadsTab) {
-      setVisitedTabs((prev) => (prev.has('leads') ? prev : new Set(prev).add('leads')));
-    } else if (isPipelineTab) {
-      setVisitedTabs((prev) => (prev.has('pipeline') ? prev : new Set(prev).add('pipeline')));
-    }
+    let active = true;
+    Promise.resolve().then(() => {
+      if (!active) return;
+      if (isLeadsTab) {
+        setVisitedTabs((prev) => (prev.has('leads') ? prev : new Set(prev).add('leads')));
+      } else if (isPipelineTab) {
+        setVisitedTabs((prev) => (prev.has('pipeline') ? prev : new Set(prev).add('pipeline')));
+      }
+    });
+    return () => { active = false; };
   }, [isLeadsTab, isPipelineTab]);
 
   // Strict tenant boundary: Changing workspace or user unmounts and purges persistent state

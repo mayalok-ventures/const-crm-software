@@ -31,8 +31,10 @@ function QuickActionContent() {
 
   useEffect(() => {
     if (!token) {
-      setError('Missing quick-action authentication token. Please open from a notification or check link.');
-      setLoading(false);
+      Promise.resolve().then(() => {
+        setError('Missing quick-action authentication token. Please open from a notification or check link.');
+        setLoading(false);
+      });
       return;
     }
 
@@ -195,7 +197,7 @@ function QuickActionContent() {
           </div>
           <div className="text-slate-400 flex items-center gap-1.5 pt-0.5">
             <MessageSquare className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-            <span className="truncate italic">"{followUp?.note || 'Follow-up call'}"</span>
+            <span className="truncate italic">&ldquo;{followUp?.note || 'Follow-up call'}&rdquo;</span>
           </div>
         </div>
 

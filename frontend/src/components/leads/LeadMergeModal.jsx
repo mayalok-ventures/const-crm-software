@@ -31,9 +31,13 @@ export default function LeadMergeModal({
   useEffect(() => {
     if (!isOpen || !lead?._id) return;
     let isMounted = true;
-    setLoadingCandidates(true);
-    setSelectedSecondaryId('');
-    setPreviewData(null);
+    Promise.resolve().then(() => {
+      if (isMounted) {
+        setLoadingCandidates(true);
+        setSelectedSecondaryId('');
+        setPreviewData(null);
+      }
+    });
 
     api.get(`/leads/${lead._id}/duplicate-candidates`)
       .then((res) => {
@@ -60,12 +64,14 @@ export default function LeadMergeModal({
   // Fetch Dry-Run Preview when secondary lead or fieldChoices change
   useEffect(() => {
     if (!isOpen || !lead?._id || !selectedSecondaryId) {
-      setPreviewData(null);
+      Promise.resolve().then(() => setPreviewData(null));
       return;
     }
 
     let isMounted = true;
-    setLoadingPreview(true);
+    Promise.resolve().then(() => {
+      if (isMounted) setLoadingPreview(true);
+    });
 
     api.post('/leads/merge?dryRun=true', {
       primaryLeadId: lead._id,

@@ -57,7 +57,7 @@ function BottomNavContent({ active }) {
   const isModifiedEvent = (e) => Boolean(e?.metaKey || e?.altKey || e?.ctrlKey || e?.shiftKey || (e?.button && e?.button !== 0));
 
   useEffect(() => {
-    setOptimisticActive(null);
+    Promise.resolve().then(() => setOptimisticActive(null));
   }, [pathname, active]);
 
   useEffect(() => {
@@ -193,10 +193,12 @@ function BottomNavContent({ active }) {
   }, []);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('sidebar-collapsed');
-      if (saved) setIsCollapsed(JSON.parse(saved));
-    } catch { }
+    Promise.resolve().then(() => {
+      try {
+        const saved = localStorage.getItem('sidebar-collapsed');
+        if (saved) setIsCollapsed(JSON.parse(saved));
+      } catch { }
+    });
   }, []);
 
   useEffect(() => {

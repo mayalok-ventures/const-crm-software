@@ -147,18 +147,6 @@ export default function CollegeDetailClient() {
     quotaType: 'management_quota',
   });
 
-  useEffect(() => {
-    const updateAuth = () => {
-      setUser(getUser());
-    };
-    updateAuth();
-    window.addEventListener('user-updated', updateAuth);
-    if (collegeId && collegeId !== 'placeholder') {
-      loadCollegeDetails();
-    }
-    return () => window.removeEventListener('user-updated', updateAuth);
-  }, [collegeId]);
-
   const loadCollegeDetails = async (isManual = false) => {
     if (!college && !isManual) setLoading(true);
     try {
@@ -211,6 +199,18 @@ export default function CollegeDetailClient() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const updateAuth = () => {
+      setUser(getUser());
+    };
+    updateAuth();
+    window.addEventListener('user-updated', updateAuth);
+    if (collegeId && collegeId !== 'placeholder') {
+      loadCollegeDetails();
+    }
+    return () => window.removeEventListener('user-updated', updateAuth);
+  }, [collegeId]);
 
   // Group Courses into Degrees Hierarchy
   const degreesGrouped = useMemo(() => {

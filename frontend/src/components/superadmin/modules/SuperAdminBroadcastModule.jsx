@@ -13,42 +13,41 @@ export default function SuperAdminBroadcastModule() {
   const [sending, setSending] = useState(false);
   const [audienceCount, setAudienceCount] = useState(null);
   const [broadcasts, setBroadcasts] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(true);
 
   // Fetch Audience Count dynamically
-  const fetchAudienceCount = useCallback(async (target) => {
-    try {
-      const res = await api.get(`/super-admin/broadcasts/audience-count?targetAudience=${target}`);
-      if (res.data?.success) {
-        setAudienceCount(res.data.count);
+  useEffect(() => {
+    let isSubscribed = true;
+    (async () => {
+      try {
+        const res = await api.get(`/super-admin/broadcasts/audience-count?targetAudience=${targetAudience}`);
+        if (isSubscribed && res.data?.success) {
+          setAudienceCount(res.data.count);
+        }
+      } catch {
+        if (isSubscribed) setAudienceCount(null);
       }
-    } catch {
-      setAudienceCount(null);
-    }
-  }, []);
+    })();
+    return () => { isSubscribed = false; };
+  }, [targetAudience]);
 
   // Fetch Broadcast History
-  const fetchHistory = useCallback(async () => {
-    setLoadingHistory(true);
-    try {
-      const res = await api.get('/super-admin/broadcasts');
-      if (res.data?.success) {
-        setBroadcasts(res.data.broadcasts || []);
+  useEffect(() => {
+    let isSubscribed = true;
+    (async () => {
+      try {
+        const res = await api.get('/super-admin/broadcasts');
+        if (isSubscribed && res.data?.success) {
+          setBroadcasts(res.data.broadcasts || []);
+        }
+      } catch (err) {
+        console.warn('Failed to load broadcasts:', err);
+      } finally {
+        if (isSubscribed) setLoadingHistory(false);
       }
-    } catch (err) {
-      console.warn('Failed to load broadcasts:', err);
-    } finally {
-      setLoadingHistory(false);
-    }
+    })();
+    return () => { isSubscribed = false; };
   }, []);
-
-  useEffect(() => {
-    fetchAudienceCount(targetAudience);
-  }, [targetAudience, fetchAudienceCount]);
-
-  useEffect(() => {
-    fetchHistory();
-  }, [fetchHistory]);
 
   const handleSend = async (e) => {
     e.preventDefault();

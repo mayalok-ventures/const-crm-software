@@ -34,8 +34,12 @@ export default function LeadTimelineDrawer({
     if (!isOpen || !leadId) return;
 
     let isMounted = true;
-    setLoading(true);
-    setError(null);
+    Promise.resolve().then(() => {
+      if (isMounted) {
+        setLoading(true);
+        setError(null);
+      }
+    });
 
     api.get(`/leads/${leadId}/timeline`)
       .then((res) => {

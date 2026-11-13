@@ -45,13 +45,20 @@ export default function NotificationsPage() {
   }, []);
 
   useEffect(() => {
-    const supported = isPushSupported();
-    setPushSupported(supported);
-    if (supported) {
-      setPermissionState(getPushPermissionState());
-      checkIsPushSubscribed().then(setPushSubscribed);
-      fetchHealth();
-    }
+    let active = true;
+    Promise.resolve().then(() => {
+      if (!active) return;
+      const supported = isPushSupported();
+      setPushSupported(supported);
+      if (supported) {
+        setPermissionState(getPushPermissionState());
+        checkIsPushSubscribed().then((sub) => {
+          if (active) setPushSubscribed(sub);
+        });
+        fetchHealth();
+      }
+    });
+    return () => { active = false; };
   }, [fetchHealth]);
 
   const handleTogglePush = async () => {
@@ -265,11 +272,11 @@ export default function NotificationsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px] text-slate-600">
                     <div className="p-2.5 rounded-lg bg-white border border-slate-200">
                       <strong className="text-slate-800 block mb-1">Android (Chrome / Edge)</strong>
-                      <span>If permission is blocked: Tap the padlock icon next to the URL in the address bar &rarr; Permissions &rarr; Notifications &rarr; Set to "Allow".</span>
+                      <span>If permission is blocked: Tap the padlock icon next to the URL in the address bar &rarr; Permissions &rarr; Notifications &rarr; Set to &quot;Allow&quot;.</span>
                     </div>
                     <div className="p-2.5 rounded-lg bg-white border border-slate-200">
                       <strong className="text-slate-800 block mb-1">iOS (iPhone 16.4+)</strong>
-                      <span>Apple requires PWA installation: 1. Tap Safari Share (square with arrow) &rarr; 2. Tap "Add to Home Screen" &rarr; 3. Open CRM from Home Screen to enable Push.</span>
+                      <span>Apple requires PWA installation: 1. Tap Safari Share (square with arrow) &rarr; 2. Tap &quot;Add to Home Screen&quot; &rarr; 3. Open CRM from Home Screen to enable Push.</span>
                     </div>
                     <div className="p-2.5 rounded-lg bg-white border border-slate-200">
                       <strong className="text-slate-800 block mb-1">Desktop (Windows / Mac)</strong>

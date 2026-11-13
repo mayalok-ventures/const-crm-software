@@ -121,10 +121,18 @@ export default function FormsModule({
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
-    setCurrentUser(getUser());
-    const handleUserUpdate = () => setCurrentUser(getUser());
+    let active = true;
+    Promise.resolve().then(() => {
+      if (active) setCurrentUser(getUser());
+    });
+    const handleUserUpdate = () => {
+      if (active) setCurrentUser(getUser());
+    };
     window.addEventListener('user-updated', handleUserUpdate);
-    return () => window.removeEventListener('user-updated', handleUserUpdate);
+    return () => {
+      active = false;
+      window.removeEventListener('user-updated', handleUserUpdate);
+    };
   }, []);
   const canManage = hasPermission(currentUser, 'forms.manage');
 
@@ -459,7 +467,7 @@ export default function FormsModule({
                         </div>
                         <div className="text-[11px] text-slate-400 font-mono mt-0.5 flex items-center gap-2">
                           <span>key: {field.fieldId}</span>
-                          {field.placeholder && <span>• "{field.placeholder}"</span>}
+                          {field.placeholder && <span>• &ldquo;{field.placeholder}&rdquo;</span>}
                           {field.helpText && <span>• {field.helpText}</span>}
                         </div>
                       </div>

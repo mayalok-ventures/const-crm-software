@@ -42,18 +42,9 @@ export const clearAuth = () => {
       });
     } catch (_) {}
     window.dispatchEvent(new CustomEvent('user-updated', { detail: null }));
-    try {
-      const { clearAllQueryCache } = require('@/components/Providers');
-      if (clearAllQueryCache) clearAllQueryCache();
-    } catch (_) {}
-    try {
-      const { clearAllQueryCache: clearApiCache } = require('@/lib/api');
-      if (clearApiCache) clearApiCache();
-    } catch (_) {}
-    try {
-      const { clearAllLocalClientStorage } = require('@/lib/db');
-      if (clearAllLocalClientStorage) clearAllLocalClientStorage();
-    } catch (_) {}
+    import('@/components/Providers').then((m) => m?.clearAllQueryCache?.()).catch(() => {});
+    import('@/lib/api').then((m) => m?.clearAllQueryCache?.()).catch(() => {});
+    import('@/lib/db').then((m) => m?.clearAllLocalClientStorage?.()).catch(() => {});
   }
 };
 

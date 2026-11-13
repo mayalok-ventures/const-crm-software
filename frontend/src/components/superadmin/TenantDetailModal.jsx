@@ -18,14 +18,16 @@ export default function TenantDetailModal({
   onPlanUpdated = null,
 }) {
   const [activeSubTab, setActiveSubTab] = useState('overview'); // overview, users, leads, subscription, integrations, audit
-  const [targetPlan, setTargetPlan] = useState('free');
-  const [targetBillingCycle, setTargetBillingCycle] = useState('monthly');
+  const [targetPlan, setTargetPlan] = useState(tenantData?.organisation?.owner?.plan || 'free');
+  const [targetBillingCycle, setTargetBillingCycle] = useState(tenantData?.organisation?.owner?.billingCycle || 'monthly');
   const [targetDuration, setTargetDuration] = useState('30');
   const [planReason, setPlanReason] = useState('');
   const [submittingPlan, setSubmittingPlan] = useState(false);
+  const [currentPlanOverride, setCurrentPlanOverride] = useState(null);
 
   // User Actions State (Ban, Unban, Remove from Org, Permanently Delete)
   const [actionLoading, setActionLoading] = useState(false);
+  const [userOverrides, setUserOverrides] = useState({});
   const [modalAction, setModalAction] = useState({
     type: null, // 'ban' | 'unban' | 'remove' | 'delete'
     user: null,
@@ -52,42 +54,40 @@ export default function TenantDetailModal({
         });
         if (res.data?.success) {
           toast.success(res.data.message || 'User banned successfully');
-          if (tenantData?.users?.all) {
-            tenantData.users.all = tenantData.users.all.map((u) =>
-              u._id === userId ? { ...u, isActive: false, userStatus: 'banned', suspension: { isSuspended: true } } : u
-            );
-          }
+          setUserOverrides((prev) => ({
+            ...prev,
+            [userId]: { isActive: false, userStatus: 'banned', isSuspended: true },
+          }));
           setModalAction({ type: null, user: null, reason: '', confirmText: '' });
         }
       } else if (modalAction.type === 'unban') {
         const res = await api.post(`/super-admin/users/${userId}/unban`);
         if (res.data?.success) {
           toast.success(res.data.message || 'User unbanned successfully');
-          if (tenantData?.users?.all) {
-            tenantData.users.all = tenantData.users.all.map((u) =>
-              u._id === userId ? { ...u, isActive: true, userStatus: 'active', suspension: { isSuspended: false } } : u
-            );
-          }
+          setUserOverrides((prev) => ({
+            ...prev,
+            [userId]: { isActive: true, userStatus: 'active', isSuspended: false },
+          }));
           setModalAction({ type: null, user: null, reason: '', confirmText: '' });
         }
       } else if (modalAction.type === 'remove') {
         const res = await api.delete(`/super-admin/organisations/${orgId}/users/${userId}`);
         if (res.data?.success) {
           toast.success(res.data.message || 'User removed from organisation');
-          if (tenantData?.users?.all) {
-            tenantData.users.all = tenantData.users.all.filter((u) => u._id !== userId);
-            if (tenantData.users.total) tenantData.users.total -= 1;
-          }
+          setUserOverrides((prev) => ({
+            ...prev,
+            [userId]: { deleted: true },
+          }));
           setModalAction({ type: null, user: null, reason: '', confirmText: '' });
         }
       } else if (modalAction.type === 'delete') {
         const res = await api.delete(`/super-admin/users/${userId}`);
         if (res.data?.success) {
           toast.success(res.data.message || 'User permanently deleted');
-          if (tenantData?.users?.all) {
-            tenantData.users.all = tenantData.users.all.filter((u) => u._id !== userId);
-            if (tenantData.users.total) tenantData.users.total -= 1;
-          }
+          setUserOverrides((prev) => ({
+            ...prev,
+            [userId]: { deleted: true },
+          }));
           setModalAction({ type: null, user: null, reason: '', confirmText: '' });
         }
       }
@@ -97,15 +97,6 @@ export default function TenantDetailModal({
       setActionLoading(false);
     }
   };
-
-  useEffect(() => {
-    if (tenantData?.organisation?.owner?.plan) {
-      setTargetPlan(tenantData.organisation.owner.plan);
-    }
-    if (tenantData?.organisation?.owner?.billingCycle) {
-      setTargetBillingCycle(tenantData.organisation.owner.billingCycle);
-    }
-  }, [tenantData]);
 
   const handlePlanOverrideSubmit = async (e) => {
     e.preventDefault();
@@ -123,10 +114,7 @@ export default function TenantDetailModal({
 
       if (res.data.success) {
         toast.success(`Plan updated to ${targetPlan.toUpperCase()} successfully! 🚀`);
-        if (tenantData.organisation?.owner) {
-          tenantData.organisation.owner.plan = targetPlan;
-          tenantData.organisation.owner.billingCycle = targetBillingCycle;
-        }
+        setCurrentPlanOverride(targetPlan);
         if (onPlanUpdated) {
           onPlanUpdated(tenantId, targetPlan);
         }
@@ -286,65 +274,71 @@ export default function TenantDetailModal({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                    {(users.all || []).map((u) => {
-                      const isBanned = u.userStatus === 'banned' || u.suspension?.isSuspended;
-                      return (
-                        <tr key={u._id} className="hover:bg-slate-900/40">
-                          <td className="px-3 py-2 font-medium text-white">{u.name}</td>
-                          <td className="px-3 py-2">
-                            <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                              {u.role.toUpperCase()}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 font-mono text-[11px]">{u.email || u.phone}</td>
-                          <td className="px-3 py-2">
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                              isBanned
-                                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                                : u.isActive
-                                ? 'text-emerald-400'
-                                : 'text-slate-400'
-                            }`}>
-                              {isBanned ? 'Banned' : u.isActive ? 'Active' : 'Disabled'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              {/* Ban / Unban */}
-                              <button
-                                onClick={() => setModalAction({ type: isBanned ? 'unban' : 'ban', user: u, reason: '', confirmText: '' })}
-                                title={isBanned ? 'Unban User' : 'Ban User'}
-                                className={`p-1.5 rounded text-xs transition-colors ${
-                                  isBanned
-                                    ? 'text-rose-400 hover:bg-rose-500/10'
-                                    : 'text-slate-400 hover:text-amber-400 hover:bg-amber-500/10'
-                                }`}
-                              >
-                                <Ban className="w-3.5 h-3.5" />
-                              </button>
+                    {(users.all || [])
+                      .filter((u) => !userOverrides[u._id]?.deleted)
+                      .map((u) => {
+                        const override = userOverrides[u._id];
+                        const isBanned = override
+                          ? override.isSuspended || override.userStatus === 'banned'
+                          : u.userStatus === 'banned' || u.suspension?.isSuspended;
+                        const isActive = override !== undefined ? override.isActive : u.isActive;
+                        return (
+                          <tr key={u._id} className="hover:bg-slate-900/40">
+                            <td className="px-3 py-2 font-medium text-white">{u.name}</td>
+                            <td className="px-3 py-2">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                {u.role.toUpperCase()}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 font-mono text-[11px]">{u.email || u.phone}</td>
+                            <td className="px-3 py-2">
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                isBanned
+                                  ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                  : isActive
+                                  ? 'text-emerald-400'
+                                  : 'text-slate-400'
+                              }`}>
+                                {isBanned ? 'Banned' : isActive ? 'Active' : 'Disabled'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {/* Ban / Unban */}
+                                <button
+                                  onClick={() => setModalAction({ type: isBanned ? 'unban' : 'ban', user: u, reason: '', confirmText: '' })}
+                                  title={isBanned ? 'Unban User' : 'Ban User'}
+                                  className={`p-1.5 rounded text-xs transition-colors ${
+                                    isBanned
+                                      ? 'text-rose-400 hover:bg-rose-500/10'
+                                      : 'text-slate-400 hover:text-amber-400 hover:bg-amber-500/10'
+                                  }`}
+                                >
+                                  <Ban className="w-3.5 h-3.5" />
+                                </button>
 
-                              {/* Remove from Org */}
-                              <button
-                                onClick={() => setModalAction({ type: 'remove', user: u, reason: '', confirmText: '' })}
-                                title="Remove User from Organisation"
-                                className="p-1.5 rounded text-xs text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                              >
-                                <UserX className="w-3.5 h-3.5" />
-                              </button>
+                                {/* Remove from Org */}
+                                <button
+                                  onClick={() => setModalAction({ type: 'remove', user: u, reason: '', confirmText: '' })}
+                                  title="Remove User from Organisation"
+                                  className="p-1.5 rounded text-xs text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                                >
+                                  <UserX className="w-3.5 h-3.5" />
+                                </button>
 
-                              {/* Permanently Delete User */}
-                              <button
-                                onClick={() => setModalAction({ type: 'delete', user: u, reason: '', confirmText: '' })}
-                                title="Permanently Delete User"
-                                className="p-1.5 rounded text-xs text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                                {/* Permanently Delete User */}
+                                <button
+                                  onClick={() => setModalAction({ type: 'delete', user: u, reason: '', confirmText: '' })}
+                                  title="Permanently Delete User"
+                                  className="p-1.5 rounded text-xs text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>
@@ -365,7 +359,7 @@ export default function TenantDetailModal({
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
                   <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
                     <span className="text-[10px] text-slate-400 block">Active Plan Code</span>
-                    <span className="text-xs font-bold text-amber-400 font-mono mt-0.5 block">{org.owner?.plan || 'free'}</span>
+                    <span className="text-xs font-bold text-amber-400 font-mono mt-0.5 block">{currentPlanOverride || org.owner?.plan || 'free'}</span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
                     <span className="text-[10px] text-slate-400 block">Billing Cycle</span>
