@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { STAGE_LABELS } from '@/components/LeadModals';
+import { formatDisplayDateTime } from '@/lib/dateUtils';
 
 const ScheduleFollowUpModal = dynamic(() => import('@/components/LeadModals').then(m => m.ScheduleFollowUpModal), { ssr: false });
 const CompleteFollowUpModal = dynamic(() => import('@/components/LeadModals').then(m => m.CompleteFollowUpModal), { ssr: false });

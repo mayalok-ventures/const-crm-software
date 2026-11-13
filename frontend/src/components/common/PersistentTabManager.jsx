@@ -16,9 +16,10 @@ import PipelineContent from '@/components/pipeline/PipelineContent';
  */
 export default function PersistentTabManager({ children }) {
   const pathname = usePathname();
-  const [user, setUser] = useState(() => getUser());
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
+    setUser(getUser());
     const handleUserUpdate = () => {
       setUser(getUser());
     };

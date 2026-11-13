@@ -118,9 +118,10 @@ export default function FormsModule({
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [loadingSchemas, setLoadingSchemas] = useState(true);
   const [previewValues, setPreviewValues] = useState({});
-  const [currentUser, setCurrentUser] = useState(() => getUser());
+  const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
+    setCurrentUser(getUser());
     const handleUserUpdate = () => setCurrentUser(getUser());
     window.addEventListener('user-updated', handleUserUpdate);
     return () => window.removeEventListener('user-updated', handleUserUpdate);

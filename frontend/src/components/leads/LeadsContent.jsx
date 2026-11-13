@@ -51,17 +51,10 @@ export default function LeadsContent({
   const [internalTab, setInternalTab] = useState(defaultTab);
   const activeTab = embedded ? internalTab : defaultTab;
 
-  const [user, setUser] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const u = localStorage.getItem('user');
-        return u ? JSON.parse(u) : null;
-      } catch (e) {}
-    }
-    return null;
-  });
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
+    setUser(getUser());
     const handleUserUpdate = () => {
       setUser(getUser());
     };
