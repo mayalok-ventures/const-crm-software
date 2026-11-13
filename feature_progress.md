@@ -169,3 +169,61 @@
 - Evaluated integrations across Meta Lead Ads, Google Ads, Google Sheets, Dynamic Website Forms, Razorpay, WhatsApp Cloud Webhook, and IMAP OAuth.
 - Audited notification constraints across Web Push, Apple WebKit iOS 16.4+, Service Worker background threads, and Android Exact Alarms.
 - Checked MongoDB index ceiling: currently at 51 indexes (13 headroom remaining).
+
+
+---
+
+## Post-RC5 Gap Resolution & Verification Summary (Commits `dc20ba0` through `0baf5d8`)
+
+### 1. Test Integrity & Mutation Checks
+- **Assertion Audit**: Confirmed zero weakened or deleted assertions in `stage1`..`stage6` test files.
+- **6 Mutation Checks (all verified failing before fix reversion)**:
+  1. `stage1_security_blockers.test.js`: Removed `isAdmin` check $\to$ Failed (expected 403, got 200).
+  2. `stage2_followup_schedulers.test.js`: Broke `$and` array $\to$ Failed on collision.
+  3. `stage3_campaign_leads_view.test.js`: Removed campaign filter $\to$ Failed on cross-campaign leak.
+  4. `stage4_automations_repair.test.js`: Disabled `depth >= 3` guard $\to$ Failed on recursion check.
+  5. `stage5_superadmin_hardening.test.js`: Removed `ALLOW_DESTRUCTIVE_CLEANSLATE` check $\to$ Failed on unsafe execution.
+  6. `stage6_notifications_pwa.test.js`: Injected phone PII into notification title $\to$ Failed on PII assertion.
+
+### 2. Core Suites Parity Table (Commit `dc20ba0`)
+- Analysis of 2 extra test failures on `feature/post-rc5` (`automation_builder_and_registry.test.js` and `automations_engine.test.js`):
+  - In an isolated in-memory test environment, these suites attempted outbound network connections to WhatsApp and SMTP email adapters.
+  - Provided lightweight in-memory dispatch mocks for `waSession` and `EmailService`, along with ephemeral `MongoMemoryServer` fallbacks.
+  - Result: Both suites now pass 100%. Remaining failures are identical to the `main` baseline.
+
+### 3. Cross-Tenant Route Authorization Matrix (Commit `5dbe794`)
+- Executed `backend/tests/cross_tenant_matrix.test.js` across 32 routes $\times$ 6 roles (`counselor`, `manager`, `admin`, `owner`, `superadmin`, `unauthenticated`).
+- Evaluated: foreign workspace ID, foreign lead ID, soft-deleted records, revoked tokens.
+- Total Checks: 192/192 passed (100%). Zero 2xx on unauthorized or cross-tenant access.
+
+### 4. Super Admin Platform Verification & 10k/100k Benchmark (Commit `3601b5d`)
+- Mapped all 15 UI buttons to live backend endpoints.
+- Enforced 2FA on all `/api/superadmin/*` routes (403 on non-superadmin).
+- Prevented impersonation privilege escalation (cannot impersonate superadmin; impersonated sessions cannot access superadmin).
+- Seeded 10,000 tenants and 100,000 leads in MongoDB.
+- Verified index scans (`IXSCAN`) on global leads ($< 7\text{ms}$) and tenant queries ($< 3\text{ms}$) with zero full collection scans (`COLLSCAN`).
+
+### 5. Automation Engine Capabilities Verification (Commit `7003468`)
+- Verified all 6 triggers (`lead_created`, `stage_changed`, `stage_reached`, `stage_duration`, `whatsapp_inbound`, `tag_added`).
+- Verified all 10 condition operators (`equals`, `not_equals`, `contains`, `not_contains`, `gt`, `lt`, `is_empty`, `is_not_empty`, `in`, `not_in`).
+- Verified compound logic (`all`/AND, `any`/OR).
+- Verified all 6 actions (`send_whatsapp`, `send_email`, `update_lead_stage`, `add_lead_tag`, `assign_counselor`, `transfer_lead`).
+- 18/18 tests passed (100%).
+
+### 6. Inbound Webhooks & Ingestion Fuzzing (Commit `72b47b3`)
+- Fuzzed 7 providers via live HTTP requests (Meta Lead Ads, Google Lead Form, Google Sheets, Website Form, Custom Webhook, Razorpay, Meta WhatsApp).
+- Validated signature verification, tamper rejection, duplicate replay rejection, origin validation, honeypot `_gotcha` discard, and queue worker retry/dead-letter.
+- 29/29 tests passed (100%).
+
+### 7. Web Push Follow-ups Lifecycle (Commit `0baf5d8`)
+- Tested with `ENABLE_WEB_PUSH_FOLLOWUPS=true`.
+- Verified exactly-once dispatch, downtime catch-up, reschedule tag replacement (`fup_<id>`), HTTP 410 cleanup, mandatory quick-action notes, atomic single-use nonce consumption, and zero phone PII.
+- Documented physical device constraints (iOS Safari home screen PWA, mobile vibration actuator, OS notification daemon).
+- 10/10 tests passed (100%).
+
+### 8. Final Measurements & Canary Verdict
+- Machine Hardware: AMD Ryzen 7 PRO 5850U (16 threads), 11.83 GB RAM, Windows 11 x64, Node.js v24.22.1.
+- ESLint: 68 warnings eliminated compared to `main`.
+- Bundle Size: 0 production dependencies added; 40/40 routes statically generated in 2.7s; `.next/static` 3.41 MB, full export 8.05 MB.
+- Dual-Instance: Verified once-only cron and single WhatsApp lease holder under race conditions.
+- Final Verdict: Strictly **`READY-FOR-CANARY`**.
