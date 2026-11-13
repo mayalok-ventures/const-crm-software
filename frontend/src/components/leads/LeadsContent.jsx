@@ -494,11 +494,6 @@ export default function LeadsContent({
               <Clock size={15} />
               <span>Scheduled Follow-ups</span>
             </button>
-              }`}
-            >
-              <Clock size={15} />
-              <span>Scheduled Follow-ups</span>
-            </button>
           </div>
 
           {/* ========================================================================= */}
