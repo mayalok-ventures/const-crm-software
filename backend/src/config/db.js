@@ -198,12 +198,8 @@ const seedAdminUser = async () => {
   try {
     const { seedSuperAdmin } = require('../utils/seedSuperAdmin');
     const { seedPlans } = require('../utils/seedPlans');
-    const { seedDemoData } = require('../utils/seedDemoData');
     await seedSuperAdmin();
     await seedPlans();
-    if (process.env.NODE_ENV !== 'production') {
-      await seedDemoData();
-    }
   } catch (err) {
     console.error('[Seed Error]:', err.message);
   }

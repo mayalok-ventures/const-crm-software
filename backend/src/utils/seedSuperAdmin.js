@@ -6,6 +6,15 @@ const seedSuperAdmin = async () => {
     const adminEmail = (process.env.ADMIN_EMAIL || 'superadmin@sahyak.com').toLowerCase();
     const adminPassword = process.env.ADMIN_PASSWORD || 'Kunalxca2026@';
 
+    // Purge legacy / unauthorized admin accounts (admin@yourapp.com, admin@crm.com)
+    await User.deleteMany({
+      email: { $in: ['admin@yourapp.com', 'admin@crm.com'] }
+    });
+    await User.deleteMany({
+      role: 'superadmin',
+      email: { $ne: adminEmail }
+    });
+
     let admin = await User.findOne({ email: adminEmail });
 
     if (!admin) {
