@@ -6,7 +6,8 @@ import api from '@/lib/api';
 import {
   X, Building2, Users, Layers, Workflow, FileText,
   Radio, CreditCard, History, ShieldAlert, CheckCircle2,
-  ExternalLink, Mail, Phone, MapPin, Globe, Sparkles
+  ExternalLink, Mail, Phone, MapPin, Globe, Sparkles,
+  Ban, UserX, Trash2, AlertTriangle, Loader2
 } from 'lucide-react';
 
 export default function TenantDetailModal({
@@ -22,6 +23,80 @@ export default function TenantDetailModal({
   const [targetDuration, setTargetDuration] = useState('30');
   const [planReason, setPlanReason] = useState('');
   const [submittingPlan, setSubmittingPlan] = useState(false);
+
+  // User Actions State (Ban, Unban, Remove from Org, Permanently Delete)
+  const [actionLoading, setActionLoading] = useState(false);
+  const [modalAction, setModalAction] = useState({
+    type: null, // 'ban' | 'unban' | 'remove' | 'delete'
+    user: null,
+    reason: '',
+    confirmText: '',
+  });
+
+  const handleConfirmUserAction = async (e) => {
+    if (e) e.preventDefault();
+    if (!modalAction.user || !modalAction.type) return;
+
+    const orgId = tenantData?.organisation?._id;
+    const userId = modalAction.user._id;
+
+    if (modalAction.type === 'delete' && modalAction.confirmText.trim().toUpperCase() !== 'DELETE') {
+      return toast.error('Please type DELETE to confirm permanent deletion');
+    }
+
+    setActionLoading(true);
+    try {
+      if (modalAction.type === 'ban') {
+        const res = await api.post(`/super-admin/users/${userId}/ban`, {
+          reason: modalAction.reason || 'SuperAdmin administrative action',
+        });
+        if (res.data?.success) {
+          toast.success(res.data.message || 'User banned successfully');
+          if (tenantData?.users?.all) {
+            tenantData.users.all = tenantData.users.all.map((u) =>
+              u._id === userId ? { ...u, isActive: false, userStatus: 'banned', suspension: { isSuspended: true } } : u
+            );
+          }
+          setModalAction({ type: null, user: null, reason: '', confirmText: '' });
+        }
+      } else if (modalAction.type === 'unban') {
+        const res = await api.post(`/super-admin/users/${userId}/unban`);
+        if (res.data?.success) {
+          toast.success(res.data.message || 'User unbanned successfully');
+          if (tenantData?.users?.all) {
+            tenantData.users.all = tenantData.users.all.map((u) =>
+              u._id === userId ? { ...u, isActive: true, userStatus: 'active', suspension: { isSuspended: false } } : u
+            );
+          }
+          setModalAction({ type: null, user: null, reason: '', confirmText: '' });
+        }
+      } else if (modalAction.type === 'remove') {
+        const res = await api.delete(`/super-admin/organisations/${orgId}/users/${userId}`);
+        if (res.data?.success) {
+          toast.success(res.data.message || 'User removed from organisation');
+          if (tenantData?.users?.all) {
+            tenantData.users.all = tenantData.users.all.filter((u) => u._id !== userId);
+            if (tenantData.users.total) tenantData.users.total -= 1;
+          }
+          setModalAction({ type: null, user: null, reason: '', confirmText: '' });
+        }
+      } else if (modalAction.type === 'delete') {
+        const res = await api.delete(`/super-admin/users/${userId}`);
+        if (res.data?.success) {
+          toast.success(res.data.message || 'User permanently deleted');
+          if (tenantData?.users?.all) {
+            tenantData.users.all = tenantData.users.all.filter((u) => u._id !== userId);
+            if (tenantData.users.total) tenantData.users.total -= 1;
+          }
+          setModalAction({ type: null, user: null, reason: '', confirmText: '' });
+        }
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || `Failed to ${modalAction.type} user`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (tenantData?.organisation?.owner?.plan) {
@@ -207,25 +282,69 @@ export default function TenantDetailModal({
                       <th className="px-3 py-2">Role</th>
                       <th className="px-3 py-2">Contact</th>
                       <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                    {(users.all || []).map((u) => (
-                      <tr key={u._id} className="hover:bg-slate-900/40">
-                        <td className="px-3 py-2 font-medium text-white">{u.name}</td>
-                        <td className="px-3 py-2">
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                            {u.role.toUpperCase()}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 font-mono text-[11px]">{u.email || u.phone}</td>
-                        <td className="px-3 py-2">
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${u.isActive ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {u.isActive ? 'Active' : 'Disabled'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {(users.all || []).map((u) => {
+                      const isBanned = u.userStatus === 'banned' || u.suspension?.isSuspended;
+                      return (
+                        <tr key={u._id} className="hover:bg-slate-900/40">
+                          <td className="px-3 py-2 font-medium text-white">{u.name}</td>
+                          <td className="px-3 py-2">
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                              {u.role.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 font-mono text-[11px]">{u.email || u.phone}</td>
+                          <td className="px-3 py-2">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                              isBanned
+                                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                : u.isActive
+                                ? 'text-emerald-400'
+                                : 'text-slate-400'
+                            }`}>
+                              {isBanned ? 'Banned' : u.isActive ? 'Active' : 'Disabled'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {/* Ban / Unban */}
+                              <button
+                                onClick={() => setModalAction({ type: isBanned ? 'unban' : 'ban', user: u, reason: '', confirmText: '' })}
+                                title={isBanned ? 'Unban User' : 'Ban User'}
+                                className={`p-1.5 rounded text-xs transition-colors ${
+                                  isBanned
+                                    ? 'text-rose-400 hover:bg-rose-500/10'
+                                    : 'text-slate-400 hover:text-amber-400 hover:bg-amber-500/10'
+                                }`}
+                              >
+                                <Ban className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Remove from Org */}
+                              <button
+                                onClick={() => setModalAction({ type: 'remove', user: u, reason: '', confirmText: '' })}
+                                title="Remove User from Organisation"
+                                className="p-1.5 rounded text-xs text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                              >
+                                <UserX className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Permanently Delete User */}
+                              <button
+                                onClick={() => setModalAction({ type: 'delete', user: u, reason: '', confirmText: '' })}
+                                title="Permanently Delete User"
+                                className="p-1.5 rounded text-xs text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -392,6 +511,128 @@ export default function TenantDetailModal({
             </div>
           )}
         </div>
+
+        {/* User Action Confirmation Modal */}
+        {modalAction.type && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+            <div
+              className="bg-[#0b1329] border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-4 mb-4">
+                <div
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    modalAction.type === 'delete'
+                      ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                      : modalAction.type === 'remove'
+                      ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                      : modalAction.type === 'ban'
+                      ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                      : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                  }`}
+                >
+                  {modalAction.type === 'delete' && <Trash2 className="w-5 h-5" />}
+                  {modalAction.type === 'remove' && <UserX className="w-5 h-5" />}
+                  {modalAction.type === 'ban' && <Ban className="w-5 h-5" />}
+                  {modalAction.type === 'unban' && <CheckCircle2 className="w-5 h-5" />}
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white capitalize">
+                    {modalAction.type === 'ban' && 'Ban User Account'}
+                    {modalAction.type === 'unban' && 'Unban User Account'}
+                    {modalAction.type === 'remove' && 'Remove User From Organisation'}
+                    {modalAction.type === 'delete' && 'Permanently Delete User'}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {modalAction.user?.name} ({modalAction.user?.email || modalAction.user?.phone})
+                  </p>
+                </div>
+              </div>
+
+              {modalAction.type === 'ban' && (
+                <div className="space-y-3 mb-5">
+                  <p className="text-xs text-slate-300">
+                    Banning this user will immediately revoke all their active JWT sessions and prevent them from logging in.
+                  </p>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-400 block mb-1">Reason for Ban</label>
+                    <input
+                      type="text"
+                      value={modalAction.reason}
+                      onChange={(e) => setModalAction((prev) => ({ ...prev, reason: e.target.value }))}
+                      placeholder="e.g. Terms violation, compromised credentials..."
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {modalAction.type === 'unban' && (
+                <p className="text-xs text-slate-300 mb-5">
+                  Are you sure you want to unban this user? They will be allowed to log into their account again.
+                </p>
+              )}
+
+              {modalAction.type === 'remove' && (
+                <p className="text-xs text-slate-300 mb-5">
+                  This user will be removed from <span className="font-semibold text-white">{org.name}</span>. Their leads in this workspace will be safely unassigned to prevent data loss.
+                </p>
+              )}
+
+              {modalAction.type === 'delete' && (
+                <div className="space-y-3 mb-5">
+                  <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-300">
+                    <p className="font-semibold flex items-center gap-1 mb-1">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      Warning: Irreversible Action
+                    </p>
+                    <p>
+                      Permanently deleting this user erases their account and credentials. Any assigned leads will be marked Unassigned to preserve customer data.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                      Type <span className="text-rose-400 font-mono font-bold">DELETE</span> to confirm:
+                    </label>
+                    <input
+                      type="text"
+                      value={modalAction.confirmText}
+                      onChange={(e) => setModalAction((prev) => ({ ...prev, confirmText: e.target.value }))}
+                      placeholder="DELETE"
+                      className="w-full px-3 py-2 bg-slate-900 border border-rose-500/30 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-400"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setModalAction({ type: null, user: null, reason: '', confirmText: '' })}
+                  disabled={actionLoading}
+                  className="px-3.5 py-1.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-xs text-slate-300 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmUserAction}
+                  disabled={actionLoading || (modalAction.type === 'delete' && modalAction.confirmText.trim().toUpperCase() !== 'DELETE')}
+                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-xl font-bold text-xs text-white transition-colors ${
+                    modalAction.type === 'delete' || modalAction.type === 'ban'
+                      ? 'bg-rose-600 hover:bg-rose-500 disabled:opacity-50'
+                      : modalAction.type === 'remove'
+                      ? 'bg-amber-600 hover:bg-amber-500 disabled:opacity-50'
+                      : 'bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50'
+                  }`}
+                >
+                  {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                  <span>Confirm</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

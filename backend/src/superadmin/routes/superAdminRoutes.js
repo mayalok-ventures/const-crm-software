@@ -32,13 +32,17 @@ router.post('/organisations/:id/cancel', organisationController.cancelTenant);
 router.post('/organisations/:id/archive', organisationController.archiveTenant);
 router.patch('/organisations/:id/status', organisationController.updateStatus);
 router.patch('/organisations/:id/plan', organisationController.updatePlan);
+router.delete('/organisations/:id', organisationController.deleteOrganisation);
 router.post('/impersonate', organisationController.impersonateUser);
 
 // 3. User & Role Management
 router.get('/users', userController.getUsers);
 router.patch('/users/:id/role', userController.updateUserRole);
 router.patch('/users/:id/status', userController.updateUserStatus);
+router.post('/users/:id/ban', userController.banUser);
+router.post('/users/:id/unban', userController.unbanUser);
 router.delete('/users/:id', userController.deleteUser);
+router.delete('/organisations/:orgId/users/:userId', userController.removeUserFromOrganisation);
 
 // 4. Revenue, Subscriptions & Billing
 router.get('/revenue', revenueController.getRevenueDashboard);

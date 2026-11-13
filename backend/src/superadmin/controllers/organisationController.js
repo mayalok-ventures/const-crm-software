@@ -165,3 +165,48 @@ exports.impersonateUser = async (req, res) => {
     res.status(400).json({ success: false, message: error.message || 'Failed to initiate support session' });
   }
 };
+
+exports.deleteOrganisation = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const mongoose = require('mongoose');
+    const Workspace = mongoose.models.Workspace || require('../../models/Workspace');
+    const WorkspaceMembership = mongoose.models.WorkspaceMembership || require('../../models/WorkspaceMembership');
+
+    const ws = await Workspace.findById(id);
+    if (!ws) return res.status(404).json({ success: false, message: 'Organisation not found' });
+
+    // Guard against deleting Super Admin default workspace
+    if (String(ws.ownerId) === String(req.user._id)) {
+      return res.status(400).json({ success: false, message: 'Cannot delete Super Admin default workspace' });
+    }
+
+    // 1. Remove memberships
+    await WorkspaceMembership.deleteMany({ workspaceId: id });
+
+    // 2. Delete the workspace
+    await Workspace.findByIdAndDelete(id);
+
+    // 3. Audit log
+    try {
+      const { auditService } = require('../../monitoring/audit/auditService');
+      await auditService.record({
+        actor: req.user,
+        action: 'ORGANISATION_PERMANENTLY_DELETED',
+        resourceType: 'Workspace',
+        resourceId: id,
+        resourceName: ws.name,
+        metadata: { name: ws.name, ownerId: ws.ownerId },
+        ip: req.ip,
+      });
+    } catch (e) {
+      console.warn('[Audit Warning]:', e.message);
+    }
+
+    res.json({ success: true, message: `Organisation "${ws.name}" permanently deleted successfully` });
+  } catch (error) {
+    console.error('SuperAdmin Delete Organisation Error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to delete organisation' });
+  }
+};
+

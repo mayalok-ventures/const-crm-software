@@ -339,24 +339,28 @@ exports.login = async (req, res) => {
       return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' });
     }
 
-    // Suspension check with auto-expiry (A2)
-    if (user.suspension?.isSuspended && !user.isAdmin) {
-      const until = user.suspension.suspendedUntil;
-      if (until && new Date() > new Date(until)) {
+    // Suspension, Ban, and Inactive check with auto-expiry (A2)
+    if ((!user.isActive || user.userStatus === 'banned' || user.userStatus === 'disabled' || user.suspension?.isSuspended) && !user.isAdmin) {
+      const until = user.suspension?.suspendedUntil;
+      if (user.suspension?.isSuspended && until && new Date() > new Date(until)) {
         await User.findByIdAndUpdate(user._id, {
           $set: {
             'suspension.isSuspended': false,
             'suspension.level': 0,
             'suspension.reason': null,
             'suspension.suspendedUntil': null,
+            isActive: true,
+            userStatus: 'active',
           }
         });
         user.suspension.isSuspended = false;
+        user.isActive = true;
       } else {
         const timeStr = until ? ` until ${new Date(until).toLocaleString('en-IN')}` : ' permanently';
+        const reason = user.suspension?.reason || (user.userStatus === 'banned' ? 'Account banned by Super Admin' : 'Account deactivated');
         return res.status(403).json({
           code: 'ACCOUNT_SUSPENDED',
-          message: `Your account has been suspended${timeStr}. Reason: ${user.suspension.reason || 'Security policy violation'}. Please contact support.`,
+          message: `Your account has been suspended or banned${timeStr}. Reason: ${reason}. Please contact support.`,
           suspendedUntil: until
         });
       }
