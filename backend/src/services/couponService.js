@@ -94,6 +94,25 @@ async function validateCoupon({ couponCode, userId = null, planId = null, billin
     originalPrice = Number(amount);
   }
 
+  // If validating in preview mode without a plan or amount specified (e.g. initial coupon check on /plans)
+  if (!originalPrice && (amount === null || amount === undefined) && !planId) {
+    const discountPercent = coupon.discountType === 'PERCENTAGE' ? coupon.discountValue : 0;
+    return {
+      valid: true,
+      coupon,
+      couponCode: coupon.code,
+      discountType: coupon.discountType,
+      discountValue: coupon.discountValue,
+      maxDiscountAmount: coupon.maxDiscountAmount,
+      minOrderValue: coupon.minOrderValue,
+      originalAmount: 0,
+      discountAmount: 0,
+      finalAmount: 0,
+      discountPercent,
+      message: `Coupon "${coupon.code}" is valid! (${coupon.discountType === 'PERCENTAGE' ? `${coupon.discountValue}% OFF` : `₹${coupon.discountValue} FLAT OFF`})`,
+    };
+  }
+
   if (isNaN(originalPrice) || originalPrice <= 0) {
     return { valid: false, code: 'INVALID_AMOUNT', message: 'Unable to resolve authoritative plan amount for discount calculation' };
   }

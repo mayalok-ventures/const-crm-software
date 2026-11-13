@@ -20,20 +20,13 @@ export const SUPERADMIN_NAV_CATEGORIES = [
   {
     name: 'TENANTS',
     items: [
-      { id: 'organisations', label: 'Organisations', icon: Building2 },
-      { id: 'users', label: 'Users & Roles', icon: Users },
+      { id: 'organisations', label: 'Organisations & Users', icon: Building2 },
     ],
   },
   {
     name: 'REVENUE',
     items: [
       { id: 'revenue', label: 'Subscriptions & MRR', icon: CreditCard },
-    ],
-  },
-  {
-    name: 'CRM PLATFORM',
-    items: [
-      { id: 'leads', label: 'Global Leads', icon: Layers },
     ],
   },
   {

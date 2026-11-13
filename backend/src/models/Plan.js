@@ -219,6 +219,7 @@ const planSchema = new mongoose.Schema(
       customDomain: { type: Boolean, default: false },
       customFields: { type: Boolean, default: true },
       prioritySupport: { type: Boolean, default: false },
+      aiFeatures: { type: Boolean, default: false },
     },
 
     // ── CUSTOMER-FACING MARKETING BULLETS (WHAT'S INCLUDED) ─────────────────

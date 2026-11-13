@@ -36,6 +36,9 @@ router.post('/impersonate', organisationController.impersonateUser);
 
 // 3. User & Role Management
 router.get('/users', userController.getUsers);
+router.patch('/users/:id/role', userController.updateUserRole);
+router.patch('/users/:id/status', userController.updateUserStatus);
+router.delete('/users/:id', userController.deleteUser);
 
 // 4. Revenue, Subscriptions & Billing
 router.get('/revenue', revenueController.getRevenueDashboard);
@@ -43,10 +46,7 @@ router.post('/revenue/reconcile', revenueController.triggerReconciliation);
 router.get('/revenue/review-queue', revenueController.getManualReviewIssues);
 router.post('/revenue/review-queue/resolve', revenueController.resolveManualReview);
 
-// 5. Global CRM Platform Observability
-router.get('/leads', leadController.getGlobalLeads);
-
-// 6. Integrations Telemetry
+// 5. Integrations Telemetry
 router.get('/integrations', integrationController.getIntegrationsTelemetry);
 
 // 7. System Health & Error Logs

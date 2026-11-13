@@ -189,6 +189,7 @@ exports.createPlan = async (req, res) => {
         customWebhooks: Boolean(features?.customWebhooks),
         apiAccess: Boolean(features?.apiAccess),
         customDomain: Boolean(features?.customDomain),
+        aiFeatures: Boolean(features?.aiFeatures),
       },
       whatsIncluded: Array.isArray(whatsIncluded) ? whatsIncluded.filter(Boolean) : [],
       version: 1,

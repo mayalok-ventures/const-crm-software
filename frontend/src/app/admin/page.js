@@ -16,9 +16,7 @@ import TenantDetailModal from '@/components/superadmin/TenantDetailModal';
 // Super Admin Modules
 import SuperAdminOverviewModule from '@/components/superadmin/modules/SuperAdminOverviewModule';
 import SuperAdminOrganisationsModule from '@/components/superadmin/modules/SuperAdminOrganisationsModule';
-import SuperAdminUsersModule from '@/components/superadmin/modules/SuperAdminUsersModule';
 import SuperAdminRevenueModule from '@/components/superadmin/modules/SuperAdminRevenueModule';
-import SuperAdminGlobalLeadsModule from '@/components/superadmin/modules/SuperAdminGlobalLeadsModule';
 import SuperAdminIntegrationsModule from '@/components/superadmin/modules/SuperAdminIntegrationsModule';
 import SuperAdminSystemHealthModule from '@/components/superadmin/modules/SuperAdminSystemHealthModule';
 import SuperAdminErrorLogsModule from '@/components/superadmin/modules/SuperAdminErrorLogsModule';
@@ -51,11 +49,6 @@ function UnifiedAdminContent() {
   const [userRoleFilter, setUserRoleFilter] = useState('all');
 
   const [revenueData, setRevenueData] = useState(null);
-  const [globalLeads, setGlobalLeads] = useState([]);
-  const [leadsPagination, setLeadsPagination] = useState({ page: 1, total: 0, pages: 1 });
-  const [leadSearch, setLeadSearch] = useState('');
-  const [leadStageFilter, setLeadStageFilter] = useState('all');
-  const [leadSourceFilter, setLeadSourceFilter] = useState('all');
 
   const [integrationsTelemetry, setIntegrationsTelemetry] = useState(null);
   const [systemHealth, setSystemHealth] = useState(null);
@@ -109,33 +102,22 @@ function UnifiedAdminContent() {
       if (tabToFetch === 'overview') {
         const { data } = await api.get('/super-admin/overview');
         if (data.success) setOverviewData(data);
-      } else if (tabToFetch === 'organisations') {
-        const { data } = await api.get(
-          `/super-admin/organisations?page=${orgPagination.page}&search=${encodeURIComponent(orgSearch)}&status=${orgStatusFilter}`
-        );
-        if (data.success) {
-          setOrganisations(data.organisations || []);
-          setOrgPagination(data.pagination || { page: 1, total: 0, pages: 1 });
+      } else if (tabToFetch === 'organisations' || tabToFetch === 'users') {
+        const [orgRes, usersRes] = await Promise.all([
+          api.get(`/super-admin/organisations?page=${orgPagination.page}&search=${encodeURIComponent(orgSearch)}&status=${orgStatusFilter}`),
+          api.get(`/super-admin/users?page=${usersPagination.page}&search=${encodeURIComponent(userSearch)}&role=${userRoleFilter}`),
+        ]);
+        if (orgRes.data?.success) {
+          setOrganisations(orgRes.data.organisations || []);
+          setOrgPagination(orgRes.data.pagination || { page: 1, total: 0, pages: 1 });
         }
-      } else if (tabToFetch === 'users') {
-        const { data } = await api.get(
-          `/super-admin/users?page=${usersPagination.page}&search=${encodeURIComponent(userSearch)}&role=${userRoleFilter}`
-        );
-        if (data.success) {
-          setUsers(data.users || []);
-          setUsersPagination(data.pagination || { page: 1, total: 0, pages: 1 });
+        if (usersRes.data?.success) {
+          setUsers(usersRes.data.users || []);
+          setUsersPagination(usersRes.data.pagination || { page: 1, total: 0, pages: 1 });
         }
       } else if (tabToFetch === 'revenue') {
         const { data } = await api.get('/super-admin/revenue');
         if (data.success) setRevenueData(data);
-      } else if (tabToFetch === 'leads') {
-        const { data } = await api.get(
-          `/super-admin/leads?page=${leadsPagination.page}&search=${encodeURIComponent(leadSearch)}&stage=${leadStageFilter}&source=${leadSourceFilter}`
-        );
-        if (data.success) {
-          setGlobalLeads(data.leads || []);
-          setLeadsPagination(data.pagination || { page: 1, total: 0, pages: 1 });
-        }
       } else if (tabToFetch === 'integrations') {
         const { data } = await api.get('/super-admin/integrations');
         if (data.success) setIntegrationsTelemetry(data);
@@ -344,7 +326,7 @@ function UnifiedAdminContent() {
               />
             )}
 
-            {activeTab === 'organisations' && (
+            {(activeTab === 'organisations' || activeTab === 'users') && (
               <SuperAdminOrganisationsModule
                 organisations={organisations}
                 pagination={orgPagination}
@@ -353,24 +335,19 @@ function UnifiedAdminContent() {
                 onSearchChange={setOrgSearch}
                 statusFilter={orgStatusFilter}
                 onStatusFilterChange={setOrgStatusFilter}
+                users={users}
+                usersPagination={usersPagination}
+                userSearch={userSearch}
+                onUserSearchChange={setUserSearch}
+                userRoleFilter={userRoleFilter}
+                onUserRoleFilterChange={setUserRoleFilter}
                 onInspectTenant={handleInspectTenant}
                 onImpersonate={handleStartImpersonation}
                 onStatusUpdate={handleTenantStatusUpdate}
                 onPlanUpdate={handleTenantPlanUpdate}
                 onPageChange={(page) => setOrgPagination((p) => ({ ...p, page }))}
-              />
-            )}
-
-            {activeTab === 'users' && (
-              <SuperAdminUsersModule
-                users={users}
-                pagination={usersPagination}
-                loading={refreshing && users.length === 0}
-                search={userSearch}
-                onSearchChange={setUserSearch}
-                roleFilter={userRoleFilter}
-                onRoleFilterChange={setUserRoleFilter}
-                onPageChange={(page) => setUsersPagination((p) => ({ ...p, page }))}
+                onUserPageChange={(page) => setUsersPagination((p) => ({ ...p, page }))}
+                onRefresh={() => fetchTabData('organisations')}
               />
             )}
 
@@ -378,21 +355,7 @@ function UnifiedAdminContent() {
               <SuperAdminRevenueModule
                 revenueData={revenueData}
                 loading={refreshing && !revenueData}
-              />
-            )}
-
-            {activeTab === 'leads' && (
-              <SuperAdminGlobalLeadsModule
-                leads={globalLeads}
-                pagination={leadsPagination}
-                loading={refreshing && globalLeads.length === 0}
-                search={leadSearch}
-                onSearchChange={setLeadSearch}
-                stageFilter={leadStageFilter}
-                onStageFilterChange={setLeadStageFilter}
-                sourceFilter={leadSourceFilter}
-                onSourceFilterChange={setLeadSourceFilter}
-                onPageChange={(page) => setLeadsPagination((p) => ({ ...p, page }))}
+                onRefresh={() => fetchTabData('revenue')}
               />
             )}
 

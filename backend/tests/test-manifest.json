@@ -696,6 +696,10 @@
     "web_push_followup_verification.test.js": {
       "category": "core",
       "reason": "Verification of Web Push follow-up reminders, downtime catch-up, tag replacement, 410 cleanup, single-use tokens, and zero phone PII"
+    },
+    "superadmin_unified_features.test.js": {
+      "category": "core",
+      "reason": "Verification of merged Organisations and Users, 3-parameter dynamic plan builder, all-plan coupons, and platform broadcasts"
     }
   }
 }

@@ -118,8 +118,7 @@ export default function TenantDetailModal({
         <div className="px-4 border-b border-slate-800 bg-[#070b14]/50 flex items-center gap-4 overflow-x-auto">
           {[
             { id: 'overview', label: 'Overview & Info', icon: Building2 },
-            { id: 'users', label: `Users & Staff (${users.total || 0})`, icon: Users },
-            { id: 'leads', label: `CRM Leads (${leads.total || 0})`, icon: Layers },
+            { id: 'users', label: `Team Members (${users.total || 0})`, icon: Users },
             { id: 'subscription', label: 'Subscription & Plan', icon: CreditCard },
             { id: 'integrations', label: `Integrations (${integrations.length})`, icon: Radio },
             { id: 'audit', label: `Audit Trail (${auditTrail.length})`, icon: History },
@@ -233,40 +232,6 @@ export default function TenantDetailModal({
             </div>
           )}
 
-          {activeSubTab === 'leads' && (
-            <div className="space-y-2">
-              <div className="text-xs text-slate-400">Recent leads inbound to this organization:</div>
-              <div className="border border-slate-800 rounded-xl overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-900/80 text-slate-400 text-[10px] uppercase font-semibold">
-                    <tr>
-                      <th className="px-3 py-2">Prospect</th>
-                      <th className="px-3 py-2">Stage</th>
-                      <th className="px-3 py-2">Source</th>
-                      <th className="px-3 py-2">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                    {(leads.recent || []).slice(0, 15).map((l) => (
-                      <tr key={l._id} className="hover:bg-slate-900/40">
-                        <td className="px-3 py-2">
-                          <div className="font-medium text-white">{l.name}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">{l.phone}</div>
-                        </td>
-                        <td className="px-3 py-2">
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                            {l.status}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 font-mono text-[11px]">{l.source}</td>
-                        <td className="px-3 py-2 text-[11px] text-slate-400">{new Date(l.createdAt).toLocaleDateString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
 
           {activeSubTab === 'subscription' && (
             <div className="space-y-4">

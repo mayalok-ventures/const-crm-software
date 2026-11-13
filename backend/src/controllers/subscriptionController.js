@@ -152,15 +152,19 @@ exports.createSubscription = async (req, res) => {
     // Optional Coupon Validation
     let appliedCoupon = null;
     if (couponCode) {
-      const couponDoc = await Coupon.findOne({
-        code: String(couponCode).toUpperCase().trim(),
-        isActive: true,
+      const { validateCoupon } = require('../services/couponService');
+      const couponRes = await validateCoupon({
+        couponCode,
+        userId: req.user?._id,
+        planId: plan._id,
+        billingInterval: plan.interval || 'monthly',
+        amount: finalPriceInPaise / 100,
       });
 
-      if (couponDoc && (!couponDoc.expiresAt || new Date() <= new Date(couponDoc.expiresAt))) {
-        const discountPaise = Math.round((finalPriceInPaise * (couponDoc.discountPercent || 0)) / 100);
+      if (couponRes.valid) {
+        const discountPaise = Math.round((couponRes.discountAmount || 0) * 100);
         finalPriceInPaise = Math.max(100, finalPriceInPaise - discountPaise); // Minimum 100 paise
-        appliedCoupon = couponDoc.code;
+        appliedCoupon = couponRes.couponCode || couponRes.coupon?.code;
       }
     }
 

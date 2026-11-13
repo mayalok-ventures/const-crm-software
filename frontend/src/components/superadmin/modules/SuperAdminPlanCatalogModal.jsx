@@ -61,6 +61,8 @@ export default function SuperAdminPlanCatalogModal({
   const [monthlyBroadcasts, setMonthlyBroadcasts] = useState(25);
   const [monthlyBroadcastsUnlimited, setMonthlyBroadcastsUnlimited] = useState(false);
   const [storageGB, setStorageGB] = useState(10);
+  const [storageGBUnlimited, setStorageGBUnlimited] = useState(false);
+  const [aiFeatures, setAiFeatures] = useState(false);
   const [pipelines, setPipelines] = useState(5);
   const [branches, setBranches] = useState(2);
 
@@ -116,9 +118,9 @@ export default function SuperAdminPlanCatalogModal({
       const pLimits = planToEdit.limits || {};
       const defaultEnt = planToEdit.defaultEntitlements || {};
 
-      const sLimit = pLimits.seats !== undefined ? pLimits.seats : (defaultEnt.maxSeats || 1);
-      setSeats(sLimit === -1 ? 1 : sLimit);
-      setSeatsUnlimited(sLimit === -1);
+      const seatLimit = pLimits.seats !== undefined ? pLimits.seats : (defaultEnt.maxSeats || 1);
+      setSeats(seatLimit === -1 ? 1 : seatLimit);
+      setSeatsUnlimited(seatLimit === -1);
 
       const lLimit = pLimits.leads !== undefined ? pLimits.leads : (defaultEnt.maxLeads || 1000);
       setLeads(lLimit === -1 ? 1000 : lLimit);
@@ -136,28 +138,32 @@ export default function SuperAdminPlanCatalogModal({
       setMonthlyBroadcasts(bcLimit === -1 ? 5 : bcLimit);
       setMonthlyBroadcastsUnlimited(bcLimit === -1);
 
-      setStorageGB(pLimits.storageGB || 5);
+      const storageLimit = pLimits.storageGB !== undefined ? pLimits.storageGB : 5;
+      setStorageGB(storageLimit === -1 ? 50 : storageLimit);
+      setStorageGBUnlimited(storageLimit === -1);
       setPipelines(pLimits.pipelines || 3);
       setBranches(pLimits.branches || 1);
+      setAiFeatures(Boolean(planToEdit.features?.aiFeatures));
 
       setFeatures({
-        leadManagement: planToEdit.features?.leadManagement !== false,
-        leadExport: Boolean(planToEdit.features?.leadExport),
-        whatsapp: planToEdit.features?.whatsapp !== false,
-        whatsappBroadcast: Boolean(planToEdit.features?.whatsappBroadcast),
-        automation: Boolean(planToEdit.features?.automation),
-        commonLeadPool: Boolean(planToEdit.features?.commonLeadPool),
-        autoLeadDistribution: Boolean(planToEdit.features?.autoLeadDistribution),
-        performanceTracking: Boolean(planToEdit.features?.performanceTracking),
-        commissionTracking: Boolean(planToEdit.features?.commissionTracking),
-        hierarchy: Boolean(planToEdit.features?.hierarchy),
-        smartExitRules: Boolean(planToEdit.features?.smartExitRules),
-        advancedAnalytics: Boolean(planToEdit.features?.advancedAnalytics || defaultEnt.features?.advancedAnalytics),
-        revenueAnalytics: Boolean(planToEdit.features?.revenueAnalytics),
-        customWebhooks: Boolean(planToEdit.features?.customWebhooks || defaultEnt.features?.customWebhooks),
-        apiAccess: Boolean(planToEdit.features?.apiAccess),
+        leadManagement: true,
+        leadExport: true,
+        whatsapp: true,
+        whatsappBroadcast: true,
+        automation: true,
+        commonLeadPool: true,
+        autoLeadDistribution: true,
+        performanceTracking: true,
+        commissionTracking: true,
+        hierarchy: true,
+        smartExitRules: true,
+        advancedAnalytics: true,
+        revenueAnalytics: true,
+        customWebhooks: true,
+        apiAccess: true,
         customDomain: Boolean(planToEdit.features?.customDomain),
         prioritySupport: Boolean(planToEdit.features?.prioritySupport),
+        aiFeatures: Boolean(planToEdit.features?.aiFeatures),
       });
 
       setWhatsIncluded(Array.isArray(planToEdit.whatsIncluded) ? [...planToEdit.whatsIncluded] : []);
@@ -253,14 +259,33 @@ export default function SuperAdminPlanCatalogModal({
         limits: {
           seats: seatsUnlimited ? -1 : Math.max(1, Number(seats) || 1),
           leads: leadsUnlimited ? -1 : Math.max(0, Number(leads) || 0),
-          contactGroups: contactGroupsUnlimited ? -1 : Math.max(0, Number(contactGroups) || 0),
-          monthlyWhatsAppMessages: monthlyWhatsAppUnlimited ? -1 : Math.max(0, Number(monthlyWhatsApp) || 0),
-          monthlyBroadcasts: monthlyBroadcastsUnlimited ? -1 : Math.max(0, Number(monthlyBroadcasts) || 0),
-          storageGB: Number(storageGB) || 5,
-          pipelines: Number(pipelines) || 3,
-          branches: Number(branches) || 1,
+          storageGB: storageGBUnlimited ? -1 : Math.max(1, Number(storageGB) || 1),
+          contactGroups: -1, // Unlimited for all plans
+          monthlyWhatsAppMessages: -1, // Unlimited WhatsApp messaging
+          monthlyBroadcasts: -1, // Unlimited broadcasts
+          pipelines: -1, // Unlimited pipelines
+          branches: 10,
         },
-        features,
+        features: {
+          ...features,
+          leadManagement: true,
+          leadExport: true,
+          whatsapp: true,
+          whatsappBroadcast: true,
+          automation: true,
+          commonLeadPool: true,
+          autoLeadDistribution: true,
+          performanceTracking: true,
+          commissionTracking: true,
+          hierarchy: true,
+          smartExitRules: true,
+          advancedAnalytics: true,
+          customWebhooks: true,
+          apiAccess: true,
+          customFields: true,
+          prioritySupport: true,
+          aiFeatures: Boolean(aiFeatures),
+        },
         whatsIncluded: whatsIncluded.filter(Boolean),
       };
 
@@ -609,138 +634,146 @@ export default function SuperAdminPlanCatalogModal({
             </div>
           )}
 
-          {/* TAB 3: RESOURCE LIMITS */}
+          {/* TAB 3: RESOURCE LIMITS & 3 PARAMETERS */}
           {activeTab === 'limits' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Team Seats */}
-              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-slate-300 font-bold">Team Agent Seats</label>
-                  <label className="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={seatsUnlimited}
-                      onChange={(e) => setSeatsUnlimited(e.target.checked)}
-                      className="w-3.5 h-3.5 text-indigo-600 rounded bg-slate-800"
-                    />
-                    Unlimited
-                  </label>
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-start gap-2.5">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold">Monetization Model: 3 Core User Parameters</span>
+                  <p className="text-slate-300 text-[11px] mt-0.5">
+                    Pricing is anchored exclusively on <strong>Agents</strong>, <strong>Leads</strong>, and <strong>Storage</strong>. All other CRM features (WhatsApp messaging, pipelines, automations, analytics, custom fields, data exports) are 100% free and included across all plans.
+                  </p>
                 </div>
-                {!seatsUnlimited && (
-                  <input
-                    type="number"
-                    value={seats}
-                    onChange={(e) => setSeats(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white font-mono"
-                  />
-                )}
               </div>
 
-              {/* Leads */}
-              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-slate-300 font-bold">Active Leads Cap</label>
-                  <label className="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* 1. Team Agents */}
+                <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block">Parameter 1</span>
+                      <label className="text-slate-200 font-bold text-xs">Team Agents / Seats</label>
+                    </div>
+                    <label className="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={seatsUnlimited}
+                        onChange={(e) => setSeatsUnlimited(e.target.checked)}
+                        className="w-3.5 h-3.5 text-indigo-600 rounded bg-slate-800"
+                      />
+                      Unlimited
+                    </label>
+                  </div>
+                  {!seatsUnlimited ? (
                     <input
-                      type="checkbox"
-                      checked={leadsUnlimited}
-                      onChange={(e) => setLeadsUnlimited(e.target.checked)}
-                      className="w-3.5 h-3.5 text-indigo-600 rounded bg-slate-800"
+                      type="number"
+                      min="1"
+                      value={seats}
+                      onChange={(e) => setSeats(e.target.value)}
+                      placeholder="e.g. 5"
+                      className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-white font-mono font-bold text-sm"
                     />
-                    Unlimited (-1)
-                  </label>
+                  ) : (
+                    <div className="px-3 py-2 rounded-lg bg-indigo-950/40 border border-indigo-500/30 text-indigo-300 font-mono font-bold text-xs">
+                      ∞ Unlimited Seats
+                    </div>
+                  )}
+                  <p className="text-[10px] text-slate-500">Max counselor / sales rep accounts</p>
                 </div>
-                {!leadsUnlimited && (
-                  <input
-                    type="number"
-                    value={leads}
-                    onChange={(e) => setLeads(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white font-mono"
-                  />
-                )}
+
+                {/* 2. Leads */}
+                <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">Parameter 2</span>
+                      <label className="text-slate-200 font-bold text-xs">Active Leads Limit</label>
+                    </div>
+                    <label className="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={leadsUnlimited}
+                        onChange={(e) => setLeadsUnlimited(e.target.checked)}
+                        className="w-3.5 h-3.5 text-emerald-600 rounded bg-slate-800"
+                      />
+                      Unlimited
+                    </label>
+                  </div>
+                  {!leadsUnlimited ? (
+                    <input
+                      type="number"
+                      min="0"
+                      value={leads}
+                      onChange={(e) => setLeads(e.target.value)}
+                      placeholder="e.g. 10000"
+                      className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-white font-mono font-bold text-sm"
+                    />
+                  ) : (
+                    <div className="px-3 py-2 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 font-mono font-bold text-xs">
+                      ∞ Unlimited Leads
+                    </div>
+                  )}
+                  <p className="text-[10px] text-slate-500">Active leads managed in CRM</p>
+                </div>
+
+                {/* 3. Storage (GB) */}
+                <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Parameter 3</span>
+                      <label className="text-slate-200 font-bold text-xs">Cloud Storage (GB)</label>
+                    </div>
+                    <label className="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={storageGBUnlimited}
+                        onChange={(e) => setStorageGBUnlimited(e.target.checked)}
+                        className="w-3.5 h-3.5 text-amber-600 rounded bg-slate-800"
+                      />
+                      Unlimited
+                    </label>
+                  </div>
+                  {!storageGBUnlimited ? (
+                    <input
+                      type="number"
+                      min="1"
+                      value={storageGB}
+                      onChange={(e) => setStorageGB(e.target.value)}
+                      placeholder="e.g. 20"
+                      className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-white font-mono font-bold text-sm"
+                    />
+                  ) : (
+                    <div className="px-3 py-2 rounded-lg bg-amber-950/40 border border-amber-500/30 text-amber-300 font-mono font-bold text-xs">
+                      ∞ Unlimited Storage
+                    </div>
+                  )}
+                  <p className="text-[10px] text-slate-500">Attachments, documents & call audio</p>
+                </div>
               </div>
 
-              {/* Contact Groups */}
-              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
+              {/* Future Monetization: AI Features */}
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-slate-300 font-bold">Contact Groups</label>
-                  <label className="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-purple-400" />
+                    <div>
+                      <span className="text-xs font-bold text-white">AI Intelligence Features</span>
+                      <span className="text-[10px] text-purple-400 font-mono ml-2">(Future Monetization Reserve)</span>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={contactGroupsUnlimited}
-                      onChange={(e) => setContactGroupsUnlimited(e.target.checked)}
-                      className="w-3.5 h-3.5 text-indigo-600 rounded bg-slate-800"
+                      checked={aiFeatures}
+                      onChange={(e) => setAiFeatures(e.target.checked)}
+                      className="sr-only peer"
                     />
-                    Unlimited
+                    <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
                   </label>
                 </div>
-                {!contactGroupsUnlimited && (
-                  <input
-                    type="number"
-                    value={contactGroups}
-                    onChange={(e) => setContactGroups(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white font-mono"
-                  />
-                )}
-              </div>
-
-              {/* Monthly WhatsApp Messages */}
-              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-slate-300 font-bold">WhatsApp Messages / Mo</label>
-                  <label className="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={monthlyWhatsAppUnlimited}
-                      onChange={(e) => setMonthlyWhatsAppUnlimited(e.target.checked)}
-                      className="w-3.5 h-3.5 text-indigo-600 rounded bg-slate-800"
-                    />
-                    Unlimited
-                  </label>
-                </div>
-                {!monthlyWhatsAppUnlimited && (
-                  <input
-                    type="number"
-                    value={monthlyWhatsApp}
-                    onChange={(e) => setMonthlyWhatsApp(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white font-mono"
-                  />
-                )}
-              </div>
-
-              {/* Monthly Broadcasts */}
-              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-slate-300 font-bold">Monthly Broadcast Jobs</label>
-                  <label className="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={monthlyBroadcastsUnlimited}
-                      onChange={(e) => setMonthlyBroadcastsUnlimited(e.target.checked)}
-                      className="w-3.5 h-3.5 text-indigo-600 rounded bg-slate-800"
-                    />
-                    Unlimited
-                  </label>
-                </div>
-                {!monthlyBroadcastsUnlimited && (
-                  <input
-                    type="number"
-                    value={monthlyBroadcasts}
-                    onChange={(e) => setMonthlyBroadcasts(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white font-mono"
-                  />
-                )}
-              </div>
-
-              {/* Storage (GB) */}
-              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
-                <label className="text-slate-300 font-bold">Media & Recording Storage (GB)</label>
-                <input
-                  type="number"
-                  value={storageGB}
-                  onChange={(e) => setStorageGB(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white font-mono"
-                />
+                <p className="text-[11px] text-slate-400">
+                  Optional toggle for AI Copilot, automated lead qualification, and smart transcription. When disabled, standard platform features apply.
+                </p>
               </div>
             </div>
           )}

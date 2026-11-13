@@ -36,6 +36,9 @@ const broadcastSchema = new mongoose.Schema(
         values: [
           'INTERNAL_ALL',
           'ALL_USERS',
+          'ALL_ORGS',
+          'PAYING_TENANTS',
+          'TRIAL_TENANTS',
           'PLATFORM_MANAGERS_AGENTS',
           'PLATFORM_MANAGERS_ONLY',
           'INTERNAL_MANAGERS',

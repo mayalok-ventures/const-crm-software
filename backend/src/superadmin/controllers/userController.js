@@ -1,8 +1,9 @@
+const mongoose = require('mongoose');
 const User = require('../../models/User');
 
 exports.getUsers = async (req, res) => {
   try {
-    const { search, role, status, page = 1, limit = 20 } = req.query;
+    const { search, role, status, organisationId, companyId, page = 1, limit = 20 } = req.query;
     const query = { role: { $ne: 'superadmin' } };
 
     if (search) {
@@ -14,6 +15,12 @@ exports.getUsers = async (req, res) => {
     }
     if (status && status !== 'all') {
       query.isActive = status === 'active';
+    }
+
+    const targetOrg = organisationId || companyId;
+    if (targetOrg && mongoose.Types.ObjectId.isValid(targetOrg)) {
+      const orgOid = new mongoose.Types.ObjectId(targetOrg);
+      query.$or = [{ companyId: orgOid }, { _id: orgOid }];
     }
 
     const skip = (Number(page) - 1) * Number(limit);
@@ -43,5 +50,66 @@ exports.getUsers = async (req, res) => {
   } catch (error) {
     console.error('SuperAdmin Get Users Error:', error);
     res.status(500).json({ success: false, message: error.message || 'Failed to fetch platform users' });
+  }
+};
+
+exports.updateUserRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    if (!['admin', 'manager', 'agent', 'counsellor', 'user'].includes(role)) {
+      return res.status(400).json({ success: false, message: 'Invalid role' });
+    }
+
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (user.role === 'superadmin') {
+      return res.status(403).json({ success: false, message: 'Cannot modify Super Admin accounts' });
+    }
+
+    user.role = role;
+    await user.save();
+
+    res.json({ success: true, message: `User role updated to ${role} successfully`, user });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateUserStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isActive, userStatus } = req.body;
+
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (user.role === 'superadmin') {
+      return res.status(403).json({ success: false, message: 'Cannot modify Super Admin accounts' });
+    }
+
+    if (typeof isActive === 'boolean') user.isActive = isActive;
+    if (userStatus) user.userStatus = userStatus;
+    await user.save();
+
+    res.json({ success: true, message: 'User status updated successfully', user });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (user.role === 'superadmin') {
+      return res.status(403).json({ success: false, message: 'Cannot delete Super Admin accounts' });
+    }
+
+    await User.findByIdAndDelete(id);
+    res.json({ success: true, message: 'User deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };

@@ -68,21 +68,21 @@ export default function SuperAdminOverviewModule({
           <p className="text-[11px] text-slate-500 mt-1">Active recurring SaaS subscriptions</p>
         </div>
 
-        {/* Global CRM Leads */}
+        {/* Active Paid Licenses */}
         <div className="p-4 rounded-2xl bg-[#0d1424] border border-slate-800 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Active Leads Managed</span>
-            <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
-              <Layers className="w-4 h-4" />
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Paid Active Licenses</span>
+            <div className="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+              <ShieldCheck className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-white font-mono">{kpis.activeLeads || 0}</span>
+            <span className="text-2xl font-black text-white font-mono">{kpis.payingTenants || 0}</span>
             <span className="text-[10px] text-emerald-400 font-semibold">
-              {kpis.platformConversionRate || 0}% conv.
+              active contracts
             </span>
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">Platform-wide CRM pipeline volume</p>
+          <p className="text-[11px] text-slate-500 mt-1">Paid recurring commercial licenses</p>
         </div>
       </div>
 

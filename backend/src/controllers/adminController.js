@@ -1989,12 +1989,19 @@ exports.sendBroadcast = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Title and message are required' });
     }
 
+    const rawTarget = req.body.targetAudience || req.body.target || 'ALL_USERS';
     const priorityNorm = String(priority).toUpperCase();
-    const audienceNorm = String(targetAudience).toUpperCase();
+    const audienceNorm = String(rawTarget).toUpperCase();
 
     const query = {};
-    if (audienceNorm === 'ALL_USERS') {
+    if (audienceNorm === 'ALL_USERS' || audienceNorm === 'PLATFORM_ALL_USERS') {
       query._id = { $exists: true };
+    } else if (audienceNorm === 'ALL_ORGS' || audienceNorm === 'ORGANISATIONS_ONLY' || audienceNorm === 'PLATFORM_ALL_ORGS') {
+      query.$or = [{ workStatus: 'company_owner' }, { companyRole: 'owner' }, { role: 'admin' }];
+    } else if (audienceNorm === 'PAYING_TENANTS') {
+      query.$or = [{ subscriptionStatus: 'active' }, { isPaidUser: true }];
+    } else if (audienceNorm === 'TRIAL_TENANTS') {
+      query.$or = [{ subscriptionStatus: 'trial' }, { isTrial: true }];
     } else if (audienceNorm === 'PLATFORM_MANAGERS_AGENTS') {
       query.role = { $in: ['manager', 'agent'] };
     } else if (audienceNorm === 'PLATFORM_MANAGERS_ONLY' || audienceNorm === 'INTERNAL_MANAGERS') {
@@ -2003,8 +2010,6 @@ exports.sendBroadcast = async (req, res) => {
       query.role = 'agent';
     } else if (audienceNorm === 'SOLO_USERS_ONLY') {
       query.$or = [{ role: 'user' }, { companyId: null, role: { $nin: ['superadmin', 'admin'] } }];
-    } else if (audienceNorm === 'ORGANISATIONS_ONLY' || audienceNorm === 'PLATFORM_ALL_ORGS') {
-      query.$or = [{ workStatus: 'company_owner' }, { companyRole: 'owner' }, { role: 'admin' }];
     } else if (audienceNorm === 'MY_TEAM_ONLY') {
       const tenantId = req.user.companyId || req.user._id;
       query.$or = [{ companyId: tenantId }, { _id: tenantId }];
@@ -2940,28 +2945,47 @@ exports.updatePipelineConfig = async (req, res) => {
 // Dynamic Broadcast Audience Counter
 exports.getBroadcastAudienceCount = async (req, res) => {
   try {
-    const { targetAudience } = req.body;
+    const rawTarget = req.query?.targetAudience || req.query?.target || req.body?.targetAudience || req.body?.target || 'ALL_USERS';
+    const targetAudience = String(rawTarget).toUpperCase();
     let count = 0;
 
     switch (targetAudience) {
+      case 'ALL_ORGS':
+      case 'ORGANISATIONS_ONLY':
+      case 'PLATFORM_ALL_ORGS':
+        count = await User.countDocuments({
+          $or: [{ workStatus: 'company_owner' }, { companyRole: 'owner' }, { role: 'admin' }],
+          userStatus: { $ne: 'deleted' }
+        });
+        break;
+      case 'PAYING_TENANTS':
+        count = await User.countDocuments({
+          $or: [{ subscriptionStatus: 'active' }, { isPaidUser: true }],
+          userStatus: { $ne: 'deleted' }
+        });
+        break;
+      case 'TRIAL_TENANTS':
+        count = await User.countDocuments({
+          $or: [{ subscriptionStatus: 'trial' }, { isTrial: true }],
+          userStatus: { $ne: 'deleted' }
+        });
+        break;
       case 'INTERNAL_ALL':
-        count = await User.countDocuments({ role: { $in: ['admin', 'manager', 'agent'] }, userStatus: 'active' });
+        count = await User.countDocuments({ role: { $in: ['admin', 'manager', 'agent'] }, userStatus: { $ne: 'deleted' } });
         break;
       case 'INTERNAL_MANAGERS':
-        count = await User.countDocuments({ role: 'manager', userStatus: 'active' });
+        count = await User.countDocuments({ role: 'manager', userStatus: { $ne: 'deleted' } });
         break;
       case 'INTERNAL_AGENTS':
-        count = await User.countDocuments({ role: 'agent', userStatus: 'active' });
+        count = await User.countDocuments({ role: 'agent', userStatus: { $ne: 'deleted' } });
         break;
       case 'PLATFORM_ALL_SOLO':
-        count = await User.countDocuments({ workStatus: 'independent_agent', userStatus: 'active' });
+        count = await User.countDocuments({ workStatus: 'independent_agent', userStatus: { $ne: 'deleted' } });
         break;
-      case 'PLATFORM_ALL_ORGS':
-        count = await User.countDocuments({ workStatus: 'company_owner', userStatus: 'active' });
-        break;
+      case 'ALL_USERS':
       case 'PLATFORM_ALL_USERS':
       default:
-        count = await User.countDocuments({ userStatus: 'active' });
+        count = await User.countDocuments({ userStatus: { $ne: 'deleted' } });
         break;
     }
 
