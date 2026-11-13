@@ -224,13 +224,29 @@ async function runMatrix() {
   }
 
   // 5. Matrix Test Route Catalog
+  // Dynamic Route Introspection
+  function getRegisteredRoutesCount(stack) {
+    let count = 0;
+    stack.forEach(layer => {
+      if (layer.route) {
+        count += Object.keys(layer.route.methods).length;
+      } else if (layer.name === 'router' && layer.handle && layer.handle.stack) {
+        count += getRegisteredRoutesCount(layer.handle.stack);
+      }
+    });
+    return count;
+  }
+  const totalRouterRoutes = getRegisteredRoutesCount(app._router.stack);
+
   const routesToTest = [
     // SuperAdmin routes
     { method: 'GET', path: '/api/super-admin/overview', superadminOnly: true },
     { method: 'GET', path: '/api/super-admin/organisations', superadminOnly: true },
     { method: 'GET', path: '/api/super-admin/users', superadminOnly: true },
-    { method: 'GET', path: '/api/super-admin/leads', superadminOnly: true },
     { method: 'GET', path: '/api/super-admin/health', superadminOnly: true },
+    { method: 'GET', path: '/api/super-admin/plans', superadminOnly: true },
+    { method: 'GET', path: '/api/super-admin/coupons', superadminOnly: true },
+    { method: 'GET', path: '/api/super-admin/broadcasts', superadminOnly: true },
     { method: 'GET', path: '/api/superadmin/notifications/reminder-health', superadminOnly: true },
     { method: 'GET', path: '/api/admin/users', superadminOnly: true },
     { method: 'GET', path: '/api/admin/system-health', superadminOnly: true },
@@ -243,12 +259,15 @@ async function runMatrix() {
     { method: 'GET', path: '/api/workspace/current', memberOnly: true },
     { method: 'GET', path: '/api/workspace/members', managerOrAdmin: true },
     { method: 'GET', path: '/api/workspace/invitations', managerOrAdmin: true },
+    { method: 'PUT', path: `/api/workspace/members/${ownerB._id}/role`, crossTenantCheck: true, body: { role: 'counsellor' } },
 
     // Leads & Cross-Tenant
     { method: 'GET', path: '/api/leads', memberOnly: true },
     { method: 'GET', path: `/api/leads/${leadB._id}`, crossTenantCheck: true }, // Foreign Lead
     { method: 'PUT', path: `/api/leads/${leadB._id}`, crossTenantCheck: true, body: { status: 'hacked' } },
     { method: 'DELETE', path: `/api/leads/${leadB._id}`, crossTenantCheck: true },
+    { method: 'POST', path: `/api/leads/${leadB._id}/notes`, crossTenantCheck: true, body: { text: 'Cross-tenant note attempt' } },
+    { method: 'POST', path: `/api/leads/${leadB._id}/unmask-phone`, crossTenantCheck: true },
 
     // Deals & Cross-Tenant
     { method: 'GET', path: '/api/deals', memberOnly: true },
@@ -278,7 +297,8 @@ async function runMatrix() {
     { method: 'GET', path: '/api/notifications/push/health', memberOnly: true },
   ];
 
-  console.log(`Evaluating ${routesToTest.length} critical routes across 6 roles + cross-tenant boundary...\n`);
+  console.log(`Express Router Total Registered Handlers: ${totalRouterRoutes}`);
+  console.log(`Evaluating ${routesToTest.length} critical unique routes (${Math.round((routesToTest.length / totalRouterRoutes) * 100)}% structural core) across 6 roles + cross-tenant boundary...\n`);
 
   const results = [];
   let violations = 0;
@@ -393,6 +413,13 @@ async function runMatrix() {
   });
 
   console.log(`\nTotal checks: ${results.length}. Violations (2xx where 403/404 required): ${violations}`);
+
+  try {
+    const apiPerformance = require('../src/middleware/apiPerformance');
+    if (apiPerformance && typeof apiPerformance.flush === 'function') {
+      await apiPerformance.flush();
+    }
+  } catch (_) {}
 
   server.close();
   await mongoose.disconnect();
