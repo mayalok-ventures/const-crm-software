@@ -692,6 +692,10 @@
     "stage6_notifications_pwa.test.js": {
       "category": "core",
       "reason": "Post-RC5 Stage 6: PWA Web Push follow-up notifications, tag deduplication, minimal payload masking, single-use quick-action tokens, and expired subscription pruning"
+    },
+    "web_push_followup_verification.test.js": {
+      "category": "core",
+      "reason": "Verification of Web Push follow-up reminders, downtime catch-up, tag replacement, 410 cleanup, single-use tokens, and zero phone PII"
     }
   }
 }
