@@ -43,9 +43,13 @@ async function purgeMockData() {
     const delTx = await Transaction.deleteMany({});
     console.log(`Cleared fake transactions: ${delTx.deletedCount}`);
 
-    // 6. Clean workspaces created by tests
+    // 6. Clean orphan test workspaces (workspaces not owned by our legitimate users)
+    const validUserIds = (await User.find({})).map(u => u._id);
     const delWs = await Workspace.deleteMany({
-      name: { $regex: /test|apex|eduguide|pathfinder|audit/i }
+      $or: [
+        { name: { $regex: /test|apex|eduguide|pathfinder|audit|consultant|bob/i } },
+        { owner: { $nin: validUserIds } }
+      ]
     });
     console.log(`Cleaned test workspaces: ${delWs.deletedCount}`);
 
