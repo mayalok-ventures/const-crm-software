@@ -18,11 +18,20 @@ export default function SuperAdminBroadcastModule() {
 
     setSending(true);
     try {
-      toast.success('Super Admin platform broadcast dispatched successfully! 🚀');
-      setTitle('');
-      setMessage('');
+      const res = await api.post('/super-admin/broadcast', {
+        title: title.trim(),
+        message: message.trim(),
+        target: targetAudience,
+      });
+      if (res.data?.success) {
+        toast.success(res.data.message || 'Super Admin platform broadcast dispatched successfully! 🚀');
+        setTitle('');
+        setMessage('');
+      } else {
+        toast.error(res.data?.message || 'Failed to dispatch broadcast');
+      }
     } catch (err) {
-      toast.error('Failed to dispatch broadcast');
+      toast.error(err.response?.data?.message || 'Failed to dispatch broadcast');
     } finally {
       setSending(false);
     }

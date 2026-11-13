@@ -469,6 +469,10 @@
       "category": "core",
       "reason": "Self-service lead ingestion endpoints"
     },
+    "superadmin_verification.test.js": {
+      "category": "core",
+      "reason": "SuperAdmin endpoints, 2FA, impersonation audit, and 10k/100k explain benchmark"
+    },
     "system_observability_suite.test.js": {
       "category": "core",
       "reason": "System telemetry, heap and event loop metrics"

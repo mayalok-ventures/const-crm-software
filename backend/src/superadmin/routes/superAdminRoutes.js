@@ -61,6 +61,12 @@ router.get('/audit-logs', auditController.getAuditLogs);
 router.get('/feature-flags', featureFlagController.getFeatureFlags);
 router.patch('/feature-flags/:flagId', featureFlagController.toggleFeatureFlag);
 
+// 9b. Platform Broadcast Center
+const adminController = require('../../controllers/adminController');
+router.get('/broadcasts', adminController.getBroadcasts);
+router.post('/broadcast', adminController.sendBroadcast);
+router.get('/broadcasts/audience-count', adminController.getBroadcastAudienceCount);
+
 // 10. Global Cross-Entity Search
 router.get('/search', featureFlagController.globalSearch);
 
