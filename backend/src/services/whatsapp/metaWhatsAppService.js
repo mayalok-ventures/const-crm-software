@@ -186,6 +186,11 @@ class MetaWhatsAppService {
           status: 'CONNECTED',
         });
 
+        if (!account || !account.ownerId) {
+          console.warn(`[MetaWhatsApp] Received message for unconnected phoneNumberId: ${phoneNumberId}. Discarding safely.`);
+          continue;
+        }
+
         const workspaceId = account ? account.workspaceId : null;
         const ownerId = account ? account.ownerId : null;
 

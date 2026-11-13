@@ -75,6 +75,22 @@ if (!global.describe) {
     const assert = require('assert');
     global.expect = function (actual) {
       return {
+        not: {
+          toBe(expected) { assert.notStrictEqual(actual, expected); },
+          toEqual(expected) { assert.notDeepStrictEqual(actual, expected); },
+          toBeDefined() { assert.strictEqual(actual, undefined); },
+          toBeUndefined() { assert.notStrictEqual(actual, undefined); },
+          toBeNull() { assert.notStrictEqual(actual, null); },
+          toBeTruthy() { assert.ok(!actual); },
+          toBeFalsy() { assert.ok(actual); },
+          toContain(item) {
+            if (Array.isArray(actual) || typeof actual === 'string') {
+              assert.ok(!actual.includes(item));
+            } else {
+              assert.ok(!(item in actual));
+            }
+          },
+        },
         toBe(expected) { assert.strictEqual(actual, expected); },
         toEqual(expected) { assert.deepStrictEqual(actual, expected); },
         toBeDefined() { assert.notStrictEqual(actual, undefined); },

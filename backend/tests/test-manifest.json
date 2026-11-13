@@ -193,6 +193,10 @@
       "category": "core",
       "reason": "Colleges, degrees, and fee catalogue management"
     },
+    "ingestion_webhooks_fuzz.test.js": {
+      "category": "core",
+      "reason": "Inbound webhooks fuzzing, deduplication, signature tamper, and error routing verification"
+    },
     "integration_architecture_audit.test.js": {
       "category": "core",
       "reason": "Integration subsystem architecture"

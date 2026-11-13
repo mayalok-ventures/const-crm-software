@@ -63,8 +63,8 @@ exports.submitForm = async (req, res) => {
 
     // 2. Honeypot Spam Trap Check
     const honeypotFieldName = formConfig.honeypotField || '_crm_hp_trap';
-    if (payload[honeypotFieldName]) {
-      console.warn(`[Website Form] Bot detected via honeypot trap (${honeypotFieldName}) on form "${formKey}". Discarded safely.`);
+    if (payload[honeypotFieldName] || payload._gotcha || payload.website_hp || payload.hp_email) {
+      console.warn(`[Website Form] Bot detected via honeypot trap on form "${formKey}". Discarded safely.`);
       // Return 200 OK so bots are not alerted that they were filtered
       return res.status(200).json({ success: true, status: 'RECEIVED' });
     }

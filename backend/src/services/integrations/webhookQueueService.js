@@ -348,6 +348,7 @@ class WebhookQueueService {
       code: error.code || error.response?.status || '',
       timestamp: new Date(),
     };
+    event.markModified('lastError');
 
     if (event.attempts >= event.maxAttempts) {
       // Transition to dead-letter
