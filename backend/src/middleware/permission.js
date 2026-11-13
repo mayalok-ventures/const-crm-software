@@ -29,7 +29,12 @@ const resolveWorkspace = async (req, res, next) => {
           req.workspace = ws;
           req.workspaceId = ws._id;
           req.tenantId = ws._id;
-          req.membership = { role: 'owner', status: 'active', hasPermission: async () => true };
+          req.membership = {
+            role: 'owner',
+            status: 'active',
+            hasPermission: async () => true,
+            getEffectivePermissions: async () => Object.keys(require('../config/permissions').PERMISSIONS),
+          };
           finishWs();
           return next();
         }

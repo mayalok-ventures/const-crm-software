@@ -532,3 +532,5 @@ process.once('SIGUSR2', async () => {
   await gracefulShutdown('SIGUSR2');
   process.kill(process.pid, 'SIGUSR2');
 });
+
+module.exports = { app, server };

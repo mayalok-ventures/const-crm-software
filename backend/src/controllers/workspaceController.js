@@ -32,7 +32,9 @@ exports.getCurrentWorkspace = async (req, res) => {
       ...workspace,
       memberCount,
       myRole: req.membership?.role || 'counsellor',
-      myPermissions: await req.membership?.getEffectivePermissions(),
+      myPermissions: typeof req.membership?.getEffectivePermissions === 'function'
+        ? await req.membership.getEffectivePermissions()
+        : [],
     };
 
     res.json({
