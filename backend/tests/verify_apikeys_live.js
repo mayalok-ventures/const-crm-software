@@ -46,7 +46,7 @@ async function runLiveVerification() {
   const validation = await apiKeyService.validateApiKey(rawKey, {
     ip: '13.51.219.53',
     userAgent: 'LiveTester/1.0',
-    endpoint: '/api/v1/leads'
+    endpoint: '/api/leads'
   });
 
   console.log(`Validation result: valid=${validation.valid} status=${validation.apiKey?.status} keyName=${validation.apiKey?.name}`);

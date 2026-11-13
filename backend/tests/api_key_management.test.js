@@ -160,7 +160,7 @@ async function runTests() {
       const validation = await ApiKeyService.validateApiKey(rawKey, {
         ip: '1.2.3.4',
         userAgent: 'PostmanRuntime/7.29.0',
-        endpoint: '/api/v1/leads'
+        endpoint: '/api/leads'
       });
 
       assert.strictEqual(validation.valid, true);

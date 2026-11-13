@@ -190,36 +190,36 @@ Investigation of the 2 extra failures identified on `feature/post-rc5` vs `main`
 - **Test File**: `backend/tests/ingestion_webhooks_fuzz.test.js`
 - **Verification Score**: **29 of 29 test cases passed (100%)**
 - **Tested Providers & Scenarios**:
-  1. **Meta Lead Ads (`/webhook/meta`)**:
+  1. **Meta Lead Ads (`/api/integrations/meta/webhook`)**:
      - Missing signature $\to$ 403 Forbidden
      - Tampered HMAC $\to$ 403 Forbidden
      - Valid HMAC $\to$ 200 OK (Event enqueued)
      - Unmapped tenant $\to$ 200 OK (Safely discarded without crash)
-  2. **Google Lead Form (`/webhook/google-leads`)**:
+  2. **Google Lead Form (`/api/integrations/google/webhook`)**:
      - Missing key $\to$ 401 Unauthorized
      - Tampered key $\to$ 401 Unauthorized
      - Valid key $\to$ 200 OK (Tenant-scoped lead ingested)
-  3. **Google Sheets (`/api/integrations/sheets/sync-leads`)**:
+  3. **Google Sheets (`/api/integrations/sheets/webhook/:integrationId`)**:
      - Missing secret $\to$ 401 Unauthorized
      - Tampered secret $\to$ 401 Unauthorized
      - Cross-tenant integration ID $\to$ 404 Not Found
      - Valid secret $\to$ 200 OK
-  4. **Website Form (`/api/leads/public/form`)**:
+  4. **Website Form (`/api/integrations/forms/:formKey/submit`)**:
      - Unauthorized origin $\to$ 403 Forbidden
      - Missing origin $\to$ 403 Forbidden
      - Invalid formKey $\to$ 404 Not Found
-     - Honeypot `_gotcha` field populated $\to$ 200 OK (Silently discarded without database write)
+     - Honeypot `_crm_hp_trap` field populated $\to$ 200 OK (Silently discarded without database write)
      - Valid submission $\to$ 200 OK
-  5. **Custom Webhook (`/webhook/custom/:integrationId`)**:
+  5. **Custom Webhook (`/api/integrations/custom/webhook/:integrationId`)**:
      - Missing secret $\to$ 401 Unauthorized
      - Tampered secret $\to$ 401 Unauthorized
      - Valid secret $\to$ 200 OK
-  6. **Razorpay (`/webhook/razorpay`)**:
+  6. **Razorpay (`/api/payment/webhook`)**:
      - Missing signature $\to$ 400 Bad Request
      - Tampered signature $\to$ 400 Bad Request
      - Valid signature $\to$ 200 OK
      - Duplicate replay $\to$ 200 OK (`Already processed`, no double activation)
-  7. **Meta WhatsApp (`/webhook/whatsapp`)**:
+  7. **Meta WhatsApp (`/api/whatsapp/meta/webhook`)**:
      - Missing signature $\to$ 401 Unauthorized
      - Tampered signature $\to$ 401 Unauthorized
      - Valid signature $\to$ 200 OK
@@ -227,7 +227,7 @@ Investigation of the 2 extra failures identified on `feature/post-rc5` vs `main`
   - Deduplication: Partial unique index `{ provider: 1, externalLeadId: 1 }` drops duplicates.
   - Exponential Backoff: Failed attempts back off ($2^n \times 1\text{s}$).
   - Dead-Letter Transition: After 5 attempts, transitions to `dead_letter` and creates `Notification` alert for tenant admins.
-  - Admin Re-drive: `POST /api/integrations/webhook-queue/:id/retry` successfully resets attempts and re-enqueues.
+  - Admin Re-drive: `POST /api/integrations/events/:id/retry` successfully resets attempts and re-enqueues.
 
 ### 6.7 Item 7: Web Push Follow-ups Lifecycle & Physical Constraints
 - **Test File**: `backend/tests/web_push_followup_verification.test.js`
