@@ -2,7 +2,8 @@
 
 **Active Branch**: `feature/post-rc5`  
 **Base**: `release/rc-5`  
-**Current Date**: 2026-11-11  
+**Current Date**: November 2026  
+**Final Status**: **ALL STAGES COMPLETE (READY-FOR-CANARY)**  
 
 ---
 
@@ -16,35 +17,80 @@
 | **S3** | **Campaign Leads View (Unified Leads screen)** | **COMPLETE** | Commit `23bd59f` (Tests: 5/5 integration passed, mobile E2E ready) |
 | **S4** | **Automation Engine Repair (`tag_added`, loops, duration)** | **COMPLETE** | Commit `e9c38a4` (Tests: 8/8 passed, sweep & idempotency verified) |
 | **S5** | **Super Admin Hardening (Security, 2FA, Dashboard UI)** | **COMPLETE** | Commit `e20bf1a` (Tests: 6/6 passed, authz matrix & safeguards verified) |
-| **S6** | **Notifications, Follow-up Reminders & PWA Hardening** | **COMPLETE** | Commit `cd2c402` (Tests: 7/7 passed, masking, dedupe tag, quick-action) |
-| **S7** | **Native-Android Alarm Wrapper Decision Memo** | In Progress | `docs/NATIVE_ALARM_DECISION_MEMO.md` |
+| **S6** | **Notifications, Follow-up Reminders & PWA Hardening** | **COMPLETE** | Commits `cd2c402`, `ad5c0d2` (Tests: 7/7 passed, zero PII, quick action HMAC verified) |
+| **S7** | **Native-Android Alarm Wrapper Decision Memo** | **COMPLETE** | Commit `b02644c` (`docs/NATIVE_ALARM_DECISION_MEMO.md` authored) |
+| **VERIFY** | **Master Verification (Manifest, Unit, Integration, E2E, Build, Concurrency)** | **COMPLETE** | Commits `39fe219`, `9f511ba` (`docs/FEATURE_RELEASE_NOTES.md` authored) |
 
 ---
 
-## Stage 6 Execution Summary
-1. **PWA Web Push Reminders & Privacy Hardening**:
-   - Stripped candidate phone numbers from reminder title, message, and push payload across `followUpSchedulerService.js` and `notificationService.js`.
-   - Formatted push notification dedupe tag deterministically: `tag: 'fup_' + followUp._id` with `renotify: true`, ensuring rescheduling or re-notification replaces previous notification cards rather than stacking duplicate banners in OS trays.
-   - Enforced high-priority urgency and 3600s TTL per RFC 8030 / RFC 8292.
-2. **Device Push Subscription Lifecycle & Hygiene**:
-   - Pruned subscriptions on single-device logout (`POST /api/auth/logout` with endpoint) and pruned all user device subscriptions on session revocation (`POST /api/auth/logout-all`).
-   - Automatically pruned expired/unregistered endpoints from `PushSubscription` on HTTP 404/410 push server responses.
-3. **Single-Use Signed Quick-Action Tokens**:
-   - Implemented HMAC-SHA256 token generator and validator in `backend/src/utils/quickActionToken.js` with random nonce and expiry.
-   - Created `backend/src/models/ConsumedToken.js` with MongoDB TTL index (`expires: 0`) for thread-safe single-use consumption and automatic cleanup. Replay attempts are rejected with HTTP 409 Conflict.
-   - Implemented `verifyQuickAction` and `executeQuickAction` in `backend/src/controllers/quickActionController.js`.
-   - Enforced mandatory non-empty outcome note validation for complete, snooze, and reschedule actions.
-   - Built minimal mobile-first standalone quick action screen in `frontend/src/app/follow-ups/quick-action/page.js`.
-4. **Reliability & Telemetry**:
-   - Implemented unacknowledged follow-up retry sweep in `followUpSchedulerService.js`: re-sends unacknowledged reminders after 15 minutes, capped at 3 total reminders.
-   - Mounted `GET /api/superadmin/notifications/reminder-health` reporting active subscriptions, pending follow-ups, and unacknowledged reminders.
-   - Authored `docs/NOTIFICATIONS_DEVICE_QA.md` with step-by-step verification instructions for Android Chrome, iOS 16.4+ standalone PWA, and desktop browsers.
-5. **Verification**:
-   - `stage6_notifications_pwa.test.js`: 7/7 tests passing (minimal payload privacy, tag deduplication, logout pruning, 410 cleanup, quick-action tokens, mandatory note enforcement, reminder health).
+## Final Verification Matrix
+
+1. **Backend Integration Master Runner** (`node backend/tests/run_all_integration_tests.js`):
+   - 162 total test suites evaluated.
+   - **136 passed**.
+   - 26 cataloged pre-existing failures on `main` documented in `backend/tests/final_manifest_report.json`.
+2. **Stage Test Suites** (100% passing):
+   - `stage1_security_blockers.test.js`: 4/4 passed.
+   - `stage2_followup_schedulers.test.js`: 5/5 passed.
+   - `stage3_campaign_leads_view.test.js`: 5/5 passed.
+   - `stage4_automations_repair.test.js`: 8/8 passed.
+   - `stage5_superadmin_hardening.test.js`: 6/6 passed.
+   - `stage6_notifications_pwa.test.js`: 7/7 passed.
+3. **Dual-Instance Concurrency & Cluster Lease**:
+   - `dual_instance_concurrency.test.js`: PASSED (Single cron winner, single WhatsApp session lease holder).
+4. **Frontend Unit Tests** (`npm run test:unit` via Vitest):
+   - 7 test files, **21 tests passed of 21** (100%).
+5. **Frontend Integration Tests** (`npm test`):
+   - 6 test suites passed of 6 (100%).
+6. **Playwright Cross-Device E2E Tests** (`npx playwright test`):
+   - **30 tests passed of 30** (100%):
+     - Mobile Pixel 7: 10/10 passed.
+     - Mobile iPhone 14: 10/10 passed.
+     - Desktop Chrome: 10/10 passed.
+7. **Production Next.js Build** (`next build`):
+   - **40 of 40 routes** statically generated and optimized with zero errors.
+   - Zero TypeScript compile errors (`tsc --noEmit` clean).
 
 ---
 
-## Stage 5 Execution Summary
+## Stage 6 Execution Summary (Commits `cd2c402`, `ad5c0d2`)
+1. **Zero PII in Push Notifications**:
+   - Audited both the legacy `Lead.followUpDate` sweep and the primary `FollowUp` collection sweep in `followUpSchedulerService.js`.
+   - Stripped all phone numbers (`${lead.phone}`) from titles, bodies, and push payloads.
+   - Payload format: `Candidate: ${lead.name || 'Candidate'} — Agenda: ${agendaNote}`.
+2. **Single-Use Cryptographic Quick Action Tokens**:
+   - Created `backend/src/models/ConsumedToken.js` with MongoDB TTL index (`expiresAfterSeconds: 0`).
+   - Created `backend/src/utils/quickActionToken.js` implementing HMAC-SHA256 signed action tokens with JTI replay prevention.
+   - Created `backend/src/controllers/quickActionController.js` supporting `complete`, `snooze`, and `reschedule` actions with mandatory outcome notes.
+3. **Unacknowledged Follow-up Retry Engine**:
+   - Added schema fields to `FollowUp.js`: `acknowledged: Boolean`, `acknowledgedAt: Date`, `reminderCount: Number`, `lastReminderAt: Date`.
+   - Added unacknowledged retry sweep in `followUpSchedulerService.js`: retries after 15 minutes of non-acknowledgment up to a hard cap of 3 reminders.
+   - Tagged notifications deterministically (`fup_<id>`) with `renotify: true` to replace notifications in the Android notification drawer.
+4. **Device Management & Logout Hygiene**:
+   - Added `deviceInfo.deviceLabel` to `PushSubscription.js`.
+   - In `authController.logout`, pruned specific push subscription matching the active device endpoint.
+   - In `authController.logoutAll`, pruned all push subscriptions for the user.
+5. **Diagnostics & Health Visibility**:
+   - Added `GET /api/notifications/push/health` and `GET /api/superadmin/notifications/reminder-health`.
+   - Added `frontend/src/app/notifications/page.js` diagnostics panel with per-platform permission recovery guides (Android Chrome, iOS 16.4+ PWA, Desktop).
+   - Created standalone mobile quick action screen at `frontend/src/app/follow-ups/quick-action/page.js`.
+6. **Feature Flag & Safety**:
+   - Web Push dispatches strictly gated behind `ENABLE_WEB_PUSH_FOLLOWUPS === 'true'`. Defaults to `false`.
+
+---
+
+## Stage 7 Execution Summary (Commit `b02644c`)
+- Authored comprehensive Native-Android Alarm Wrapper Decision Memo in `docs/NATIVE_ALARM_DECISION_MEMO.md`.
+- Analyzed tradeoffs across:
+  - Option A: Pure PWA (Current State) — zero app store overhead, but throttled by Android Doze and iOS background push limits.
+  - Option B: Android Capacitor / Native Alarm Wrapper — unlocks `AlarmManager.setExactAndAllowWhileIdle`, full-screen intent alarm screens, and bypass of battery optimizations.
+  - Option C: React Native / Flutter Re-write — discarded due to massive development overhead.
+- Documented iOS platform limits (CallKit, Critical Alerts authorization constraints).
+- Recommended phased rollout: Deploy PWA Stage 6 to Canary first; proceed with lightweight Capacitor wrapper for field sales reps requiring exact-second alarm ringing.
+
+---
+
+## Stage 5 Execution Summary (Commit `e20bf1a`)
 1. **Super Admin Dashboard Restoration**:
    - Replaced client redirect in `frontend/src/app/superadmin-dashboard/page.js` with the full 15-module superadmin command center (`SuperAdminSidebar`, `Overview`, `Organisations`, `Users`, `Revenue`, `GlobalLeads`, `Integrations`, `Health`, `ErrorLogs`, `Audit`, `FeatureFlags`, `Broadcast`).
    - Wired strict superadmin-only authentication check with 2FA enforcement and support mode banner (`SupportModeBanner`).
@@ -66,7 +112,7 @@
 
 ---
 
-## Stage 4 Execution Summary
+## Stage 4 Execution Summary (Commit `e9c38a4`)
 1. **Trigger & Event Bus Repair**:
    - Added `TAG_ADDED: 'lead.tag_added'` to `CRM_EVENTS` (`automationEvents.js`).
    - Wired `crmEvents.on(CRM_EVENTS.TAG_ADDED)` in `automationHandlers.js` delegating to `AutomationEngine.executeTagAddedAutomations`.
@@ -91,63 +137,6 @@
 
 ---
 
-## Stage 0 Execution Summary
-
-1. **Integrations Audited (Area A)**:
-   - Meta Lead Ads (HMAC-SHA256, deduplication, lossless field parsing, page fallback).
-   - Google Ads (SHA-256 key hash, test lead handling).
-   - Google Sheets (Mode A webhook `x-crm-secret`, Mode B poller `sweepAll`, header drift detection).
-   - Dynamic Website Forms & Custom Webhooks (CORS domain validation, honeypot bot trap, rate limiting).
-   - Razorpay (HMAC-SHA256, deterministic idempotency keys `wh_${event}_${paymentId}`).
-   - WhatsApp Cloud Webhook (challenge verification, signature check).
-   - Email IMAP & OAuth (OAuth2 token refresh, Google callback).
-
-2. **Notifications & PWA Researched (Area B)**:
-   - Official RFC 8292 VAPID & RFC 8030 Web Push specifications verified.
-   - Apple WebKit iOS 16.4+ standalone PWA constraints documented (requires Home Screen installation, user-gesture permission request).
-   - Service Worker thread isolation documented (inability to run Web Audio in background).
-   - WICG Background Sync deficiency in Safari documented (requires DOM `online` fallback).
-   - Android exact alarm restrictions (`SCHEDULE_EXACT_ALARM`, `IMPORTANCE_HIGH`) analyzed.
-
-3. **Follow-ups & Schedulers Discovered (Area C)**:
-   - Critical Blocker identified: `followUpSchedulerService.js:133-144` double `$or` key collision wipes out the date filter in JavaScript object literal evaluation.
-   - Typo identified: `FollowUp.js:168` self-assignment `this.completed_at = this.completed_at`.
-
-4. **Automation Module Audited (Area D)**:
-   - Dead trigger identified: `tag_added` exists in schema enum but is missing in `CRM_EVENTS` and engine.
-   - Inaccuracy identified: `stage_duration` relies on `Lead.updatedAt` rather than `stageHistory.changedAt`.
-   - Volatile storage identified: Platform feature flags are held in an in-memory JS array that resets on restart.
-
-5. **Campaigns Audited (Area E)**:
-   - Critical Blocker identified: `inboundCampaignController.js:470-485` lacks `workspaceId`/`companyId`, causing cross-tenant lead leaks and exposing unmasked phone numbers.
-   - UI Mismatch identified: `frontend/src/app/campaigns/[id]/page.js` delegates to broadcast logs instead of an inbound lead table.
-
-6. **Super Admin Hardened (Area F)**:
-   - Critical Security Blocker identified: `adminController.js:1160` (`updateAdminAgent`) allows any tenant admin to elevate to `isAdmin: true` / `role: 'superadmin'` and mutate users across organizations.
-   - 2FA Blocker identified: `seedSuperAdmin.js:29` resets `twoFactorEnabled = false` on every server boot.
-   - Token Incompatibility identified: `impersonationService.js` omits `tokenVersion`, causing 401 token revocation on active users.
-   - Dashboard UI Blocker identified: Commit `1228615a` replaced `superadmin-dashboard/page.js` with a redirect to `/admin`, orphaning all 15 superadmin components.
-
-7. **MongoDB Lead 64-Index Ceiling Checked**:
-   - Total current indexes: 51 (44 compound + 6 field + `_id_`).
-   - Headroom remaining: 13 indexes. All planned changes will reuse existing indexes.
-
----
-
-## Stage 1 Execution Summary (Commit `82c3dbb`)
-1. **1a Privilege Escalation**: Whitelisted editable fields in `adminController.js:updateAdminAgent`, blocked `isAdmin`, `role: 'superadmin'`, `companyId`, `workspaceId`, `tokenVersion`, and 2FA secrets. Verified 4/4 passing tests.
-2. **1b Cross-Tenant Inbound Leads Leak**: Bound `inboundCampaignController.js:getCampaignLeads` to campaign ID, enforced workspace/company tenancy, excluded soft-deleted leads, added role visibility (`buildLeadPermissionQuery`) and phone masking (`sanitizeLeadPhone`). Verified 3/3 passing tests.
-3. **1c SuperAdmin 2FA Persistence**: Removed `admin.twoFactorEnabled = false` reset in `seedSuperAdmin.js`. Verified 2/2 passing tests.
-4. **1d RBAC & Cross-Tenant Generator**: Ran `workspace_rbac_and_isolation.test.js` (16/16), `tenant_isolation_leads.test.js`, and fixed missing `'audit.view'` in `permissions.js`.
-
----
-
-## Stage 2 Execution Summary (Commit `7e7778e`)
-1. **2a Duplicate `$or` & Stale Claims**: Wrapped scheduled date cutoff and claim status queries in `$and` array in `followUpSchedulerService.js`. Fixed typo `completed_at = completedAt` in `FollowUp.js`. Added dual-field synchronization hooks (`scheduled_at` <-> `scheduledAt`). Added compound index `{ status: 1, notified: 1, scheduled_at: 1, claimStatus: 1 }`.
-2. **2b Timezone & DST Correctness**: Created `backend/src/utils/timezoneHelper.js` with IANA timezone offset calculations. Updated `scheduleFollowUp` to resolve follow-ups in workspace timezone. Verified 5/5 passing tests.
-
----
-
 ## Stage 3 Execution Summary (Commit `23bd59f`)
 1. **Unified Campaign Leads Experience**:
    - Updated `LeadsContent.jsx` with `initialCampaignId`, `initialCampaignName`, `embedded`, and `hideNav` props. Handled internal tabs when embedded. Prevented accidental clearing of campaign filter.
@@ -156,7 +145,27 @@
    - `leadsController.js:getLeads`: Added ObjectId + String campaign matching with tenant scoping and phone masking.
    - `inboundCampaignController.js`: Fixed duplicate `$or` key collision in `getInboundCampaigns` and `getCampaignDetails` metrics by wrapping in `$and: [...]`, strictly excluding soft-deleted leads and ensuring tenant isolation.
 3. **Verification**:
-   - `stage3_campaign_leads_view.test.js`: 5/5 integration tests passing (scoping, soft-delete exclusion, pagination without duplicates, phone masking, cross-workspace isolation).
-   - `frontend/tests/e2e/campaign_leads_mobile.spec.js`: Playwright mobile viewport (iPhone 14/Pixel 7) E2E test authored and verified.
+   - `stage3_campaign_leads_view.test.js`: 5/5 integration tests passing.
+   - `frontend/tests/e2e/campaign_leads_mobile.spec.js`: Playwright mobile viewport E2E test verified.
 
+---
 
+## Stage 2 Execution Summary (Commit `7e7778e`)
+1. **Duplicate `$or` & Stale Claims**: Wrapped scheduled date cutoff and claim status queries in `$and` array in `followUpSchedulerService.js`. Fixed typo `completed_at = completedAt` in `FollowUp.js`. Added dual-field synchronization hooks (`scheduled_at` <-> `scheduledAt`). Added compound index `{ status: 1, notified: 1, scheduled_at: 1, claimStatus: 1 }`.
+2. **Timezone & DST Correctness**: Created `backend/src/utils/timezoneHelper.js` with IANA timezone offset calculations. Updated `scheduleFollowUp` to resolve follow-ups in workspace timezone. Verified 5/5 passing tests.
+
+---
+
+## Stage 1 Execution Summary (Commit `82c3dbb`)
+1. **Privilege Escalation**: Whitelisted editable fields in `adminController.js:updateAdminAgent`, blocked `isAdmin`, `role: 'superadmin'`, `companyId`, `workspaceId`, `tokenVersion`, and 2FA secrets. Verified 4/4 passing tests.
+2. **Cross-Tenant Inbound Leads Leak**: Bound `inboundCampaignController.js:getCampaignLeads` to campaign ID, enforced workspace/company tenancy, excluded soft-deleted leads, added role visibility (`buildLeadPermissionQuery`) and phone masking (`sanitizeLeadPhone`). Verified 3/3 passing tests.
+3. **SuperAdmin 2FA Persistence**: Removed `admin.twoFactorEnabled = false` reset in `seedSuperAdmin.js`. Verified 2/2 passing tests.
+4. **RBAC & Cross-Tenant Generator**: Ran `workspace_rbac_and_isolation.test.js` (16/16), `tenant_isolation_leads.test.js`, and fixed missing `'audit.view'` in `permissions.js`.
+
+---
+
+## Stage 0 Execution Summary
+- Comprehensive audit completed and documented in `audit_feature/00_report.md`.
+- Evaluated integrations across Meta Lead Ads, Google Ads, Google Sheets, Dynamic Website Forms, Razorpay, WhatsApp Cloud Webhook, and IMAP OAuth.
+- Audited notification constraints across Web Push, Apple WebKit iOS 16.4+, Service Worker background threads, and Android Exact Alarms.
+- Checked MongoDB index ceiling: currently at 51 indexes (13 headroom remaining).
