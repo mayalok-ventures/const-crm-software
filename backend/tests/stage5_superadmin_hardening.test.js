@@ -352,42 +352,9 @@ describe('Stage 5: Super Admin Hardening & Destructive Safeguards', function () 
     assert.strictEqual(deleted, null, 'User must be deleted from database');
   });
 
-  it('6. Global Leads Observability: Soft-deleted leads excluded & search queries execute', async () => {
-    // Seed active lead and soft-deleted lead
-    const activeLead = await Lead.create({
-      name: 'Rohan Sharma',
-      email: 'rohan.sharma@example.com',
-      phone: '+919876500111',
-      workspaceId: testWorkspace._id,
-      userId: ownerUser._id,
-      status: 'new_lead',
-      deletedAt: null,
-    });
-
-    const softDeletedLead = await Lead.create({
-      name: 'Deleted Student',
-      email: 'deleted@example.com',
-      phone: '+919876500222',
-      workspaceId: testWorkspace._id,
-      userId: ownerUser._id,
-      status: 'new_lead',
-      deletedAt: new Date(),
-      isDeleted: true,
-    });
-
-    // Query global leads
+  it('6. Global Leads Observability: Endpoint permanently removed per user specification', async () => {
+    // Query global leads -> must return 404 Not Found as Global Leads was permanently removed
     const res = await api('GET', '/api/super-admin/leads', null, superadminToken);
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(res.data.success, true);
-
-    const leadIds = res.data.leads.map((l) => l._id.toString());
-    assert.ok(leadIds.includes(activeLead._id.toString()), 'Active lead must be returned');
-    assert.ok(!leadIds.includes(softDeletedLead._id.toString()), 'Soft deleted lead must NEVER be returned');
-
-    // Search by phone
-    const resPhone = await api('GET', '/api/super-admin/leads?search=' + encodeURIComponent('+919876500111'), null, superadminToken);
-    assert.strictEqual(resPhone.status, 200);
-    assert.strictEqual(resPhone.data.leads.length, 1);
-    assert.strictEqual(resPhone.data.leads[0].name, 'Rohan Sharma');
+    assert.strictEqual(res.status, 404, 'Global leads endpoint must be permanently unmounted (404)');
   });
 });

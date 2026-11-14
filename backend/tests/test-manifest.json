@@ -700,6 +700,10 @@
     "superadmin_unified_features.test.js": {
       "category": "core",
       "reason": "Verification of merged Organisations and Users, 3-parameter dynamic plan builder, all-plan coupons, and platform broadcasts"
+    },
+    "superadmin_ban_delete_user.test.js": {
+      "category": "core",
+      "reason": "SuperAdmin user ban, permanent account deletion, and data isolation"
     }
   }
 }

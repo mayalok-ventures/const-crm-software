@@ -79,7 +79,7 @@ self.addEventListener('push', (event: PushEvent) => {
   }
 
   const title = payload.title || '⏰ Sahyak CRM Follow-Up Alert';
-  const options: NotificationOptions = {
+  const options: NotificationOptions & Record<string, unknown> = {
     body: payload.body || 'You have an urgent candidate counseling call due now!',
     icon: '/android-chrome-192x192.png',
     badge: '/favicon-32x32.png',
